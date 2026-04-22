@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>经营分析 - 产品结构测算</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f0f2f5; color: #333; }
+
+.header {
+  background: linear-gradient(135deg, #1a3a6b 0%, #2d5f9a 100%);
+  color: #fff; padding: 16px 32px; font-size: 20px; font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+
+.filters {
+  background: #fff; margin: 16px; padding: 16px 20px; border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08); display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+}
+.filter-group { display: flex; flex-direction: column; gap: 4px; }
+.filter-group label { font-size: 12px; color: #888; font-weight: 500; }
+.filter-group select, .filter-group input {
+  height: 32px; border: 1px solid #d9d9d9; border-radius: 4px; padding: 0 8px;
+  font-size: 13px; background: #fff; min-width: 100px;
+}
+.filter-group select:focus, .filter-group input:focus { border-color: #2d5f9a; outline: none; box-shadow: 0 0 0 2px rgba(45,95,154,.15); }
+
+.btn-group { display: flex; gap: 0; }
+.btn-group button {
+  height: 32px; padding: 0 14px; border: 1px solid #d9d9d9; background: #fff;
+  font-size: 13px; cursor: pointer; transition: all .2s;
+}
+.btn-group button:first-child { border-radius: 4px 0 0 4px; }
+.btn-group button:last-child { border-radius: 0 4px 4px 0; }
+.btn-group button + button { border-left: none; }
+.btn-group button.active { background: #2d5f9a; color: #fff; border-color: #2d5f9a; }
+.btn-group button:hover:not(.active) { background: #e8f0fe; }
+
+.tabs { margin: 0 16px; display: flex; gap: 0; }
+.tabs button {
+  padding: 8px 20px; border: 1px solid #d9d9d9; background: #fff;
+  font-size: 14px; cursor: pointer; transition: all .2s;
+}
+.tabs button:first-child { border-radius: 6px 0 0 6px; }
+.tabs button:last-child { border-radius: 0 6px 6px 0; }
+.tabs button + button { border-left: none; }
+.tabs button.active { background: #2d5f9a; color: #fff; border-color: #2d5f9a; }
+
+.charts-container { display: grid; gap: 16px; padding: 0 16px 16px; }
+.chart-card {
+  background: #fff; border-radius: 8px; padding: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.chart-card h3 { font-size: 15px; margin-bottom: 12px; color: #1a3a6b; }
+.chart-box { width: 100%; height: 420px; }
+
+.summary-cards { display: flex; gap: 16px; padding: 0 16px 16px; flex-wrap: wrap; }
+.kpi-card {
+  flex: 1; min-width: 180px; background: #fff; border-radius: 8px; padding: 16px 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.kpi-card .kpi-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+.kpi-card .kpi-value { font-size: 24px; font-weight: 700; color: #1a3a6b; }
+.kpi-card .kpi-sub { font-size: 12px; margin-top: 4px; }
+.kpi-sub.up { color: #52c41a; }
+.kpi-sub.down { color: #f5222d; }
+
+.compare-toggle { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.compare-toggle label { font-size: 13px; color: #555; }
+.switch { position: relative; width: 40px; height: 22px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .slider {
+  position: absolute; inset: 0; background: #ccc; border-radius: 22px; cursor: pointer; transition: .3s;
+}
+.switch .slider:before {
+  content: ''; position: absolute; height: 18px; width: 18px; left: 2px; bottom: 2px;
+  background: #fff; border-radius: 50%; transition: .3s;
+}
+.switch input:checked + .slider { background: #2d5f9a; }
+.switch input:checked + .slider:before { transform: translateX(18px); }
+</style>
+</head>
+<body>
+
+<div class="header">经营分析 - 产品结构测算</div>
+
+<div class="filters">
+  <div class="filter-group">
+    <label>保费口径</label>
+    <div class="btn-group" id="metricBtns">
+      <button data-val="折算保费" class="active">折算保费</button>
+      <button data-val="期交保费">期交保费</button>
+      <button data-val="年化规保">规模保费</button>
+    </div>
+  </div>
+
+  <div class="filter-group">
+    <label>时间粒度</label>
+    <div class="btn-group" id="granBtns">
+      <button data-val="day" class="active">日累计</button>
+      <button data-val="month">月度</button>
+      <button data-val="quarter">季度</button>
+    </div>
+  </div>
+
+  <div class="filter-group">
+    <label>机构</label>
+    <select id="selOrg"><option value="">全部机构</option></select>
+  </div>
+
+  <div class="filter-group">
+    <label>业务模式</label>
+    <select id="selMode"><option value="">全部模式</option></select>
+  </div>
+
+  <div class="filter-group">
+    <label>是否在运营项目</label>
+    <select id="selOperating"><option value="">全部</option></select>
+  </div>
+
+  <div class="filter-group">
+    <label>分红产品</label>
+    <select id="selDividend"><option value="">全部</option></select>
+  </div>
+
+  <div class="filter-group">
+    <label>创新/传统</label>
+    <select id="selInnovate"><option value="">全部</option></select>
+  </div>
+
+  <div class="filter-group">
+    <label>长短险</label>
+    <select id="selTerm"><option value="">全部</option></select>
+  </div>
+
+  <div class="filter-group">
+    <label>是否商保年金</label>
+    <select id="selAnnuity"><option value="">全部</option></select>
+  </div>
+
+  <div class="filter-group">
+    <label>缴费年限</label>
+    <select id="selPayYear"><option value="">全部</option></select>
+  </div>
+
+  <div class="filter-group">
+    <label>保障年限</label>
+    <select id="selCovYear"><option value="">全部</option></select>
+  </div>
+
+  <div class="filter-group">
+    <label>产品设计分类</label>
+    <select id="selDesign"><option value="">全部</option></select>
+  </div>
+
+  <div class="compare-toggle">
+    <label>同比对比(2024)</label>
+    <label class="switch">
+      <input type="checkbox" id="compareToggle" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+</div>
+
+<div class="tabs">
+  <button data-view="overall" class="active">整体趋势</button>
+  <button data-view="org">分机构对比</button>
+  <button data-view="mode">分业务模式对比</button>
+</div>
+
+<div class="summary-cards" id="kpiArea"></div>
+
+<div class="charts-container">
+  <div class="chart-card">
+    <h3 id="chartTitle">整体保费日累计趋势</h3>
+    <div class="chart-box" id="mainChart"></div>
+  </div>
+  <div class="chart-card" id="yoyCard" style="display:none">
+    <h3>同比增速 (%)</h3>
+    <div class="chart-box" id="yoyChart"></div>
+  </div>
+  <div class="chart-card" id="structCard">
+    <h3>产品结构占比</h3>
+    <div class="chart-box" id="structChart"></div>
+  </div>
+</div>
+
+<script src="chart_data.js"></script>
+<script>
+(function() {
+  // --- State ---
+  let state = {
+    metric: '折算保费',
+    gran: 'day',       // day | month | quarter
+    view: 'overall',
+    compare: true,
+    filters: {}
+  };
+
+  const FILTER_KEYS = [
+    { key: '销售机构名称', sel: 'selOrg' },
+    { key: '业务模式', sel: 'selMode' },
+    { key: '是否在运营项目', sel: 'selOperating' },
+    { key: '分红产品', sel: 'selDividend' },
+    { key: '创新or传统', sel: 'selInnovate' },
+    { key: '长短险', sel: 'selTerm' },
+    { key: '是否商保年金产品', sel: 'selAnnuity' },
+    { key: '缴费年限', sel: 'selPayYear' },
+    { key: '保障年限', sel: 'selCovYear' },
+    { key: '产品设计分类', sel: 'selDesign' }
+  ];
+
+  // Month/Quarter labels for shared X-axis
+  const MONTH_LABELS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const QUARTER_LABELS = ['Q1','Q2','Q3','Q4'];
+
+  // --- Init selects ---
+  function unique(arr, key) {
+    const s = new Set();
+    arr.forEach(r => { if (r[key] !== undefined && r[key] !== '') s.add(String(r[key])); });
+    return [...s].sort();
+  }
+
+  function populateSelect(id, options) {
+    const sel = document.getElementById(id);
+    const current = sel.value;
+    sel.innerHTML = '<option value="">全部</option>';
+    options.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o; opt.textContent = o;
+      sel.appendChild(opt);
+    });
+    sel.value = current || '';
+  }
+
+  function initSelects() {
+    FILTER_KEYS.forEach(f => {
+      populateSelect(f.sel, unique(RAW_DATA, f.key));
+    });
+  }
+
+  // --- Filter data ---
+  function getFiltered() {
+    let data = RAW_DATA;
+    FILTER_KEYS.forEach(f => {
+      const v = document.getElementById(f.sel).value;
+      state.filters[f.key] = v;
+      if (v) data = data.filter(r => String(r[f.key]) === v);
+    });
+    return data;
+  }
+
+  // --- Aggregation ---
+  // Aggregate filtered data by year + time period, then compute cumulative
+  function aggregate(data) {
+    const view = state.view;
+    const metric = state.metric;
+    const gran = state.gran;
+
+    // Step 1: group by (year, period, dimension) and sum metric
+    const periodMap = {}; // year -> period -> dimKey -> sum
+    const dimLabels = {}; // dimKey -> label
+
+    data.forEach(r => {
+      const year = r['年'];
+      let period, periodIdx;
+      if (gran === 'quarter') {
+        period = r['季'];
+        periodIdx = period;
+      } else {
+        // day or month both use month as the base unit
+        period = r['月'];
+        periodIdx = period;
+      }
+
+      let dimKey = '', dimLabel = '';
+      if (view === 'org') {
+        dimKey = r['销售机构名称'];
+        dimLabel = dimKey;
+      } else if (view === 'mode') {
+        dimKey = r['业务模式'];
+        dimLabel = dimKey;
+      }
+
+      const groupKey = year + '||' + dimKey;
+
+      if (!periodMap[groupKey]) periodMap[groupKey] = { year, dimKey, dimLabel, periods: {} };
+      const g = periodMap[groupKey];
+      if (!g.periods[period]) g.periods[period] = 0;
+      g.periods[period] += r[metric] || 0;
+
+      if (dimKey) dimLabels[dimKey] = dimLabel;
+    });
+
+    // Step 2: compute cumulative within each group
+    const maxPeriods = gran === 'quarter' ? 4 : 12;
+    Object.values(periodMap).forEach(g => {
+      g.cumulative = [];
+      let cum = 0;
+      for (let i = 1; i <= maxPeriods; i++) {
+        cum += (g.periods[i] || 0);
+        g.cumulative[i] = cum;
+      }
+    });
+
+    return periodMap;
+  }
+
+  // --- Chart rendering ---
+  let mainChartInstance, yoyChartInstance, structChartInstance;
+
+  function getXLabels() {
+    if (state.gran === 'quarter') return QUARTER_LABELS;
+    return MONTH_LABELS;
+  }
+
+  function render() {
+    const data = getFiltered();
+    const periodMap = aggregate(data);
+    const xLabels = getXLabels();
+    const maxPeriods = xLabels.length;
+
+    // Collect years present
+    const yearsSet = new Set();
+    Object.values(periodMap).forEach(g => yearsSet.add(g.year));
+    const years = [...yearsSet].sort();
+
+    // Collect dimension keys
+    const dimKeysSet = new Set();
+    Object.values(periodMap).forEach(g => { if (g.dimKey) dimKeysSet.add(g.dimKey); });
+    const dimKeys = [...dimKeysSet].sort();
+
+    // Build series: one line per (year [+ dimension])
+    const colors = ['#2d5f9a','#e8963e','#52c41a','#722ed1','#eb2f96','#13c2c2','#faad14','#f5222d','#2f54eb','#fa541c','#a0d911'];
+    // Color by year primarily, differentiate dimensions with opacity/style
+    const yearColors = {};
+    years.forEach((y, i) => { yearColors[y] = colors[i % colors.length]; });
+
+    const series = [];
+    let seriesIdx = 0;
+
+    if (state.view === 'overall') {
+      // One line per year
+      years.forEach(year => {
+        const g = Object.values(periodMap).find(x => x.year === year && !x.dimKey);
+        if (!g) return;
+        const isBase = year === '2024';
+        series.push({
+          name: year,
+          type: 'line',
+          data: Array.from({length: maxPeriods}, (_, i) => Math.round((g.cumulative[i + 1] || 0) * 100) / 100),
+          smooth: true,
+          symbolSize: 6,
+          lineStyle: { width: 2.5, type: isBase && state.compare ? 'dashed' : 'solid' },
+          itemStyle: { color: yearColors[year] },
+          emphasis: { lineStyle: { width: 4 } }
+        });
+        seriesIdx++;
+      });
+    } else {
+      // One line per (year, dimKey)
+      years.forEach(year => {
+        dimKeys.forEach(dimKey => {
+          const g = Object.values(periodMap).find(x => x.year === year && x.dimKey === dimKey);
+          if (!g) return;
+          const isBase = year === '2024';
+          series.push({
+            name: year + ' - ' + dimKey,
+            type: 'line',
+            data: Array.from({length: maxPeriods}, (_, i) => Math.round((g.cumulative[i + 1] || 0) * 100) / 100),
+            smooth: true,
+            symbolSize: 5,
+            lineStyle: { width: 2, type: isBase && state.compare ? 'dashed' : 'solid' },
+            itemStyle: { color: yearColors[year] },
+            emphasis: { lineStyle: { width: 3 } }
+          });
+          seriesIdx++;
+        });
+      });
+    }
+
+    // Title
+    const granLabels = { day: '日累计', month: '月度', quarter: '季度' };
+    const viewLabels = { overall: '整体', org: '分机构', mode: '分业务模式' };
+    document.getElementById('chartTitle').textContent =
+      `${viewLabels[state.view]}${granLabels[state.gran]}保费趋势 - ${state.metric}`;
+
+    // Main chart
+    if (!mainChartInstance) mainChartInstance = echarts.init(document.getElementById('mainChart'));
+    mainChartInstance.setOption({
+      tooltip: {
+        trigger: 'axis',
+        formatter: function(params) {
+          let s = params[0].axisValue + '<br/>';
+          params.forEach(p => {
+            s += `${p.marker} ${p.seriesName}: <b>${formatNum(p.value)}</b><br/>`;
+          });
+          return s;
+        }
+      },
+      legend: { top: 0, type: 'scroll', textStyle: { fontSize: 12 } },
+      grid: { top: 40, left: 70, right: 20, bottom: 30 },
+      xAxis: {
+        type: 'category',
+        data: xLabels,
+        axisLabel: { fontSize: 12 },
+        boundaryGap: false
+      },
+      yAxis: { type: 'value', axisLabel: { formatter: v => formatShort(v) } },
+      series: series,
+      animation: true
+    }, true);
+
+    // YoY chart
+    const yoyCard = document.getElementById('yoyCard');
+    if (state.compare) {
+      yoyCard.style.display = '';
+      renderYoY(periodMap, xLabels, years, dimKeys);
+    } else {
+      yoyCard.style.display = 'none';
+    }
+
+    // Structure chart
+    renderStructure(data);
+
+    // KPI cards
+    renderKPI(periodMap, years, dimKeys, xLabels);
+  }
+
+  function renderYoY(periodMap, xLabels, years, dimKeys) {
+    const baseYear = '2024';
+    const maxPeriods = xLabels.length;
+
+    const yoySeries = [];
+    const yoyColors = ['#e8963e','#52c41a','#722ed1','#eb2f96','#13c2c2','#faad14'];
+
+    if (state.view === 'overall') {
+      const baseG = Object.values(periodMap).find(x => x.year === baseYear && !x.dimKey);
+      if (!baseG) { if (yoyChartInstance) yoyChartInstance.clear(); return; }
+
+      years.filter(y => y !== baseYear).forEach((year, ci) => {
+        const g = Object.values(periodMap).find(x => x.year === year && !x.dimKey);
+        if (!g) return;
+        yoySeries.push({
+          name: year,
+          type: 'line',
+          data: Array.from({length: maxPeriods}, (_, i) => {
+            const cur = g.cumulative[i + 1] || 0;
+            const base = baseG.cumulative[i + 1] || 0;
+            if (base === 0) return null;
+            return Math.round(((cur - base) / base) * 10000) / 100;
+          }),
+          smooth: true,
+          symbolSize: 6,
+          lineStyle: { width: 2 },
+          itemStyle: { color: yoyColors[ci % yoyColors.length] }
+        });
+      });
+    } else {
+      years.filter(y => y !== baseYear).forEach(year => {
+        dimKeys.forEach(dimKey => {
+          const g = Object.values(periodMap).find(x => x.year === year && x.dimKey === dimKey);
+          const baseG = Object.values(periodMap).find(x => x.year === baseYear && x.dimKey === dimKey);
+          if (!g || !baseG) return;
+          yoySeries.push({
+            name: year + ' - ' + dimKey,
+            type: 'line',
+            data: Array.from({length: maxPeriods}, (_, i) => {
+              const cur = g.cumulative[i + 1] || 0;
+              const base = baseG.cumulative[i + 1] || 0;
+              if (base === 0) return null;
+              return Math.round(((cur - base) / base) * 10000) / 100;
+            }),
+            smooth: true,
+            symbolSize: 5,
+            lineStyle: { width: 2 },
+            itemStyle: { color: yoyColors[yoySeries.length % yoyColors.length] }
+          });
+        });
+      });
+    }
+
+    if (!yoyChartInstance) yoyChartInstance = echarts.init(document.getElementById('yoyChart'));
+    yoyChartInstance.setOption({
+      tooltip: {
+        trigger: 'axis',
+        formatter: function(params) {
+          let s = params[0].axisValue + '<br/>';
+          params.forEach(p => {
+            if (p.value !== null) s += `${p.marker} ${p.seriesName}: <b>${p.value.toFixed(1)}%</b><br/>`;
+          });
+          return s;
+        }
+      },
+      legend: { top: 0, type: 'scroll', textStyle: { fontSize: 12 } },
+      grid: { top: 40, left: 70, right: 20, bottom: 30 },
+      xAxis: {
+        type: 'category',
+        data: xLabels,
+        axisLabel: { fontSize: 12 },
+        boundaryGap: false
+      },
+      yAxis: { type: 'value', axisLabel: { formatter: v => v + '%' } },
+      visualMap: { show: false, pieces: [{ lt: 0, color: '#f5222d' }, { gte: 0, color: '#52c41a' }] },
+      series: yoySeries
+    }, true);
+  }
+
+  function renderStructure(data) {
+    const pieDim = '产品设计分类';
+    const map = {};
+    data.forEach(r => {
+      const k = r[pieDim] || '未知';
+      if (!map[k]) map[k] = 0;
+      map[k] += r[state.metric] || 0;
+    });
+
+    const pieData = Object.entries(map)
+      .filter(([k, v]) => v > 0)
+      .map(([k, v]) => ({ name: k, value: Math.round(v * 100) / 100 }))
+      .sort((a, b) => b.value - a.value);
+
+    if (!structChartInstance) structChartInstance = echarts.init(document.getElementById('structChart'));
+    structChartInstance.setOption({
+      tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+      legend: { orient: 'vertical', right: 10, top: 20, textStyle: { fontSize: 12 } },
+      series: [{
+        type: 'pie',
+        radius: ['35%', '65%'],
+        center: ['40%', '55%'],
+        data: pieData,
+        label: { formatter: '{b}\n{d}%', fontSize: 11 },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,.2)' } }
+      }]
+    }, true);
+  }
+
+  function renderKPI(periodMap, years, dimKeys, xLabels) {
+    const kpiArea = document.getElementById('kpiArea');
+    const maxPeriods = xLabels.length;
+    const yearLatest = {};
+
+    Object.values(periodMap).forEach(g => {
+      // Find the last non-zero period
+      let lastPeriod = 0;
+      for (let i = maxPeriods; i >= 1; i--) {
+        if ((g.periods[i] || 0) > 0 || (g.cumulative[i] || 0) > 0) { lastPeriod = i; break; }
+      }
+      if (lastPeriod === 0) return;
+
+      const label = g.year + (g.dimKey ? ' - ' + g.dimKey : '');
+      yearLatest[label] = {
+        year: g.year,
+        dimKey: g.dimKey,
+        val: g.cumulative[lastPeriod] || 0,
+        time: xLabels[lastPeriod - 1]
+      };
+    });
+
+    let html = '';
+    const sorted = Object.values(yearLatest).sort((a, b) => b.val - a.val);
+    sorted.slice(0, 6).forEach(item => {
+      const base = yearLatest['2024' + (item.dimKey ? ' - ' + item.dimKey : '')];
+      let subHtml = '';
+      if (base && item.year !== '2024' && state.compare) {
+        const pct = base.val > 0 ? ((item.val - base.val) / base.val * 100).toFixed(1) : '-';
+        const cls = pct >= 0 ? 'up' : 'down';
+        subHtml = '<div class="kpi-sub ' + cls + '">同比 ' + (pct >= 0 ? '+' : '') + pct + '%</div>';
+      }
+      const label = item.year + (item.dimKey ? ' - ' + item.dimKey : '');
+      html += '<div class="kpi-card">' +
+        '<div class="kpi-label">' + label + ' (截至 ' + item.time + ')</div>' +
+        '<div class="kpi-value">' + formatNum(item.val) + '</div>' +
+        subHtml + '</div>';
+    });
+    kpiArea.innerHTML = html;
+  }
+
+  // --- Helpers ---
+  function formatNum(n) {
+    if (n == null) return '-';
+    if (Math.abs(n) >= 1e8) return (n / 1e8).toFixed(2) + '亿';
+    if (Math.abs(n) >= 1e4) return (n / 1e4).toFixed(2) + '万';
+    return n.toFixed(2);
+  }
+
+  function formatShort(n) {
+    if (n == null) return '-';
+    if (Math.abs(n) >= 1e8) return (n / 1e8).toFixed(1) + '亿';
+    if (Math.abs(n) >= 1e4) return (n / 1e4).toFixed(0) + '万';
+    return n.toFixed(0);
+  }
+
+  // --- Events ---
+  document.getElementById('metricBtns').addEventListener('click', e => {
+    if (e.target.tagName !== 'BUTTON') return;
+    document.querySelectorAll('#metricBtns button').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    state.metric = e.target.dataset.val;
+    render();
+  });
+
+  document.getElementById('granBtns').addEventListener('click', e => {
+    if (e.target.tagName !== 'BUTTON') return;
+    document.querySelectorAll('#granBtns button').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    state.gran = e.target.dataset.val;
+    render();
+  });
+
+  document.querySelector('.tabs').addEventListener('click', e => {
+    if (e.target.tagName !== 'BUTTON') return;
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    state.view = e.target.dataset.view;
+    render();
+  });
+
+  document.getElementById('compareToggle').addEventListener('change', e => {
+    state.compare = e.target.checked;
+    render();
+  });
+
+  FILTER_KEYS.forEach(f => {
+    document.getElementById(f.sel).addEventListener('change', () => render());
+  });
+
+  window.addEventListener('resize', () => {
+    if (mainChartInstance) mainChartInstance.resize();
+    if (yoyChartInstance) yoyChartInstance.resize();
+    if (structChartInstance) structChartInstance.resize();
+  });
+
+  // --- Init ---
+  initSelects();
+  render();
+
+})();
+</script>
+</body>
+</html>
