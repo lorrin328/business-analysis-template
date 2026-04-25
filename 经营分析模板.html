@@ -918,20 +918,18 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   // --- Excel parsing & DB build ---
   const REQUIRED_TIME_COLS = ['年', '月', '季'];
   const DATE_COL_CANDIDATES = ['日期', '投保日期', '签单日期', '成交日期', '年月日'];
-  // 核心维度：新旧表均必须包含
+  // 核心维度：新表必须包含
   const CORE_DIM_COLS = [
     '销售机构名称', '业务模式', '长短险', '是否商保年金产品',
     '缴费年限', '保障年限', '产品设计分类'
   ];
-  // 旧表特有维度（新表缺失时允许，入库填 '未知'）
-  const OLD_DIM_COLS = ['是否在运营项目', '分红产品', '创新or传统'];
-  // 新表特有维度（旧表缺失时允许，入库填 '' 或 '未知'）
-  const NEW_DIM_COLS = [
+  // 扩展维度：新表特有，入库备用
+  const EXT_DIM_COLS = [
     '人员工号', '主管工号', '经理工号', '投保单号', '自保件标记',
     '投保时间', '承保时间', '入账时间', '回销时间',
     '产品代码', '产品名称', '是否个人养老金'
   ];
-  const ALL_DIM_COLS = [...CORE_DIM_COLS, ...OLD_DIM_COLS, ...NEW_DIM_COLS];
+  const ALL_DIM_COLS = [...CORE_DIM_COLS, ...EXT_DIM_COLS];
   const METRIC_COLS_ZH = ['期交保费', '年化规保', '折算保费', '价值规保'];
   const COL_ALIASES = {
     '月': ['年月'],
@@ -1112,8 +1110,8 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
 
     return [
       dateInfo.date, year, quarter, month, dateInfo.day, monthLabel,
-      trimDim(get('销售机构名称')), trimDim(get('业务模式')), trimDim(get('是否在运营项目')),
-      trimDim(get('分红产品')), trimDim(get('创新or传统')), trimDim(get('长短险')),
+      trimDim(get('销售机构名称')), trimDim(get('业务模式')), '未知',
+      '未知', '未知', trimDim(get('长短险')),
       trimDim(get('是否商保年金产品')), trimDim(get('缴费年限')), trimDim(get('保障年限')),
       trimDim(get('产品设计分类')),
       trimEmpty(get('人员工号')), trimEmpty(get('主管工号')), trimEmpty(get('经理工号')),
