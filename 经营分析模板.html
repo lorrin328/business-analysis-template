@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>经营分析 - 产品结构测算</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f0f2f5; color: #333; }
@@ -80,6 +81,28 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
 }
 .switch input:checked + .slider { background: #2d5f9a; }
 .switch input:checked + .slider:before { transform: translateX(18px); }
+
+.daily-tip {
+  position: fixed; display: none; background: #fff;
+  border: 1px solid #d9d9d9; border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  padding: 6px; z-index: 9999; width: 380px; height: 260px;
+  pointer-events: none;
+}
+
+.boot-overlay {
+  position: fixed; inset: 0; background: rgba(255,255,255,.92);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 99999; flex-direction: column; gap: 12px;
+  font-size: 14px; color: #2d5f9a;
+}
+.boot-overlay.error { color: #f5222d; }
+.boot-overlay .spinner {
+  width: 32px; height: 32px; border: 3px solid #d9e3f0;
+  border-top-color: #2d5f9a; border-radius: 50%;
+  animation: spin .9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -187,114 +210,141 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   </div>
 </div>
 
-<script src="chart_data.js"></script>
+<div class="daily-tip" id="dailyTip"></div>
+<div class="boot-overlay" id="bootOverlay">
+  <div class="spinner"></div>
+  <div id="bootMsg">正在加载数据库 ...</div>
+</div>
+
 <script>
-(function() {
-  // --- State ---
-  let state = {
-    metric: '折算保费',
-    gran: 'day',       // day | month | quarter
-    view: 'overall',
-    compare: true,
-    filters: {}
-  };
-
-  const FILTER_KEYS = [
-    { key: '销售机构名称', sel: 'selOrg' },
-    { key: '业务模式', sel: 'selMode' },
-    { key: '是否在运营项目', sel: 'selOperating' },
-    { key: '分红产品', sel: 'selDividend' },
-    { key: '创新or传统', sel: 'selInnovate' },
-    { key: '长短险', sel: 'selTerm' },
-    { key: '是否商保年金产品', sel: 'selAnnuity' },
-    { key: '缴费年限', sel: 'selPayYear' },
-    { key: '保障年限', sel: 'selCovYear' },
-    { key: '产品设计分类', sel: 'selDesign' }
-  ];
-
-  // Month/Quarter labels for shared X-axis
+(async function() {
+  // --- Constants ---
+  const BASE_YEAR = '2024';
   const MONTH_LABELS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
   const QUARTER_LABELS = ['Q1','Q2','Q3','Q4'];
 
-  // --- Init selects ---
-  function unique(arr, key) {
-    const s = new Set();
-    arr.forEach(r => { if (r[key] !== undefined && r[key] !== '') s.add(String(r[key])); });
-    return [...s].sort();
+  const FILTER_KEYS = [
+    { key: '销售机构名称', sel: 'selOrg', col: 'org' },
+    { key: '业务模式', sel: 'selMode', col: 'biz_mode' },
+    { key: '是否在运营项目', sel: 'selOperating', col: 'is_operating' },
+    { key: '分红产品', sel: 'selDividend', col: 'is_dividend' },
+    { key: '创新or传统', sel: 'selInnovate', col: 'innovate' },
+    { key: '长短险', sel: 'selTerm', col: 'term_type' },
+    { key: '是否商保年金产品', sel: 'selAnnuity', col: 'is_annuity' },
+    { key: '缴费年限', sel: 'selPayYear', col: 'pay_years' },
+    { key: '保障年限', sel: 'selCovYear', col: 'cov_years' },
+    { key: '产品设计分类', sel: 'selDesign', col: 'design_cat' }
+  ];
+
+  const METRIC_MAP = {
+    '折算保费': 'zhsf_cents',
+    '期交保费': 'qj_cents',
+    '年化规保': 'ghgb_cents'
+  };
+
+  const VIEW_DIM_COL = { org: 'org', mode: 'biz_mode' };
+
+  // --- State ---
+  let state = {
+    metric: '折算保费',
+    gran: 'day',       // day | month | quarter （day 与 month 主图形态一致，仅文案差异保留）
+    view: 'overall',
+    compare: true
+  };
+
+  let db = null;
+  const dailyCache = new Map();
+  let mainChartInstance, yoyChartInstance, structChartInstance, miniChartInstance;
+  let allYears = [];
+
+  // --- SQL helpers ---
+  function q(sql, params) {
+    const stmt = db.prepare(sql);
+    if (params) stmt.bind(params);
+    const rows = [];
+    while (stmt.step()) rows.push(stmt.getAsObject());
+    stmt.free();
+    return rows;
   }
 
-  function populateSelect(id, options) {
-    const sel = document.getElementById(id);
-    const current = sel.value;
-    sel.innerHTML = '<option value="">全部</option>';
-    options.forEach(o => {
-      const opt = document.createElement('option');
-      opt.value = o; opt.textContent = o;
-      sel.appendChild(opt);
-    });
-    sel.value = current || '';
+  function metricCol() {
+    return METRIC_MAP[state.metric];
   }
 
-  function initSelects() {
-    FILTER_KEYS.forEach(f => {
-      populateSelect(f.sel, unique(RAW_DATA, f.key));
-    });
-  }
-
-  // --- Filter data ---
-  function getFiltered() {
-    let data = RAW_DATA;
+  function buildWhere(extraClauses, extraParams) {
+    const clauses = [];
+    const params = {};
     FILTER_KEYS.forEach(f => {
       const v = document.getElementById(f.sel).value;
-      state.filters[f.key] = v;
-      if (v) data = data.filter(r => String(r[f.key]) === v);
+      if (v) {
+        clauses.push(`${f.col} = $${f.col}`);
+        params['$' + f.col] = v;
+      }
     });
-    return data;
+    if (extraClauses && extraClauses.length) {
+      extraClauses.forEach(c => clauses.push(c));
+      Object.assign(params, extraParams || {});
+    }
+    return {
+      where: clauses.length ? 'WHERE ' + clauses.join(' AND ') : '',
+      params
+    };
   }
 
-  // --- Aggregation ---
-  // Aggregate filtered data by year + time period, then compute cumulative
-  function aggregate(data) {
-    const view = state.view;
-    const metric = state.metric;
-    const gran = state.gran;
+  function filterStateHash() {
+    return FILTER_KEYS.map(f => document.getElementById(f.sel).value).join('|') +
+           '|' + state.metric + '|' + state.view;
+  }
 
-    // Step 1: group by (year, period, dimension) and sum metric
-    const periodMap = {}; // year -> period -> dimKey -> sum
-    const dimLabels = {}; // dimKey -> label
-
-    data.forEach(r => {
-      const year = r['年'];
-      let period, periodIdx;
-      if (gran === 'quarter') {
-        period = r['季'];
-        periodIdx = period;
-      } else {
-        // day or month both use month as the base unit
-        period = r['月'];
-        periodIdx = period;
-      }
-
-      let dimKey = '', dimLabel = '';
-      if (view === 'org') {
-        dimKey = r['销售机构名称'];
-        dimLabel = dimKey;
-      } else if (view === 'mode') {
-        dimKey = r['业务模式'];
-        dimLabel = dimKey;
-      }
-
-      const groupKey = year + '||' + dimKey;
-
-      if (!periodMap[groupKey]) periodMap[groupKey] = { year, dimKey, dimLabel, periods: {} };
-      const g = periodMap[groupKey];
-      if (!g.periods[period]) g.periods[period] = 0;
-      g.periods[period] += r[metric] || 0;
-
-      if (dimKey) dimLabels[dimKey] = dimLabel;
+  // --- Init selects ---
+  function initSelects() {
+    FILTER_KEYS.forEach(f => {
+      const rows = q(`SELECT DISTINCT ${f.col} AS v FROM fact_premium WHERE ${f.col} IS NOT NULL AND ${f.col} != '' ORDER BY ${f.col}`);
+      const sel = document.getElementById(f.sel);
+      const current = sel.value;
+      sel.innerHTML = '<option value="">全部</option>';
+      rows.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r.v; opt.textContent = r.v;
+        sel.appendChild(opt);
+      });
+      sel.value = current || '';
     });
 
-    // Step 2: compute cumulative within each group
+    allYears = q(`SELECT DISTINCT year AS v FROM fact_premium ORDER BY year`).map(r => r.v);
+  }
+
+  // --- Aggregation via SQL ---
+  function aggregate() {
+    const view = state.view;
+    const gran = state.gran;
+    const periodCol = gran === 'quarter' ? 'quarter' : 'month';
+    const dimCol = VIEW_DIM_COL[view] || null;
+    const mc = metricCol();
+
+    const { where, params } = buildWhere();
+    const dimSelect = dimCol ? `, ${dimCol} AS dim_key` : `, '' AS dim_key`;
+    const groupBy = dimCol ? `year, ${periodCol}, ${dimCol}` : `year, ${periodCol}`;
+
+    const sql = `
+      SELECT year, ${periodCol} AS period${dimSelect},
+             SUM(${mc}) / 100.0 AS amount
+      FROM fact_premium
+      ${where}
+      GROUP BY ${groupBy}
+      ORDER BY year, period`;
+
+    const rows = q(sql, params);
+
+    // 组装为现 periodMap 形状：{ groupKey: { year, dimKey, periods, cumulative } }
+    const periodMap = {};
+    rows.forEach(r => {
+      const dimKey = r.dim_key || '';
+      const gkey = r.year + '||' + dimKey;
+      if (!periodMap[gkey]) periodMap[gkey] = { year: r.year, dimKey, dimLabel: dimKey, periods: {} };
+      periodMap[gkey].periods[r.period] = r.amount;
+    });
+
     const maxPeriods = gran === 'quarter' ? 4 : 12;
     Object.values(periodMap).forEach(g => {
       g.cumulative = [];
@@ -309,44 +359,35 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   }
 
   // --- Chart rendering ---
-  let mainChartInstance, yoyChartInstance, structChartInstance;
-
   function getXLabels() {
-    if (state.gran === 'quarter') return QUARTER_LABELS;
-    return MONTH_LABELS;
+    return state.gran === 'quarter' ? QUARTER_LABELS : MONTH_LABELS;
   }
 
   function render() {
-    const data = getFiltered();
-    const periodMap = aggregate(data);
+    dailyCache.clear();  // 任何 render 入口都失效缓存
+    const periodMap = aggregate();
     const xLabels = getXLabels();
     const maxPeriods = xLabels.length;
 
-    // Collect years present
     const yearsSet = new Set();
     Object.values(periodMap).forEach(g => yearsSet.add(g.year));
     const years = [...yearsSet].sort();
 
-    // Collect dimension keys
     const dimKeysSet = new Set();
     Object.values(periodMap).forEach(g => { if (g.dimKey) dimKeysSet.add(g.dimKey); });
     const dimKeys = [...dimKeysSet].sort();
 
-    // Build series: one line per (year [+ dimension])
     const colors = ['#2d5f9a','#e8963e','#52c41a','#722ed1','#eb2f96','#13c2c2','#faad14','#f5222d','#2f54eb','#fa541c','#a0d911'];
-    // Color by year primarily, differentiate dimensions with opacity/style
     const yearColors = {};
     years.forEach((y, i) => { yearColors[y] = colors[i % colors.length]; });
 
     const series = [];
-    let seriesIdx = 0;
 
     if (state.view === 'overall') {
-      // One line per year
       years.forEach(year => {
         const g = Object.values(periodMap).find(x => x.year === year && !x.dimKey);
         if (!g) return;
-        const isBase = year === '2024';
+        const isBase = year === BASE_YEAR;
         series.push({
           name: year,
           type: 'line',
@@ -357,15 +398,13 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
           itemStyle: { color: yearColors[year] },
           emphasis: { lineStyle: { width: 4 } }
         });
-        seriesIdx++;
       });
     } else {
-      // One line per (year, dimKey)
       years.forEach(year => {
         dimKeys.forEach(dimKey => {
           const g = Object.values(periodMap).find(x => x.year === year && x.dimKey === dimKey);
           if (!g) return;
-          const isBase = year === '2024';
+          const isBase = year === BASE_YEAR;
           series.push({
             name: year + ' - ' + dimKey,
             type: 'line',
@@ -376,30 +415,23 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
             itemStyle: { color: yearColors[year] },
             emphasis: { lineStyle: { width: 3 } }
           });
-          seriesIdx++;
         });
       });
     }
 
-    // Title
     const granLabels = { day: '日累计', month: '月度', quarter: '季度' };
     const viewLabels = { overall: '整体', org: '分机构', mode: '分业务模式' };
     document.getElementById('chartTitle').textContent =
-      `${viewLabels[state.view]}${granLabels[state.gran]}保费趋势 - ${state.metric}`;
+      `${viewLabels[state.view]}${granLabels[state.gran]}保费趋势 - ${state.metric}（hover 查看日明细）`;
 
-    // Main chart
-    if (!mainChartInstance) mainChartInstance = echarts.init(document.getElementById('mainChart'));
+    if (!mainChartInstance) {
+      mainChartInstance = echarts.init(document.getElementById('mainChart'));
+      installDailyTooltip();
+    }
     mainChartInstance.setOption({
-      tooltip: {
-        trigger: 'axis',
-        formatter: function(params) {
-          let s = params[0].axisValue + '<br/>';
-          params.forEach(p => {
-            s += `${p.marker} ${p.seriesName}: <b>${formatNum(p.value)}</b><br/>`;
-          });
-          return s;
-        }
-      },
+      tooltip: { show: false },   // 自定义浮层接管
+      axisPointer: { show: true, type: 'line', snap: true,
+                     label: { show: true, formatter: p => p.value } },
       legend: { top: 0, type: 'scroll', textStyle: { fontSize: 12 } },
       grid: { top: 40, left: 70, right: 20, bottom: 30 },
       xAxis: {
@@ -413,7 +445,6 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
       animation: true
     }, true);
 
-    // YoY chart
     const yoyCard = document.getElementById('yoyCard');
     if (state.compare) {
       yoyCard.style.display = '';
@@ -422,25 +453,20 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
       yoyCard.style.display = 'none';
     }
 
-    // Structure chart
-    renderStructure(data);
-
-    // KPI cards
+    renderStructure();
     renderKPI(periodMap, years, dimKeys, xLabels);
   }
 
   function renderYoY(periodMap, xLabels, years, dimKeys) {
-    const baseYear = '2024';
     const maxPeriods = xLabels.length;
-
     const yoySeries = [];
     const yoyColors = ['#e8963e','#52c41a','#722ed1','#eb2f96','#13c2c2','#faad14'];
 
     if (state.view === 'overall') {
-      const baseG = Object.values(periodMap).find(x => x.year === baseYear && !x.dimKey);
+      const baseG = Object.values(periodMap).find(x => x.year === BASE_YEAR && !x.dimKey);
       if (!baseG) { if (yoyChartInstance) yoyChartInstance.clear(); return; }
 
-      years.filter(y => y !== baseYear).forEach((year, ci) => {
+      years.filter(y => y !== BASE_YEAR).forEach((year, ci) => {
         const g = Object.values(periodMap).find(x => x.year === year && !x.dimKey);
         if (!g) return;
         yoySeries.push({
@@ -459,10 +485,10 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
         });
       });
     } else {
-      years.filter(y => y !== baseYear).forEach(year => {
+      years.filter(y => y !== BASE_YEAR).forEach(year => {
         dimKeys.forEach(dimKey => {
           const g = Object.values(periodMap).find(x => x.year === year && x.dimKey === dimKey);
-          const baseG = Object.values(periodMap).find(x => x.year === baseYear && x.dimKey === dimKey);
+          const baseG = Object.values(periodMap).find(x => x.year === BASE_YEAR && x.dimKey === dimKey);
           if (!g || !baseG) return;
           yoySeries.push({
             name: year + ' - ' + dimKey,
@@ -508,19 +534,19 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     }, true);
   }
 
-  function renderStructure(data) {
-    const pieDim = '产品设计分类';
-    const map = {};
-    data.forEach(r => {
-      const k = r[pieDim] || '未知';
-      if (!map[k]) map[k] = 0;
-      map[k] += r[state.metric] || 0;
-    });
+  function renderStructure() {
+    const { where, params } = buildWhere();
+    const sql = `
+      SELECT design_cat AS k, SUM(${metricCol()}) / 100.0 AS v
+      FROM fact_premium
+      ${where}
+      GROUP BY design_cat
+      ORDER BY v DESC`;
+    const rows = q(sql, params);
 
-    const pieData = Object.entries(map)
-      .filter(([k, v]) => v > 0)
-      .map(([k, v]) => ({ name: k, value: Math.round(v * 100) / 100 }))
-      .sort((a, b) => b.value - a.value);
+    const pieData = rows
+      .filter(r => r.v !== 0)   // 保留负值（撤单），仅过滤恒零
+      .map(r => ({ name: r.k || '未知', value: Math.round(r.v * 100) / 100 }));
 
     if (!structChartInstance) structChartInstance = echarts.init(document.getElementById('structChart'));
     structChartInstance.setOption({
@@ -543,10 +569,10 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     const yearLatest = {};
 
     Object.values(periodMap).forEach(g => {
-      // Find the last non-zero period
       let lastPeriod = 0;
       for (let i = maxPeriods; i >= 1; i--) {
-        if ((g.periods[i] || 0) > 0 || (g.cumulative[i] || 0) > 0) { lastPeriod = i; break; }
+        // 取最后非零期（含负数）
+        if ((g.periods[i] || 0) !== 0 || (g.cumulative[i] || 0) !== 0) { lastPeriod = i; break; }
       }
       if (lastPeriod === 0) return;
 
@@ -562,12 +588,12 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     let html = '';
     const sorted = Object.values(yearLatest).sort((a, b) => b.val - a.val);
     sorted.slice(0, 6).forEach(item => {
-      const base = yearLatest['2024' + (item.dimKey ? ' - ' + item.dimKey : '')];
+      const base = yearLatest[BASE_YEAR + (item.dimKey ? ' - ' + item.dimKey : '')];
       let subHtml = '';
-      if (base && item.year !== '2024' && state.compare) {
-        const pct = base.val > 0 ? ((item.val - base.val) / base.val * 100).toFixed(1) : '-';
-        const cls = pct >= 0 ? 'up' : 'down';
-        subHtml = '<div class="kpi-sub ' + cls + '">同比 ' + (pct >= 0 ? '+' : '') + pct + '%</div>';
+      if (base && item.year !== BASE_YEAR && state.compare) {
+        const pct = base.val !== 0 ? ((item.val - base.val) / Math.abs(base.val) * 100).toFixed(1) : '-';
+        const cls = parseFloat(pct) >= 0 ? 'up' : 'down';
+        subHtml = '<div class="kpi-sub ' + cls + '">同比 ' + (parseFloat(pct) >= 0 ? '+' : '') + pct + '%</div>';
       }
       const label = item.year + (item.dimKey ? ' - ' + item.dimKey : '');
       html += '<div class="kpi-card">' +
@@ -576,6 +602,127 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
         subHtml + '</div>';
     });
     kpiArea.innerHTML = html;
+  }
+
+  // --- Daily tooltip overlay ---
+  function installDailyTooltip() {
+    const tipEl = document.getElementById('dailyTip');
+    const zr = mainChartInstance.getZr();
+
+    zr.on('mousemove', e => {
+      const rect = mainChartInstance.getDom().getBoundingClientRect();
+      const x = e.event.zrX, y = e.event.zrY;
+      const inGrid = mainChartInstance.containPixel('grid', [x, y]);
+      if (!inGrid) { tipEl.style.display = 'none'; return; }
+      const pt = mainChartInstance.convertFromPixel({ seriesIndex: 0 }, [x, y]);
+      const idx = Math.round(pt[0]);
+      if (idx < 0 || idx >= getXLabels().length) { tipEl.style.display = 'none'; return; }
+      showDailyTip(idx + 1, e.event.clientX, e.event.clientY);
+    });
+    zr.on('mouseout', () => { tipEl.style.display = 'none'; });
+    zr.on('globalout', () => { tipEl.style.display = 'none'; });
+  }
+
+  function queryDaily(year, period) {
+    const periodWhereCol = state.gran === 'quarter' ? 'quarter' : 'month';
+    const { where, params } = buildWhere(
+      [`year = $y`, `${periodWhereCol} = $p`, `day IS NOT NULL`],
+      { $y: year, $p: period }
+    );
+    const sql = `
+      SELECT day, SUM(${metricCol()}) / 100.0 AS amount
+      FROM fact_premium
+      ${where}
+      GROUP BY day
+      ORDER BY day`;
+    return q(sql, params);
+  }
+
+  function showDailyTip(period, x, y) {
+    const tipEl = document.getElementById('dailyTip');
+    const fhash = filterStateHash();
+
+    const datasets = [];
+    allYears.forEach(year => {
+      const ck = `${year}|${state.gran}|${period}|${state.metric}|${fhash}`;
+      if (!dailyCache.has(ck)) {
+        try { dailyCache.set(ck, queryDaily(year, period)); }
+        catch (err) { dailyCache.set(ck, []); }
+      }
+      datasets.push({ year, rows: dailyCache.get(ck) });
+    });
+
+    const hasData = datasets.some(d => d.rows.length > 0);
+    if (!hasData) {
+      tipEl.style.display = 'block';
+      tipEl.innerHTML = '<div style="padding:24px;color:#999;text-align:center;font-size:12px;">该期间无日明细数据<br/>（请确认 data.db 已含 day 字段）</div>';
+      tipEl.style.left = Math.min(window.innerWidth - 400, x + 16) + 'px';
+      tipEl.style.top  = Math.min(window.innerHeight - 280, y + 16) + 'px';
+      return;
+    }
+
+    const colors = ['#2d5f9a','#e8963e','#52c41a','#722ed1','#eb2f96','#13c2c2'];
+    const xMax = state.gran === 'quarter' ? 92 : 31;
+
+    const dailySeries = datasets.map((d, i) => {
+      // 累计（同口径下的逐日累加）
+      const sorted = d.rows.slice().sort((a, b) => a.day - b.day);
+      let cum = 0;
+      const cumData = sorted.map(r => { cum += r.amount; return [r.day, Math.round(cum * 100) / 100]; });
+      return {
+        name: d.year,
+        type: 'line',
+        smooth: true,
+        symbolSize: 3,
+        showSymbol: false,
+        lineStyle: { width: 1.5 },
+        itemStyle: { color: colors[i % colors.length] },
+        data: cumData
+      };
+    });
+
+    tipEl.innerHTML = '';
+    if (miniChartInstance) miniChartInstance.dispose();
+    miniChartInstance = echarts.init(tipEl);
+    miniChartInstance.setOption({
+      title: {
+        text: state.gran === 'quarter'
+          ? `Q${period} 日累计明细（${state.metric}）`
+          : `${period}月 日累计明细（${state.metric}）`,
+        left: 8, top: 4, textStyle: { fontSize: 12, fontWeight: 600, color: '#1a3a6b' }
+      },
+      tooltip: {
+        trigger: 'axis',
+        formatter: params => {
+          if (!params.length) return '';
+          const day = params[0].axisValue;
+          let s = state.gran === 'quarter' ? `第 ${day} 天<br/>` : `${period}月${day}日<br/>`;
+          params.forEach(p => {
+            s += `${p.marker} ${p.seriesName}: <b>${formatNum(p.value[1])}</b><br/>`;
+          });
+          return s;
+        }
+      },
+      legend: { top: 4, right: 8, textStyle: { fontSize: 10 }, itemWidth: 12, itemHeight: 8 },
+      grid: { top: 32, left: 48, right: 12, bottom: 24 },
+      xAxis: {
+        type: 'value', min: 1, max: xMax,
+        name: state.gran === 'quarter' ? '季内日序' : '日',
+        nameTextStyle: { fontSize: 10 },
+        nameGap: 16,
+        axisLabel: { fontSize: 10 }
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { formatter: v => formatShort(v), fontSize: 10 }
+      },
+      series: dailySeries,
+      animation: false
+    }, true);
+
+    tipEl.style.display = 'block';
+    tipEl.style.left = Math.min(window.innerWidth - 400, x + 16) + 'px';
+    tipEl.style.top  = Math.min(window.innerHeight - 280, y + 16) + 'px';
   }
 
   // --- Helpers ---
@@ -594,49 +741,82 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   }
 
   // --- Events ---
-  document.getElementById('metricBtns').addEventListener('click', e => {
-    if (e.target.tagName !== 'BUTTON') return;
-    document.querySelectorAll('#metricBtns button').forEach(b => b.classList.remove('active'));
-    e.target.classList.add('active');
-    state.metric = e.target.dataset.val;
+  function bindEvents() {
+    document.getElementById('metricBtns').addEventListener('click', e => {
+      if (e.target.tagName !== 'BUTTON') return;
+      document.querySelectorAll('#metricBtns button').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      state.metric = e.target.dataset.val;
+      render();
+    });
+
+    document.getElementById('granBtns').addEventListener('click', e => {
+      if (e.target.tagName !== 'BUTTON') return;
+      document.querySelectorAll('#granBtns button').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      state.gran = e.target.dataset.val;
+      render();
+    });
+
+    document.querySelector('.tabs').addEventListener('click', e => {
+      if (e.target.tagName !== 'BUTTON') return;
+      document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      state.view = e.target.dataset.view;
+      render();
+    });
+
+    document.getElementById('compareToggle').addEventListener('change', e => {
+      state.compare = e.target.checked;
+      render();
+    });
+
+    FILTER_KEYS.forEach(f => {
+      document.getElementById(f.sel).addEventListener('change', () => render());
+    });
+
+    window.addEventListener('resize', () => {
+      if (mainChartInstance) mainChartInstance.resize();
+      if (yoyChartInstance) yoyChartInstance.resize();
+      if (structChartInstance) structChartInstance.resize();
+    });
+  }
+
+  // --- Boot ---
+  function setBootMsg(msg, isError) {
+    const ov = document.getElementById('bootOverlay');
+    ov.classList.toggle('error', !!isError);
+    document.getElementById('bootMsg').innerHTML = msg;
+    ov.style.display = isError ? 'flex' : 'flex';
+  }
+  function hideBoot() {
+    const ov = document.getElementById('bootOverlay');
+    ov.style.display = 'none';
+  }
+
+  try {
+    setBootMsg('正在加载 SQLite 引擎 ...');
+    const SQL = await initSqlJs({
+      locateFile: f => `https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/${f}`
+    });
+
+    setBootMsg('正在加载 data.db ...');
+    const resp = await fetch('data.db');
+    if (!resp.ok) {
+      throw new Error('data.db 未找到 (HTTP ' + resp.status + ')。<br>请先运行 <code>python build_db.py --input 你的日明细.xlsx --force</code>');
+    }
+    const buf = await resp.arrayBuffer();
+    db = new SQL.Database(new Uint8Array(buf));
+
+    setBootMsg('初始化界面 ...');
+    initSelects();
+    bindEvents();
     render();
-  });
-
-  document.getElementById('granBtns').addEventListener('click', e => {
-    if (e.target.tagName !== 'BUTTON') return;
-    document.querySelectorAll('#granBtns button').forEach(b => b.classList.remove('active'));
-    e.target.classList.add('active');
-    state.gran = e.target.dataset.val;
-    render();
-  });
-
-  document.querySelector('.tabs').addEventListener('click', e => {
-    if (e.target.tagName !== 'BUTTON') return;
-    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
-    e.target.classList.add('active');
-    state.view = e.target.dataset.view;
-    render();
-  });
-
-  document.getElementById('compareToggle').addEventListener('change', e => {
-    state.compare = e.target.checked;
-    render();
-  });
-
-  FILTER_KEYS.forEach(f => {
-    document.getElementById(f.sel).addEventListener('change', () => render());
-  });
-
-  window.addEventListener('resize', () => {
-    if (mainChartInstance) mainChartInstance.resize();
-    if (yoyChartInstance) yoyChartInstance.resize();
-    if (structChartInstance) structChartInstance.resize();
-  });
-
-  // --- Init ---
-  initSelects();
-  render();
-
+    hideBoot();
+  } catch (err) {
+    console.error(err);
+    setBootMsg('❌ 启动失败：<br>' + (err.message || err), true);
+  }
 })();
 </script>
 </body>
