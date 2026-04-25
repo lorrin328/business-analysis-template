@@ -918,11 +918,21 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   // --- Excel parsing & DB build ---
   const REQUIRED_TIME_COLS = ['年', '月', '季'];
   const DATE_COL_CANDIDATES = ['日期', '投保日期', '签单日期', '成交日期', '年月日'];
-  const DIM_COLS_ZH = [
-    '销售机构名称', '业务模式', '是否在运营项目', '分红产品', '创新or传统',
-    '长短险', '是否商保年金产品', '缴费年限', '保障年限', '产品设计分类'
+  // 核心维度：新旧表均必须包含
+  const CORE_DIM_COLS = [
+    '销售机构名称', '业务模式', '长短险', '是否商保年金产品',
+    '缴费年限', '保障年限', '产品设计分类'
   ];
-  const METRIC_COLS_ZH = ['期交保费', '年化规保', '折算保费'];
+  // 旧表特有维度（新表缺失时允许，入库填 '未知'）
+  const OLD_DIM_COLS = ['是否在运营项目', '分红产品', '创新or传统'];
+  // 新表特有维度（旧表缺失时允许，入库填 '' 或 '未知'）
+  const NEW_DIM_COLS = [
+    '人员工号', '主管工号', '经理工号', '投保单号', '自保件标记',
+    '投保时间', '承保时间', '入账时间', '回销时间',
+    '产品代码', '产品名称', '是否个人养老金'
+  ];
+  const ALL_DIM_COLS = [...CORE_DIM_COLS, ...OLD_DIM_COLS, ...NEW_DIM_COLS];
+  const METRIC_COLS_ZH = ['期交保费', '年化规保', '折算保费', '价值规保'];
   const COL_ALIASES = {
     '月': ['年月'],
     '季': ['年季'],
@@ -944,9 +954,13 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
       day INTEGER, month_label TEXT NOT NULL,
       org TEXT, biz_mode TEXT, is_operating TEXT, is_dividend TEXT, innovate TEXT,
       term_type TEXT, is_annuity TEXT, pay_years TEXT, cov_years TEXT, design_cat TEXT,
+      staff_id TEXT, supervisor_id TEXT, manager_id TEXT, policy_no TEXT, self_mark TEXT,
+      app_date TEXT, underwrite_date TEXT, entry_date TEXT, cancel_date TEXT,
+      product_code TEXT, product_name TEXT, is_pension TEXT,
       qj_cents INTEGER NOT NULL DEFAULT 0,
       ghgb_cents INTEGER NOT NULL DEFAULT 0,
-      zhsf_cents INTEGER NOT NULL DEFAULT 0
+      zhsf_cents INTEGER NOT NULL DEFAULT 0,
+      jzgb_cents INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX ix_ym   ON fact_premium(year, month);
     CREATE INDEX ix_yq   ON fact_premium(year, quarter);
@@ -958,8 +972,11 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   const INSERT_SQL = `INSERT INTO fact_premium
     (date, year, quarter, month, day, month_label, org, biz_mode, is_operating,
      is_dividend, innovate, term_type, is_annuity, pay_years, cov_years, design_cat,
-     qj_cents, ghgb_cents, zhsf_cents)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+     staff_id, supervisor_id, manager_id, policy_no, self_mark,
+     app_date, underwrite_date, entry_date, cancel_date,
+     product_code, product_name, is_pension,
+     qj_cents, ghgb_cents, zhsf_cents, jzgb_cents)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
   function levenshtein(a, b) {
     const m = a.length, n = b.length;
@@ -985,7 +1002,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   }
 
   function validateColumns(allCols) {
-    const required = [...REQUIRED_TIME_COLS, ...DIM_COLS_ZH, ...METRIC_COLS_ZH];
+    const required = [...REQUIRED_TIME_COLS, ...CORE_DIM_COLS, ...METRIC_COLS_ZH];
     const missing = required.filter(c => !resolveCol(c, allCols));
     if (missing.length === 0) return;
     const lines = ['源文件缺失以下必要列：'];
@@ -1017,6 +1034,21 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     if (v == null) return '未知';
     const s = String(v).trim();
     if (!s || s === 'nan' || s === 'None') return '未知';
+    return s;
+  }
+  function trimEmpty(v) {
+    if (v == null) return '';
+    const s = String(v).trim();
+    if (!s || s === 'nan' || s === 'None') return '';
+    return s;
+  }
+  function fmtDateTime(v) {
+    if (v == null || v === '') return null;
+    if (v instanceof Date && !isNaN(v)) {
+      return `${v.getFullYear()}-${pad2(v.getMonth()+1)}-${pad2(v.getDate())} ${pad2(v.getHours())}:${pad2(v.getMinutes())}:${pad2(v.getSeconds())}`;
+    }
+    const s = String(v).trim();
+    if (!s) return null;
     return s;
   }
   function pad2(n) { return n < 10 ? '0' + n : '' + n; }
@@ -1084,7 +1116,12 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
       trimDim(get('分红产品')), trimDim(get('创新or传统')), trimDim(get('长短险')),
       trimDim(get('是否商保年金产品')), trimDim(get('缴费年限')), trimDim(get('保障年限')),
       trimDim(get('产品设计分类')),
-      toCents(get('期交保费')), toCents(get('年化规保')), toCents(get('折算保费'))
+      trimEmpty(get('人员工号')), trimEmpty(get('主管工号')), trimEmpty(get('经理工号')),
+      trimEmpty(get('投保单号')), trimEmpty(get('自保件标记')),
+      fmtDateTime(get('投保时间')), fmtDateTime(get('承保时间')),
+      fmtDateTime(get('入账时间')), fmtDateTime(get('回销时间')),
+      trimEmpty(get('产品代码')), trimEmpty(get('产品名称')), trimEmpty(get('是否个人养老金')),
+      toCents(get('期交保费')), toCents(get('年化规保')), toCents(get('折算保费')), toCents(get('价值规保'))
     ];
   }
 
@@ -1102,9 +1139,9 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     validateColumns(allCols);
     const dateCol = findDateColumn(allCols);
 
-    // 建立标准列名 → 实际列名 的映射（支持别名）
+    // 建立标准列名 → 实际列名 的映射（支持别名，含新旧表全部可选字段）
     const colMap = {};
-    for (const col of [...REQUIRED_TIME_COLS, ...DIM_COLS_ZH, ...METRIC_COLS_ZH]) {
+    for (const col of [...REQUIRED_TIME_COLS, ...ALL_DIM_COLS, ...METRIC_COLS_ZH]) {
       const resolved = resolveCol(col, allCols);
       if (resolved) colMap[col] = resolved;
     }
@@ -1135,15 +1172,15 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     const byYear = {};
     if (yearRows[0]) yearRows[0].values.forEach(([y, c]) => { byYear[y] = c; });
     const sumRow = targetDb.exec(
-      'SELECT SUM(qj_cents)/100.0, SUM(ghgb_cents)/100.0, SUM(zhsf_cents)/100.0 FROM fact_premium'
+      'SELECT SUM(qj_cents)/100.0, SUM(ghgb_cents)/100.0, SUM(zhsf_cents)/100.0, SUM(jzgb_cents)/100.0 FROM fact_premium'
     );
-    const sums = sumRow[0]?.values[0] || [0, 0, 0];
+    const sums = sumRow[0]?.values[0] || [0, 0, 0, 0];
     return {
       importedAt: new Date().toISOString(),
       fileName,
       rowCount: total,
       byYear,
-      sumQj: sums[0], sumGhgb: sums[1], sumZhsf: sums[2]
+      sumQj: sums[0], sumGhgb: sums[1], sumZhsf: sums[2], sumJzgb: sums[3]
     };
   }
 

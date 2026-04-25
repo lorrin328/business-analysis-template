@@ -50,13 +50,32 @@
 
 ## 数据要求
 
-源文件需要包含的列（中文表头）：
+源文件需要包含的列（中文表头）——**核心必需列**（缺失会报错）：
 
-- 时间：`日期`（或 `投保日期`/`签单日期`/`年月日`）、`年`、`月`（或 `年月`）、`季`（或 `年季`）、`月标签`（可选，缺失时自动按「年+月」生成）
-- 维度：`销售机构名称`、`业务模式`、`是否在运营项目`、`分红产品`、`创新or传统`、`长短险`、`是否商保年金产品`、`缴费年限`、`保障年限`、`产品设计分类`
-- 指标：`期交保费`、`年化规保`、`折算保费`（单位为元）
+- **时间**：`年`、`月`（或 `年月`）、`季`（或 `年季`）、`日期`（或 `投保日期`/`签单日期`/`年月日`）
+- **核心维度**：`销售机构名称`、`业务模式`、`长短险`、`是否商保年金产品`、`缴费年限`、`保障年限`、`产品设计分类`
+- **指标**：`期交保费`、`年化规保`、`折算保费`（单位为元）
 
-缺失列会显示具体列名并给出最相近的实际列名建议。
+**可选字段**（有则入库，无则填默认值，不报错）：
+
+- 旧表特有：`是否在运营项目`、`分红产品`、`创新or传统`
+- 新表特有（AI 业绩基表）：`人员工号`、`主管工号`、`经理工号`、`投保单号`、`自保件标记`、`投保时间`、`承保时间`、`入账时间`、`回销时间`、`产品代码`、`产品名称`、`是否个人养老金`、`价值规保`
+
+`月标签` 可选，缺失时自动按「年+月」生成。缺失列会显示具体列名并给出最相近的实际列名建议。
+
+### 保费统计口径
+
+**当前主口径按 `入账时间` 统计**。表格中的 `年`、`年月`、`年季`、`年月日` 等时间字段均按 `入账时间` 做处理。
+
+### 激励方案口径（待实现）
+
+用于激励方案计算时，采用以下规则：
+- 以 **`承保时间`** 为准
+- 承保后 **30 个自然日（含）** 内
+- 再过 **15 个自然日（含）** 回销
+- 且 **未发生负金额**（即无撤单/退保）
+
+满足以上全部条件的保单，计入激励方案口径。该逻辑尚未在看板中实现，仅作为预留规则入库。
 
 ---
 
@@ -75,30 +94,60 @@
 
 ### 数据模型
 
-单表 `fact_premium`，19 列：
+单表 `fact_premium`，32 列。支持新旧两套 Excel 表结构，可选字段缺失时填默认值：
 
+**时间字段（7 列）**：
 | 列名 | 类型 | 说明 |
 |------|------|------|
 | `id` | INTEGER PK | 自增主键 |
-| `date` | TEXT | 日期，格式 `YYYY-MM-DD` |
+| `date` | TEXT | 日期，格式 `YYYY-MM-DD`（取自 `年月日`） |
 | `year` | TEXT NOT NULL | 年，统一存字符串 |
 | `quarter` | INTEGER NOT NULL | 季 1-4 |
 | `month` | INTEGER NOT NULL | 月 1-12 |
-| `day` | INTEGER | 日，可空（无日期列时缺失） |
+| `day` | INTEGER | 日，可空 |
 | `month_label` | TEXT NOT NULL | 月标签，如「2024年1月」 |
+
+**核心维度（7 列，新旧表共有）**：
+| 列名 | 类型 | 说明 |
+|------|------|------|
 | `org` | TEXT | 销售机构名称 |
 | `biz_mode` | TEXT | 业务模式 |
-| `is_operating` | TEXT | 是否在运营项目 |
-| `is_dividend` | TEXT | 分红产品 |
-| `innovate` | TEXT | 创新or传统 |
 | `term_type` | TEXT | 长短险 |
 | `is_annuity` | TEXT | 是否商保年金产品 |
 | `pay_years` | TEXT | 缴费年限 |
 | `cov_years` | TEXT | 保障年限 |
 | `design_cat` | TEXT | 产品设计分类 |
-| `qj_cents` | INTEGER DEFAULT 0 | 期交保费（分） |
-| `ghgb_cents` | INTEGER DEFAULT 0 | 年化规保（分） |
-| `zhsf_cents` | INTEGER DEFAULT 0 | 折算保费（分） |
+
+**旧表特有维度（3 列，新表缺失时填 `'未知'`）**：
+| 列名 | 类型 | 说明 |
+|------|------|------|
+| `is_operating` | TEXT | 是否在运营项目 |
+| `is_dividend` | TEXT | 分红产品 |
+| `innovate` | TEXT | 创新or传统 |
+
+**新表特有维度（12 列，旧表缺失时填 `''`）**：
+| 列名 | 类型 | 说明 |
+|------|------|------|
+| `staff_id` | TEXT | 人员工号 |
+| `supervisor_id` | TEXT | 主管工号 |
+| `manager_id` | TEXT | 经理工号 |
+| `policy_no` | TEXT | 投保单号 |
+| `self_mark` | TEXT | 自保件标记（`Y`/`N`） |
+| `app_date` | TEXT | 投保时间 `YYYY-MM-DD HH:MM:SS` |
+| `underwrite_date` | TEXT | 承保时间 `YYYY-MM-DD HH:MM:SS` |
+| `entry_date` | TEXT | 入账时间 `YYYY-MM-DD HH:MM:SS` |
+| `cancel_date` | TEXT | 回销时间 `YYYY-MM-DD HH:MM:SS` |
+| `product_code` | TEXT | 产品代码 |
+| `product_name` | TEXT | 产品名称 |
+| `is_pension` | TEXT | 是否个人养老金 |
+
+**金额指标（4 列，单位「分」，INTEGER）**：
+| 列名 | 类型 | 说明 |
+|------|------|------|
+| `qj_cents` | INTEGER DEFAULT 0 | 期交保费 |
+| `ghgb_cents` | INTEGER DEFAULT 0 | 年化规保 |
+| `zhsf_cents` | INTEGER DEFAULT 0 | 折算保费 |
+| `jzgb_cents` | INTEGER DEFAULT 0 | 价值规保（新表特有，暂不用于看板） |
 
 索引：
 - `ix_ym` (year, month)
@@ -259,6 +308,31 @@ Store：`kv`（key-value）
 
 ## 修改历史
 
+### 2026-04-26 `xxx` feat: extend schema to support AI 业绩基表 (32 columns)
+
+**背景**：用户提供新表 `AI-经营分析业绩基表`，字段与旧表 `N2` 不一致。新表新增 12 个字段，同时缺失旧表 3 个字段。要求全部入库备用。
+
+**业务规则确认**：
+- 保费统计口径：**按 `入账时间` 统计**，`年`/`年月`/`年季`/`年月日` 均按 `入账时间` 处理
+- 激励方案口径（预留）：以 **`承保时间`** 为准，承保后 **30 个自然日（含）** 内，再过 **15 个自然日（含）** 回销，且未发生负金额
+- `价值规保` 先入库，暂不用于看板
+
+**改动**：
+- Schema 从 19 列扩展至 **32 列**：
+  - 新增 12 个 TEXT 列：`staff_id`, `supervisor_id`, `manager_id`, `policy_no`, `self_mark`, `app_date`, `underwrite_date`, `entry_date`, `cancel_date`, `product_code`, `product_name`, `is_pension`
+  - 新增 1 个 INTEGER 列：`jzgb_cents`（价值规保，分）
+- `DIM_COLS_ZH` 拆分为三层：
+  - `CORE_DIM_COLS`（7 个，新旧表共有，必需）
+  - `OLD_DIM_COLS`（3 个，旧表特有，缺失时填 `'未知'`）
+  - `NEW_DIM_COLS`（12 个，新表特有，缺失时填 `''`）
+- `validateColumns` 仅检查核心必需列，可选列缺失不报错
+- `transformRow` 新增 `trimEmpty()` 和 `fmtDateTime()` 辅助函数
+- `colMap` 构建覆盖全部已知列（含可选），确保新旧表字段都能映射
+- `collectMeta` 增加 `sumJzgb` 统计
+- README 更新数据模型、数据要求、保费口径说明
+
+---
+
 ### 2026-04-25 `0e00917` debug: remove axisPointer and add per-chart error tracing
 
 **问题**：用户导入 N2 Excel 后 ECharts 报 `undefined is not an object (evaluating 'p[0].coord')`，主图无法渲染。
@@ -394,7 +468,25 @@ ECharts `setOption(obj, true)` 的第二个参数 `true` 表示 `notMerge`（完
 1. `FILTER_KEYS` 增加条目（`key` 是中文显示名，`col` 是 SQLite 列名，`sel` 是 DOM id）
 2. HTML 中新增 `<select id="selXxx">`
 3. `METRIC_MAP` 增加口径映射
-4. `SCHEMA_SQL` 如有新增列需修改（当前未预留扩展列）
+4. `SCHEMA_SQL` / `INSERT_SQL` / `transformRow` 同步新增列
+
+### 扩展 Schema（新增表字段）
+
+当前 Schema 已支持新旧两套表结构共 32 列。如需再增字段：
+1. `SCHEMA_SQL` 的 `CREATE TABLE` 中新增列定义
+2. `INSERT_SQL` 的列名列表和 `VALUES` 占位符同步增加
+3. `transformRow` 的 return 数组末尾追加新字段值
+4. `ALL_DIM_COLS` 或新增常量中注册字段中文名（用于 `colMap` 自动映射）
+5. `collectMeta` 如为金额指标，需在 `SUM(...)` 中追加
+
+### 日期时间字段处理
+
+投保时间、承保时间、入账时间、回销时间等字段通过 `fmtDateTime()` 处理：
+- `Date` 对象 → `YYYY-MM-DD HH:MM:SS` 字符串
+- 字符串 → 原样 trim
+- `null`/`空` → SQLite `NULL`
+
+SheetJS `cellDates: true` 会将 Excel 日期/时间单元格转为 JS Date 对象，可直接传入 `fmtDateTime()`。
 
 ### 基准年切换
 
