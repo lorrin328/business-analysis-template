@@ -273,7 +273,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     </div>
     <div class="boot-cols-hint">
       <b>源文件需包含的列：</b><br>
-      时间：<code>日期</code>（或 <code>投保日期</code>/<code>签单日期</code>）、<code>年</code>、<code>月</code>、<code>季</code>、<code>月标签</code><br>
+      时间：<code>日期</code>（或 <code>投保日期</code>/<code>签单日期</code>/<code>年月日</code>）、<code>年</code>、<code>月</code>（或 <code>年月</code>）、<code>季</code>（或 <code>年季</code>）、<code>月标签</code>（可选）<br>
       维度：<code>销售机构名称</code>、<code>业务模式</code>、<code>是否在运营项目</code>、<code>分红产品</code>、<code>创新or传统</code>、<code>长短险</code>、<code>是否商保年金产品</code>、<code>缴费年限</code>、<code>保障年限</code>、<code>产品设计分类</code><br>
       指标：<code>期交保费</code>、<code>年化规保</code>、<code>折算保费</code>（单位元）
     </div>
@@ -904,13 +904,26 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   }
 
   // --- Excel parsing & DB build ---
-  const REQUIRED_TIME_COLS = ['年', '月', '季', '月标签'];
-  const DATE_COL_CANDIDATES = ['日期', '投保日期', '签单日期', '成交日期'];
+  const REQUIRED_TIME_COLS = ['年', '月', '季'];
+  const DATE_COL_CANDIDATES = ['日期', '投保日期', '签单日期', '成交日期', '年月日'];
   const DIM_COLS_ZH = [
     '销售机构名称', '业务模式', '是否在运营项目', '分红产品', '创新or传统',
     '长短险', '是否商保年金产品', '缴费年限', '保障年限', '产品设计分类'
   ];
   const METRIC_COLS_ZH = ['期交保费', '年化规保', '折算保费'];
+  const COL_ALIASES = {
+    '月': ['年月'],
+    '季': ['年季'],
+    '日期': ['年月日']
+  };
+  function resolveCol(standard, available) {
+    if (available.includes(standard)) return standard;
+    const aliases = COL_ALIASES[standard];
+    if (aliases) {
+      for (const a of aliases) { if (available.includes(a)) return a; }
+    }
+    return null;
+  }
 
   const SCHEMA_SQL = `
     CREATE TABLE fact_premium (
@@ -961,8 +974,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
 
   function validateColumns(allCols) {
     const required = [...REQUIRED_TIME_COLS, ...DIM_COLS_ZH, ...METRIC_COLS_ZH];
-    const actual = new Set(allCols);
-    const missing = required.filter(c => !actual.has(c));
+    const missing = required.filter(c => !resolveCol(c, allCols));
     if (missing.length === 0) return;
     const lines = ['源文件缺失以下必要列：'];
     missing.forEach(col => {
@@ -974,7 +986,11 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   }
 
   function findDateColumn(allCols) {
-    for (const c of DATE_COL_CANDIDATES) if (allCols.includes(c)) return c;
+    for (const c of DATE_COL_CANDIDATES) {
+      if (allCols.includes(c)) return c;
+      const alias = resolveCol(c, allCols);
+      if (alias) return alias;
+    }
     return null;
   }
 
@@ -1014,19 +1030,49 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     return { date: null, day: null };
   }
 
-  function transformRow(r, dateCol) {
+  function transformRow(r, dateCol, colMap) {
+    const get = (std) => {
+      const key = colMap?.[std] || std;
+      return r[key];
+    };
     const dateInfo = dateCol ? parseDateCell(r[dateCol]) : { date: null, day: null };
-    const year = (r['年'] == null ? '' : String(r['年']).trim());
-    const month = parseInt(r['月'], 10) || 0;
-    const quarter = parseInt(r['季'], 10) || 0;
-    const monthLabel = (r['月标签'] == null ? '' : String(r['月标签']).trim());
+    const year = (get('年') == null ? '' : String(get('年')).trim());
+
+    // 月：支持整数或 Date（如 2024-01-01 表示 1 月）
+    let monthRaw = get('月');
+    let month = 0;
+    if (monthRaw instanceof Date && !isNaN(monthRaw)) {
+      month = monthRaw.getMonth() + 1;
+    } else {
+      month = parseInt(monthRaw, 10) || 0;
+    }
+
+    // 季：支持整数或字符串如 '2024-1'
+    let quarterRaw = get('季');
+    let quarter = 0;
+    if (typeof quarterRaw === 'string' && quarterRaw.includes('-')) {
+      const parts = quarterRaw.split('-');
+      quarter = parseInt(parts[parts.length - 1], 10) || 0;
+    } else {
+      quarter = parseInt(quarterRaw, 10) || 0;
+    }
+
+    // 月标签：缺失时自动衍生
+    let monthLabelRaw = get('月标签');
+    let monthLabel = '';
+    if (monthLabelRaw == null) {
+      monthLabel = year && month ? `${year}年${month}月` : '';
+    } else {
+      monthLabel = String(monthLabelRaw).trim();
+    }
+
     return [
       dateInfo.date, year, quarter, month, dateInfo.day, monthLabel,
-      trimDim(r['销售机构名称']), trimDim(r['业务模式']), trimDim(r['是否在运营项目']),
-      trimDim(r['分红产品']), trimDim(r['创新or传统']), trimDim(r['长短险']),
-      trimDim(r['是否商保年金产品']), trimDim(r['缴费年限']), trimDim(r['保障年限']),
-      trimDim(r['产品设计分类']),
-      toCents(r['期交保费']), toCents(r['年化规保']), toCents(r['折算保费'])
+      trimDim(get('销售机构名称')), trimDim(get('业务模式')), trimDim(get('是否在运营项目')),
+      trimDim(get('分红产品')), trimDim(get('创新or传统')), trimDim(get('长短险')),
+      trimDim(get('是否商保年金产品')), trimDim(get('缴费年限')), trimDim(get('保障年限')),
+      trimDim(get('产品设计分类')),
+      toCents(get('期交保费')), toCents(get('年化规保')), toCents(get('折算保费'))
     ];
   }
 
@@ -1044,6 +1090,13 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     validateColumns(allCols);
     const dateCol = findDateColumn(allCols);
 
+    // 建立标准列名 → 实际列名 的映射（支持别名）
+    const colMap = {};
+    for (const col of [...REQUIRED_TIME_COLS, ...DIM_COLS_ZH, ...METRIC_COLS_ZH]) {
+      const resolved = resolveCol(col, allCols);
+      if (resolved) colMap[col] = resolved;
+    }
+
     setBoot('loading', `正在构建数据库（${rows.length.toLocaleString()} 行）...`);
     const newDb = new window.__SQL.Database();
     newDb.exec(SCHEMA_SQL);
@@ -1052,7 +1105,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     newDb.exec('BEGIN');
     let bad = 0;
     for (const r of rows) {
-      try { stmt.run(transformRow(r, dateCol)); }
+      try { stmt.run(transformRow(r, dateCol, colMap)); }
       catch (e) { bad++; }
     }
     newDb.exec('COMMIT');
