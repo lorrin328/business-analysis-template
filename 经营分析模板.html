@@ -6,6 +6,7 @@
 <title>经营分析 - 产品结构测算</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f0f2f5; color: #333; }
@@ -14,7 +15,17 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   background: linear-gradient(135deg, #1a3a6b 0%, #2d5f9a 100%);
   color: #fff; padding: 16px 32px; font-size: 20px; font-weight: 600;
   box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  display: flex; align-items: center; justify-content: space-between;
 }
+.header-actions { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 400; }
+.header-actions .meta-info { color: rgba(255,255,255,.8); }
+.btn-reimport {
+  background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3);
+  padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px;
+  transition: all .2s;
+}
+.btn-reimport:hover:not(:disabled) { background: rgba(255,255,255,.25); }
+.btn-reimport:disabled { opacity: .5; cursor: not-allowed; }
 
 .filters {
   background: #fff; margin: 16px; padding: 16px 20px; border-radius: 8px;
@@ -91,9 +102,9 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
 }
 
 .boot-overlay {
-  position: fixed; inset: 0; background: rgba(255,255,255,.92);
+  position: fixed; inset: 0; background: rgba(255,255,255,.96);
   display: flex; align-items: center; justify-content: center;
-  z-index: 99999; flex-direction: column; gap: 12px;
+  z-index: 99999; flex-direction: column; gap: 16px;
   font-size: 14px; color: #2d5f9a;
 }
 .boot-overlay.error { color: #f5222d; }
@@ -103,11 +114,47 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   animation: spin .9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.boot-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  padding: 40px; max-width: 560px; text-align: center;
+}
+.boot-empty h2 { font-size: 22px; color: #1a3a6b; font-weight: 600; }
+.boot-empty p { color: #666; line-height: 1.6; font-size: 13px; }
+.dropzone {
+  border: 2px dashed #b3c5e0; border-radius: 12px; padding: 40px 60px;
+  background: #f8fafe; cursor: pointer; transition: all .2s;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  min-width: 360px;
+}
+.dropzone:hover, .dropzone.dragover {
+  border-color: #2d5f9a; background: #e8f0fe;
+}
+.dropzone .icon { font-size: 48px; }
+.dropzone .label { font-size: 16px; font-weight: 600; color: #1a3a6b; }
+.dropzone .hint { font-size: 12px; color: #999; }
+.boot-cols-hint {
+  background: #fffbe6; border: 1px solid #ffe58f; border-radius: 6px;
+  padding: 10px 14px; font-size: 12px; color: #876800; line-height: 1.6;
+  max-width: 520px; text-align: left;
+}
+.boot-cols-hint code { background: #fff; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+.btn-retry {
+  background: #2d5f9a; color: #fff; border: none; padding: 8px 20px;
+  border-radius: 4px; cursor: pointer; font-size: 13px;
+}
+.btn-retry:hover { background: #1a3a6b; }
 </style>
 </head>
 <body>
 
-<div class="header">经营分析 - 产品结构测算</div>
+<div class="header">
+  <span>经营分析 - 产品结构测算</span>
+  <div class="header-actions">
+    <span class="meta-info" id="metaInfo"></span>
+    <button class="btn-reimport" id="btnReimport" disabled title="替换当前数据">📁 重新导入</button>
+  </div>
+</div>
 
 <div class="filters">
   <div class="filter-group">
@@ -212,8 +259,31 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
 
 <div class="daily-tip" id="dailyTip"></div>
 <div class="boot-overlay" id="bootOverlay">
-  <div class="spinner"></div>
-  <div id="bootMsg">正在加载数据库 ...</div>
+  <div id="bootLoading" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+    <div class="spinner"></div>
+    <div id="bootMsg">正在初始化 ...</div>
+  </div>
+  <div id="bootEmpty" class="boot-empty" style="display:none;">
+    <h2>📊 经营分析 - 产品结构测算</h2>
+    <p>选择或拖入日明细 Excel 文件，浏览器内自动解析，数据保存在本机不上传。</p>
+    <div class="dropzone" id="dropzone">
+      <div class="icon">📂</div>
+      <div class="label">选择 Excel 文件</div>
+      <div class="hint">或拖拽 .xlsx 到这里</div>
+    </div>
+    <div class="boot-cols-hint">
+      <b>源文件需包含的列：</b><br>
+      时间：<code>日期</code>（或 <code>投保日期</code>/<code>签单日期</code>）、<code>年</code>、<code>月</code>、<code>季</code>、<code>月标签</code><br>
+      维度：<code>销售机构名称</code>、<code>业务模式</code>、<code>是否在运营项目</code>、<code>分红产品</code>、<code>创新or传统</code>、<code>长短险</code>、<code>是否商保年金产品</code>、<code>缴费年限</code>、<code>保障年限</code>、<code>产品设计分类</code><br>
+      指标：<code>期交保费</code>、<code>年化规保</code>、<code>折算保费</code>（单位元）
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm" style="display:none;">
+  </div>
+  <div id="bootError" style="display:none;flex-direction:column;align-items:center;gap:12px;max-width:600px;text-align:center;padding:20px;">
+    <div style="font-size:32px;">⚠️</div>
+    <div id="bootErrorMsg" style="color:#f5222d;white-space:pre-line;line-height:1.6;"></div>
+    <button class="btn-retry" id="btnRetry">重试</button>
+  </div>
 </div>
 
 <script>
@@ -655,7 +725,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     const hasData = datasets.some(d => d.rows.length > 0);
     if (!hasData) {
       tipEl.style.display = 'block';
-      tipEl.innerHTML = '<div style="padding:24px;color:#999;text-align:center;font-size:12px;">该期间无日明细数据<br/>（请确认 data.db 已含 day 字段）</div>';
+      tipEl.innerHTML = '<div style="padding:24px;color:#999;text-align:center;font-size:12px;">该期间无日明细数据<br/>（请确认源文件含日期列）</div>';
       tipEl.style.left = Math.min(window.innerWidth - 400, x + 16) + 'px';
       tipEl.style.top  = Math.min(window.innerHeight - 280, y + 16) + 'px';
       return;
@@ -783,40 +853,337 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   }
 
   // --- Boot ---
-  function setBootMsg(msg, isError) {
+  function setBoot(state, msg) {
     const ov = document.getElementById('bootOverlay');
-    ov.classList.toggle('error', !!isError);
-    document.getElementById('bootMsg').innerHTML = msg;
-    ov.style.display = isError ? 'flex' : 'flex';
+    const loading = document.getElementById('bootLoading');
+    const empty = document.getElementById('bootEmpty');
+    const err = document.getElementById('bootError');
+    ov.style.display = 'flex';
+    ov.classList.toggle('error', state === 'error');
+    loading.style.display = state === 'loading' ? 'flex' : 'none';
+    empty.style.display = state === 'empty' ? 'flex' : 'none';
+    err.style.display = state === 'error' ? 'flex' : 'none';
+    if (state === 'loading') document.getElementById('bootMsg').textContent = msg || '正在处理 ...';
+    if (state === 'error') document.getElementById('bootErrorMsg').textContent = msg || '未知错误';
   }
-  function hideBoot() {
-    const ov = document.getElementById('bootOverlay');
-    ov.style.display = 'none';
-  }
+  function hideBoot() { document.getElementById('bootOverlay').style.display = 'none'; }
 
-  try {
-    setBootMsg('正在加载 SQLite 引擎 ...');
-    const SQL = await initSqlJs({
-      locateFile: f => `https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/${f}`
+  // --- IndexedDB wrapper ---
+  const IDB_NAME = 'business-analysis-template';
+  const IDB_STORE = 'kv';
+  const IDB_VER = 1;
+
+  function openIdb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(IDB_NAME, IDB_VER);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
     });
+  }
+  async function idbGet(key) {
+    const db = await openIdb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function idbPut(key, val) {
+    const db = await openIdb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(val, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
 
-    setBootMsg('正在加载 data.db ...');
-    const resp = await fetch('data.db');
-    if (!resp.ok) {
-      throw new Error('data.db 未找到 (HTTP ' + resp.status + ')。<br>请先运行 <code>python build_db.py --input 你的日明细.xlsx --force</code>');
+  // --- Excel parsing & DB build ---
+  const REQUIRED_TIME_COLS = ['年', '月', '季', '月标签'];
+  const DATE_COL_CANDIDATES = ['日期', '投保日期', '签单日期', '成交日期'];
+  const DIM_COLS_ZH = [
+    '销售机构名称', '业务模式', '是否在运营项目', '分红产品', '创新or传统',
+    '长短险', '是否商保年金产品', '缴费年限', '保障年限', '产品设计分类'
+  ];
+  const METRIC_COLS_ZH = ['期交保费', '年化规保', '折算保费'];
+
+  const SCHEMA_SQL = `
+    CREATE TABLE fact_premium (
+      id INTEGER PRIMARY KEY,
+      date TEXT, year TEXT NOT NULL, quarter INTEGER NOT NULL, month INTEGER NOT NULL,
+      day INTEGER, month_label TEXT NOT NULL,
+      org TEXT, biz_mode TEXT, is_operating TEXT, is_dividend TEXT, innovate TEXT,
+      term_type TEXT, is_annuity TEXT, pay_years TEXT, cov_years TEXT, design_cat TEXT,
+      qj_cents INTEGER NOT NULL DEFAULT 0,
+      ghgb_cents INTEGER NOT NULL DEFAULT 0,
+      zhsf_cents INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX ix_ym   ON fact_premium(year, month);
+    CREATE INDEX ix_yq   ON fact_premium(year, quarter);
+    CREATE INDEX ix_ymd  ON fact_premium(year, month, day);
+    CREATE INDEX ix_org  ON fact_premium(org);
+    CREATE INDEX ix_mode ON fact_premium(biz_mode);
+    CREATE INDEX ix_dsg  ON fact_premium(design_cat);
+  `;
+  const INSERT_SQL = `INSERT INTO fact_premium
+    (date, year, quarter, month, day, month_label, org, biz_mode, is_operating,
+     is_dividend, innovate, term_type, is_annuity, pay_years, cov_years, design_cat,
+     qj_cents, ghgb_cents, zhsf_cents)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+
+  function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    if (!m) return n; if (!n) return m;
+    const prev = Array(n + 1).fill(0).map((_, i) => i);
+    for (let i = 1; i <= m; i++) {
+      let cur = [i];
+      for (let j = 1; j <= n; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+      }
+      for (let j = 0; j <= n; j++) prev[j] = cur[j];
     }
-    const buf = await resp.arrayBuffer();
-    db = new SQL.Database(new Uint8Array(buf));
+    return prev[n];
+  }
+  function suggest(target, candidates, n = 3) {
+    return candidates
+      .map(c => ({ c, d: levenshtein(target, c) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, n)
+      .filter(x => x.d <= Math.max(2, Math.ceil(target.length * 0.5)))
+      .map(x => x.c);
+  }
 
-    setBootMsg('初始化界面 ...');
+  function validateColumns(allCols) {
+    const required = [...REQUIRED_TIME_COLS, ...DIM_COLS_ZH, ...METRIC_COLS_ZH];
+    const actual = new Set(allCols);
+    const missing = required.filter(c => !actual.has(c));
+    if (missing.length === 0) return;
+    const lines = ['源文件缺失以下必要列：'];
+    missing.forEach(col => {
+      const sug = suggest(col, allCols);
+      lines.push(`  • ${col}    最相近：${sug.length ? sug.join(', ') : '无'}`);
+    });
+    lines.push(`\n实际列名共 ${allCols.length} 列。`);
+    throw new Error(lines.join('\n'));
+  }
+
+  function findDateColumn(allCols) {
+    for (const c of DATE_COL_CANDIDATES) if (allCols.includes(c)) return c;
+    return null;
+  }
+
+  function toCents(v) {
+    if (v == null || v === '') return 0;
+    const s = String(v).replace(/,/g, '').trim();
+    const n = parseFloat(s);
+    if (!isFinite(n)) return 0;
+    return Math.round(n * 100);
+  }
+  function trimDim(v) {
+    if (v == null) return '未知';
+    const s = String(v).trim();
+    if (!s || s === 'nan' || s === 'None') return '未知';
+    return s;
+  }
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  function parseDateCell(v) {
+    if (v == null || v === '') return { date: null, day: null };
+    if (v instanceof Date && !isNaN(v)) {
+      return { date: `${v.getFullYear()}-${pad2(v.getMonth() + 1)}-${pad2(v.getDate())}`, day: v.getDate() };
+    }
+    if (typeof v === 'number') {
+      const d = XLSX.SSF.parse_date_code(v);
+      if (d) return { date: `${d.y}-${pad2(d.m)}-${pad2(d.d)}`, day: d.d };
+      return { date: null, day: null };
+    }
+    const s = String(v).trim();
+    const m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+    if (m) {
+      return { date: `${m[1]}-${pad2(+m[2])}-${pad2(+m[3])}`, day: +m[3] };
+    }
+    const dt = new Date(s);
+    if (!isNaN(dt)) {
+      return { date: `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`, day: dt.getDate() };
+    }
+    return { date: null, day: null };
+  }
+
+  function transformRow(r, dateCol) {
+    const dateInfo = dateCol ? parseDateCell(r[dateCol]) : { date: null, day: null };
+    const year = (r['年'] == null ? '' : String(r['年']).trim());
+    const month = parseInt(r['月'], 10) || 0;
+    const quarter = parseInt(r['季'], 10) || 0;
+    const monthLabel = (r['月标签'] == null ? '' : String(r['月标签']).trim());
+    return [
+      dateInfo.date, year, quarter, month, dateInfo.day, monthLabel,
+      trimDim(r['销售机构名称']), trimDim(r['业务模式']), trimDim(r['是否在运营项目']),
+      trimDim(r['分红产品']), trimDim(r['创新or传统']), trimDim(r['长短险']),
+      trimDim(r['是否商保年金产品']), trimDim(r['缴费年限']), trimDim(r['保障年限']),
+      trimDim(r['产品设计分类']),
+      toCents(r['期交保费']), toCents(r['年化规保']), toCents(r['折算保费'])
+    ];
+  }
+
+  async function parseAndBuild(file) {
+    setBoot('loading', `正在读取 ${file.name} ...`);
+    const buf = await file.arrayBuffer();
+    setBoot('loading', '正在解析 Excel（大文件可能需要 5-30 秒）...');
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    if (!sheet) throw new Error('Excel 文件为空（无 sheet）');
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: true });
+    if (!rows.length) throw new Error('Excel 第一个 sheet 没有数据行');
+
+    const allCols = Object.keys(rows[0]);
+    validateColumns(allCols);
+    const dateCol = findDateColumn(allCols);
+
+    setBoot('loading', `正在构建数据库（${rows.length.toLocaleString()} 行）...`);
+    const newDb = new window.__SQL.Database();
+    newDb.exec(SCHEMA_SQL);
+
+    const stmt = newDb.prepare(INSERT_SQL);
+    newDb.exec('BEGIN');
+    let bad = 0;
+    for (const r of rows) {
+      try { stmt.run(transformRow(r, dateCol)); }
+      catch (e) { bad++; }
+    }
+    newDb.exec('COMMIT');
+    stmt.free();
+    newDb.exec('ANALYZE');
+
+    if (bad > 0) console.warn(`${bad} 行写入失败（已跳过）`);
+    return { newDb, fileName: file.name };
+  }
+
+  function collectMeta(targetDb, fileName) {
+    const totalRow = targetDb.exec('SELECT COUNT(*) AS c FROM fact_premium');
+    const total = totalRow[0]?.values[0][0] || 0;
+    const yearRows = targetDb.exec('SELECT year, COUNT(*) AS c FROM fact_premium GROUP BY year ORDER BY year');
+    const byYear = {};
+    if (yearRows[0]) yearRows[0].values.forEach(([y, c]) => { byYear[y] = c; });
+    const sumRow = targetDb.exec(
+      'SELECT SUM(qj_cents)/100.0, SUM(ghgb_cents)/100.0, SUM(zhsf_cents)/100.0 FROM fact_premium'
+    );
+    const sums = sumRow[0]?.values[0] || [0, 0, 0];
+    return {
+      importedAt: new Date().toISOString(),
+      fileName,
+      rowCount: total,
+      byYear,
+      sumQj: sums[0], sumGhgb: sums[1], sumZhsf: sums[2]
+    };
+  }
+
+  function updateMetaInfo(meta) {
+    if (!meta) { document.getElementById('metaInfo').textContent = ''; return; }
+    const dt = new Date(meta.importedAt);
+    const dtStr = `${dt.getFullYear()}-${pad2(dt.getMonth()+1)}-${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+    document.getElementById('metaInfo').textContent =
+      `${meta.rowCount.toLocaleString()} 行 · 导入于 ${dtStr}`;
+  }
+
+  function initApp(meta) {
     initSelects();
     bindEvents();
+    bindReimport();
     render();
+    updateMetaInfo(meta);
+    document.getElementById('btnReimport').disabled = false;
     hideBoot();
-  } catch (err) {
-    console.error(err);
-    setBootMsg('❌ 启动失败：<br>' + (err.message || err), true);
   }
+
+  async function handleImport(file) {
+    try {
+      const { newDb, fileName } = await parseAndBuild(file);
+      setBoot('loading', '正在保存到浏览器缓存 ...');
+      const exported = newDb.export();
+      await idbPut('db', exported);
+      const meta = collectMeta(newDb, fileName);
+      await idbPut('meta', meta);
+
+      if (db) { try { db.close(); } catch(e) {} }
+      db = newDb;
+      dailyCache.clear();
+
+      console.log('✅ 导入成功', meta);
+      if (mainChartInstance) {
+        // 已有图表实例：复用，仅刷新数据
+        initSelects();
+        updateMetaInfo(meta);
+        render();
+        hideBoot();
+      } else {
+        initApp(meta);
+      }
+    } catch (e) {
+      console.error(e);
+      setBoot('error', e.message || String(e));
+    }
+  }
+
+  function bindReimport() {
+    const btn = document.getElementById('btnReimport');
+    btn.onclick = () => {
+      if (!confirm('确定要替换当前数据吗？这将清除浏览器中已保存的数据。')) return;
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.xlsx,.xls,.xlsm';
+      inp.onchange = () => { if (inp.files[0]) handleImport(inp.files[0]); };
+      inp.click();
+    };
+  }
+
+  function bindEmptyUI() {
+    const dz = document.getElementById('dropzone');
+    const fi = document.getElementById('fileInput');
+    dz.onclick = () => fi.click();
+    fi.onchange = () => { if (fi.files[0]) handleImport(fi.files[0]); };
+    dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('dragover'); };
+    dz.ondragleave = () => dz.classList.remove('dragover');
+    dz.ondrop = (e) => {
+      e.preventDefault();
+      dz.classList.remove('dragover');
+      const f = e.dataTransfer.files[0];
+      if (f) handleImport(f);
+    };
+    document.getElementById('btnRetry').onclick = () => bootFlow();
+  }
+
+  async function bootFlow() {
+    try {
+      setBoot('loading', '正在加载 SQLite 引擎 ...');
+      if (!window.__SQL) {
+        window.__SQL = await initSqlJs({
+          locateFile: f => `https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/${f}`
+        });
+      }
+
+      setBoot('loading', '正在检查浏览器缓存 ...');
+      const cached = await idbGet('db');
+      if (cached) {
+        db = new window.__SQL.Database(new Uint8Array(cached));
+        const meta = await idbGet('meta');
+        initApp(meta);
+        return;
+      }
+
+      setBoot('empty');
+      bindEmptyUI();
+    } catch (e) {
+      console.error(e);
+      setBoot('error', e.message || String(e));
+    }
+  }
+
+  bootFlow();
 })();
 </script>
 </body>
