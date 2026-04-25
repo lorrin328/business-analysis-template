@@ -434,7 +434,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   }
 
   function render() {
-    dailyCache.clear();  // 任何 render 入口都失效缓存
+    dailyCache.clear();
     const periodMap = aggregate();
     const xLabels = getXLabels();
     const maxPeriods = xLabels.length;
@@ -494,37 +494,44 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     document.getElementById('chartTitle').textContent =
       `${viewLabels[state.view]}${granLabels[state.gran]}保费趋势 - ${state.metric}（hover 查看日明细）`;
 
-    if (!mainChartInstance) {
-      mainChartInstance = echarts.init(document.getElementById('mainChart'));
-      installDailyTooltip();
+    try {
+      if (!mainChartInstance) {
+        mainChartInstance = echarts.init(document.getElementById('mainChart'));
+        installDailyTooltip();
+      }
+      mainChartInstance.setOption({
+        tooltip: { show: false },
+        legend: { top: 0, type: 'scroll', textStyle: { fontSize: 12 } },
+        grid: { top: 40, left: 70, right: 20, bottom: 30 },
+        xAxis: {
+          type: 'category',
+          data: xLabels,
+          axisLabel: { fontSize: 12 },
+          boundaryGap: false
+        },
+        yAxis: { type: 'value', axisLabel: { formatter: v => formatShort(v) } },
+        series: series.length ? series : [{ name: '', type: 'line', data: [] }],
+        animation: true
+      }, true);
+    } catch (e) {
+      console.error('主图渲染失败:', e);
+      throw new Error('主图渲染失败: ' + (e.message || String(e)));
     }
-    mainChartInstance.setOption({
-      tooltip: { show: false },   // 自定义浮层接管
-      axisPointer: { show: true, type: 'line',
-                     label: { show: true, formatter: p => (p && p.value != null ? p.value : p) } },
-      legend: { top: 0, type: 'scroll', textStyle: { fontSize: 12 } },
-      grid: { top: 40, left: 70, right: 20, bottom: 30 },
-      xAxis: {
-        type: 'category',
-        data: xLabels,
-        axisLabel: { fontSize: 12 },
-        boundaryGap: false
-      },
-      yAxis: { type: 'value', axisLabel: { formatter: v => formatShort(v) } },
-      series: series,
-      animation: true
-    }, true);
 
     const yoyCard = document.getElementById('yoyCard');
     if (state.compare) {
       yoyCard.style.display = '';
-      renderYoY(periodMap, xLabels, years, dimKeys);
+      try { renderYoY(periodMap, xLabels, years, dimKeys); }
+      catch (e) { console.error('同比图渲染失败:', e); }
     } else {
       yoyCard.style.display = 'none';
     }
 
-    renderStructure();
-    renderKPI(periodMap, years, dimKeys, xLabels);
+    try { renderStructure(); }
+    catch (e) { console.error('结构图渲染失败:', e); }
+
+    try { renderKPI(periodMap, years, dimKeys, xLabels); }
+    catch (e) { console.error('KPI 渲染失败:', e); }
   }
 
   function renderYoY(periodMap, xLabels, years, dimKeys) {
