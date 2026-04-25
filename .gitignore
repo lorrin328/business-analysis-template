@@ -1,3 +1,15 @@
 N2-产品结构（测算用）_20260422_14090889.xlsx
 data_agg.json
 .claude/
+
+# build artifacts
+data.db
+*.csv
+
+# python
+__pycache__/
+.venv/
+*.pyc
+
+# os
+.DS_Store
