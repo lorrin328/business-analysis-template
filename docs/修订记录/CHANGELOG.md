@@ -8,7 +8,7 @@
 
 ---
 
-## [2026-04-26] (待 commit) chore: P1.6 迁移平台趋势模块到 js/modules/platform-trend/
+## [2026-04-26] 3088f52 chore: P1.6 迁移平台趋势模块到 js/modules/platform-trend/
 
 **类型**：chore / 模块化重构 P1.6
 
