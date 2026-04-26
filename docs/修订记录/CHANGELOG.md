@@ -8,7 +8,7 @@
 
 ---
 
-## [2026-04-26] (待 commit) chore: P1.7 迁移 importer 模块 + 修复 build.sh export 剥离
+## [2026-04-26] 13d7189 chore: P1.7 迁移 importer 模块 + 修复 build.sh export 剥离
 
 **类型**：chore / 模块化重构 P1.7 + fix / build.sh
 
