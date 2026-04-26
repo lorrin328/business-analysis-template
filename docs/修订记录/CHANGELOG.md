@@ -8,7 +8,7 @@
 
 ---
 
-## [2026-04-26] (待 commit) chore: P1.5 迁移产品结构模块到 js/modules/product-structure/
+## [2026-04-26] 393f7fe chore: P1.5 迁移产品结构模块到 js/modules/product-structure/
 
 **类型**：chore / 模块化重构 P1.5
 
