@@ -8,7 +8,7 @@
 
 ---
 
-## [2026-04-26] (待 commit) chore: P1.8 迁移 bootstrap 模块（顶层 orchestrator）+ build.sh 多行 import/重导出剥离
+## [2026-04-26] 4fc3d83 chore: P1.8 迁移 bootstrap 模块（顶层 orchestrator）+ build.sh 多行 import/重导出剥离
 
 **类型**：chore / 模块化重构 P1.8 + fix / build.sh
 
