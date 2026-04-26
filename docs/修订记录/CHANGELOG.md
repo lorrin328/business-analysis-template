@@ -8,6 +8,37 @@
 
 ---
 
+## [2026-04-26] (待 commit) fix: P0 清理 UI 与数据模型不一致——移除 3 个失效筛选器
+
+**类型**：fix / P0 紧急修复
+
+**问题**：UI 仍显示「是否在运营项目」「分红产品」「创新/传统」三个筛选器，但数据模型已停用对应字段（固定填 `'未知'`）。导致用户筛选后结果为空或与预期不符。
+
+**变更**：
+- `经营分析模板.html` 删除 3 个 `<select>` 控件（`selOperating` / `selDividend` / `selInnovate`）
+- `boot-cols-hint` 提示文案移除 `是否在运营项目` / `分红产品` / `创新or传统` 三个列名
+- `FILTER_KEYS` 数组删除对应 3 行
+- 1301 行 → 1283 行（-18 行）
+
+**保留**（向下兼容）：
+- SQL schema 中 `is_operating` / `is_dividend` / `innovate` 字段保留
+- `transformRow` 中三列固定填 `'未知'`
+- 旧 IndexedDB 缓存数据仍可正常加载
+
+**关联**：
+- 主方案 §2 P0 目标 = 三个失效筛选器从 UI 消失 ✅
+- 修复了 commit 7c608c5 (refactor: drop N2 old table support) 留下的 UI 不一致问题
+
+---
+
+## [2026-04-26] fb9f381 docs: backfill commit ids in CHANGELOG entries
+
+**类型**：docs / chore
+
+回填前两个条目的 commit 短 ID。
+
+---
+
 ## [2026-04-26] d7e3b6c docs: 落地 8 项开放问题决策 + 术语修正活跃→活动 + 增量导入策略
 
 **类型**：docs / 需求确认

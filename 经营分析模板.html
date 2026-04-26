@@ -186,21 +186,6 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   </div>
 
   <div class="filter-group">
-    <label>是否在运营项目</label>
-    <select id="selOperating"><option value="">全部</option></select>
-  </div>
-
-  <div class="filter-group">
-    <label>分红产品</label>
-    <select id="selDividend"><option value="">全部</option></select>
-  </div>
-
-  <div class="filter-group">
-    <label>创新/传统</label>
-    <select id="selInnovate"><option value="">全部</option></select>
-  </div>
-
-  <div class="filter-group">
     <label>长短险</label>
     <select id="selTerm"><option value="">全部</option></select>
   </div>
@@ -274,7 +259,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     <div class="boot-cols-hint">
       <b>源文件需包含的列：</b><br>
       时间：<code>日期</code>（或 <code>投保日期</code>/<code>签单日期</code>/<code>年月日</code>）、<code>年</code>、<code>月</code>（或 <code>年月</code>）、<code>季</code>（或 <code>年季</code>）、<code>月标签</code>（可选）<br>
-      维度：<code>销售机构名称</code>、<code>业务模式</code>、<code>是否在运营项目</code>、<code>分红产品</code>、<code>创新or传统</code>、<code>长短险</code>、<code>是否商保年金产品</code>、<code>缴费年限</code>、<code>保障年限</code>、<code>产品设计分类</code><br>
+      维度：<code>销售机构名称</code>、<code>业务模式</code>、<code>长短险</code>、<code>是否商保年金产品</code>、<code>缴费年限</code>、<code>保障年限</code>、<code>产品设计分类</code><br>
       指标：<code>期交保费</code>、<code>年化规保</code>、<code>折算保费</code>（单位元）
     </div>
     <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm" style="display:none;">
@@ -296,9 +281,6 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   const FILTER_KEYS = [
     { key: '销售机构名称', sel: 'selOrg', col: 'org' },
     { key: '业务模式', sel: 'selMode', col: 'biz_mode' },
-    { key: '是否在运营项目', sel: 'selOperating', col: 'is_operating' },
-    { key: '分红产品', sel: 'selDividend', col: 'is_dividend' },
-    { key: '创新or传统', sel: 'selInnovate', col: 'innovate' },
     { key: '长短险', sel: 'selTerm', col: 'term_type' },
     { key: '是否商保年金产品', sel: 'selAnnuity', col: 'is_annuity' },
     { key: '缴费年限', sel: 'selPayYear', col: 'pay_years' },
