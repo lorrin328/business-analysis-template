@@ -7,11 +7,12 @@
 // build.sh 会将本文件以及通过 import 引入的所有模块展开后注入到
 // 经营分析模板.html 的 `<!-- BUILD:JS:CORE -->` 标记位置，作为单文件发布产物。
 
-import * as constants from './core/constants.js';
-import * as state     from './core/state.js';
-import * as db        from './core/db.js';
-import * as filters   from './core/filters.js';
-import * as format    from './core/format.js';
+import * as constants        from './core/constants.js';
+import * as state            from './core/state.js';
+import * as db               from './core/db.js';
+import * as filters          from './core/filters.js';
+import * as format           from './core/format.js';
+import * as productStructure from './modules/product-structure/index.js';
 
 // 暴露到全局，供尚未迁出的内联脚本回退使用
 // 现阶段（P1）内联块仍保留同名局部声明（IIFE 内局部覆盖 window/script 全局），
@@ -21,5 +22,8 @@ globalThis.__jyfx = Object.assign(globalThis.__jyfx || {}, {
   state,
   db,
   filters,
-  format
+  format,
+  modules: Object.assign((globalThis.__jyfx && globalThis.__jyfx.modules) || {}, {
+    productStructure
+  })
 });

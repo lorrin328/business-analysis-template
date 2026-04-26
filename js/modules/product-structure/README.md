@@ -4,7 +4,9 @@
 
 ## 状态
 
-🟠 **待迁移**：现有逻辑位于 `经营分析模板.html` `renderStructure()`（行 ~597 起）。
+🟡 **迁移中**：`renderStructure` 已拆分为 `query.js` + `view-pie.js` + `index.js`（P1.5）。
+
+inline 副本仍位于 `经营分析模板.html` `renderStructure()`（行 ~599），将于 P1.X 一次性切换时删除。
 
 ## 规划文件结构
 
@@ -30,8 +32,10 @@ modules/product-structure/
 
 ## 迁移检查清单
 
-- [ ] 提取 `query.js`（design_cat 聚合 SQL）
-- [ ] 提取 `view-pie.js`（renderStructure 当前实现）
+- [x] 提取 `query.js`（design_cat 聚合 SQL）
+- [x] 提取 `view-pie.js`（renderStructure 当前实现）
+- [x] 提取 `index.js`（模块入口）
 - [ ] 新增 `view-compare.js`（年份对比视图）
 - [ ] 新增 `view-stacked.js`（多年堆积柱图）
+- [ ] P1.X 一次性切换：删除 inline `renderStructure`，运行 `./build.sh --in-place`
 - [ ] build.sh 合并后输出与原文件视觉一致

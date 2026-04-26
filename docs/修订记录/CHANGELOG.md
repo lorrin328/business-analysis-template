@@ -8,7 +8,51 @@
 
 ---
 
-## [2026-04-26] (待 commit) chore: P1.4 抽出 core/ 工具底座（constants/state/db/filters）
+## [2026-04-26] (待 commit) chore: P1.5 迁移产品结构模块到 js/modules/product-structure/
+
+**类型**：chore / 模块化重构 P1.5
+
+**变更**：
+
+将 `经营分析模板.html` 内联 IIFE 中的 `renderStructure()`（行 599-626）拆分为三个 ESM 模块。inline 副本暂保留，由 build.sh 注入产生全局副本待命，将于 P1.X 一次性切换时删除 inline 代码。
+
+**新增文件**：
+- `js/modules/product-structure/query.js`（21 行）— `fetchStructure()`：调用 `buildWhere()` + `metricCol()` 构造 design_cat 聚合 SQL，调用 `q()` 返回 `[{k, v}]`
+- `js/modules/product-structure/view-pie.js`（30 行）— `renderPie(rows)`：构造 pieData，复用 `getChart('struct')`/`setChart('struct', ...)` 缓存 ECharts 实例，option 与原 inline 实现完全一致
+- `js/modules/product-structure/index.js`（12 行）— `renderStructure()` = `renderPie(fetchStructure())`
+
+**main.js**：扩展 `__jyfx.modules.productStructure` 命名空间（仅 ESM 开发模式生效）。
+
+**README**：`js/modules/product-structure/README.md` 状态从 🟠 待迁移 → 🟡 迁移中；勾选已完成的 3 项检查清单。
+
+**build.sh 校验**：
+```
+$ ./build.sh --check
+模板行数: 1285
+合并后行数: 1576
+注入 JS 行数: 288
+```
+
+注入行数 224（P1.4）→ 288（P1.5），增量 +64 行符合预期。
+
+**作用域分析（无冲突）**：
+- 注入的 `function renderStructure`、`function fetchStructure`、`function renderPie` 在 Global Lexical Environment 声明
+- inline IIFE 内的 `function renderStructure`（行 599）是函数作用域局部声明，**正确遮蔽**注入的全局版本
+- 现阶段 inline IIFE 仍是事实运行的实现；注入版本「待命」，将在 P1.X 切换时启用
+
+**未变更**：
+- `经营分析模板.html` 内联 IIFE 完全未动
+- file:// 直接打开行为完全保持
+- 无 schema、UI、字段改动
+
+**关联**：
+- 主方案 §3 ESM + 发布期 build.sh
+- 模块02 §产品结构 v0.2
+- 下一步：P1.6 迁移平台趋势模块（aggregate / render* / queryDaily，行 ~372-790）
+
+---
+
+## [2026-04-26] f4534a2 chore: P1.4 抽出 core/ 工具底座（constants/state/db/filters）
 
 **类型**：chore / 模块化重构 P1.4
 
