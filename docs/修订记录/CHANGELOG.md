@@ -8,7 +8,7 @@
 
 ---
 
-## [2026-04-26] (待 commit) chore: P1.1 建立 js/ 模块源码骨架 + 提取 format.js
+## [2026-04-26] 0e2601c chore: P1.1 建立 js/ 模块源码骨架 + 提取 format.js
 
 **类型**：chore / 模块化重构 P1.1
 
