@@ -12,6 +12,7 @@ import * as state            from './core/state.js';
 import * as db               from './core/db.js';
 import * as filters          from './core/filters.js';
 import * as format           from './core/format.js';
+import * as platformTrend    from './modules/platform-trend/index.js';
 import * as productStructure from './modules/product-structure/index.js';
 
 // 暴露到全局，供尚未迁出的内联脚本回退使用
@@ -24,6 +25,7 @@ globalThis.__jyfx = Object.assign(globalThis.__jyfx || {}, {
   filters,
   format,
   modules: Object.assign((globalThis.__jyfx && globalThis.__jyfx.modules) || {}, {
+    platformTrend,
     productStructure
   })
 });

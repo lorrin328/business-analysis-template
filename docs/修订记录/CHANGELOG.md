@@ -8,6 +8,59 @@
 
 ---
 
+## [2026-04-26] (待 commit) chore: P1.6 迁移平台趋势模块到 js/modules/platform-trend/
+
+**类型**：chore / 模块化重构 P1.6
+
+**变更**：
+
+将 `经营分析模板.html` 内联 IIFE 中平台趋势相关的 8 个函数（行 372-792）拆分为 6 个 ESM 模块文件。inline 副本暂保留，由 build.sh 注入产生全局副本待命，将于 P1.X 一次性切换时删除 inline 代码。
+
+**新增文件**（顺序按 ECharts 依赖关系）：
+- `js/modules/platform-trend/query.js`（73 行）— `aggregate()` + `queryDaily()`：聚合 + 单期间日明细 SQL，金额已 `/100`（元）
+- `js/modules/platform-trend/view-main.js`（103 行）— `getXLabels()` + `renderMain(periodMap)`：主累计折线图，返回 `{years, dimKeys, xLabels}`
+- `js/modules/platform-trend/view-yoy.js`（97 行）— `renderYoY(...)`：YoY 同比图（含 `state.compare === false` 时的清空逻辑）
+- `js/modules/platform-trend/view-kpi.js`（49 行）— `renderKPI(...)`：KPI 卡片直接 `innerHTML` 渲染
+- `js/modules/platform-trend/view-daily-tip.js`（121 行）— `installDailyTooltip()` + `showDailyTip(period, x, y)`：主图 hover 浮层
+- `js/modules/platform-trend/index.js`（30 行）— `renderTrend()`：串联 query + main + yoy + kpi（不含 product-structure 调度）
+
+**模块边界设计**：
+- `index.js` 仅串联本模块内部子视图；**不**调用 `productStructure.renderStructure()`
+- 跨模块编排留给最终顶层控制器（main.js）：`renderTrend()` + `productStructure.renderStructure()` 分别调度
+- 严格遵循 `js/README.md` 「模块互相不 import」原则
+
+**main.js**：扩展 `__jyfx.modules.platformTrend` 命名空间（仅 ESM 开发模式生效）。
+
+**README**：`js/modules/platform-trend/README.md` 状态从 🟠 待迁移 → 🟡 迁移中；勾选已完成的 6 项检查清单。
+
+**build.sh 校验**：
+```
+$ ./build.sh --check
+模板行数: 1285
+合并后行数: 2038
+注入 JS 行数: 750
+```
+
+注入行数 288（P1.5）→ 750（P1.6），增量 +462 行符合预期（6 个新模块文件总计 ~470 行）。
+
+**作用域分析（无冲突）**：
+- 注入的 `aggregate / renderMain / renderYoY / renderKPI / installDailyTooltip / queryDaily / showDailyTip / getXLabels / renderTrend` 在 Global Lexical Environment 声明
+- inline IIFE 内同名函数（`render` / `aggregate` / `renderYoY` / `renderKPI` / `installDailyTooltip` / `queryDaily` / `showDailyTip` / `getXLabels`）是函数作用域局部声明，**正确遮蔽**注入的全局版本
+- 注入的全局 `aggregate` 调用注入的全局 `q`（来自 core/db.js），但 `_db` 未通过 `setDb()` 注入 → 全局 `aggregate` 处于「frozen 状态」永不被触发；不影响 IIFE 内的运行流
+- 现阶段 inline IIFE 仍是事实运行的实现；注入版本「待命」，将在 P1.X 切换时启用
+
+**未变更**：
+- `经营分析模板.html` 内联 IIFE 完全未动
+- file:// 直接打开行为完全保持
+- 无 schema、UI、字段改动
+
+**关联**：
+- 主方案 §3 ESM + 发布期 build.sh
+- 模块01 §平台趋势 v0.2
+- 下一步：P1.X 一次性切换 = 删除 inline IIFE 已迁出的代码 + `./build.sh --in-place` + 接入 importer/setDb/initSelects 启动流
+
+---
+
 ## [2026-04-26] 393f7fe chore: P1.5 迁移产品结构模块到 js/modules/product-structure/
 
 **类型**：chore / 模块化重构 P1.5

@@ -4,7 +4,9 @@
 
 ## 状态
 
-🟠 **待迁移**：现有逻辑位于 `经营分析模板.html` 行 ~295-1003 内的多个内联函数（`render`、`renderYoY`、`renderStructure`、`renderKPI`、`installDailyTooltip`）。
+🟡 **迁移中**：6 个内联函数已拆分为 `query.js` + `view-main.js` + `view-yoy.js` + `view-kpi.js` + `view-daily-tip.js` + `index.js`（P1.6）。
+
+inline 副本仍位于 `经营分析模板.html` 行 372-792，将于 P1.X 一次性切换时删除。
 
 ## 规划文件结构
 
@@ -26,10 +28,12 @@ modules/platform-trend/
 
 ## 迁移检查清单
 
-- [ ] 提取 `query.js`（aggregate 函数 → SQL 工厂）
-- [ ] 提取 `view-trend.js`（render 主图）
-- [ ] 提取 `view-yoy.js`（renderYoY）
-- [ ] 提取 `view-kpi.js`（renderKPI）
-- [ ] 提取 `view-daily-tip.js`（installDailyTooltip + queryDaily + showDailyTip）
+- [x] 提取 `query.js`（aggregate 函数 → SQL 工厂；新增 queryDaily）
+- [x] 提取 `view-main.js`（render 主图；包含 getXLabels）
+- [x] 提取 `view-yoy.js`（renderYoY）
+- [x] 提取 `view-kpi.js`（renderKPI）
+- [x] 提取 `view-daily-tip.js`（installDailyTooltip + showDailyTip）
+- [x] 提取 `index.js`（renderTrend 串联各子视图）
 - [ ] 单元测试关键聚合函数
+- [ ] P1.X 一次性切换：删除 inline 函数，运行 `./build.sh --in-place`
 - [ ] build.sh 合并后输出与原文件视觉一致
