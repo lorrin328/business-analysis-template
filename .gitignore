@@ -1,6 +1,40 @@
-N2-产品结构（测算用）_20260422_14090889.xlsx
-data_agg.json
-.claude/
+# === 数据文件（敏感，不入库）===
+# 保单数据
+AI-经营分析业绩基表*.xlsx
+N2-产品结构*.xlsx
 
-# os
+# 人力数据
+N1AI-人力基表*.xlsx
+
+# 其他业务 Excel
+*-业绩基表*.xlsx
+*-人力基表*.xlsx
+
+# 中间产物
+data_agg.json
+*.db
+
+# === Office 临时文件 ===
+~$*.xlsx
+~$*.xls
+~$*.xlsm
+~$*.docx
+
+# === 工具配置 ===
+.claude/
+.cursor/
+
+# === OS ===
 .DS_Store
+Thumbs.db
+
+# === 编辑器 ===
+.vscode/settings.json
+.idea/
+*.swp
+*~
+
+# === 构建产物 ===
+dist/
+build/
+node_modules/
