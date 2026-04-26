@@ -8,7 +8,7 @@
 
 ---
 
-## [2026-04-26] (待 commit) feat: P1.2 build.sh 发布期合并 + ESM bootstrap
+## [2026-04-26] 8fb4f3d feat: P1.2 build.sh 发布期合并 + ESM bootstrap
 
 **类型**：feat / 模块化重构 P1.2
 
