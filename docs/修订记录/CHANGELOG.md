@@ -8,6 +8,69 @@
 
 ---
 
+## [2026-04-26] (待 commit) chore: P1.8 迁移 bootstrap 模块（顶层 orchestrator）+ build.sh 多行 import/重导出剥离
+
+**类型**：chore / 模块化重构 P1.8 + fix / build.sh
+
+**变更**：
+
+将 `经营分析模板.html` 内联 IIFE 中 boot UI / 事件绑定 / 文件导入 / 启动流相关的代码（行 ~800-1281）拆分为 5 个 bootstrap 子模块 + 1 个 core 子模块。bootstrap 是顶层 orchestrator，是 `js/README.md` 「模块互相不 import」原则的明确例外。同时修复 `build.sh` 未剥离多行 import 与 `export { ... } from '...'` 重导出的问题——P1.8 是首次出现重导出的 commit。
+
+**新增文件**：
+- `js/core/idb.js`（35 行）— IndexedDB KV 包装：`openIdb()` / `idbGet(key)` / `idbPut(key, val)`，从 inline 行 867-900 抽出
+- `js/modules/bootstrap/boot-overlay.js`（30 行）— `setBoot(state, msg)` / `hideBoot()`：#bootOverlay 状态机
+- `js/modules/bootstrap/render.js`（16 行）— `render() = renderTrend() + renderStructure()`：**唯一**跨业务模块 import 的文件，是顶层渲染编排
+- `js/modules/bootstrap/events.js`（53 行）— `bindEvents()`：顶部按钮组 / 标签页 / 比较开关 / 筛选器 / window resize
+- `js/modules/bootstrap/import-flow.js`（85 行）— `handleImport(file)` / `bindReimport()` / `bindEmptyUI(retryFn)`：通过 `parseAndBuild(file, msg=>setBoot('loading', msg))` 回调解耦 importer 与 boot UI
+- `js/modules/bootstrap/init.js`（67 行）— `updateMetaInfo(meta)` / `initApp(meta)` / `bootFlow()`：顶层启动流（loads sql.js + 检查 IDB cached → setDb + initApp，否则 setBoot('empty') + bindEmptyUI(bootFlow)）
+- `js/modules/bootstrap/index.js`（12 行）— barrel re-exports
+- `js/modules/bootstrap/README.md` — 模块说明 + 启动顺序流程图 + 边界例外原因
+
+**模块边界例外（重要）**：
+- bootstrap/render.js **同时** import `platform-trend` 与 `product-structure`，是顶层应用编排
+- 其他业务模块仍遵循「不互相 import」：
+  - `platform-trend/index.js renderTrend()` 只渲染趋势/同比/KPI
+  - `product-structure/index.js renderStructure()` 只渲染饼图
+- 设计理由：避免业务模块互相耦合；将「应用层组合」集中在 bootstrap，未来增减模块只改一处
+
+**build.sh 修复**：
+- 重写 `strip_esm()` 改用 awk 状态机处理多行 import：`import {\n  X,\n  Y\n} from './x.js';`
+- 新增重导出剥离：`export { X, Y } from './x.js';`
+- 保留原有 `export ` 前缀剥离与命名导出 `export { X };` 删除规则
+- 修复后注入行数 1108（P1.7）→ 1368（P1.8），符合 7 个新文件 ~298 行 + bootstrap 子模块间 import/export 剥离
+
+**main.js**：
+- 添加 `import * as idb from './core/idb.js';` 并暴露到 `__jyfx.idb`
+- 添加 `import * as bootstrap from './modules/bootstrap/index.js';` 并暴露到 `__jyfx.modules.bootstrap`
+- 仅 ESM 开发模式生效；bundled 单文件由内联 IIFE 兜底
+
+**build.sh 校验**：
+```
+$ ./build.sh --check
+模板行数: 1285
+合并后行数: 2657
+注入 JS 行数: 1368
+```
+
+注入行数 1108（P1.7）→ 1368（P1.8），增量 +260 行（7 个新文件总计 ~298 行 - 跨文件 import/export 剥离）。`grep -nE '^[[:space:]]*(export|import)[[:space:]]'` 确认 bundled 输出无残留 ESM 关键字。
+
+**作用域分析（无冲突）**：
+- 注入的 `openIdb / idbGet / idbPut / setBoot / hideBoot / render / bindEvents / handleImport / bindReimport / bindEmptyUI / updateMetaInfo / initApp / bootFlow` 在 Global Lexical Environment 声明
+- inline IIFE 内同名 function 声明是函数作用域局部声明，**正确遮蔽**注入的全局版本（IIFE 启动时调用本地版本，全局版本无人调用，处于 frozen 状态）
+- 这是迁移期的过渡形态：P1.X 一次性切换时删除 inline IIFE，main.js 改为 `bootFlow()` 自启动
+
+**未变更**：
+- `经营分析模板.html` 内联 IIFE 完全未动（37 sync + 5 async = 42 个函数声明数量验证通过；行数 1285 不变）
+- file:// 直接打开行为完全保持
+- 无 schema、UI、字段改动
+
+**关联**：
+- 主方案 §3 ESM + 发布期 build.sh
+- 主方案 §模块边界例外说明（bootstrap 作为顶层 orchestrator）
+- 下一步：P1.X 一次性切换 — 删除 inline IIFE 行 277-1282，改为 `<script type="module" src="js/main.js">` + main.js 调用 `bootFlow()`，运行 `./build.sh --in-place` 生成单文件发布产物
+
+---
+
 ## [2026-04-26] 13d7189 chore: P1.7 迁移 importer 模块 + 修复 build.sh export 剥离
 
 **类型**：chore / 模块化重构 P1.7 + fix / build.sh

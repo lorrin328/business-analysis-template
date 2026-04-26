@@ -51,14 +51,42 @@ trap 'rm -f "$TMP" "$TMP.html"' EXIT
 # ---- 1) 合并 ESM 源码 ----
 strip_esm() {
   # 简易 ESM 剥离：
+  #   - 去掉所有相对路径 import 行（含多行 `import { ... } from './x';`）
+  #   - 去掉 `export { ... } from './x';` 重导出
+  #   - 去掉 `export { ... };` 命名导出（在 bundled 上下文中标识符已是全局）
   #   - 去掉 `export ` 前缀（保留 function/const/let/var/class/async）
-  #   - 去掉所有相对路径 import 行（已合并入下方）
-  #   - 删除「export { ... };」名命名导出行（在 bundled 上下文中标识符已是全局）
-  sed -E '
+  awk '
+    BEGIN { in_import = 0 }
+    {
+      # 正在累积多行 import 块：等待 `from "./..."` 收尾
+      if (in_import) {
+        if ($0 ~ /from[[:space:]]+["'\''\`]\.\.?\//) {
+          in_import = 0
+        }
+        next
+      }
+      # 多行 import 起始：`import {` 且本行不含 from
+      if ($0 ~ /^[[:space:]]*import[[:space:]]*\{/ && $0 !~ /from/) {
+        in_import = 1
+        next
+      }
+      # 单行 import （相对路径）
+      if ($0 ~ /^[[:space:]]*import[[:space:]].*from[[:space:]]+["'\''\`]\.\.?\//) {
+        next
+      }
+      # 重导出 `export { ... } from "./..."`
+      if ($0 ~ /^[[:space:]]*export[[:space:]]*\{.*\}[[:space:]]*from[[:space:]]+["'\''\`]\.\.?\//) {
+        next
+      }
+      # 命名导出 `export { ... };`
+      if ($0 ~ /^[[:space:]]*export[[:space:]]*\{[^}]*\}[[:space:]]*;?[[:space:]]*$/) {
+        next
+      }
+      print
+    }
+  ' "$1" | sed -E '
     s/^([[:space:]]*)export[[:space:]]+(default[[:space:]]+)?(async[[:space:]]+)?(function|const|let|var|class)/\1\3\4/;
-    /^[[:space:]]*import[[:space:]].*from[[:space:]]+["'\''\`]\.\.?\/.*["'\''\`][[:space:]]*;?[[:space:]]*$/d;
-    /^[[:space:]]*export[[:space:]]*\{[^}]*\}[[:space:]]*;?[[:space:]]*$/d;
-  ' "$1"
+  '
 }
 
 {
