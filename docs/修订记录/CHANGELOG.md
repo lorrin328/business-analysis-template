@@ -8,7 +8,47 @@
 
 ---
 
-## [2026-04-26] (待 commit) fix: 应用 Q8 决策——BASE_YEAR 改为系统当前年份自动滚动
+## [2026-04-26] (待 commit) chore: P1.4 抽出 core/ 工具底座（constants/state/db/filters）
+
+**类型**：chore / 模块化重构 P1.4
+
+**变更**：
+
+并行抽出业务无关的 core/ 工具，作为后续 product-structure / platform-trend 模块的依赖底座。inline IIFE 保持不动，build.sh 注入产生全局副本。
+
+**新增文件**：
+- `js/core/constants.js`（30 行）— `BASE_YEAR`、`MONTH_LABELS`、`QUARTER_LABELS`、`FILTER_KEYS`、`METRIC_MAP`、`VIEW_DIM_COL`
+- `js/core/state.js`（45 行）— `state` 对象、`dailyCache`、`allYears`、`getChart`/`setChart`/`disposeAllCharts`
+- `js/core/db.js`（45 行）— `setDb`/`getDb`/`isReady`、`q`（参数化查询）、`exec`、`exportSnapshot`
+- `js/core/filters.js`（60 行）— `metricCol`、`buildWhere`、`filterStateHash`、`initSelects`
+
+**main.js**：扩展为聚合所有 core/ 模块到 `globalThis.__jyfx` 命名空间（仅 ESM 开发模式生效）。
+
+**build.sh 校验**：
+```
+$ ./build.sh --check
+模板行数: 1285
+合并后行数: 1512
+注入 JS 行数: 224
+```
+
+**作用域分析（无冲突）**：
+- 注入的 `<script>` 块在 Global Lexical Environment 声明 const/let/function
+- IIFE 内的同名 `const`/`function` 处于函数作用域，**正确遮蔽**注入的全局版本
+- 现阶段 IIFE 仍是事实运行的实现；注入版本「待命」，将在 P1.X 切换时启用
+
+**未变更**：
+- `经营分析模板.html` 内联 IIFE 完全未动
+- file:// 直接打开行为完全保持
+- 无 schema、UI、字段改动
+
+**关联**：
+- 主方案 §3 ESM + 发布期 build.sh
+- 下一步：P1.5 迁移 product-structure 模块（renderStructure → js/modules/product-structure/）
+
+---
+
+## [2026-04-26] 92eb68c fix: 应用 Q8 决策——BASE_YEAR 改为系统当前年份自动滚动
 
 **类型**：fix / P1.3a 用户决策落地
 
