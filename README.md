@@ -95,6 +95,65 @@
 
 ---
 
+## 目录结构与模块化构建
+
+> 自 2026-04-26 P1 阶段起，业务逻辑正逐步从 `经营分析模板.html` 内联脚本拆分到 `js/` ESM 源码。
+> 单文件 HTML 仍是最终交付形态，由 `build.sh` 在发布期合并生成。
+
+### 顶层布局
+
+```
+business-analysis-template/
+├── 经营分析模板.html          # 模板：含 BUILD:JS:CORE 标记 + 现存内联脚本
+├── build.sh                   # 发布期合并：js/ → 单文件 HTML
+├── js/                        # ESM 源码（详见 js/README.md）
+│   ├── README.md
+│   ├── main.js                # ESM bootstrap 入口
+│   ├── core/                  # 核心工具：format / db / schema / importer / filters / store
+│   ├── lib/                   # 第三方库（暂留 CDN，P2 本地化）
+│   └── modules/               # 业务模块：platform-trend / product-structure / ...
+├── docs/                      # 需求 / 数据规范 / 修订记录（详见 docs/README.md）
+├── dist/                      # build.sh 输出目录（gitignored）
+└── *.xlsx                     # 业务数据（gitignored，敏感）
+```
+
+### 开发与构建工作流
+
+| 场景 | 操作 |
+|------|------|
+| **直接打开** | 双击 `经营分析模板.html`（file://），现有内联脚本块保证兼容运行 |
+| **ESM 开发**（迁移期） | 通过 HTTP 服务（如 `python3 -m http.server`）打开根目录后访问 HTML，浏览器加载 `<script type="module" src="js/main.js">`（注：当前 P1 阶段尚未在 HTML 中启用此标签） |
+| **生成发布版** | 在仓库根目录执行 `./build.sh`，输出至 `dist/经营分析模板.html`，可直接 file:// 分发 |
+| **仅校验** | `./build.sh --check`，不写文件，仅打印行数差异 |
+| **覆盖根文件** | `./build.sh --in-place`（**慎用**，会覆盖模板的标记位置） |
+
+### build.sh 工作原理
+
+1. 按字母序读取 `js/core/*.js` 与 `js/modules/*/*.js`
+2. 简易剥离 ESM：移除 `export ` 前缀；删除相对路径 `import` 行
+3. 拼接为单一 `<script>` 块
+4. 替换 `经营分析模板.html` 中的 `<!-- BUILD:JS:CORE -->` 标记
+5. 输出到 `dist/经营分析模板.html`
+
+> ⚠️ 当前阶段：`经营分析模板.html` 内联 IIFE 仍含完整业务逻辑；`build.sh` 注入的合并产物处于「待全面接管」状态。后续 P1.3+ 会逐模块从内联脚本中迁出，逐步缩小内联 IIFE 体积，最终只保留几行启动代码。
+
+### 模块迁移进度
+
+| 模块 | 来源 | 目标 | 状态 |
+|------|------|------|------|
+| format（数值格式化） | `经营分析模板.html` 793-805 | `js/core/format.js` | ✅ 已提取（内联未删除，待 IIFE 接入后删） |
+| 平台趋势 | `经营分析模板.html` 大部分 render*/aggregate | `js/modules/platform-trend/` | ⏳ P1.3 |
+| 产品结构 | `经营分析模板.html` `renderStructure` | `js/modules/product-structure/` | ⏳ P1.4 |
+| Excel 导入 | `经营分析模板.html` Boot/transformRow 等 | `js/core/importer.js` | ⏳ P1.5 |
+| SQL schema | `经营分析模板.html` SCHEMA_SQL/INSERT_SQL | `js/core/schema.js` | ⏳ P1.6 |
+| sql.js 包装 | `经营分析模板.html` Boot.runSQL 等 | `js/core/db.js` | ⏳ P1.7 |
+| IndexedDB | `经营分析模板.html` Boot 持久化部分 | `js/core/store.js` | ⏳ P1.8 |
+| FILTER_KEYS | `经营分析模板.html` 281-294 | `js/core/filters.js` | ⏳ P1.9 |
+
+每完成一个模块即追加一条 [CHANGELOG.md](docs/修订记录/CHANGELOG.md) 条目并 push。
+
+---
+
 ## 业务逻辑详解
 
 ### 数据模型

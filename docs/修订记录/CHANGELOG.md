@@ -8,6 +8,50 @@
 
 ---
 
+## [2026-04-26] (待 commit) feat: P1.2 build.sh 发布期合并 + ESM bootstrap
+
+**类型**：feat / 模块化重构 P1.2
+
+**变更**：
+
+新增工程化发布机制，将 `js/` ESM 源码合并回 `经营分析模板.html` 单文件交付。
+
+**新增文件**：
+- `build.sh`（可执行，bash + sed + awk，无需额外工具链）
+- `js/main.js`（ESM 入口，导出 `__jyfx` 全局命名空间）
+
+**HTML 变更**：
+- `经营分析模板.html` 第 273 行注入 `<!-- BUILD:JS:CORE -->` 标记（HTML 注释，不影响现有运行）
+
+**README 变更**：
+- 新增「目录结构与模块化构建」一节，文档化 build.sh 工作原理与模块迁移进度表
+
+**build.sh 行为**：
+- 按字母序读取 `js/core/*.js` + `js/modules/*/*.js`
+- 简易剥离 ESM：删除 `export ` 前缀、删除相对路径 import 行
+- 注入到 HTML 模板的 `<!-- BUILD:JS:CORE -->` 位置
+- 默认输出 `dist/经营分析模板.html`（已 gitignore）
+- 支持 `--check`（仅校验）与 `--in-place`（覆盖根文件）
+
+**校验**：
+```
+$ ./build.sh --check
+模板行数: 1285
+合并后行数: 1311
+注入 JS 行数: 23
+```
+
+**注意（过渡形态）**：
+- 现阶段 `经营分析模板.html` 内联 IIFE 仍含完整业务逻辑（包括重复的 formatNum/formatShort）
+- build.sh 注入的合并代码处于「函数声明全局可见，但 IIFE 内有同名局部声明」共存状态，**无运行时冲突**
+- 后续 P1.3+ 逐模块从内联 IIFE 中删除已迁出的代码后，build 注入版本将自动接管
+
+**关联**：
+- 主方案 §3 ESM + 发布期 build.sh 合并策略（已落地最简实现）
+- 下一步：P1.3 迁移平台趋势模块（aggregate/render*/queryDaily）
+
+---
+
 ## [2026-04-26] 0e2601c chore: P1.1 建立 js/ 模块源码骨架 + 提取 format.js
 
 **类型**：chore / 模块化重构 P1.1
