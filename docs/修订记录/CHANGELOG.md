@@ -8,7 +8,51 @@
 
 ---
 
-## [2026-04-26] (待 commit) fix: P0 清理 UI 与数据模型不一致——移除 3 个失效筛选器
+## [2026-04-26] (待 commit) chore: P1.1 建立 js/ 模块源码骨架 + 提取 format.js
+
+**类型**：chore / 模块化重构 P1.1
+
+**变更**：
+
+新建 `js/` 目录骨架（ESM 源码），后续业务模块将逐步从 `经营分析模板.html` 迁出：
+
+```
+js/
+├── README.md                 # 总体架构说明
+├── lib/                      # 第三方库（暂留 CDN，P2 阶段本地化）
+│   └── README.md
+├── core/                     # 解耦的核心工具
+│   ├── README.md
+│   └── format.js             # ✅ 首个提取模块（formatNum / formatShort）
+└── modules/
+    ├── platform-trend/
+    │   └── README.md         # 模块01 待迁移
+    └── product-structure/
+        └── README.md         # 模块02 待迁移
+```
+
+**关键约定**（写入 `js/README.md`）：
+- 零循环依赖：`core/` 不依赖 `modules/`；模块互相不 import
+- 纯 ESM：`export` / `import`，不混 UMD/IIFE
+- 金额单位：「分」流转，仅展示层 `/ 100`
+- 命名：文件 kebab-case；函数 camelCase；常量 SCREAMING_SNAKE_CASE
+
+**format.js 提取说明**：
+- 与原 `经营分析模板.html` 行 793-805 行为完全一致
+- 零依赖（不引用 DOM、ECharts、SQL）作为首个提取的模块
+- HTML 暂未引用，下个 commit（P1.2）通过 build.sh 接入
+
+**未变更**：
+- `经营分析模板.html` 本次未修改（仅新增源码骨架）
+- 第三方库仍走 CDN（`echarts.min.js` / `xlsx.full.min.js` / `sql-wasm.js`）
+
+**关联**：
+- 主方案 §3 ESM + 发布期 build.sh 合并策略
+- 下一步：P1.2 编写 build.sh 与 ESM bootstrap，将 `format.js` 接入 HTML
+
+---
+
+## [2026-04-26] ce97764 fix: P0 清理 UI 与数据模型不一致——移除 3 个失效筛选器
 
 **类型**：fix / P0 紧急修复
 
