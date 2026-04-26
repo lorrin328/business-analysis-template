@@ -8,6 +8,60 @@
 
 ---
 
+## [2026-04-26] (待 commit) chore: P1.7 迁移 importer 模块 + 修复 build.sh export 剥离
+
+**类型**：chore / 模块化重构 P1.7 + fix / build.sh
+
+**变更**：
+
+将 `经营分析模板.html` 内联 IIFE 中 Excel 导入相关的 12 个函数（行 ~903-1167）拆分为 4 个 ESM 模块。同时修复 `build.sh` 在 P1.6 之前未覆盖 `export { name };` 形式的剥离 bug——P1.7 是首次出现该形式的 commit。
+
+**新增文件**：
+- `js/modules/importer/schema.js`（80 行）— `REQUIRED_TIME_COLS` / `DATE_COL_CANDIDATES` / `CORE_DIM_COLS` / `EXT_DIM_COLS` / `ALL_DIM_COLS` / `METRIC_COLS_ZH` / `COL_ALIASES` / `SCHEMA_SQL` / `INSERT_SQL`
+- `js/modules/importer/column-resolve.js`（70 行）— `resolveCol` / `levenshtein` / `suggest` / `validateColumns` / `findDateColumn`
+- `js/modules/importer/cell-transform.js`（115 行）— `pad2` / `toCents` / `trimDim` / `trimEmpty` / `fmtDateTime` / `parseDateCell` / `transformRow`
+- `js/modules/importer/index.js`（90 行）— `parseAndBuild(file, onProgress)`（解耦 boot UI；进度通过回调）+ `collectMeta(targetDb, fileName)`
+- `js/modules/importer/README.md` — 模块说明 + 检查清单
+
+**模块边界设计**：
+- `parseAndBuild` 通过 `onProgress(msg)` 回调暴露进度，**不**直接耦合 boot UI（原 inline 直接调用 `setBoot`）
+- importer 不写 IDB、不操作全局 `db` 句柄；只返回内存 db 与文件名
+- 调用方（bootstrap，待 P1.8）负责进度展示、`setDb()`、`idbPut()`、`collectMeta`
+
+**build.sh 修复**：
+- 新增 sed 规则：`/^\s*export\s*\{[^}]*\}\s*;?\s*$/d` 删除 `export { pad2 };` 等命名导出行
+- 该行在 ESM 模式下必需（用于 `import * as importer` 命名空间）；在 bundled 模式下标识符已是全局 → 必须剥离，否则 `<script>` 上下文 SyntaxError
+- 修复后注入行数 1109 → 1108
+
+**main.js**：扩展 `__jyfx.modules.importer` 命名空间（仅 ESM 开发模式生效）。
+
+**build.sh 校验**：
+```
+$ ./build.sh --check
+模板行数: 1285
+合并后行数: 2396
+注入 JS 行数: 1108
+```
+
+注入行数 750（P1.6）→ 1108（P1.7），增量 +358 行符合预期（4 个新文件总计 ~355 行）。
+
+**作用域分析（无冲突）**：
+- 注入的 `pad2 / toCents / trimDim / trimEmpty / fmtDateTime / parseDateCell / transformRow / resolveCol / levenshtein / suggest / validateColumns / findDateColumn / parseAndBuild / collectMeta` 在 Global Lexical Environment 声明
+- 同样名为 `SCHEMA_SQL / INSERT_SQL / REQUIRED_TIME_COLS / ALL_DIM_COLS / METRIC_COLS_ZH / COL_ALIASES / DATE_COL_CANDIDATES / CORE_DIM_COLS / EXT_DIM_COLS` 的 const 在全局；inline IIFE 内同名 const 是块作用域局部声明，**正确遮蔽**注入的全局版本
+- 注入的全局 `parseAndBuild` 引用 `XLSX` 全局 + `window.__SQL`，但因无人调用它（inline IIFE 自带 `parseAndBuild`），处于 frozen 状态
+
+**未变更**：
+- `经营分析模板.html` 内联 IIFE 完全未动（37 个函数声明数量验证通过）
+- file:// 直接打开行为完全保持
+- 无 schema、UI、字段改动
+
+**关联**：
+- 主方案 §3 ESM + 发布期 build.sh
+- 保单数据规范 §schema 必填列
+- 下一步：P1.8 迁移 bootstrap（boot-overlay / events / reimport / empty-ui / init / idb-wrapper） + P1.9 一次性切换
+
+---
+
 ## [2026-04-26] 3088f52 chore: P1.6 迁移平台趋势模块到 js/modules/platform-trend/
 
 **类型**：chore / 模块化重构 P1.6

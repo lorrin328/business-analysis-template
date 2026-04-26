@@ -53,9 +53,11 @@ strip_esm() {
   # 简易 ESM 剥离：
   #   - 去掉 `export ` 前缀（保留 function/const/let/var/class/async）
   #   - 去掉所有相对路径 import 行（已合并入下方）
+  #   - 删除「export { ... };」名命名导出行（在 bundled 上下文中标识符已是全局）
   sed -E '
     s/^([[:space:]]*)export[[:space:]]+(default[[:space:]]+)?(async[[:space:]]+)?(function|const|let|var|class)/\1\3\4/;
     /^[[:space:]]*import[[:space:]].*from[[:space:]]+["'\''\`]\.\.?\/.*["'\''\`][[:space:]]*;?[[:space:]]*$/d;
+    /^[[:space:]]*export[[:space:]]*\{[^}]*\}[[:space:]]*;?[[:space:]]*$/d;
   ' "$1"
 }
 
