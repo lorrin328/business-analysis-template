@@ -101,6 +101,119 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   pointer-events: none;
 }
 
+/* Navigation */
+.nav-buttons { display: flex; gap: 8px; margin: 0 24px; flex: 1; justify-content: center; }
+.nav-btn {
+  background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.25);
+  padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 14px;
+  transition: all .2s; font-weight: 500;
+}
+.nav-btn:hover { background: rgba(255,255,255,.25); }
+.btn-target {
+  background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3);
+  padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px;
+  transition: all .2s;
+}
+.btn-target:hover { background: rgba(255,255,255,.25); }
+
+/* Home Dashboard */
+.home-content {
+  padding: 40px 32px; display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px; max-width: 1200px; margin: 0 auto;
+}
+.portal-card {
+  background: #fff; border-radius: 12px; padding: 32px 28px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.08); cursor: pointer;
+  transition: all .25s; border: 1px solid #e8e8e8;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.portal-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  border-color: #2d5f9a;
+}
+.portal-card .icon { font-size: 40px; }
+.portal-card h3 { font-size: 18px; color: #1a3a6b; font-weight: 600; }
+.portal-card p { font-size: 13px; color: #888; line-height: 1.6; }
+
+/* Modal */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  display: none; align-items: center; justify-content: center;
+  z-index: 10000; padding: 24px;
+}
+.modal-overlay.active { display: flex; }
+.modal-container {
+  background: #f0f2f5; border-radius: 12px;
+  width: 100%; max-width: 1400px; height: 92vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,.3);
+  overflow: hidden;
+}
+.modal-header {
+  background: linear-gradient(135deg, #1a3a6b 0%, #2d5f9a 100%);
+  color: #fff; padding: 14px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.modal-header h2 { font-size: 18px; font-weight: 600; }
+.modal-close {
+  background: rgba(255,255,255,.15); color: #fff; border: none;
+  width: 32px; height: 32px; border-radius: 6px; cursor: pointer;
+  font-size: 18px; display: flex; align-items: center; justify-content: center;
+  transition: all .2s;
+}
+.modal-close:hover { background: rgba(255,255,255,.3); }
+.modal-body {
+  flex: 1; overflow-y: auto; padding: 20px;
+}
+
+/* Data Table */
+.data-table {
+  width: 100%; border-collapse: collapse; background: #fff;
+  border-radius: 8px; overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.data-table th, .data-table td {
+  padding: 12px 14px; text-align: left; font-size: 13px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.data-table th {
+  background: #f8fafe; font-weight: 600; color: #1a3a6b;
+  white-space: nowrap;
+}
+.data-table tr:hover { background: #f8fafe; }
+.data-table td.num { text-align: right; font-family: 'Segoe UI', monospace; }
+.data-table .pct-positive { color: #52c41a; font-weight: 600; }
+.data-table .pct-negative { color: #f5222d; font-weight: 600; }
+.data-table .achieve-high { color: #52c41a; font-weight: 600; }
+.data-table .achieve-low { color: #f5222d; font-weight: 600; }
+
+/* Modal inner filters */
+.modal-filters {
+  background: #fff; margin-bottom: 16px; padding: 14px 18px; border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08); display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+}
+
+/* Section cards inside modal */
+.modal-section {
+  background: #fff; border-radius: 8px; padding: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 16px;
+}
+.modal-section h3 { font-size: 15px; margin-bottom: 12px; color: #1a3a6b; }
+
+/* Trend modal: reuse existing chart boxes */
+.modal-body .charts-container { padding: 0; }
+.modal-body .chart-box { height: 380px; }
+
+/* Empty state for modals */
+.modal-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; padding: 60px 20px; color: #888;
+}
+.modal-empty .icon { font-size: 48px; }
+
 .boot-overlay {
   position: fixed; inset: 0; background: rgba(255,255,255,.96);
   display: flex; align-items: center; justify-content: center;
@@ -149,100 +262,148 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
 <body>
 
 <div class="header">
-  <span>经营分析 - 产品结构测算</span>
+  <span>经营分析看板</span>
+  <div class="nav-buttons">
+    <button class="nav-btn" data-modal="kpi">关键KPI</button>
+    <button class="nav-btn" data-modal="trend">趋势表现</button>
+    <button class="nav-btn" data-modal="product">产品结构</button>
+    <button class="nav-btn" data-modal="team">队伍表现</button>
+  </div>
   <div class="header-actions">
+    <button class="btn-target" id="btnTarget">📋 上传目标</button>
     <span class="meta-info" id="metaInfo"></span>
     <button class="btn-reimport" id="btnReimport" disabled title="替换当前数据">📁 重新导入</button>
   </div>
 </div>
 
-<div class="filters">
-  <div class="filter-group">
-    <label>保费口径</label>
-    <div class="btn-group" id="metricBtns">
-      <button data-val="折算保费" class="active">折算保费</button>
-      <button data-val="期交保费">期交保费</button>
-      <button data-val="年化规保">规模保费</button>
+<!-- 主页门户 -->
+<div class="home-content" id="homeContent">
+  <div class="portal-card" data-modal="kpi">
+    <div class="icon">🎯</div>
+    <h3>关键KPI</h3>
+    <p>查看目标达成情况、达成率、规模同比等核心经营指标，支持年度/季度/月度/周维度切换</p>
+  </div>
+  <div class="portal-card" data-modal="trend">
+    <div class="icon">📈</div>
+    <h3>趋势表现</h3>
+    <p>保费趋势分析、同比增速对比、日累计走势，支持分机构/分业务模式多维对比</p>
+  </div>
+  <div class="portal-card" data-modal="product">
+    <div class="icon">🥧</div>
+    <h3>产品结构</h3>
+    <p>产品设计分类占比分析，了解各类产品对保费贡献的分布情况</p>
+  </div>
+  <div class="portal-card" data-modal="team">
+    <div class="icon">👥</div>
+    <h3>队伍表现</h3>
+    <p>人力指标分析：在职人力、活动率、人均产能、标准人力等队伍效能指标</p>
+  </div>
+</div>
+
+<!-- 趋势表现内容区（移入弹窗使用） -->
+<div id="trendContent" style="display:none;">
+  <div class="filters">
+    <div class="filter-group">
+      <label>保费口径</label>
+      <div class="btn-group" id="metricBtns">
+        <button data-val="折算保费" class="active">折算保费</button>
+        <button data-val="期交保费">期交保费</button>
+        <button data-val="年化规保">规模保费</button>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label>时间粒度</label>
+      <div class="btn-group" id="granBtns">
+        <button data-val="day" class="active">日累计</button>
+        <button data-val="month">月度</button>
+        <button data-val="quarter">季度</button>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label>机构</label>
+      <select id="selOrg"><option value="">全部机构</option></select>
+    </div>
+
+    <div class="filter-group">
+      <label>业务模式</label>
+      <select id="selMode"><option value="">全部模式</option></select>
+    </div>
+
+    <div class="filter-group">
+      <label>长短险</label>
+      <select id="selTerm"><option value="">全部</option></select>
+    </div>
+
+    <div class="filter-group">
+      <label>是否商保年金</label>
+      <select id="selAnnuity"><option value="">全部</option></select>
+    </div>
+
+    <div class="filter-group">
+      <label>缴费年限</label>
+      <select id="selPayYear"><option value="">全部</option></select>
+    </div>
+
+    <div class="filter-group">
+      <label>保障年限</label>
+      <select id="selCovYear"><option value="">全部</option></select>
+    </div>
+
+    <div class="filter-group">
+      <label>产品设计分类</label>
+      <select id="selDesign"><option value="">全部</option></select>
+    </div>
+
+    <div class="compare-toggle">
+      <label>同比对比(2024)</label>
+      <label class="switch">
+        <input type="checkbox" id="compareToggle" checked>
+        <span class="slider"></span>
+      </label>
     </div>
   </div>
 
-  <div class="filter-group">
-    <label>时间粒度</label>
-    <div class="btn-group" id="granBtns">
-      <button data-val="day" class="active">日累计</button>
-      <button data-val="month">月度</button>
-      <button data-val="quarter">季度</button>
+  <div class="tabs">
+    <button data-view="overall" class="active">整体趋势</button>
+    <button data-view="org">分机构对比</button>
+    <button data-view="mode">分业务模式对比</button>
+  </div>
+
+  <div class="summary-cards" id="kpiArea"></div>
+
+  <div class="charts-container">
+    <div class="chart-card">
+      <h3 id="chartTitle">整体保费日累计趋势</h3>
+      <div class="chart-box" id="mainChart"></div>
+    </div>
+    <div class="chart-card" id="yoyCard" style="display:none">
+      <h3>同比增速 (%)</h3>
+      <div class="chart-box" id="yoyChart"></div>
+    </div>
+    <div class="chart-card" id="structCard">
+      <h3>产品结构占比</h3>
+      <div class="chart-box" id="structChart"></div>
     </div>
   </div>
 
-  <div class="filter-group">
-    <label>机构</label>
-    <select id="selOrg"><option value="">全部机构</option></select>
-  </div>
+  <div class="daily-tip" id="dailyTip"></div>
+</div>
 
-  <div class="filter-group">
-    <label>业务模式</label>
-    <select id="selMode"><option value="">全部模式</option></select>
-  </div>
-
-  <div class="filter-group">
-    <label>长短险</label>
-    <select id="selTerm"><option value="">全部</option></select>
-  </div>
-
-  <div class="filter-group">
-    <label>是否商保年金</label>
-    <select id="selAnnuity"><option value="">全部</option></select>
-  </div>
-
-  <div class="filter-group">
-    <label>缴费年限</label>
-    <select id="selPayYear"><option value="">全部</option></select>
-  </div>
-
-  <div class="filter-group">
-    <label>保障年限</label>
-    <select id="selCovYear"><option value="">全部</option></select>
-  </div>
-
-  <div class="filter-group">
-    <label>产品设计分类</label>
-    <select id="selDesign"><option value="">全部</option></select>
-  </div>
-
-  <div class="compare-toggle">
-    <label>同比对比(2024)</label>
-    <label class="switch">
-      <input type="checkbox" id="compareToggle" checked>
-      <span class="slider"></span>
-    </label>
+<!-- 全屏弹窗 -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-container">
+    <div class="modal-header">
+      <h2 id="modalTitle">版块标题</h2>
+      <button class="modal-close" id="modalClose">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
   </div>
 </div>
 
-<div class="tabs">
-  <button data-view="overall" class="active">整体趋势</button>
-  <button data-view="org">分机构对比</button>
-  <button data-view="mode">分业务模式对比</button>
-</div>
-
-<div class="summary-cards" id="kpiArea"></div>
-
-<div class="charts-container">
-  <div class="chart-card">
-    <h3 id="chartTitle">整体保费日累计趋势</h3>
-    <div class="chart-box" id="mainChart"></div>
-  </div>
-  <div class="chart-card" id="yoyCard" style="display:none">
-    <h3>同比增速 (%)</h3>
-    <div class="chart-box" id="yoyChart"></div>
-  </div>
-  <div class="chart-card" id="structCard">
-    <h3>产品结构占比</h3>
-    <div class="chart-box" id="structChart"></div>
-  </div>
-</div>
-
-<div class="daily-tip" id="dailyTip"></div>
+<!-- 目标上传隐藏input -->
+<input type="file" id="targetInput" accept=".xlsx,.xls,.xlsm" style="display:none;">
 <div class="boot-overlay" id="bootOverlay">
   <div id="bootLoading" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
     <div class="spinner"></div>
@@ -846,6 +1007,29 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
       if (yoyChartInstance) yoyChartInstance.resize();
       if (structChartInstance) structChartInstance.resize();
     });
+
+    // Navigation buttons → open modal
+    document.querySelectorAll('.nav-btn, .portal-card').forEach(el => {
+      el.addEventListener('click', () => {
+        const modalType = el.dataset.modal;
+        if (modalType) openModal(modalType);
+      });
+    });
+
+    // Modal close
+    document.getElementById('modalClose').addEventListener('click', closeModal);
+    document.getElementById('modalOverlay').addEventListener('click', e => {
+      if (e.target.id === 'modalOverlay') closeModal();
+    });
+
+    // Target upload button
+    document.getElementById('btnTarget').addEventListener('click', () => {
+      document.getElementById('targetInput').click();
+    });
+    document.getElementById('targetInput').addEventListener('change', e => {
+      if (e.target.files[0]) handleTargetImport(e.target.files[0]);
+      e.target.value = '';
+    });
   }
 
   // --- Boot ---
@@ -1252,6 +1436,567 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     document.getElementById('btnRetry').onclick = () => bootFlow();
   }
 
+  // ============================================================
+  // NEW: Modal System
+  // ============================================================
+  let currentModal = null;
+  let modalChartInstances = {};
+
+  function openModal(type) {
+    currentModal = type;
+    const overlay = document.getElementById('modalOverlay');
+    const title = document.getElementById('modalTitle');
+    const body = document.getElementById('modalBody');
+    overlay.classList.add('active');
+    body.innerHTML = '';
+
+    const titles = { kpi: '关键KPI', trend: '趋势表现', product: '产品结构', team: '队伍表现' };
+    title.textContent = titles[type] || '经营分析';
+
+    if (type === 'kpi') renderKPIModal(body);
+    else if (type === 'trend') renderTrendModal(body);
+    else if (type === 'product') renderProductModal(body);
+    else if (type === 'team') renderTeamModal(body);
+  }
+
+  function closeModal() {
+    document.getElementById('modalOverlay').classList.remove('active');
+    // Dispose modal charts
+    Object.values(modalChartInstances).forEach(c => { if (c && c.dispose) c.dispose(); });
+    modalChartInstances = {};
+    // Return trend content to hidden container
+    if (currentModal === 'trend') {
+      const trendContent = document.getElementById('trendContent');
+      if (trendContent) { trendContent.style.display = 'none'; document.body.appendChild(trendContent); }
+    }
+    currentModal = null;
+  }
+
+  // ============================================================
+  // NEW: Target Data Import
+  // ============================================================
+  const TARGET_SCHEMA_SQL = `
+    CREATE TABLE IF NOT EXISTS fact_target (
+      id INTEGER PRIMARY KEY,
+      year TEXT NOT NULL,
+      quarter INTEGER,
+      month INTEGER,
+      week INTEGER,
+      org TEXT,
+      project TEXT,
+      metric TEXT NOT NULL,
+      target_value REAL NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS ix_target_ym ON fact_target(year, month);
+    CREATE INDEX IF NOT EXISTS ix_target_yq ON fact_target(year, quarter);
+    CREATE INDEX IF NOT EXISTS ix_target_org ON fact_target(org);
+  `;
+
+  async function handleTargetImport(file) {
+    try {
+      setBoot('loading', `正在读取目标文件 ${file.name} ...`);
+      await parseAndBuildTarget(file);
+      setBoot('loading', '目标数据导入成功');
+      setTimeout(() => {
+        if (!document.getElementById('bootOverlay').classList.contains('active') &&
+            document.getElementById('bootOverlay').style.display !== 'none') {
+          hideBoot();
+        }
+      }, 800);
+      alert('目标数据导入成功！');
+    } catch (e) {
+      console.error(e);
+      alert('目标数据导入失败：' + (e.message || String(e)));
+      hideBoot();
+    }
+  }
+
+  async function parseAndBuildTarget(file) {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    if (!sheet) throw new Error('Excel 文件为空');
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: true });
+    if (!rows.length) throw new Error('没有数据行');
+
+    const cols = Object.keys(rows[0]);
+    // 目标文件列名映射（支持中文列名）
+    const colMap = {};
+    const findCol = (names) => {
+      for (const n of names) {
+        const exact = cols.find(c => c === n);
+        if (exact) return exact;
+        const partial = cols.find(c => c.includes(n));
+        if (partial) return partial;
+      }
+      return null;
+    };
+    colMap.year = findCol(['年', '年份', '年度']);
+    colMap.quarter = findCol(['季', '季度']);
+    colMap.month = findCol(['月', '月份']);
+    colMap.week = findCol(['周', '星期']);
+    colMap.org = findCol(['机构', '销售机构', '销售机构名称', 'org']);
+    colMap.project = findCol(['项目', '产品', '产品设计分类', 'project']);
+
+    // 指标列：折算保费、期交保费、规模保费（年化规保）
+    const metricCols = [];
+    for (const c of cols) {
+      const lc = String(c).toLowerCase();
+      if (lc.includes('折算') && lc.includes('目标')) metricCols.push({ col: c, metric: '折算保费' });
+      else if (lc.includes('期交') && lc.includes('目标')) metricCols.push({ col: c, metric: '期交保费' });
+      else if ((lc.includes('规模') || lc.includes('年化') || lc.includes('规保')) && lc.includes('目标')) metricCols.push({ col: c, metric: '规模保费' });
+      else if (c === '折算保费目标') metricCols.push({ col: c, metric: '折算保费' });
+      else if (c === '期交保费目标') metricCols.push({ col: c, metric: '期交保费' });
+      else if (c === '规模保费目标') metricCols.push({ col: c, metric: '规模保费' });
+    }
+
+    if (!colMap.year) throw new Error('目标文件缺少"年"列');
+    if (metricCols.length === 0) throw new Error('目标文件缺少指标列（如"折算保费目标"）');
+
+    // Ensure target table exists
+    db.exec(TARGET_SCHEMA_SQL);
+
+    // Clear existing targets for the years in this file
+    const yearsInFile = new Set(rows.map(r => String(r[colMap.year] || '').trim()).filter(y => y));
+    if (yearsInFile.size > 0) {
+      const yearList = [...yearsInFile].map(y => `'${y}'`).join(',');
+      db.exec(`DELETE FROM fact_target WHERE year IN (${yearList})`);
+    }
+
+    const insertStmt = db.prepare(`INSERT INTO fact_target (year, quarter, month, week, org, project, metric, target_value) VALUES (?,?,?,?,?,?,?,?)`);
+    db.exec('BEGIN');
+    let inserted = 0;
+    for (const r of rows) {
+      const year = String(r[colMap.year] || '').trim();
+      if (!year) continue;
+      const quarter = parseInt(r[colMap.quarter], 10) || null;
+      const month = parseInt(r[colMap.month], 10) || null;
+      const week = parseInt(r[colMap.week], 10) || null;
+      const org = trimEmpty(r[colMap.org]);
+      const project = trimEmpty(r[colMap.project]);
+
+      for (const mc of metricCols) {
+        const val = parseFloat(r[mc.col]);
+        if (!isFinite(val) || val === 0) continue;
+        insertStmt.run([year, quarter, month, week, org, project, mc.metric, val]);
+        inserted++;
+      }
+    }
+    db.exec('COMMIT');
+    insertStmt.free();
+
+    // Save updated DB to IndexedDB
+    const exported = db.export();
+    await idbPut('db', exported);
+
+    console.log(`✅ 目标数据导入: ${inserted} 条记录`);
+    return { inserted };
+  }
+
+  // ============================================================
+  // NEW: KPI Module
+  // ============================================================
+  function renderKPIModal(container) {
+    container.innerHTML = `
+      <div class="modal-filters">
+        <div class="filter-group">
+          <label>时间维度</label>
+          <div class="btn-group" id="kpiPeriodBtns">
+            <button data-val="year" class="active">年度</button>
+            <button data-val="quarter">季度</button>
+            <button data-val="month">月度</button>
+          </div>
+        </div>
+        <div class="filter-group">
+          <label>指标口径</label>
+          <div class="btn-group" id="kpiMetricBtns">
+            <button data-val="折算保费" class="active">折算保费</button>
+            <button data-val="期交保费">期交保费</button>
+            <button data-val="规模保费">规模保费</button>
+          </div>
+        </div>
+        <div class="filter-group">
+          <label>机构</label>
+          <select id="kpiSelOrg"><option value="">全部机构</option></select>
+        </div>
+      </div>
+      <div class="modal-section">
+        <div id="kpiTableArea"></div>
+      </div>
+    `;
+
+    // Init org select
+    const orgRows = q(`SELECT DISTINCT org AS v FROM fact_premium WHERE org IS NOT NULL AND org != '' ORDER BY org`);
+    const orgSel = document.getElementById('kpiSelOrg');
+    orgRows.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.v; opt.textContent = r.v;
+      orgSel.appendChild(opt);
+    });
+
+    const refresh = () => {
+      const period = document.querySelector('#kpiPeriodBtns button.active')?.dataset.val || 'year';
+      const metric = document.querySelector('#kpiMetricBtns button.active')?.dataset.val || '折算保费';
+      const org = document.getElementById('kpiSelOrg').value;
+      renderKPITable(period, metric, org);
+    };
+
+    document.getElementById('kpiPeriodBtns').addEventListener('click', e => {
+      if (e.target.tagName !== 'BUTTON') return;
+      document.querySelectorAll('#kpiPeriodBtns button').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      refresh();
+    });
+    document.getElementById('kpiMetricBtns').addEventListener('click', e => {
+      if (e.target.tagName !== 'BUTTON') return;
+      document.querySelectorAll('#kpiMetricBtns button').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      refresh();
+    });
+    document.getElementById('kpiSelOrg').addEventListener('change', refresh);
+
+    refresh();
+  }
+
+  function renderKPITable(periodType, metricType, orgFilter) {
+    const area = document.getElementById('kpiTableArea');
+    const metricCol = metricType === '折算保费' ? 'zhsf_cents' : metricType === '期交保费' ? 'qj_cents' : 'ghgb_cents';
+    const scaleCol = 'ghgb_cents'; // 规模同比固定用规模保费
+
+    let periodCol, periodLabelSql, periodOrder;
+    if (periodType === 'year') {
+      periodCol = 'year';
+      periodLabelSql = 'year AS period_label';
+      periodOrder = 'year';
+    } else if (periodType === 'quarter') {
+      periodCol = "year || '-Q' || quarter";
+      periodLabelSql = "year || '-Q' || quarter AS period_label";
+      periodOrder = 'year, quarter';
+    } else {
+      periodCol = "year || '-' || printf('%02d', month)";
+      periodLabelSql = "year || '-' || printf('%02d', month) AS period_label";
+      periodOrder = 'year, month';
+    }
+
+    const orgWhere = orgFilter ? `AND org = '${orgFilter.replace(/'/g, "''")}'` : '';
+
+    // Actual data
+    const actualSql = `
+      SELECT ${periodLabelSql},
+             year, ${periodType === 'quarter' ? 'quarter' : periodType === 'month' ? 'month' : '1 AS dummy'},
+             SUM(${metricCol}) / 100.0 AS actual,
+             SUM(${scaleCol}) / 100.0 AS scale_amount
+      FROM fact_premium
+      WHERE 1=1 ${orgWhere}
+      GROUP BY ${periodOrder}
+      ORDER BY ${periodOrder}
+    `;
+    const actualRows = q(actualSql);
+
+    // Target data
+    const targetSql = `
+      SELECT ${periodLabelSql},
+             SUM(target_value) AS target
+      FROM fact_target
+      WHERE metric = '${metricType.replace(/'/g, "''")}' ${orgWhere}
+      GROUP BY ${periodOrder}
+      ORDER BY ${periodOrder}
+    `;
+    let targetRows = [];
+    try {
+      // Ensure table exists before query
+      db.exec(TARGET_SCHEMA_SQL);
+      targetRows = q(targetSql);
+    } catch (e) { /* no target table or no data */ }
+
+    const targetMap = {};
+    targetRows.forEach(r => { targetMap[r.period_label] = r.target; });
+
+    // YoY: previous period scale amount
+    const allPeriods = actualRows.map(r => r.period_label);
+    const yoyMap = {};
+    if (periodType === 'year') {
+      actualRows.forEach(r => {
+        const prevYear = String(parseInt(r.year) - 1);
+        const prev = actualRows.find(x => x.year === prevYear);
+        if (prev && prev.scale_amount > 0) {
+          yoyMap[r.period_label] = ((r.scale_amount - prev.scale_amount) / prev.scale_amount * 100);
+        }
+      });
+    } else if (periodType === 'month') {
+      actualRows.forEach((r, i) => {
+        // Find same month last year
+        const prevYear = String(parseInt(r.year) - 1);
+        const monthVal = r.month;
+        const prev = actualRows.find(x => x.year === prevYear && x.month === monthVal);
+        if (prev && prev.scale_amount > 0) {
+          yoyMap[r.period_label] = ((r.scale_amount - prev.scale_amount) / prev.scale_amount * 100);
+        }
+      });
+    } else if (periodType === 'quarter') {
+      actualRows.forEach((r, i) => {
+        const prevYear = String(parseInt(r.year) - 1);
+        const qVal = r.quarter;
+        const prev = actualRows.find(x => x.year === prevYear && x.quarter === qVal);
+        if (prev && prev.scale_amount > 0) {
+          yoyMap[r.period_label] = ((r.scale_amount - prev.scale_amount) / prev.scale_amount * 100);
+        }
+      });
+    }
+
+    let html = '<table class="data-table"><thead><tr>' +
+      '<th>期间</th><th>目标</th><th>达成</th><th>达成率</th><th>规模同比</th>' +
+      '</tr></thead><tbody>';
+
+    if (actualRows.length === 0) {
+      html += '<tr><td colspan="5" style="text-align:center;color:#999;padding:40px;">暂无数据</td></tr>';
+    } else {
+      actualRows.forEach(r => {
+        const target = targetMap[r.period_label] || 0;
+        const actual = r.actual || 0;
+        const achieveRate = target > 0 ? (actual / target * 100).toFixed(1) : '-';
+        const yoy = yoyMap[r.period_label];
+        const yoyStr = yoy != null ? yoy.toFixed(1) + '%' : '-';
+        const yoyCls = yoy != null ? (yoy >= 0 ? 'pct-positive' : 'pct-negative') : '';
+        const achieveCls = target > 0 ? (actual >= target ? 'achieve-high' : 'achieve-low') : '';
+
+        html += '<tr>' +
+          `<td>${r.period_label}</td>` +
+          `<td class="num">${target > 0 ? formatNum(target) : '-'}</td>` +
+          `<td class="num">${formatNum(actual)}</td>` +
+          `<td class="num ${achieveCls}">${achieveRate}${achieveRate !== '-' ? '%' : ''}</td>` +
+          `<td class="num ${yoyCls}">${yoyStr}</td>` +
+          '</tr>';
+      });
+    }
+    html += '</tbody></table>';
+    area.innerHTML = html;
+  }
+
+  // ============================================================
+  // NEW: Team Performance Module
+  // ============================================================
+  function renderTeamModal(container) {
+    container.innerHTML = `
+      <div class="modal-filters">
+        <div class="filter-group">
+          <label>时间维度</label>
+          <div class="btn-group" id="teamPeriodBtns">
+            <button data-val="month" class="active">月度</button>
+            <button data-val="quarter">季度</button>
+          </div>
+        </div>
+        <div class="filter-group">
+          <label>机构</label>
+          <select id="teamSelOrg"><option value="">全部机构</option></select>
+        </div>
+        <div class="filter-group">
+          <label>业务模式</label>
+          <select id="teamSelMode"><option value="">全部模式</option></select>
+        </div>
+      </div>
+      <div class="modal-section">
+        <div id="teamTableArea"></div>
+      </div>
+    `;
+
+    // Init selects
+    const orgRows = q(`SELECT DISTINCT org AS v FROM fact_premium WHERE org IS NOT NULL AND org != '' ORDER BY org`);
+    const orgSel = document.getElementById('teamSelOrg');
+    orgRows.forEach(r => { const opt = document.createElement('option'); opt.value = r.v; opt.textContent = r.v; orgSel.appendChild(opt); });
+
+    const modeRows = q(`SELECT DISTINCT biz_mode AS v FROM fact_premium WHERE biz_mode IS NOT NULL AND biz_mode != '' ORDER BY biz_mode`);
+    const modeSel = document.getElementById('teamSelMode');
+    modeRows.forEach(r => { const opt = document.createElement('option'); opt.value = r.v; opt.textContent = r.v; modeSel.appendChild(opt); });
+
+    const refresh = () => {
+      const period = document.querySelector('#teamPeriodBtns button.active')?.dataset.val || 'month';
+      const org = document.getElementById('teamSelOrg').value;
+      const mode = document.getElementById('teamSelMode').value;
+      renderTeamTable(period, org, mode);
+    };
+
+    document.getElementById('teamPeriodBtns').addEventListener('click', e => {
+      if (e.target.tagName !== 'BUTTON') return;
+      document.querySelectorAll('#teamPeriodBtns button').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      refresh();
+    });
+    document.getElementById('teamSelOrg').addEventListener('change', refresh);
+    document.getElementById('teamSelMode').addEventListener('change', refresh);
+
+    refresh();
+  }
+
+  function renderTeamTable(periodType, orgFilter, modeFilter) {
+    const area = document.getElementById('teamTableArea');
+
+    let groupCols, periodLabelSql, periodOrder;
+    if (periodType === 'quarter') {
+      groupCols = 'year, quarter';
+      periodLabelSql = "year || '-Q' || quarter";
+      periodOrder = 'year, quarter';
+    } else {
+      groupCols = 'year, month';
+      periodLabelSql = "year || '-' || printf('%02d', month)";
+      periodOrder = 'year, month';
+    }
+
+    const conditions = [];
+    if (orgFilter) conditions.push(`org = '${orgFilter.replace(/'/g, "''")}'`);
+    if (modeFilter) conditions.push(`biz_mode = '${modeFilter.replace(/'/g, "''")}'`);
+    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    // 1. 月末在职人力 = 该期间有出单的去重工号数（近似）
+    // 2. 长险活动人力 = 该期间有长险出单的去重工号数
+    // 3. 新单保费（折算保费）
+    // 4. 标准人力 = 折算保费 >= 阈值的人员
+
+    const sql = `
+      SELECT ${periodLabelSql} AS period_label, year, month, quarter,
+        COUNT(DISTINCT staff_id) AS staff_count,
+        COUNT(DISTINCT CASE WHEN term_type = '长险' THEN staff_id END) AS long_term_staff,
+        SUM(zhsf_cents) / 100.0 AS total_zhsf,
+        SUM(ghgb_cents) / 100.0 AS total_ghgb
+      FROM fact_premium
+      ${where}
+      GROUP BY ${groupCols}
+      ORDER BY ${periodOrder}
+    `;
+    const rows = q(sql);
+
+    // 标准人力：按人员汇总月度折算保费，筛选达标人员
+    // 阈值：OTO≥2万，证保≥3万（按业务模式区分）
+    const stdSql = `
+      SELECT ${periodLabelSql} AS period_label,
+        COALESCE(COUNT(DISTINCT CASE WHEN biz_mode LIKE '%OTO%' AND staff_zhsf >= 20000 THEN staff_id END), 0) +
+        COALESCE(COUNT(DISTINCT CASE WHEN (biz_mode LIKE '%证保%' OR biz_mode LIKE '%社保%') AND staff_zhsf >= 30000 THEN staff_id END), 0) AS std_count
+      FROM (
+        SELECT ${groupCols}, staff_id, biz_mode, SUM(zhsf_cents) / 100.0 AS staff_zhsf
+        FROM fact_premium
+        ${where}
+        GROUP BY ${groupCols}, staff_id, biz_mode
+      ) t
+      GROUP BY ${groupCols}
+      ORDER BY ${periodOrder}
+    `;
+    let stdRows = [];
+    try { stdRows = q(stdSql); } catch (e) { console.warn('标准人力查询失败:', e); }
+    const stdMap = {};
+    stdRows.forEach(r => { stdMap[r.period_label] = r.std_count; });
+
+    // 计算月均在职人力（近似：相邻两期末末人力的平均）
+    const avgStaffMap = {};
+    for (let i = 0; i < rows.length; i++) {
+      const curr = rows[i].staff_count || 0;
+      const prev = i > 0 ? (rows[i - 1].staff_count || 0) : curr;
+      avgStaffMap[rows[i].period_label] = Math.round((prev + curr) / 2);
+    }
+
+    let html = '<table class="data-table"><thead><tr>' +
+      '<th>期间</th><th>月末在职人力</th><th>月均在职人力</th><th>长险活动人力</th><th>长险活动率</th>' +
+      '<th>人均保费</th><th>人均产能</th><th>标准人力</th>' +
+      '</tr></thead><tbody>';
+
+    if (rows.length === 0) {
+      html += '<tr><td colspan="8" style="text-align:center;color:#999;padding:40px;">暂无数据</td></tr>';
+    } else {
+      rows.forEach(r => {
+        const staffCount = r.staff_count || 0;
+        const avgStaff = avgStaffMap[r.period_label] || staffCount;
+        const longTermStaff = r.long_term_staff || 0;
+        const activityRate = avgStaff > 0 ? (longTermStaff / avgStaff * 100).toFixed(1) + '%' : '-';
+        const perCapitaPremium = avgStaff > 0 ? (r.total_ghgb / avgStaff).toFixed(0) : '-';
+        const perCapitaCapacity = longTermStaff > 0 ? (r.total_ghgb / longTermStaff).toFixed(0) : '-';
+        const stdCount = stdMap[r.period_label] || 0;
+
+        html += '<tr>' +
+          `<td>${r.period_label}</td>` +
+          `<td class="num">${staffCount}</td>` +
+          `<td class="num">${avgStaff}</td>` +
+          `<td class="num">${longTermStaff}</td>` +
+          `<td class="num">${activityRate}</td>` +
+          `<td class="num">${perCapitaPremium !== '-' ? formatNum(+perCapitaPremium) : '-'}</td>` +
+          `<td class="num">${perCapitaCapacity !== '-' ? formatNum(+perCapitaCapacity) : '-'}</td>` +
+          `<td class="num">${stdCount}</td>` +
+          '</tr>';
+      });
+    }
+    html += '</tbody></table>';
+    area.innerHTML = html;
+  }
+
+  // ============================================================
+  // NEW: Trend Modal (reuse existing content)
+  // ============================================================
+  function renderTrendModal(container) {
+    const trendContent = document.getElementById('trendContent');
+    container.innerHTML = '';
+    container.appendChild(trendContent);
+    trendContent.style.display = 'block';
+
+    // Re-init charts in modal context
+    setTimeout(() => {
+      if (mainChartInstance) { mainChartInstance.dispose(); mainChartInstance = null; }
+      if (yoyChartInstance) { yoyChartInstance.dispose(); yoyChartInstance = null; }
+      if (structChartInstance) { structChartInstance.dispose(); structChartInstance = null; }
+      try { render(); } catch (e) { console.error('趋势弹窗渲染失败:', e); }
+    }, 50);
+  }
+
+  // ============================================================
+  // NEW: Product Modal (reuse structure chart)
+  // ============================================================
+  function renderProductModal(container) {
+    container.innerHTML = `
+      <div class="modal-filters">
+        <div class="filter-group">
+          <label>保费口径</label>
+          <div class="btn-group" id="prodMetricBtns">
+            <button data-val="zhsf_cents" class="active">折算保费</button>
+            <button data-val="qj_cents">期交保费</button>
+            <button data-val="ghgb_cents">规模保费</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-section">
+        <div class="chart-box" id="productChart" style="height:500px;"></div>
+      </div>
+    `;
+
+    const refresh = () => {
+      const metric = document.querySelector('#prodMetricBtns button.active')?.dataset.val || 'zhsf_cents';
+      const sql = `SELECT design_cat AS k, SUM(${metric}) / 100.0 AS v FROM fact_premium WHERE design_cat IS NOT NULL GROUP BY design_cat ORDER BY v DESC`;
+      const rows = q(sql);
+      const pieData = rows.filter(r => r.v !== 0).map(r => ({ name: r.k || '未知', value: Math.round(r.v * 100) / 100 }));
+
+      let chart = modalChartInstances.product;
+      if (!chart) {
+        chart = echarts.init(document.getElementById('productChart'));
+        modalChartInstances.product = chart;
+      }
+      chart.setOption({
+        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+        legend: { orient: 'vertical', right: 10, top: 20, textStyle: { fontSize: 12 } },
+        series: [{
+          type: 'pie', radius: ['35%', '65%'], center: ['40%', '50%'],
+          data: pieData, label: { formatter: '{b}\n{d}%', fontSize: 11 },
+          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,.2)' } }
+        }]
+      }, true);
+    };
+
+    document.getElementById('prodMetricBtns').addEventListener('click', e => {
+      if (e.target.tagName !== 'BUTTON') return;
+      document.querySelectorAll('#prodMetricBtns button').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      refresh();
+    });
+
+    refresh();
+  }
+
+  // ============================================================
   async function bootFlow() {
     try {
       setBoot('loading', '正在加载 SQLite 引擎 ...');

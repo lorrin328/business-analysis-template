@@ -16,6 +16,10 @@ import * as format           from './core/format.js';
 import * as importer         from './modules/importer/index.js';
 import * as platformTrend    from './modules/platform-trend/index.js';
 import * as productStructure from './modules/product-structure/index.js';
+import * as modal            from './modules/modal/index.js';
+import * as targetImporter   from './modules/target-importer/index.js';
+import * as kpi              from './modules/kpi/index.js';
+import * as teamPerformance  from './modules/team-performance/index.js';
 import * as bootstrap        from './modules/bootstrap/index.js';
 
 // 暴露到全局，供尚未迁出的内联脚本回退使用
@@ -32,6 +36,10 @@ globalThis.__jyfx = Object.assign(globalThis.__jyfx || {}, {
     importer,
     platformTrend,
     productStructure,
+    modal,
+    targetImporter,
+    kpi,
+    teamPerformance,
     bootstrap
   })
 });
