@@ -6,7 +6,7 @@
 
 import { setDb, getDb, isReady } from '../../core/db.js';
 import { dailyCache, getChart } from '../../core/state.js';
-import { idbPut } from '../../core/idb.js';
+import { idbPut, SCHEMA_VERSION } from '../../core/idb.js';
 import { parseAndBuild, collectMeta } from '../importer/index.js';
 import { setBoot, hideBoot } from './boot-overlay.js';
 import { render } from './render.js';
@@ -23,7 +23,7 @@ export async function handleImport(file) {
     setBoot('loading', '正在保存到浏览器缓存 ...');
     const exported = newDb.export();
     await idbPut('db', exported);
-    const meta = collectMeta(newDb, fileName);
+    const meta = { ...collectMeta(newDb, fileName), schemaVersion: SCHEMA_VERSION };
     await idbPut('meta', meta);
 
     const oldDb = getDb();

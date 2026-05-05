@@ -5,7 +5,7 @@
 
 import { initSelects } from '../../core/filters.js';
 import { setDb } from '../../core/db.js';
-import { idbGet } from '../../core/idb.js';
+import { idbGet, idbPut, SCHEMA_VERSION } from '../../core/idb.js';
 import { pad2 } from '../importer/index.js';
 import { setBoot, hideBoot } from './boot-overlay.js';
 import { render } from './render.js';
@@ -51,8 +51,16 @@ export async function bootFlow() {
     setBoot('loading', '正在检查浏览器缓存 ...');
     const cached = await idbGet('db');
     if (cached) {
-      setDb(new window.__SQL.Database(new Uint8Array(cached)));
       const meta = await idbGet('meta');
+      if (!meta || meta.schemaVersion !== SCHEMA_VERSION) {
+        console.warn('Schema version mismatch, clearing old cache');
+        try { await idbPut('db', null); } catch (e) {}
+        try { await idbPut('meta', null); } catch (e) {}
+        setBoot('empty');
+        bindEmptyUI(bootFlow);
+        return;
+      }
+      setDb(new window.__SQL.Database(new Uint8Array(cached)));
       initApp(meta);
       return;
     }

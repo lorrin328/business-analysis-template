@@ -7,6 +7,10 @@ const IDB_NAME = 'business-analysis-template';
 const IDB_STORE = 'kv';
 const IDB_VER = 1;
 
+// Schema 版本：每次修改 fact_premium 或 fact_target 表结构时递增
+// 启动时校验，版本不匹配则丢弃旧缓存，引导用户重新导入
+export const SCHEMA_VERSION = 2;
+
 export function openIdb() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(IDB_NAME, IDB_VER);

@@ -1052,6 +1052,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
   const IDB_NAME = 'business-analysis-template';
   const IDB_STORE = 'kv';
   const IDB_VER = 1;
+  const SCHEMA_VERSION = 2;  // 每次修改表结构时递增，启动时校验版本
 
   function openIdb() {
     return new Promise((resolve, reject) => {
@@ -1380,7 +1381,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
       setBoot('loading', '正在保存到浏览器缓存 ...');
       const exported = newDb.export();
       await idbPut('db', exported);
-      const meta = collectMeta(newDb, fileName);
+      const meta = { ...collectMeta(newDb, fileName), schemaVersion: SCHEMA_VERSION };
       await idbPut('meta', meta);
 
       if (db) { try { db.close(); } catch(e) {} }
@@ -1678,7 +1679,10 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
       periodOrder = 'year, month';
     }
 
-    const orgWhere = orgFilter ? `AND org = '${orgFilter.replace(/'/g, "''")}'` : '';
+    const actualParams = {};
+    const actualConds = [];
+    if (orgFilter) { actualConds.push('org = $org'); actualParams.$org = orgFilter; }
+    const actualWhere = actualConds.length ? 'WHERE ' + actualConds.join(' AND ') : '';
 
     // Actual data
     const actualSql = `
@@ -1687,18 +1691,22 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
              SUM(${metricCol}) / 100.0 AS actual,
              SUM(${scaleCol}) / 100.0 AS scale_amount
       FROM fact_premium
-      WHERE 1=1 ${orgWhere}
+      ${actualWhere}
       GROUP BY ${periodOrder}
       ORDER BY ${periodOrder}
     `;
-    const actualRows = q(actualSql);
+    const actualRows = q(actualSql, actualParams);
 
     // Target data
+    const targetParams = { $metric: metricType };
+    const targetConds = ['metric = $metric'];
+    if (orgFilter) { targetConds.push('org = $org'); targetParams.$org = orgFilter; }
+    const targetWhere = 'WHERE ' + targetConds.join(' AND ');
     const targetSql = `
       SELECT ${periodLabelSql},
              SUM(target_value) AS target
       FROM fact_target
-      WHERE metric = '${metricType.replace(/'/g, "''")}' ${orgWhere}
+      ${targetWhere}
       GROUP BY ${periodOrder}
       ORDER BY ${periodOrder}
     `;
@@ -1706,7 +1714,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
     try {
       // Ensure table exists before query
       db.exec(TARGET_SCHEMA_SQL);
-      targetRows = q(targetSql);
+      targetRows = q(targetSql, targetParams);
     } catch (e) { /* no target table or no data */ }
 
     const targetMap = {};
@@ -1842,9 +1850,10 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
       periodOrder = 'year, month';
     }
 
+    const params = {};
     const conditions = [];
-    if (orgFilter) conditions.push(`org = '${orgFilter.replace(/'/g, "''")}'`);
-    if (modeFilter) conditions.push(`biz_mode = '${modeFilter.replace(/'/g, "''")}'`);
+    if (orgFilter) { conditions.push('org = $org'); params.$org = orgFilter; }
+    if (modeFilter) { conditions.push('biz_mode = $mode'); params.$mode = modeFilter; }
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
     // 1. 月末在职人力 = 该期间有出单的去重工号数（近似）
@@ -1863,7 +1872,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
       GROUP BY ${groupCols}
       ORDER BY ${periodOrder}
     `;
-    const rows = q(sql);
+    const rows = q(sql, params);
 
     // 标准人力：按人员汇总月度折算保费，筛选达标人员
     // 阈值：OTO≥2万，证保≥3万（按业务模式区分）
@@ -1881,7 +1890,7 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
       ORDER BY ${periodOrder}
     `;
     let stdRows = [];
-    try { stdRows = q(stdSql); } catch (e) { console.warn('标准人力查询失败:', e); }
+    try { stdRows = q(stdSql, params); } catch (e) { console.warn('标准人力查询失败:', e); }
     const stdMap = {};
     stdRows.forEach(r => { stdMap[r.period_label] = r.std_count; });
 
@@ -2009,8 +2018,16 @@ body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f
       setBoot('loading', '正在检查浏览器缓存 ...');
       const cached = await idbGet('db');
       if (cached) {
-        db = new window.__SQL.Database(new Uint8Array(cached));
         const meta = await idbGet('meta');
+        if (!meta || meta.schemaVersion !== SCHEMA_VERSION) {
+          console.warn('Schema 版本不匹配，清除旧缓存');
+          try { await idbPut('db', null); } catch (e) {}
+          try { await idbPut('meta', null); } catch (e) {}
+          setBoot('empty');
+          bindEmptyUI();
+          return;
+        }
+        db = new window.__SQL.Database(new Uint8Array(cached));
         initApp(meta);
         return;
       }

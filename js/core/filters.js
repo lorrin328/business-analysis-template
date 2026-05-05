@@ -1,7 +1,9 @@
 // 筛选器：UI 选择器值 → SQL WHERE 子句
 //
-// 现阶段读取直接 DOM；P1.X 切换到 ESM bootstrap 后，main.js 负责
-// 在 DOMContentLoaded 之后再调用 initSelects()。
+// 自 P3 起拆分为两层：
+//   readFilterValues()         从 DOM 读取当前筛选值（纯 I/O）
+//   buildWhereFromValues()     纯函数：筛选值 → SQL WHERE（可脱离浏览器测试）
+//   buildWhere()               兼容包装，行为不变
 
 import { FILTER_KEYS, METRIC_MAP } from './constants.js';
 import { state, allYears } from './state.js';
@@ -12,14 +14,24 @@ export function metricCol() {
   return METRIC_MAP[state.metric];
 }
 
-// 收集筛选器当前值，构造参数化的 SQL WHERE 子句
-//   extraClauses: string[]    额外 AND 子句（已是 SQL 文本）
-//   extraParams:  Record<string, any>   绑定参数（含 $ 前缀）
-export function buildWhere(extraClauses, extraParams) {
+// 从 DOM 读取所有筛选器当前值，返回纯数据对象
+export function readFilterValues() {
+  const values = {};
+  FILTER_KEYS.forEach(f => {
+    values[f.col] = document.getElementById(f.sel).value;
+  });
+  return values;
+}
+
+// 纯函数：根据筛选值构造参数化 SQL WHERE 子句（可脱离浏览器单独测试）
+//   filterValues:  { colName: value }   来自 readFilterValues()
+//   extraClauses:  string[]             额外 AND 子句（已是 SQL 文本）
+//   extraParams:   Record<string, any>  绑定参数（含 $ 前缀）
+export function buildWhereFromValues(filterValues, extraClauses, extraParams) {
   const clauses = [];
   const params = {};
   FILTER_KEYS.forEach(f => {
-    const v = document.getElementById(f.sel).value;
+    const v = filterValues[f.col];
     if (v) {
       clauses.push(`${f.col} = $${f.col}`);
       params['$' + f.col] = v;
@@ -35,9 +47,20 @@ export function buildWhere(extraClauses, extraParams) {
   };
 }
 
+// 兼容包装：直接从 DOM 读取并构造 WHERE（保持原有调用方不变）
+export function buildWhere(extraClauses, extraParams) {
+  return buildWhereFromValues(readFilterValues(), extraClauses, extraParams);
+}
+
 // 用于检测筛选条件变化、缓存失效等场景
 export function filterStateHash() {
   return FILTER_KEYS.map(f => document.getElementById(f.sel).value).join('|') +
+         '|' + state.metric + '|' + state.view;
+}
+
+// 纯函数版本：从 filterValues 计算 hash（不读 DOM）
+export function filterStateHashFromValues(filterValues) {
+  return FILTER_KEYS.map(f => filterValues[f.col]).join('|') +
          '|' + state.metric + '|' + state.view;
 }
 
