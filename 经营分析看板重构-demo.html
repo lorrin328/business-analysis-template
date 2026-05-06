@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>经营分析看板 - Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0f172a;
+      --bg-card: #1e293b;
+      --bg-hover: #334155;
+      --text: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --accent: #3b82f6;
+      --accent-light: #60a5fa;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --border: #334155;
+      --gradient-start: #1e3a5f;
+      --gradient-end: #0f172a;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-left { display: flex; align-items: center; gap: 16px; }
+    .logo { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
+    .logo span { color: var(--accent-light); }
+    .tag {
+      background: rgba(59,130,246,0.15);
+      color: var(--accent-light);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      border: 1px solid rgba(59,130,246,0.3);
+    }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .date-display { color: var(--text-secondary); font-size: 14px; }
+
+    /* Layout */
+    .container { max-width: 1600px; margin: 0 auto; padding: 24px 32px; }
+    .section { margin-bottom: 24px; }
+    .section-title {
+      font-size: 16px; font-weight: 600; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-title::before {
+      content: ''; display: inline-block; width: 4px; height: 18px;
+      background: var(--accent); border-radius: 2px;
+    }
+
+    /* KPI Cards - 6 column */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 14px;
+    }
+    .kpi-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 14px;
+      transition: transform 0.2s, box-shadow 0.2s;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      text-align: center;
+      min-height: 150px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    .kpi-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      border-color: var(--accent);
+    }
+    .kpi-card::after {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .kpi-card:hover::after { opacity: 1; }
+
+    .kpi-card:nth-child(1)::after { background: var(--accent); }
+    .kpi-card:nth-child(2)::after { background: var(--success); }
+    .kpi-card:nth-child(3)::after { background: var(--warning); }
+    .kpi-card:nth-child(4)::after { background: #8b5cf6; }
+    .kpi-card:nth-child(5)::after { background: #ec4899; }
+    .kpi-card:nth-child(6)::after { background: #06b6d4; }
+
+    .kpi-top-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+    .kpi-big-value {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+    .kpi-bottom-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      justify-content: center;
+    }
+    .kpi-bottom-meta span {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .kpi-bottom-meta .up { color: var(--success); }
+    .kpi-bottom-meta .down { color: var(--danger); }
+
+    .kpi-upload-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-size: 10px;
+      color: var(--warning);
+      background: rgba(245,158,11,0.1);
+      padding: 2px 7px;
+      border-radius: 10px;
+      border: 1px solid rgba(245,158,11,0.2);
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 90%; max-width: 840px; max-height: 85vh;
+      overflow: hidden;
+      animation: modalIn 0.3s ease-out;
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: translateY(20px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-title { font-size: 18px; font-weight: 600; }
+    .modal-close {
+      background: none; border: none; color: var(--text-secondary);
+      font-size: 24px; cursor: pointer; width: 32px; height: 32px;
+      border-radius: 8px; display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .modal-close:hover { background: var(--bg-hover); color: var(--text); }
+    .modal-body { padding: 24px; overflow-y: auto; max-height: 65vh; }
+
+    /* Modal content */
+    .modal-kpi-detail {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .modal-kpi-detail.three-col {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+    .modal-kpi-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      text-align: center;
+    }
+    .modal-kpi-item .label { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+    .modal-kpi-item .value { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+    .modal-kpi-item .sub { font-size: 12px; color: var(--text-secondary); }
+    .modal-kpi-item .sub.up { color: var(--success); }
+    .modal-kpi-item .sub.down { color: var(--danger); }
+
+    .modal-chart { height: 260px; margin-bottom: 16px; }
+
+    .modal-table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+    }
+    .modal-table th, .modal-table td {
+      padding: 10px 12px; text-align: center;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-table th {
+      color: var(--text-secondary); font-weight: 500;
+      background: var(--bg); font-size: 12px;
+    }
+    .modal-table tr:hover td { background: rgba(59,130,246,0.05); }
+
+    .modal-section-title {
+      font-size: 14px; font-weight: 600;
+      margin: 16px 0 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    /* Charts Row */
+    .chart-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+    .chart-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .chart-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px;
+    }
+    .chart-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 12px;
+    }
+    .chart-title { font-size: 15px; font-weight: 600; }
+    .chart-actions { display: flex; gap: 8px; }
+    .chart-btn {
+      background: var(--bg-hover); border: 1px solid var(--border);
+      color: var(--text-secondary); padding: 4px 12px;
+      border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.2s;
+    }
+    .chart-btn:hover, .chart-btn.active {
+      background: var(--accent); color: white; border-color: var(--accent);
+    }
+    .chart-container { height: 320px; }
+
+    /* Upload Module - 5 columns */
+    .upload-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+    }
+    .upload-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 24px;
+      text-align: center; transition: all 0.2s;
+      cursor: pointer; position: relative;
+    }
+    .upload-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 4px 16px rgba(59,130,246,0.1);
+    }
+    .upload-card.has-file {
+      border-color: var(--success);
+      background: linear-gradient(135deg, rgba(16,185,129,0.05), var(--bg-card));
+    }
+    .upload-icon {
+      width: 48px; height: 48px; margin: 0 auto 12px;
+      background: var(--bg-hover); border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; transition: all 0.2s;
+    }
+    .upload-card:hover .upload-icon { background: var(--accent); transform: scale(1.05); }
+    .upload-card.has-file .upload-icon { background: rgba(16,185,129,0.2); }
+    .upload-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .upload-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; }
+    .upload-btn {
+      background: var(--bg-hover); border: 1px dashed var(--border);
+      color: var(--text); padding: 6px 16px;
+      border-radius: 8px; font-size: 12px; cursor: pointer; transition: all 0.2s;
+    }
+    .upload-btn:hover { background: var(--accent); border-style: solid; border-color: var(--accent); }
+    .file-info {
+      margin-top: 10px; padding: 6px 10px;
+      background: rgba(16,185,129,0.1); border-radius: 6px;
+      font-size: 11px; color: var(--success); display: none;
+    }
+    .upload-card.has-file .file-info { display: block; }
+    .upload-card.has-file .upload-btn {
+      background: rgba(16,185,129,0.15); border-color: var(--success); color: var(--success);
+    }
+    input[type="file"] { display: none; }
+
+    .upload-mandatory {
+      position: absolute; top: 8px; right: 8px;
+      font-size: 10px; color: var(--danger);
+      background: rgba(239,68,68,0.1); padding: 1px 6px;
+      border-radius: 4px; border: 1px solid rgba(239,68,68,0.2);
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center; padding: 24px;
+      color: var(--text-secondary); font-size: 12px;
+      border-top: 1px solid var(--border); margin-top: 24px;
+    }
+
+    /* Responsive */
+    @media (max-width: 1400px) {
+      .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+      .upload-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 1200px) {
+      .chart-row { grid-template-columns: 1fr; }
+      .chart-row-2 { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 768px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .upload-grid { grid-template-columns: 1fr; }
+      .container { padding: 16px; }
+      .header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
+      .modal-kpi-detail { grid-template-columns: 1fr; }
+      .modal-kpi-detail.three-col { grid-template-columns: 1fr; }
+    }
+
+    /* Animations */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .kpi-card, .chart-card, .upload-card {
+      animation: fadeInUp 0.5s ease-out both;
+    }
+    .kpi-card:nth-child(1) { animation-delay: 0.05s; }
+    .kpi-card:nth-child(2) { animation-delay: 0.1s; }
+    .kpi-card:nth-child(3) { animation-delay: 0.15s; }
+    .kpi-card:nth-child(4) { animation-delay: 0.2s; }
+    .kpi-card:nth-child(5) { animation-delay: 0.25s; }
+    .kpi-card:nth-child(6) { animation-delay: 0.3s; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">太平人寿 <span>经营分析看板</span></div>
+      <span class="tag">网电多元条线</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">Demo 预览</span>
+    </div>
+    <div class="header-right">
+      <span class="date-display">数据截止：2026年4月</span>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- KPI Section -->
+    <div class="section">
+      <div class="section-title">KPI 概览</div>
+      <div class="kpi-grid">
+        <!-- 1. 整体达成率（期交保费） -->
+        <div class="kpi-card" onclick="openModal('overall')">
+          <div class="kpi-top-label">期交保费达成率</div>
+          <div class="kpi-big-value" style="color: var(--accent-light);">85.3%</div>
+          <div class="kpi-bottom-meta">
+            <span>OTO <span class="up">88.2%</span></span>
+            <span>证保 <span class="up">90.5%</span></span>
+            <span>蚁桥 <span class="down">76.1%</span></span>
+          </div>
+        </div>
+
+        <!-- 2. 价值达成率 -->
+        <div class="kpi-card" onclick="openModal('value')">
+          <div class="kpi-upload-badge">需上传</div>
+          <div class="kpi-top-label">价值达成率</div>
+          <div class="kpi-big-value" style="color: var(--success);">72.5%</div>
+          <div class="kpi-bottom-meta">
+            <span>OTO <span class="up">75.1%</span></span>
+            <span>证保 <span class="up">78.3%</span></span>
+            <span>蚁桥 <span class="down">65.8%</span></span>
+          </div>
+        </div>
+
+        <!-- 3. 活动率 -->
+        <div class="kpi-card" onclick="openModal('activity')">
+          <div class="kpi-top-label">活动率</div>
+          <div class="kpi-big-value" style="color: var(--warning);">68.5%</div>
+          <div class="kpi-bottom-meta">
+            <span>点击查看分模式明细</span>
+          </div>
+        </div>
+
+        <!-- 4. 商保年金 -->
+        <div class="kpi-card" onclick="openModal('annuity')">
+          <div class="kpi-top-label">商保年金达成率</div>
+          <div class="kpi-big-value" style="color: #8b5cf6;">90.2%</div>
+          <div class="kpi-bottom-meta">
+            <span>经代 <span class="up">88.1%</span></span>
+            <span>转型 <span class="up">93.5%</span></span>
+          </div>
+        </div>
+
+        <!-- 5. 保障类产品 -->
+        <div class="kpi-card" onclick="openModal('protection')">
+          <div class="kpi-top-label">保障类产品达成率</div>
+          <div class="kpi-big-value" style="color: #ec4899;">82.0%</div>
+          <div class="kpi-bottom-meta">
+            <span>经代 <span class="down">80.2%</span></span>
+            <span>转型 <span class="up">85.1%</span></span>
+          </div>
+        </div>
+
+        <!-- 6. 10年期产品 -->
+        <div class="kpi-card" onclick="openModal('10year')">
+          <div class="kpi-top-label">10年期产品达成率</div>
+          <div class="kpi-big-value" style="color: #06b6d4;">79.8%</div>
+          <div class="kpi-bottom-meta">
+            <span>OTO <span class="up">82.1%</span></span>
+            <span>证保 <span class="up">85.6%</span></span>
+            <span>蚁桥 <span class="down">72.3%</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Row 1: Platform Trend + Product Structure -->
+    <div class="section">
+      <div class="section-title">业务分析</div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="chart-header">
+            <span class="chart-title">业务平台趋势</span>
+            <div class="chart-actions">
+              <button class="chart-btn active" onclick="switchMetric(this, 'qj')">期交</button>
+              <button class="chart-btn" onclick="switchMetric(this, 'ghgb')">年化规保</button>
+              <button class="chart-btn" onclick="switchMetric(this, 'zhsf')">折算保费</button>
+            </div>
+          </div>
+          <div class="chart-container" id="platformChart"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-header">
+            <span class="chart-title">产品结构</span>
+            <div class="chart-actions">
+              <button class="chart-btn active" onclick="switchPie(this, 'premium')">保费</button>
+              <button class="chart-btn" onclick="switchPie(this, 'count')">件数</button>
+            </div>
+          </div>
+          <div class="chart-container" id="productChart"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Row 2: Team Trend + YoY -->
+    <div class="section">
+      <div class="section-title">队伍分析</div>
+      <div class="chart-row-2">
+        <div class="chart-card">
+          <div class="chart-header">
+            <span class="chart-title">队伍趋势</span>
+            <div class="chart-actions">
+              <button class="chart-btn active" onclick="switchTeam(this, 'headcount')">人力规模</button>
+              <button class="chart-btn" onclick="switchTeam(this, 'activity')">活动率</button>
+            </div>
+          </div>
+          <div class="chart-container" id="teamChart"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-header">
+            <span class="chart-title">同比分析 (YoY)</span>
+            <div class="chart-actions">
+              <button class="chart-btn active">2026 vs 2025</button>
+            </div>
+          </div>
+          <div class="chart-container" id="yoyChart"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload Module -->
+    <div class="section">
+      <div class="section-title">数据上传</div>
+      <div class="upload-grid">
+        <div class="upload-card" onclick="document.getElementById('file1').click()">
+          <div class="upload-mandatory">必需</div>
+          <div class="upload-icon">👥</div>
+          <div class="upload-title">转型队伍清单</div>
+          <div class="upload-desc">人员信息、组织架构</div>
+          <button class="upload-btn">选择文件</button>
+          <div class="file-info" id="info1"></div>
+          <input type="file" id="file1" accept=".xlsx,.xls,.csv" onchange="handleFile(this, 'info1')">
+        </div>
+
+        <div class="upload-card" onclick="document.getElementById('file2').click()">
+          <div class="upload-mandatory">必需</div>
+          <div class="upload-icon">📋</div>
+          <div class="upload-title">转型业务清单</div>
+          <div class="upload-desc">保费、保单明细</div>
+          <button class="upload-btn">选择文件</button>
+          <div class="file-info" id="info2"></div>
+          <input type="file" id="file2" accept=".xlsx,.xls,.csv" onchange="handleFile(this, 'info2')">
+        </div>
+
+        <div class="upload-card" onclick="document.getElementById('file3').click()">
+          <div class="upload-mandatory">必需</div>
+          <div class="upload-icon">🤝</div>
+          <div class="upload-title">经代业务清单</div>
+          <div class="upload-desc">经代渠道业务数据</div>
+          <button class="upload-btn">选择文件</button>
+          <div class="file-info" id="info3"></div>
+          <input type="file" id="file3" accept=".xlsx,.xls,.csv" onchange="handleFile(this, 'info3')">
+        </div>
+
+        <div class="upload-card" onclick="document.getElementById('file4').click()">
+          <div class="upload-mandatory">必需</div>
+          <div class="upload-icon">💎</div>
+          <div class="upload-title">价值清单</div>
+          <div class="upload-desc">价值保费、价值率数据</div>
+          <button class="upload-btn">选择文件</button>
+          <div class="file-info" id="info4"></div>
+          <input type="file" id="file4" accept=".xlsx,.xls,.csv" onchange="handleFile(this, 'info4')">
+        </div>
+
+        <div class="upload-card" onclick="document.getElementById('file5').click()">
+          <div class="upload-mandatory">必需</div>
+          <div class="upload-icon">🎯</div>
+          <div class="upload-title">目标上传</div>
+          <div class="upload-desc">年度/月度目标数据</div>
+          <button class="upload-btn">选择文件</button>
+          <div class="file-info" id="info5"></div>
+          <input type="file" id="file5" accept=".xlsx,.xls,.csv" onchange="handleFile(this, 'info5')">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    太平人寿网电多元条线 · 经营分析系统 · Demo 版本仅供展示
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title" id="modalTitle">详情</span>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body" id="modalBody">
+        <!-- Dynamic content -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---------- Modal System ----------
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+
+    function openModal(type) {
+      const content = getModalContent(type);
+      modalTitle.textContent = content.title;
+      modalBody.innerHTML = content.body;
+      modalOverlay.classList.add('active');
+      if (content.initChart) {
+        setTimeout(content.initChart, 100);
+      }
+    }
+
+    function closeModal(e) {
+      if (!e || e.target === modalOverlay) {
+        modalOverlay.classList.remove('active');
+      }
+    }
+
+    function getModalContent(type) {
+      switch(type) {
+        case 'overall':
+          return {
+            title: '期交保费达成率 - 分业务模式',
+            body: `
+              <div class="modal-kpi-detail three-col">
+                <div class="modal-kpi-item">
+                  <div class="label">OTO 达成率</div>
+                  <div class="value" style="color: var(--accent-light);">88.2%</div>
+                  <div class="sub up">▲ 同比 +3.5pp</div>
+                </div>
+                <div class="modal-kpi-item">
+                  <div class="label">证保 达成率</div>
+                  <div class="value" style="color: var(--success);">90.5%</div>
+                  <div class="sub up">▲ 同比 +5.2pp</div>
+                </div>
+                <div class="modal-kpi-item">
+                  <div class="label">蚁桥 达成率</div>
+                  <div class="value" style="color: var(--danger);">76.1%</div>
+                  <div class="sub down">▼ 同比 -4.8pp</div>
+                </div>
+              </div>
+              <div class="modal-section-title">规模数据（经代 / 转型）</div>
+              <div class="modal-kpi-detail">
+                <div class="modal-kpi-item">
+                  <div class="label">经代业务期交保费</div>
+                  <div class="value" style="color: var(--accent-light);">4,580<span style="font-size:14px">万</span></div>
+                  <div class="sub up">▲ 同比 +6.2%</div>
+                </div>
+                <div class="modal-kpi-item">
+                  <div class="label">转型业务期交保费</div>
+                  <div class="value" style="color: var(--success);">3,740<span style="font-size:14px">万</span></div>
+                  <div class="sub up">▲ 同比 +12.8%</div>
+                </div>
+              </div>
+              <div id="modalChart" class="modal-chart"></div>
+            `,
+            initChart: () => {
+              const chart = echarts.init(document.getElementById('modalChart'));
+              chart.setOption({
+                tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
+                legend: { data: ['OTO', '证保', '蚁桥', '线上经代', '职域营销'], textStyle: { color: '#94a3b8' }, bottom: 0 },
+                grid: { left: 50, right: 20, top: 10, bottom: 30 },
+                xAxis: { type: 'category', data: ['1月','2月','3月','4月'], axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
+                yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
+                series: [
+                  { name: 'OTO', type: 'bar', stack: 'total', data: [820,950,1100,1250], itemStyle: { color: '#3b82f6' } },
+                  { name: '证保', type: 'bar', stack: 'total', data: [680,720,850,900], itemStyle: { color: '#10b981' } },
+                  { name: '蚁桥', type: 'bar', stack: 'total', data: [450,520,580,620], itemStyle: { color: '#f59e0b' } },
+                  { name: '线上经代', type: 'bar', stack: 'total', data: [320,380,420,480], itemStyle: { color: '#8b5cf6' } },
+                  { name: '职域营销', type: 'bar', stack: 'total', data: [0,0,80,150], itemStyle: { color: '#ec4899' } }
+                ]
+              });
+            }
+          };
+        case 'value':
+          return {
+            title: '价值达成率 - 分业务模式',
+            body: `
+              <div class="modal-kpi-detail three-col">
+                <div class="modal-kpi-item">
+                  <div class="label">OTO 价值达成率</div>
+                  <div class="value" style="color: var(--accent-light);">75.1%</div>
+                  <div class="sub">价值规模 1,820万</div>
+                </div>
+                <div class="modal-kpi-item">
+                  <div class="label">证保 价值达成率</div>
+                  <div class="value" style="color: var(--success);">78.3%</div>
+                  <div class="sub">价值规模 1,560万</div>
+                </div>
+                <div class="modal-kpi-item">
+                  <div class="label">蚁桥 价值达成率</div>
+                  <div class="value" style="color: var(--danger);">65.8%</div>
+                  <div class="sub">价值规模 980万</div>
+                </div>
+              </div>
+              <div class="modal-section-title">价值规模趋势</div>
+              <div id="modalChart" class="modal-chart"></div>
+              <p style="color: var(--text-secondary); font-size: 13px; margin-top: 8px;">价值清单上传后可自动计算价值保费、价值率等指标。</p>
+            `,
+            initChart: () => {
+              const chart = echarts.init(document.getElementById('modalChart'));
+              chart.setOption({
+                tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
+                legend: { data: ['OTO', '证保', '蚁桥'], textStyle: { color: '#94a3b8' }, bottom: 0 },
+                grid: { left: 50, right: 20, top: 10, bottom: 30 },
+                xAxis: { type: 'category', data: ['1月','2月','3月','4月'], axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
+                yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
+                series: [
+                  { name: 'OTO', type: 'line', smooth: true, data: [420,480,550,620], itemStyle: { color: '#3b82f6' }, areaStyle: { opacity: 0.1 } },
+                  { name: '证保', type: 'line', smooth: true, data: [360,400,460,520], itemStyle: { color: '#10b981' }, areaStyle: { opacity: 0.1 } },
+                  { name: '蚁桥', type: 'line', smooth: true, data: [220,260,290,310], itemStyle: { color: '#f59e0b' }, areaStyle: { opacity: 0.1 } }
+                ]
+              });
+            }
+          };
+        case 'activity':
+          return {
+            title: '活动率 - 分业务模式',
+            body: `
+              <table class="modal-table">
+                <thead><tr><th>业务模式</th><th>活动率</th><th>环比</th><th>在职人力</th><th>举绩人力</th></tr></thead>
+                <tbody>
+                  <tr><td>OTO</td><td style="color:var(--success);font-weight:600;">72.5%</td><td class="up">▲ 2.1pp</td><td>850</td><td>616</td></tr>
+                  <tr><td>证保</td><td style="color:var(--success);font-weight:600;">68.3%</td><td class="up">▲ 1.5pp</td><td>620</td><td>423</td></tr>
+                  <tr><td>蚁桥</td><td style="color:var(--warning);font-weight:600;">58.2%</td><td class="down">▼ 0.8pp</td><td>480</td><td>279</td></tr>
+                </tbody>
+              </table>
+              <p style="color: var(--text-secondary); font-size: 13px; margin-top: 12px;">注：线上经代、职域营销暂无活动率指标。</p>
+            `
+          };
+        case 'annuity':
+          return {
+            title: '商保年金达成率详情',
+            body: `
+              <div class="modal-kpi-detail">
+                <div class="modal-kpi-item">
+                  <div class="label">经代业务商保年金达成率</div>
+                  <div class="value" style="color: var(--accent-light);">88.1%</div>
+                  <div class="sub up">▲ 同比 +2.3pp</div>
+                </div>
+                <div class="modal-kpi-item">
+                  <div class="label">转型业务商保年金达成率</div>
+                  <div class="value" style="color: var(--success);">93.5%</div>
+                  <div class="sub up">▲ 同比 +4.1pp</div>
+                </div>
+              </div>
+            `
+          };
+        case 'protection':
+          return {
+            title: '保障类产品达成率详情',
+            body: `
+              <div class="modal-kpi-detail">
+                <div class="modal-kpi-item">
+                  <div class="label">经代业务保障类产品达成率</div>
+                  <div class="value" style="color: var(--danger);">80.2%</div>
+                  <div class="sub down">▼ 同比 -1.5pp</div>
+                </div>
+                <div class="modal-kpi-item">
+                  <div class="label">转型业务保障类产品达成率</div>
+                  <div class="value" style="color: var(--success);">85.1%</div>
+                  <div class="sub up">▲ 同比 +3.2pp</div>
+                </div>
+              </div>
+            `
+          };
+        case '10year':
+          return {
+            title: '10年期产品达成率 - 分业务模式',
+            body: `
+              <div class="modal-kpi-detail three-col">
+                <div class="modal-kpi-item">
+                  <div class="label">OTO 10年期达成率</div>
+                  <div class="value" style="color: var(--accent-light);">82.1%</div>
+                  <div class="sub">规模 1,250万</div>
+                </div>
+                <div class="modal-kpi-item">
+                  <div class="label">证保 10年期达成率</div>
+                  <div class="value" style="color: var(--success);">85.6%</div>
+                  <div class="sub">规模 1,080万</div>
+                </div>
+                <div class="modal-kpi-item">
+                  <div class="label">蚁桥 10年期达成率</div>
+                  <div class="value" style="color: var(--danger);">72.3%</div>
+                  <div class="sub">规模 620万</div>
+                </div>
+              </div>
+              <div class="modal-section-title">10年期产品规模趋势</div>
+              <div id="modalChart" class="modal-chart"></div>
+            `,
+            initChart: () => {
+              const chart = echarts.init(document.getElementById('modalChart'));
+              chart.setOption({
+                tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
+                legend: { data: ['OTO', '证保', '蚁桥'], textStyle: { color: '#94a3b8' }, bottom: 0 },
+                grid: { left: 50, right: 20, top: 10, bottom: 30 },
+                xAxis: { type: 'category', data: ['1月','2月','3月','4月'], axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
+                yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
+                series: [
+                  { name: 'OTO', type: 'bar', data: [280,320,380,420], itemStyle: { color: '#3b82f6', borderRadius: [4,4,0,0] }, barWidth: '25%' },
+                  { name: '证保', type: 'bar', data: [240,270,310,350], itemStyle: { color: '#10b981', borderRadius: [4,4,0,0] }, barWidth: '25%' },
+                  { name: '蚁桥', type: 'bar', data: [140,160,180,200], itemStyle: { color: '#f59e0b', borderRadius: [4,4,0,0] }, barWidth: '25%' }
+                ]
+              });
+            }
+          };
+        default:
+          return { title: '详情', body: '<p>暂无数据</p>' };
+      }
+    }
+
+    // ---------- Mock Data ----------
+    const months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+    const platformData = {
+      qj: {
+        'OTO': [820,950,1100,1250,0,0,0,0,0,0,0,0],
+        '证保': [680,720,850,900,0,0,0,0,0,0,0,0],
+        '蚁桥': [450,520,580,620,0,0,0,0,0,0,0,0],
+        '线上经代': [320,380,420,480,0,0,0,0,0,0,0,0],
+        '职域营销': [0,0,80,150,0,0,0,0,0,0,0,0]
+      },
+      ghgb: {
+        'OTO': [920,1050,1200,1380,0,0,0,0,0,0,0,0],
+        '证保': [780,820,950,1000,0,0,0,0,0,0,0,0],
+        '蚁桥': [520,580,650,700,0,0,0,0,0,0,0,0],
+        '线上经代': [380,420,480,550,0,0,0,0,0,0,0,0],
+        '职域营销': [0,0,100,180,0,0,0,0,0,0,0,0]
+      },
+      zhsf: {
+        'OTO': [680,780,900,1020,0,0,0,0,0,0,0,0],
+        '证保': [580,620,720,760,0,0,0,0,0,0,0,0],
+        '蚁桥': [380,440,490,530,0,0,0,0,0,0,0,0],
+        '线上经代': [280,320,360,410,0,0,0,0,0,0,0,0],
+        '职域营销': [0,0,60,120,0,0,0,0,0,0,0,0]
+      }
+    };
+
+    const productData = {
+      premium: [
+        { value: 3520, name: '长期年金' },
+        { value: 2800, name: '长期健康险' },
+        { value: 2100, name: '短期险' },
+        { value: 1850, name: '长期寿险' },
+        { value: 1200, name: '万能/投连' },
+        { value: 630, name: '其他' }
+      ],
+      count: [
+        { value: 1200, name: '短期险' },
+        { value: 850, name: '长期健康险' },
+        { value: 620, name: '长期年金' },
+        { value: 480, name: '长期寿险' },
+        { value: 320, name: '万能/投连' },
+        { value: 180, name: '其他' }
+      ]
+    };
+
+    const teamData = {
+      headcount: {
+        '月均在职人力': [3200,3250,3180,3120,0,0,0,0,0,0,0,0],
+        '月均举绩人力': [2100,2180,2150,2080,0,0,0,0,0,0,0,0]
+      },
+      activity: {
+        '活动率': [62,65,64,63,0,0,0,0,0,0,0,0],
+        '长险活动率': [45,48,47,46,0,0,0,0,0,0,0,0]
+      }
+    };
+
+    const yoyData = {
+      months: ['1月','2月','3月','4月'],
+      series: [
+        { name: '2025', data: [3200,3850,4520,5100] },
+        { name: '2026', data: [3680,4420,5100,5780] }
+      ]
+    };
+
+    // ---------- Chart 1: Platform Trend ----------
+    const platformChart = echarts.init(document.getElementById('platformChart'));
+    let currentMetric = 'qj';
+
+    function getPlatformOption(metric) {
+      const data = platformData[metric];
+      const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+      const series = Object.keys(data).map((name, i) => ({
+        name,
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: { width: 2.5 },
+        areaStyle: { opacity: 0.08 },
+        data: data[name],
+        itemStyle: { color: colors[i % colors.length] }
+      }));
+
+      return {
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor: '#1e293b',
+          borderColor: '#334155',
+          textStyle: { color: '#f1f5f9' },
+          axisPointer: { type: 'cross', crossStyle: { color: '#94a3b8' } }
+        },
+        legend: {
+          data: Object.keys(data),
+          textStyle: { color: '#94a3b8', fontSize: 12 },
+          bottom: 0,
+          icon: 'roundRect'
+        },
+        grid: { left: 50, right: 20, top: 20, bottom: 40 },
+        xAxis: {
+          type: 'category',
+          data: months,
+          axisLine: { lineStyle: { color: '#334155' } },
+          axisLabel: { color: '#94a3b8' }
+        },
+        yAxis: {
+          type: 'value',
+          axisLine: { show: false },
+          splitLine: { lineStyle: { color: '#334155', type: 'dashed' } },
+          axisLabel: { color: '#94a3b8', formatter: '{value}' }
+        },
+        series
+      };
+    }
+    platformChart.setOption(getPlatformOption('qj'));
+
+    function switchMetric(btn, metric) {
+      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentMetric = metric;
+      platformChart.setOption(getPlatformOption(metric), true);
+    }
+
+    // ---------- Chart 2: Product Structure ----------
+    const productChart = echarts.init(document.getElementById('productChart'));
+
+    function getPieOption(type) {
+      return {
+        tooltip: {
+          trigger: 'item',
+          backgroundColor: '#1e293b',
+          borderColor: '#334155',
+          textStyle: { color: '#f1f5f9' },
+          formatter: '{b}: {c}万 ({d}%)'
+        },
+        legend: {
+          orient: 'vertical',
+          right: 10,
+          top: 'center',
+          textStyle: { color: '#94a3b8', fontSize: 11 },
+          itemWidth: 12,
+          itemHeight: 12
+        },
+        series: [{
+          type: 'pie',
+          radius: ['40%', '70%'],
+          center: ['35%', '50%'],
+          avoidLabelOverlap: true,
+          itemStyle: { borderRadius: 6, borderColor: '#1e293b', borderWidth: 2 },
+          label: { show: false },
+          emphasis: {
+            label: { show: true, fontSize: 14, fontWeight: 'bold', color: '#f1f5f9' }
+          },
+          data: productData[type],
+          color: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4']
+        }]
+      };
+    }
+    productChart.setOption(getPieOption('premium'));
+
+    function switchPie(btn, type) {
+      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      productChart.setOption(getPieOption(type), true);
+    }
+
+    // ---------- Chart 3: Team Trend ----------
+    const teamChart = echarts.init(document.getElementById('teamChart'));
+
+    function getTeamOption(view) {
+      const data = teamData[view];
+      const isActivity = view === 'activity';
+      const series = Object.keys(data).map((name, i) => ({
+        name,
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: { width: 2.5 },
+        data: data[name],
+        itemStyle: { color: i === 0 ? '#3b82f6' : '#10b981' }
+      }));
+
+      return {
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor: '#1e293b',
+          borderColor: '#334155',
+          textStyle: { color: '#f1f5f9' },
+          formatter: isActivity ? '{b}<br/>{a0}: {c0}%<br/>{a1}: {c1}%' : '{b}<br/>{a0}: {c0}人<br/>{a1}: {c1}人'
+        },
+        legend: {
+          data: Object.keys(data),
+          textStyle: { color: '#94a3b8', fontSize: 12 },
+          bottom: 0
+        },
+        grid: { left: 50, right: 20, top: 20, bottom: 40 },
+        xAxis: {
+          type: 'category',
+          data: months,
+          axisLine: { lineStyle: { color: '#334155' } },
+          axisLabel: { color: '#94a3b8' }
+        },
+        yAxis: {
+          type: 'value',
+          axisLine: { show: false },
+          splitLine: { lineStyle: { color: '#334155', type: 'dashed' } },
+          axisLabel: {
+            color: '#94a3b8',
+            formatter: isActivity ? '{value}%' : '{value}'
+          }
+        },
+        series
+      };
+    }
+    teamChart.setOption(getTeamOption('headcount'));
+
+    function switchTeam(btn, view) {
+      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      teamChart.setOption(getTeamOption(view), true);
+    }
+
+    // ---------- Chart 4: YoY ----------
+    const yoyChart = echarts.init(document.getElementById('yoyChart'));
+    yoyChart.setOption({
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: '#1e293b',
+        borderColor: '#334155',
+        textStyle: { color: '#f1f5f9' }
+      },
+      legend: {
+        data: ['2025', '2026'],
+        textStyle: { color: '#94a3b8', fontSize: 12 },
+        bottom: 0
+      },
+      grid: { left: 50, right: 20, top: 20, bottom: 40 },
+      xAxis: {
+        type: 'category',
+        data: yoyData.months,
+        axisLine: { lineStyle: { color: '#334155' } },
+        axisLabel: { color: '#94a3b8' }
+      },
+      yAxis: {
+        type: 'value',
+        axisLine: { show: false },
+        splitLine: { lineStyle: { color: '#334155', type: 'dashed' } },
+        axisLabel: { color: '#94a3b8' }
+      },
+      series: [
+        {
+          name: '2025',
+          type: 'bar',
+          data: yoyData.series[0].data,
+          itemStyle: { color: '#334155', borderRadius: [4, 4, 0, 0] },
+          barWidth: '30%'
+        },
+        {
+          name: '2026',
+          type: 'bar',
+          data: yoyData.series[1].data,
+          itemStyle: { color: '#3b82f6', borderRadius: [4, 4, 0, 0] },
+          barWidth: '30%'
+        }
+      ]
+    });
+
+    // ---------- Upload Handler ----------
+    function handleFile(input, infoId) {
+      if (input.files && input.files[0]) {
+        const file = input.files[0];
+        const card = input.closest('.upload-card');
+        const info = document.getElementById(infoId);
+        const sizeKB = (file.size / 1024).toFixed(0);
+        info.textContent = `✓ 已选择: ${file.name} (${sizeKB}KB) - 点击上传`;
+        card.classList.add('has-file');
+        setTimeout(() => {
+          info.textContent = `✓ 已上传: ${file.name} (${sizeKB}KB)`;
+        }, 800);
+      }
+    }
+
+    // ---------- Resize ----------
+    window.addEventListener('resize', () => {
+      platformChart.resize();
+      productChart.resize();
+      teamChart.resize();
+      yoyChart.resize();
+    });
+  </script>
+</body>
+</html>
