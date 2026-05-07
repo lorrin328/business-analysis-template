@@ -26,6 +26,7 @@
     .btn-secondary:hover { background: #475569; }
     .btn-success { background: #10b981; color: #fff; }
     .btn-success:hover { background: #059669; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .toolbar {
       display: flex; align-items: center; gap: 16px; margin-bottom: 20px;
@@ -36,6 +37,7 @@
       padding: 6px 10px; border-radius: 4px; border: 1px solid #334155;
       background: #0f172a; color: #e2e8f0; font-size: 13px;
     }
+    .toolbar .status { margin-left: auto; font-size: 12px; color: #64748b; }
 
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
 
@@ -72,6 +74,9 @@
     input.target-input:focus {
       outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
     }
+    input.target-input-sm {
+      width: 58px; padding: 3px 4px; font-size: 11px;
+    }
 
     .toast {
       position: fixed; top: 20px; right: 20px; padding: 12px 20px;
@@ -93,7 +98,7 @@
       <button class="btn btn-secondary" onclick="exportJSON()">导出 JSON</button>
       <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">导入 JSON</button>
       <input type="file" id="fileInput" accept=".json" onchange="importJSON(this)">
-      <button class="btn btn-success" onclick="saveToLocal()">保存到本地</button>
+      <button class="btn btn-success" id="saveBtn" onclick="saveToServer()">保存到服务器</button>
     </div>
   </div>
 
@@ -104,7 +109,8 @@
       <option value="2025">2025</option>
       <option value="2024">2024</option>
     </select>
-    <span style="color:#64748b;font-size:12px;">所有目标值单位：万</span>
+    <span style="color:#64748b;font-size:12px;">所有目标值单位：万 · 数据保存到服务器后所有人可见</span>
+    <span class="status" id="statusText"></span>
   </div>
 
   <div class="grid" id="formGrid"></div>
@@ -112,65 +118,93 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    // 默认数据结构
-    function createDefaultData(year) {
-      const metrics = ['整体', '经代', '转型业务', 'OTO', '证保', '蚁桥'];
-      const dims = ['year', 'quarter', 'month'];
-      const dimLabels = { year: '年度目标', quarter: '季度目标', month: '月度目标' };
+    // 如需手动指定后端地址，取消下面一行的注释并修改：
+    // const BACKEND_URL = 'http://your-server-ip:8000';
+    const API_BASE = typeof BACKEND_URL !== 'undefined' ? BACKEND_URL
+      : (window.location.protocol === 'file:' ? 'http://localhost:8000' : '');
 
+    const METRICS = ['整体', '经代', '转型业务', 'OTO', '证保', '蚁桥'];
+
+    function createDefaultData(year) {
       const categories = [
         { key: 'qjPremium', name: '期交保费', color: '#3b82f6',
-          targets: { year: [10500,4800,5700,2500,2200,1000], quarter: [2800,1200,1600,700,600,300], month: [950,420,530,280,180,120] } },
+          yearTargets: [10500,4800,5700,2500,2200,1000] },
         { key: 'value', name: '价值保费', color: '#8b5cf6',
-          targets: { year: [8200,3600,4600,2000,1800,800], quarter: [2200,960,1240,540,480,220], month: [780,340,440,200,170,70] } },
+          yearTargets: [8200,3600,4600,2000,1800,800] },
         { key: 'shangbao', name: '商保年金', color: '#10b981',
-          targets: { year: [3500,1500,2000,900,700,400], quarter: [900,400,500,220,180,100], month: [320,140,180,80,65,35] } },
+          yearTargets: [3500,1500,2000,900,700,400] },
         { key: 'baozhang', name: '保障类产品', color: '#f59e0b',
-          targets: { year: [4200,1800,2400,1000,900,500], quarter: [1100,480,620,270,240,130], month: [380,170,210,95,80,35] } },
+          yearTargets: [4200,1800,2400,1000,900,500] },
         { key: 'tenYear', name: '10年期产品', color: '#ef4444',
-          targets: { year: [2800,1200,1600,700,600,300], quarter: [750,320,430,190,170,70], month: [260,115,145,65,55,25] } }
+          yearTargets: [2800,1200,1600,700,600,300] }
       ];
-
+      const qFactors = [0.22, 0.25, 0.26, 0.27];
+      const mFactors = [0.07,0.07,0.08,0.08,0.09,0.09,0.08,0.08,0.09,0.09,0.09,0.09];
       const data = { year: parseInt(year), categories: {} };
       categories.forEach(cat => {
         data.categories[cat.key] = { name: cat.name, color: cat.color, metrics: {} };
-        metrics.forEach((m, i) => {
-          data.categories[cat.key].metrics[m] = {};
-          dims.forEach(d => {
-            data.categories[cat.key].metrics[m][d] = cat.targets[d][i];
-          });
+        METRICS.forEach((m, i) => {
+          const yearVal = cat.yearTargets[i];
+          data.categories[cat.key].metrics[m] = {
+            year: yearVal,
+            quarter: qFactors.map(f => Math.round(yearVal * f)),
+            month: mFactors.map(f => Math.round(yearVal * f))
+          };
         });
       });
       return data;
     }
 
-    let currentData = null;
-    const STORAGE_KEY = 'business_targets_v1';
+    function normalizeData(data, year) {
+      const base = createDefaultData(year || data?.year || 2026);
+      if (!data || !data.categories) return base;
+      const result = { year: parseInt(year || data.year || 2026), categories: {} };
+      Object.keys(base.categories).forEach(catKey => {
+        result.categories[catKey] = {
+          name: data.categories[catKey]?.name || base.categories[catKey].name,
+          color: data.categories[catKey]?.color || base.categories[catKey].color,
+          metrics: {}
+        };
+        METRICS.forEach(m => {
+          const src = data.categories[catKey]?.metrics?.[m];
+          result.categories[catKey].metrics[m] = {
+            year: src?.year ?? base.categories[catKey].metrics[m].year,
+            quarter: Array.isArray(src?.quarter) && src.quarter.length === 4
+              ? src.quarter : base.categories[catKey].metrics[m].quarter,
+            month: Array.isArray(src?.month) && src.month.length === 12
+              ? src.month : base.categories[catKey].metrics[m].month
+          };
+        });
+      });
+      return result;
+    }
 
-    function loadData() {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        try {
-          currentData = JSON.parse(saved);
-        } catch(e) {
-          currentData = createDefaultData(2026);
-        }
-      } else {
-        currentData = createDefaultData(2026);
+    let currentData = null;
+
+    async function loadFromServer(year) {
+      const desiredYear = parseInt(year || currentData?.year || 2026);
+      setStatus('正在从服务器加载...');
+      try {
+        const resp = await fetch(`${API_BASE}/api/targets/${desiredYear}`, { method: 'GET' });
+        if (!resp.ok) throw new Error('Server unavailable');
+        const data = await resp.json();
+        currentData = normalizeData(data && data.categories ? data : createDefaultData(desiredYear), desiredYear);
+        setStatus('已从服务器同步');
+      } catch (e) {
+        currentData = createDefaultData(desiredYear);
+        setStatus('服务器不可用，使用默认数据');
       }
       document.getElementById('yearSelect').value = currentData.year;
       renderForm();
     }
 
     function changeYear(year) {
-      currentData.year = parseInt(year);
-      renderForm();
+      loadFromServer(parseInt(year));
     }
 
     function renderForm() {
       const grid = document.getElementById('formGrid');
       grid.innerHTML = '';
-
       Object.entries(currentData.categories).forEach(([catKey, cat]) => {
         const card = document.createElement('div');
         card.className = 'card';
@@ -179,43 +213,92 @@
             <span class="icon" style="background:${cat.color}"></span>
             ${cat.name}目标
           </div>
-          <div class="card-body">
-            ${renderCategoryTable(catKey, cat)}
-          </div>
+          <div class="card-body">${renderCategoryTable(catKey, cat)}</div>
         `;
         grid.appendChild(card);
       });
     }
 
     function renderCategoryTable(catKey, cat) {
-      const metrics = ['整体', '经代', '转型业务', 'OTO', '证保', '蚁桥'];
-      const dims = [
-        { key: 'year', label: '年度目标' },
-        { key: 'quarter', label: '季度目标' },
-        { key: 'month', label: '月度目标' }
-      ];
-
-      return dims.map(dim => `
-        <div class="section-title">${dim.label}</div>
+      // 年度目标
+      let html = `
+        <div class="section-title">年度目标</div>
         <table>
-          <thead>
-            <tr><th style="width:40%">口径</th><th>目标值（万）</th></tr>
-          </thead>
+          <thead><tr><th style="width:40%">口径</th><th>目标值（万）</th></tr></thead>
           <tbody>
-            ${metrics.map(m => `
+            ${METRICS.map(m => `
               <tr class="${m === 'OTO' || m === '证保' || m === '蚁桥' ? 'sub' : ''}">
                 <td>${m}</td>
-                <td>
-                  <input type="number" class="target-input"
-                    value="${cat.metrics[m]?.[dim.key] ?? 0}"
-                    data-cat="${catKey}" data-metric="${m}" data-dim="${dim.key}"
-                    onchange="updateValue(this)">
-                </td>
+                <td><input type="number" class="target-input"
+                  value="${cat.metrics[m]?.year ?? 0}"
+                  data-cat="${catKey}" data-metric="${m}" data-dim="year"
+                  onchange="updateValue(this)"></td>
               </tr>
             `).join('')}
           </tbody>
         </table>
-      `).join('');
+      `;
+      // 季度目标
+      html += `
+        <div class="section-title">季度目标</div>
+        <table>
+          <thead><tr><th>口径</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th></tr></thead>
+          <tbody>
+            ${METRICS.map(m => `
+              <tr class="${m === 'OTO' || m === '证保' || m === '蚁桥' ? 'sub' : ''}">
+                <td>${m}</td>
+                ${[0,1,2,3].map(q => `
+                  <td><input type="number" class="target-input target-input-sm"
+                    value="${cat.metrics[m]?.quarter?.[q] ?? 0}"
+                    data-cat="${catKey}" data-metric="${m}" data-dim="quarter" data-idx="${q}"
+                    onchange="updateValue(this)"></td>
+                `).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      // 月度目标（上半年）
+      html += `
+        <div class="section-title">月度目标（1-6月）</div>
+        <table>
+          <thead><tr><th>口径</th>${[1,2,3,4,5,6].map(mo => `<th>${mo}月</th>`).join('')}</tr></thead>
+          <tbody>
+            ${METRICS.map(m => `
+              <tr class="${m === 'OTO' || m === '证保' || m === '蚁桥' ? 'sub' : ''}">
+                <td>${m}</td>
+                ${[0,1,2,3,4,5].map(mi => `
+                  <td><input type="number" class="target-input target-input-sm"
+                    value="${cat.metrics[m]?.month?.[mi] ?? 0}"
+                    data-cat="${catKey}" data-metric="${m}" data-dim="month" data-idx="${mi}"
+                    onchange="updateValue(this)"></td>
+                `).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      // 月度目标（下半年）
+      html += `
+        <div class="section-title">月度目标（7-12月）</div>
+        <table>
+          <thead><tr><th>口径</th>${[7,8,9,10,11,12].map(mo => `<th>${mo}月</th>`).join('')}</tr></thead>
+          <tbody>
+            ${METRICS.map(m => `
+              <tr class="${m === 'OTO' || m === '证保' || m === '蚁桥' ? 'sub' : ''}">
+                <td>${m}</td>
+                ${[6,7,8,9,10,11].map(mi => `
+                  <td><input type="number" class="target-input target-input-sm"
+                    value="${cat.metrics[m]?.month?.[mi] ?? 0}"
+                    data-cat="${catKey}" data-metric="${m}" data-dim="month" data-idx="${mi}"
+                    onchange="updateValue(this)"></td>
+                `).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      return html;
     }
 
     function updateValue(input) {
@@ -224,14 +307,42 @@
       const dim = input.dataset.dim;
       const val = parseFloat(input.value) || 0;
       if (!currentData.categories[cat].metrics[metric]) {
-        currentData.categories[cat].metrics[metric] = {};
+        currentData.categories[cat].metrics[metric] = { year: 0, quarter: [0,0,0,0], month: Array(12).fill(0) };
       }
-      currentData.categories[cat].metrics[metric][dim] = val;
+      if (dim === 'year') {
+        currentData.categories[cat].metrics[metric].year = val;
+      } else {
+        const idx = parseInt(input.dataset.idx);
+        const arr = currentData.categories[cat].metrics[metric][dim];
+        if (Array.isArray(arr) && idx >= 0 && idx < arr.length) {
+          arr[idx] = val;
+        }
+      }
     }
 
-    function saveToLocal() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
-      showToast('目标数据已保存到浏览器本地存储', 'success');
+    async function saveToServer() {
+      const btn = document.getElementById('saveBtn');
+      const original = btn.textContent;
+      btn.textContent = '保存中...';
+      btn.disabled = true;
+      try {
+        currentData = normalizeData(currentData, currentData?.year || 2026);
+        const resp = await fetch(`${API_BASE}/api/targets/${currentData.year}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(currentData)
+        });
+        if (!resp.ok) throw new Error('保存失败');
+        currentData = normalizeData(await resp.json(), currentData.year);
+        showToast('目标数据已保存到服务器', 'success');
+        setStatus('已保存到服务器');
+      } catch (e) {
+        showToast('保存失败: ' + e.message, 'error');
+        setStatus('保存失败');
+      } finally {
+        btn.textContent = original;
+        btn.disabled = false;
+      }
     }
 
     function exportJSON() {
@@ -245,19 +356,19 @@
       showToast('JSON 文件已导出', 'success');
     }
 
-    function importJSON(input) {
+    async function importJSON(input) {
       const file = input.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const data = JSON.parse(e.target.result);
           if (data.year && data.categories) {
-            currentData = data;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
+            currentData = normalizeData(data, data.year);
             document.getElementById('yearSelect').value = currentData.year;
             renderForm();
-            showToast('目标数据导入成功', 'success');
+            showToast('JSON 导入成功，请保存到服务器', 'success');
+            setStatus('数据已导入，未保存到服务器');
           } else {
             showToast('文件格式不正确', 'error');
           }
@@ -269,6 +380,10 @@
       input.value = '';
     }
 
+    function setStatus(msg) {
+      document.getElementById('statusText').textContent = msg;
+    }
+
     function showToast(msg, type) {
       const toast = document.getElementById('toast');
       toast.textContent = msg;
@@ -276,7 +391,8 @@
       setTimeout(() => toast.classList.remove('show'), 2500);
     }
 
-    loadData();
+    // 初始化
+    loadFromServer(2026);
   </script>
 </body>
 </html>

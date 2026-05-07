@@ -705,7 +705,10 @@
     const modalTitle = document.getElementById('modalTitle');
     const modalBody = document.getElementById('modalBody');
 
-    function openModal(type) {
+    async function openModal(type) {
+      if (type === 'overall' || type === 'value') {
+        await fetchTargetData();
+      }
       const content = getModalContent(type);
       modalTitle.textContent = content.title;
       modalBody.innerHTML = content.body;
@@ -2122,14 +2125,17 @@
         } else break;
       }
 
-      // quarter 和 month 数据（简化：基于year数据生成）
+      // quarter 和 month 数据：生成日累计序列
+      const daysInMonthArr = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
       ['Q1', 'Q2', 'Q3', 'Q4'].forEach((q, qi) => {
         const qm = [qi * 3, qi * 3 + 1, qi * 3 + 2];
         mock.quarter[q] = { qj: {}, gm: {}, zs: {} };
         ['qj', 'gm', 'zs'].forEach(t => {
           mock.quarter[q][t] = {};
           channels.forEach(ch => {
-            mock.quarter[q][t][ch] = qm.map(i => mock.year[t][ch][i]).filter(v => v !== null);
+            const quarterTotal = qm.reduce((sum, i) => sum + (mock.year[t][ch][i] || 0), 0);
+            const daysInQ = qm.reduce((sum, i) => sum + daysInMonthArr[i], 0);
+            mock.quarter[q][t][ch] = quarterTotal > 0 ? generateDailyCumulative(daysInQ, quarterTotal, qi * 1000 + ch.length) : [];
           });
         });
       });
@@ -2140,7 +2146,8 @@
           mock.month[mon][t] = {};
           channels.forEach(ch => {
             const v = mock.year[t][ch][mon - 1];
-            mock.month[mon][t][ch] = v !== null ? [v] : [];
+            const dim = daysInMonthArr[mon - 1];
+            mock.month[mon][t][ch] = v !== null && v > 0 ? generateDailyCumulative(dim, v, mon * 100 + ch.length) : [];
           });
         });
       }
@@ -12169,9 +12176,15 @@
           currentCum += sum;
           return Math.round(currentCum * 10) / 10;
         });
+        // 单月保费（用于柱状图）
+        const currentMonthly = months.map((_, i) => {
+          let sum = 0;
+          for (const key of selectedKeys) sum += data[key]?.[i] || 0;
+          return Math.round(sum * 10) / 10;
+        });
 
         const seriesList = [
-          { name: year + '年', type: 'line', data: currentTotal, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
+          { name: year + '年累计', type: 'line', data: currentTotal, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' }, yAxisIndex: 0 }
         ];
 
         if (platformMock[prevYear]) {
@@ -12183,15 +12196,31 @@
             prevCum += sum;
             return Math.round(prevCum * 10) / 10;
           });
-          seriesList.push({ name: prevYear + '年', type: 'line', data: prevTotal, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
+          const prevMonthly = months.map((_, i) => {
+            let sum = 0;
+            for (const key of selectedKeys) sum += prevData[key]?.[i] || 0;
+            return Math.round(sum * 10) / 10;
+          });
+          seriesList.push(
+            { name: prevYear + '年累计', type: 'line', data: prevTotal, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' }, yAxisIndex: 0 },
+            { name: year + '年单月', type: 'bar', data: currentMonthly, yAxisIndex: 1, itemStyle: { color: 'rgba(59,130,246,0.35)' }, barMaxWidth: 16 },
+            { name: prevYear + '年单月', type: 'bar', data: prevMonthly, yAxisIndex: 1, itemStyle: { color: 'rgba(148,163,184,0.3)' }, barMaxWidth: 16 }
+          );
+        } else {
+          seriesList.push(
+            { name: year + '年单月', type: 'bar', data: currentMonthly, yAxisIndex: 1, itemStyle: { color: 'rgba(59,130,246,0.35)' }, barMaxWidth: 16 }
+          );
         }
 
         return {
           tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
           legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
-          grid: { left: 50, right: 20, top: 20, bottom: 40 },
+          grid: { left: 50, right: 20, top: 20, bottom: 50 },
           xAxis: { type: 'category', data: months, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
-          yAxis: { type: 'value', name: '万', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
+          yAxis: [
+            { type: 'value', name: '累计(万)', position: 'left', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
+            { type: 'value', name: '单月(万)', position: 'right', axisLine: { show: false }, splitLine: { show: false }, axisLabel: { color: '#94a3b8' } }
+          ],
           series: seriesList
         };
       }
@@ -12256,12 +12285,11 @@
       const month = parseInt(selectedMonth);
       const data = platformMock[year].month[month][currentPremiumType];
       if (!data) return emptyOption('暂无该月份数据');
-      const apiMonthMode = (data['经代'] || []).length <= 1;
+      const daysInMonth = (data['经代'] || data['OTO'] || []).length;
       const dates = [];
-      if (apiMonthMode) dates.push(`${month}月`);
-      else for (let d = 1; d <= 30; d++) dates.push(`${d}日`);
+      for (let d = 1; d <= daysInMonth; d++) dates.push(`${d}日`);
 
-      const maxDay = month > getLatestMonthForYear(year) ? 0 : (apiMonthMode ? 1 : 30);
+      const maxDay = month > getLatestMonthForYear(year) ? 0 : daysInMonth;
       const visibleDates = maxDay > 0 ? dates.slice(0, maxDay) : [];
 
       const currentTotal = [];
@@ -12622,6 +12650,7 @@
           const queryYear = dataYears[0] || 2026;
           console.log('上传成功，数据年份:', dataYears, '查询年份:', queryYear);
           await fetchAPIData(queryYear);
+          await fetchTargetData(queryYear);
           if (apiData.platform && hasValidApiData(apiData.platform)) {
             const apiPM = convertApiToPlatformMock(apiData.platform, String(queryYear));
             const apiTM = convertApiToTeamMock(apiData.platform, String(queryYear));
@@ -12636,6 +12665,7 @@
             info.textContent = `✓ 已上传: ${result.uploaded.join(', ')} · ${queryYear}年数据已刷新`;
           } else {
             info.textContent = `✓ 已上传: ${result.uploaded.join(', ')} · 后端${queryYear}年数据为空，使用本地数据`;
+            await fetchTargetData(queryYear);
             updateKPICards();
           }
         }

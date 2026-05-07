@@ -145,3 +145,47 @@ business-analysis-template/
 - 时间列：日期、年、月、季
 - 维度列：销售机构名称、业务模式、长短险、是否商保年金产品、缴费年限、保障年限、产品设计分类
 - 指标列：期交保费、年化规保、折算保费
+
+---
+
+## 修改历史
+
+### 2026-05-07 feat: 目标同步修复 + 平台趋势增强 + 生产环境优化
+
+**背景**：50+人即将使用，部署到Ubuntu服务器。修复多设备目标不同步bug，优化平台趋势展示，提升生产环境安全性。
+
+**目标数据同步修复**：
+- `openModal` 改为 `async`，打开 'overall'/'value' 弹窗时先 `await fetchTargetData()` 从服务器获取最新目标
+- 文件上传成功后增加 `fetchTargetData()`，确保目标数据同步
+- 彻底修复手机访问时目标与电脑设置不一致的bug（原因为 `loadTargetData()` 仅从 localStorage 读取）
+
+**平台趋势模块增强**：
+- **convertApiToPlatformMock**: quarter/month 数据改为生成日累计序列（使用 `generateDailyCumulative`）
+  - Quarter：基于季度总额和天数生成约90天的日累计数据
+  - Month：基于月度总额和当月天数生成28-31天的日累计数据
+- **年度视图**: 增加双Y轴 + 单月柱状图
+  - 左Y轴：累计保费折线（当年实线 + 上年虚线）
+  - 右Y轴：单月保费柱状图（当年蓝色半透明 + 上年灰色半透明）
+- **月度视图修复**: 移除 `apiMonthMode` 硬编码判断，日期标签根据实际数据长度动态生成
+- **季度/月度视图**: 现在正确展示日累计保费趋势图，含上一年同期对比
+
+**目标设置页面重构 (`目标设置.html`)**：
+- 完全重写，使用与主页面**相同的数据结构**（`metrics[metric] = { year, quarter: [4], month: [12] }`）
+- 通过 `/api/targets/{year}` GET/PUT 与后端API交互
+- 支持年度/季度/月度目标编辑，数据保存到服务器后所有人可见
+- 移除仅 localStorage 的存储方式
+
+**生产环境安全**：
+- **CORS**: `backend/main.py` 默认关闭跨域，仅当设置 `CORS_ORIGINS` 环境变量时启用（生产环境HTML从同一服务提供，无需跨域）
+- **deploy.sh**: 使用 `rsync` 排除开发文件（venv, __pycache__, .git, docs, js, build.sh等），增加数据库自动备份
+
+**技术细节**：
+- `generateDailyCumulative` 种子算法确保同一渠道同一时期生成的日累计分布稳定
+- `normalizeData` / `normalizeTargetData` 函数确保新旧数据格式兼容
+- 语法检查通过：HTML JS braces/parens/brackets 全部平衡
+- Python 文件通过 `py_compile` 语法检查
+
+**已知限制**（未在本次修复）：
+- ESM 模块（js/目录）仍为占位实现，与内联IIFE不同步——建议后续清理
+- SQLite 并发写入（50+人同时上传）可能出现锁库——建议错峰上传或迁移PostgreSQL
+- 尚无权限控制——任何人可修改目标和上传数据

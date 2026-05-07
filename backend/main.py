@@ -19,14 +19,17 @@ from aggregator import (
 
 app = FastAPI(title="经营分析看板API")
 
-# CORS - 允许前端访问
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS：生产环境不需要（HTML从同一服务提供），开发环境按需配置
+# 如需跨域，设置环境变量 CORS_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
+_cors_origins = os.getenv("CORS_ORIGINS", "").strip()
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[o.strip() for o in _cors_origins.split(",") if o.strip()],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # 初始化数据库
 init_db()
