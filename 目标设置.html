@@ -89,6 +89,62 @@
     .toast-error { background: #ef4444; color: #fff; }
 
     #fileInput { display: none; }
+
+    /* iPhone 适配 */
+    @media (max-width: 430px) {
+      body { padding: 12px; }
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .header h1 { font-size: 18px; }
+      .header-actions {
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .btn {
+        padding: 8px 12px;
+        font-size: 12px;
+        min-height: 40px;
+        flex: 1;
+        min-width: 80px;
+      }
+      .toolbar {
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 10px 12px;
+      }
+      .toolbar span { display: none; }
+      .grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      .card-body {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      table {
+        min-width: 500px;
+        font-size: 11px;
+      }
+      th, td {
+        padding: 6px 8px;
+        white-space: nowrap;
+      }
+      input.target-input {
+        width: 65px;
+        padding: 4px 6px;
+        font-size: 12px;
+      }
+      input.target-input-sm {
+        width: 44px;
+        padding: 3px 4px;
+        font-size: 10px;
+      }
+    }
   </style>
 </head>
 <body>

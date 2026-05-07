@@ -436,6 +436,153 @@
       .modal-kpi-detail.three-col { grid-template-columns: 1fr; }
     }
 
+    /* iPhone 专用适配 */
+    @media (max-width: 430px) {
+      /* 基础布局 */
+      .container { padding: 12px; }
+      .section-title { font-size: 14px; margin-bottom: 12px; }
+
+      /* 头部导航栏 */
+      .header {
+        padding: 10px 12px;
+        flex-wrap: nowrap;
+        gap: 6px;
+      }
+      .logo { font-size: 16px; letter-spacing: 0; }
+      .logo span { display: none; }
+      .tag { display: none; }
+      .header-right { gap: 6px; flex-shrink: 0; }
+      .date-display { display: none; }
+      .header .chart-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+        min-height: 36px;
+      }
+
+      /* KPI 卡片 */
+      .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+      .kpi-card {
+        padding: 14px 10px;
+        min-height: 120px;
+      }
+      .kpi-top-label { font-size: 11px; }
+      .kpi-big-value { font-size: 24px; }
+      .kpi-bottom-meta { font-size: 11px; }
+
+      /* 弹窗 */
+      .modal-overlay { align-items: flex-end; }
+      .modal {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 16px 16px 0 0;
+        max-height: 92vh;
+      }
+      .modal-header {
+        padding: 14px 16px;
+      }
+      .modal-title { font-size: 16px; }
+      .modal-body {
+        padding: 16px;
+        max-height: 75vh;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .modal-close {
+        width: 40px;
+        height: 40px;
+        font-size: 22px;
+      }
+
+      /* 弹窗内表格横向滚动 */
+      .modal-table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -16px;
+        padding: 0 16px;
+      }
+      .modal-table {
+        min-width: 600px;
+        font-size: 12px;
+      }
+      .modal-table th, .modal-table td {
+        padding: 8px 10px;
+        white-space: nowrap;
+      }
+
+      /* 弹窗KPI详情 */
+      .modal-kpi-detail,
+      .modal-kpi-detail.three-col {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+      .modal-kpi-item {
+        padding: 14px;
+      }
+      .modal-kpi-item .label { font-size: 11px; }
+      .modal-kpi-item .value { font-size: 20px; }
+      .modal-kpi-item .sub { font-size: 11px; }
+
+      /* 目标设置弹窗 */
+      .modal-target .modal { border-radius: 16px 16px 0 0; }
+      .modal-target .modal-body { padding: 16px; max-height: 80vh; overflow: auto; -webkit-overflow-scrolling: touch; }
+      .target-toolbar {
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 8px 10px;
+      }
+      .target-grid {
+        grid-template-columns: 1fr;
+      }
+      .target-table { font-size: 11px; }
+      .target-table th, .target-table td {
+        padding: 4px 6px;
+      }
+      input.target-input {
+        width: 70px;
+        padding: 4px 6px;
+        font-size: 12px;
+      }
+      input.target-input-sm {
+        width: 48px;
+        padding: 3px 4px;
+        font-size: 10px;
+      }
+
+      /* 图表区域 */
+      .chart-card {
+        padding: 14px;
+      }
+      .chart-card-header {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .chart-card-header h3 {
+        font-size: 14px;
+      }
+      .chart-btn {
+        padding: 5px 10px;
+        font-size: 12px;
+        min-height: 36px;
+      }
+
+      /* 上传区域 */
+      .upload-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      .upload-card {
+        padding: 14px;
+      }
+
+      /* 动画优化（减少卡顿） */
+      .kpi-card, .chart-card, .upload-card {
+        animation-duration: 0.2s;
+      }
+    }
+
     /* Animations */
     @keyframes fadeInUp {
       from { opacity: 0; transform: translateY(12px); }
