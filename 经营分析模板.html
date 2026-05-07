@@ -236,6 +236,52 @@
       color: var(--text-secondary);
     }
 
+    /* Target Setting Modal */
+    .modal-target .modal { max-width: 1000px; }
+    .modal-target .modal-body { max-height: 75vh; padding: 20px 24px; }
+    .target-toolbar {
+      display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+      padding: 10px 14px; background: var(--bg); border-radius: 8px;
+    }
+    .target-toolbar label { font-size: 13px; color: var(--text-secondary); }
+    .target-toolbar select {
+      padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border);
+      background: var(--bg); color: var(--text); font-size: 13px;
+    }
+    .target-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 12px; }
+    .target-card {
+      background: var(--bg); border-radius: 10px; border: 1px solid var(--border); overflow: hidden;
+    }
+    .target-card-header {
+      padding: 10px 14px; background: var(--bg);
+      border-bottom: 1px solid var(--border); font-weight: 600; font-size: 13px;
+      color: var(--text); display: flex; align-items: center; gap: 8px;
+    }
+    .target-card-header .icon { width: 8px; height: 8px; border-radius: 50%; }
+    .target-card-body { padding: 10px 14px; }
+    .target-dim-title {
+      font-size: 11px; color: var(--text-secondary); text-transform: uppercase;
+      letter-spacing: 0.5px; margin: 10px 0 6px;
+    }
+    .target-dim-title:first-child { margin-top: 0; }
+    .target-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .target-table th, .target-table td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+    .target-table th { color: var(--text-secondary); font-weight: 500; font-size: 11px; background: var(--bg); }
+    .target-table td { color: var(--text); }
+    .target-table tr.sub td:first-child { padding-left: 20px; color: var(--text-secondary); }
+    input.target-input {
+      width: 80px; padding: 4px 6px; border-radius: 4px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+      font-size: 12px; text-align: right;
+    }
+    input.target-input:focus {
+      outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+    }
+    .target-actions {
+      display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end;
+      padding-top: 12px; border-top: 1px solid var(--border);
+    }
+
     /* Charts Row */
     .chart-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
     .chart-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -414,6 +460,7 @@
       <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">Demo 预览</span>
     </div>
     <div class="header-right">
+      <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
       <span class="date-display">数据截止：2026年4月</span>
     </div>
   </div>
@@ -702,7 +749,157 @@
     function closeModal(e) {
       if (!e || e.target === modalOverlay) {
         modalOverlay.classList.remove('active');
+        modalOverlay.classList.remove('modal-target');
       }
+    }
+
+    // ---------- Target Setting System ----------
+    const TARGET_STORAGE_KEY = 'business_targets_v1';
+    let targetData = null;
+
+    function createDefaultTargetData(year) {
+      const metrics = ['整体', '经代', '转型业务', 'OTO', '证保', '蚁桥'];
+      const dims = ['year', 'quarter', 'month'];
+      const categories = [
+        { key: 'qjPremium', name: '期交保费', color: '#3b82f6',
+          targets: { year: [10500,4800,5700,2500,2200,1000], quarter: [2800,1200,1600,700,600,300], month: [950,420,530,280,180,120] } },
+        { key: 'value', name: '价值保费', color: '#8b5cf6',
+          targets: { year: [8200,3600,4600,2000,1800,800], quarter: [2200,960,1240,540,480,220], month: [780,340,440,200,170,70] } },
+        { key: 'shangbao', name: '商保年金', color: '#10b981',
+          targets: { year: [3500,1500,2000,900,700,400], quarter: [900,400,500,220,180,100], month: [320,140,180,80,65,35] } },
+        { key: 'baozhang', name: '保障类产品', color: '#f59e0b',
+          targets: { year: [4200,1800,2400,1000,900,500], quarter: [1100,480,620,270,240,130], month: [380,170,210,95,80,35] } },
+        { key: 'tenYear', name: '10年期产品', color: '#ef4444',
+          targets: { year: [2800,1200,1600,700,600,300], quarter: [750,320,430,190,170,70], month: [260,115,145,65,55,25] } }
+      ];
+      const data = { year: parseInt(year), categories: {} };
+      categories.forEach(cat => {
+        data.categories[cat.key] = { name: cat.name, color: cat.color, metrics: {} };
+        metrics.forEach((m, i) => {
+          data.categories[cat.key].metrics[m] = {};
+          dims.forEach(d => { data.categories[cat.key].metrics[m][d] = cat.targets[d][i]; });
+        });
+      });
+      return data;
+    }
+
+    function loadTargetData() {
+      const saved = localStorage.getItem(TARGET_STORAGE_KEY);
+      if (saved) { try { targetData = JSON.parse(saved); } catch(e) { targetData = createDefaultTargetData(2026); } }
+      else { targetData = createDefaultTargetData(2026); }
+    }
+
+    function openTargetModal() {
+      loadTargetData();
+      modalTitle.textContent = '经营目标设置';
+      modalOverlay.classList.add('modal-target');
+      modalBody.innerHTML = `
+        <div class="target-toolbar">
+          <label>目标年份</label>
+          <select id="targetYearSelect" onchange="changeTargetYear(this.value)">
+            <option value="2026" ${targetData.year === 2026 ? 'selected' : ''}>2026</option>
+            <option value="2025" ${targetData.year === 2025 ? 'selected' : ''}>2025</option>
+            <option value="2024" ${targetData.year === 2024 ? 'selected' : ''}>2024</option>
+          </select>
+          <span style="color:var(--text-secondary);font-size:12px;">所有目标值单位：万</span>
+          <div style="flex:1;"></div>
+          <button class="chart-btn" onclick="exportTargetJSON()">导出 JSON</button>
+          <button class="chart-btn" onclick="document.getElementById('targetFileInput').click()">导入 JSON</button>
+          <input type="file" id="targetFileInput" accept=".json" style="display:none;" onchange="importTargetJSON(this)">
+          <button class="chart-btn active" onclick="saveTargetData()">保存</button>
+        </div>
+        <div class="target-grid" id="targetGrid"></div>
+      `;
+      renderTargetForm();
+      modalOverlay.classList.add('active');
+    }
+
+    function changeTargetYear(year) {
+      targetData.year = parseInt(year);
+      renderTargetForm();
+    }
+
+    function renderTargetForm() {
+      const grid = document.getElementById('targetGrid');
+      if (!grid) return;
+      grid.innerHTML = '';
+      Object.entries(targetData.categories).forEach(([catKey, cat]) => {
+        const card = document.createElement('div');
+        card.className = 'target-card';
+        card.innerHTML = `
+          <div class="target-card-header">
+            <span class="icon" style="background:${cat.color}"></span>
+            ${cat.name}目标
+          </div>
+          <div class="target-card-body">${renderTargetCategoryTable(catKey, cat)}</div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function renderTargetCategoryTable(catKey, cat) {
+      const metrics = ['整体', '经代', '转型业务', 'OTO', '证保', '蚁桥'];
+      const dims = [{ key: 'year', label: '年度目标' }, { key: 'quarter', label: '季度目标' }, { key: 'month', label: '月度目标' }];
+      return dims.map(dim => `
+        <div class="target-dim-title">${dim.label}</div>
+        <table class="target-table">
+          <thead><tr><th style="width:40%">口径</th><th>目标值（万）</th></tr></thead>
+          <tbody>
+            ${metrics.map(m => `
+              <tr class="${m === 'OTO' || m === '证保' || m === '蚁桥' ? 'sub' : ''}">
+                <td>${m}</td>
+                <td><input type="number" class="target-input"
+                  value="${cat.metrics[m]?.[dim.key] ?? 0}"
+                  data-cat="${catKey}" data-metric="${m}" data-dim="${dim.key}"
+                  onchange="updateTargetValue(this)"></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `).join('');
+    }
+
+    function updateTargetValue(input) {
+      const cat = input.dataset.cat, metric = input.dataset.metric, dim = input.dataset.dim;
+      const val = parseFloat(input.value) || 0;
+      if (!targetData.categories[cat].metrics[metric]) targetData.categories[cat].metrics[metric] = {};
+      targetData.categories[cat].metrics[metric][dim] = val;
+    }
+
+    function saveTargetData() {
+      localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(targetData));
+      // 显示简单提示
+      const btn = event.target;
+      const original = btn.textContent;
+      btn.textContent = '已保存';
+      setTimeout(() => btn.textContent = original, 1500);
+    }
+
+    function exportTargetJSON() {
+      const blob = new Blob([JSON.stringify(targetData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `经营目标_${targetData.year}.json`; a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importTargetJSON(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (data.year && data.categories) {
+            targetData = data;
+            localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(targetData));
+            document.getElementById('targetYearSelect').value = targetData.year;
+            renderTargetForm();
+          }
+        } catch(err) { alert('JSON 解析失败'); }
+      };
+      reader.readAsText(file);
+      input.value = '';
     }
 
     function getModalContent(type) {
