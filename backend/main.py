@@ -42,69 +42,87 @@ async def upload_files(
     year: int = 2026,
 ):
     """上传Excel文件并聚合到SQLite"""
-    results = {"uploaded": [], "errors": []}
+    results = {"uploaded": [], "errors": [], "data_years": set()}
 
-    # 清除旧数据
-    clear_year_data(year)
+    # 第一步：解析所有Excel文件，收集实际年份
+    perf_rows = []
+    jd_rows = []
+    hr_rows = []
+    value_rows = []
 
+    if performance and performance.filename:
+        try:
+            df = parse_performance_excel(await performance.read())
+            perf_rows = aggregate_performance(df)
+            results["uploaded"].append(f"转型业务业绩: {len(perf_rows)}条")
+        except Exception as e:
+            results["errors"].append(f"转型业务业绩: {str(e)}")
+
+    if jingdai and jingdai.filename:
+        try:
+            df = parse_jingdai_excel(await jingdai.read())
+            jd_rows = aggregate_jingdai(df)
+            results["uploaded"].append(f"经代业务业绩: {len(jd_rows)}条")
+        except Exception as e:
+            results["errors"].append(f"经代业务业绩: {str(e)}")
+
+    if hr and hr.filename:
+        try:
+            df = parse_hr_excel(await hr.read())
+            hr_rows = aggregate_hr(df)
+            results["uploaded"].append(f"人力数据: {len(hr_rows)}条")
+        except Exception as e:
+            results["errors"].append(f"人力数据: {str(e)}")
+
+    if value and value.filename:
+        try:
+            df = parse_value_excel(await value.read())
+            value_rows = aggregate_value(df)
+            results["uploaded"].append(f"价值数据: {len(value_rows)}条")
+        except Exception as e:
+            results["errors"].append(f"价值数据: {str(e)}")
+
+    # 收集所有实际年份
+    for rows in [perf_rows, jd_rows, hr_rows, value_rows]:
+        for r in rows:
+            if 'year' in r and r['year']:
+                results["data_years"].add(int(r['year']))
+
+    # 如果没有检测到年份，使用传入的year参数
+    years_to_clear = list(results["data_years"]) if results["data_years"] else [year]
+    results["data_years"] = sorted(list(results["data_years"])) if results["data_years"] else [year]
+
+    # 清除这些年份的旧数据
+    for y in years_to_clear:
+        clear_year_data(y)
+
+    # 写入数据库
     with get_db() as conn:
         c = conn.cursor()
 
-        # 1. 转型业务业绩
-        if performance and performance.filename:
-            try:
-                df = parse_performance_excel(await performance.read())
-                rows = aggregate_performance(df)
-                for r in rows:
-                    c.execute('''
-                        INSERT INTO performance (year, month, channel, qj_premium, gm_premium, zs_premium)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (r['year'], r['month'], r['channel'], r['qj_premium'], r['gm_premium'], r['zs_premium']))
-                results["uploaded"].append(f"转型业务业绩: {len(rows)}条")
-            except Exception as e:
-                results["errors"].append(f"转型业务业绩: {str(e)}")
+        for r in perf_rows:
+            c.execute('''
+                INSERT INTO performance (year, month, channel, qj_premium, gm_premium, zs_premium)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (r['year'], r['month'], r['channel'], r['qj_premium'], r['gm_premium'], r['zs_premium']))
 
-        # 2. 经代业务业绩
-        if jingdai and jingdai.filename:
-            try:
-                df = parse_jingdai_excel(await jingdai.read())
-                rows = aggregate_jingdai(df)
-                for r in rows:
-                    c.execute('''
-                        INSERT INTO jingdai (year, month, qj_premium, gm_premium, zs_premium)
-                        VALUES (?, ?, ?, ?, ?)
-                    ''', (r['year'], r['month'], r['qj_premium'], r['gm_premium'], r['zs_premium']))
-                results["uploaded"].append(f"经代业务业绩: {len(rows)}条")
-            except Exception as e:
-                results["errors"].append(f"经代业务业绩: {str(e)}")
+        for r in jd_rows:
+            c.execute('''
+                INSERT INTO jingdai (year, month, qj_premium, gm_premium, zs_premium)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (r['year'], r['month'], r['qj_premium'], r['gm_premium'], r['zs_premium']))
 
-        # 3. 人力数据
-        if hr and hr.filename:
-            try:
-                df = parse_hr_excel(await hr.read())
-                rows = aggregate_hr(df)
-                for r in rows:
-                    c.execute('''
-                        INSERT INTO hr_data (year, month, channel, start_headcount, end_headcount, active_headcount)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (r['year'], r['month'], r['channel'], r['start_headcount'], r['end_headcount'], r['active_headcount']))
-                results["uploaded"].append(f"人力数据: {len(rows)}条")
-            except Exception as e:
-                results["errors"].append(f"人力数据: {str(e)}")
+        for r in hr_rows:
+            c.execute('''
+                INSERT INTO hr_data (year, month, channel, start_headcount, end_headcount, active_headcount)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (r['year'], r['month'], r['channel'], r['start_headcount'], r['end_headcount'], r['active_headcount']))
 
-        # 4. 价值数据
-        if value and value.filename:
-            try:
-                df = parse_value_excel(await value.read())
-                rows = aggregate_value(df)
-                for r in rows:
-                    c.execute('''
-                        INSERT INTO value_data (year, month, channel, value_premium)
-                        VALUES (?, ?, ?, ?)
-                    ''', (r['year'], r['month'], r['channel'], r['value_premium']))
-                results["uploaded"].append(f"价值数据: {len(rows)}条")
-            except Exception as e:
-                results["errors"].append(f"价值数据: {str(e)}")
+        for r in value_rows:
+            c.execute('''
+                INSERT INTO value_data (year, month, channel, value_premium)
+                VALUES (?, ?, ?, ?)
+            ''', (r['year'], r['month'], r['channel'], r['value_premium']))
 
         conn.commit()
 

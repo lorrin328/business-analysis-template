@@ -1877,10 +1877,10 @@
 };
 
     // ---------- API Integration ----------
-    // file:// 协议（本地直接打开HTML）也尝试连接本地后端
-    const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:')
-      ? 'http://localhost:8000'
-      : '';
+    // 如需手动指定后端地址，取消下面一行的注释并修改：
+    // const BACKEND_URL = 'http://your-server-ip:8000';
+    const API_BASE = typeof BACKEND_URL !== 'undefined' ? BACKEND_URL
+      : (window.location.protocol === 'file:' ? 'http://localhost:8000' : '');
 
     let apiData = { kpi: null, platform: null, team: null };
     let apiAvailable = false;
@@ -12357,19 +12357,22 @@
           card.classList.remove('has-file');
         } else {
           info.textContent = `✓ 已上传: ${result.uploaded.join(', ')}`;
-          // 刷新数据
-          await fetchAPIData(2026);
+          // 根据后端返回的实际年份刷新数据
+          const dataYears = result.data_years || [2026];
+          const queryYear = dataYears[0] || 2026;
+          console.log('上传成功，数据年份:', dataYears, '查询年份:', queryYear);
+          await fetchAPIData(queryYear);
           if (apiData.platform && hasValidApiData(apiData.platform)) {
-            const apiPM = convertApiToPlatformMock(apiData.platform, '2026');
-            const apiTM = convertApiToTeamMock(apiData.platform, '2026');
+            const apiPM = convertApiToPlatformMock(apiData.platform, String(queryYear));
+            const apiTM = convertApiToTeamMock(apiData.platform, String(queryYear));
             Object.assign(platformMock, apiPM);
             Object.assign(teamMock, apiTM);
             platformChart.setOption(getPlatformOption(), true);
             teamChart.setOption(getTeamOption(), true);
             updateKPICards();
-            info.textContent = `✓ 已上传: ${result.uploaded.join(', ')} · 数据已刷新`;
+            info.textContent = `✓ 已上传: ${result.uploaded.join(', ')} · ${queryYear}年数据已刷新`;
           } else {
-            info.textContent = `✓ 已上传: ${result.uploaded.join(', ')} · 后端数据为空，使用本地数据`;
+            info.textContent = `✓ 已上传: ${result.uploaded.join(', ')} · 后端${queryYear}年数据为空，使用本地数据`;
             updateKPICards();
           }
         }
