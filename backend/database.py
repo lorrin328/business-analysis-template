@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -88,6 +89,14 @@ def init_db():
             )
         ''')
 
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS target_config (
+                year INTEGER PRIMARY KEY,
+                payload TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         conn.commit()
 
 
@@ -97,6 +106,15 @@ def clear_year_data(year: int):
         c = conn.cursor()
         for table in AGG_TABLES:
             c.execute(f'DELETE FROM {table} WHERE year = ?', (year,))
+        conn.commit()
+
+
+def clear_table_year_data(table: str, year: int):
+    if table not in AGG_TABLES:
+        raise ValueError(f'unsupported table: {table}')
+    init_db()
+    with get_db() as conn:
+        conn.execute(f'DELETE FROM {table} WHERE year = ?', (year,))
         conn.commit()
 
 
@@ -236,3 +254,36 @@ def get_product_structure(year: int, dimension: str = 'design_cat'):
             'premium': [{'name': r['label'], 'value': round(r['premium'], 2)} for r in rows],
             'count': [{'name': r['label'], 'value': int(r['count'])} for r in rows],
         }
+
+
+def get_target_config(year: int):
+    init_db()
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute('SELECT payload FROM target_config WHERE year = ?', (year,))
+        row = c.fetchone()
+        if not row:
+            return None
+        try:
+            return json.loads(row['payload'])
+        except json.JSONDecodeError:
+            return None
+
+
+def save_target_config(year: int, payload: dict):
+    init_db()
+    payload = dict(payload)
+    payload['year'] = year
+    with get_db() as conn:
+        conn.execute(
+            '''
+            INSERT INTO target_config (year, payload, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(year) DO UPDATE SET
+                payload = excluded.payload,
+                updated_at = CURRENT_TIMESTAMP
+            ''',
+            (year, json.dumps(payload, ensure_ascii=False)),
+        )
+        conn.commit()
+    return payload

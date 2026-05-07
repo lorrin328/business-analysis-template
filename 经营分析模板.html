@@ -757,35 +757,78 @@
       return data;
     }
 
-    function loadTargetData() {
-      const saved = localStorage.getItem(TARGET_STORAGE_KEY);
+    function normalizeTargetData(data, year) {
+      const base = createDefaultTargetData(year || data?.year || 2026);
+      if (!data || !data.categories) return base;
+      data.year = parseInt(year || data.year || base.year);
+      Object.entries(base.categories).forEach(([catKey, baseCat]) => {
+        if (!data.categories[catKey]) data.categories[catKey] = baseCat;
+        if (!data.categories[catKey].name) data.categories[catKey].name = baseCat.name;
+        if (!data.categories[catKey].color) data.categories[catKey].color = baseCat.color;
+        if (!data.categories[catKey].metrics) data.categories[catKey].metrics = {};
+        Object.entries(baseCat.metrics).forEach(([metricKey, baseMetric]) => {
+          if (!data.categories[catKey].metrics[metricKey]) {
+            data.categories[catKey].metrics[metricKey] = baseMetric;
+          }
+        });
+      });
+      Object.values(data.categories).forEach(cat => {
+        if (!cat.metrics) cat.metrics = {};
+        Object.values(cat.metrics).forEach(metricData => {
+          if (typeof metricData.quarter === 'number') {
+            const v = metricData.quarter;
+            metricData.quarter = [Math.round(v*0.22), Math.round(v*0.25), Math.round(v*0.26), Math.round(v*0.27)];
+          }
+          if (!Array.isArray(metricData.quarter)) metricData.quarter = [0,0,0,0];
+          if (typeof metricData.month === 'number') {
+            const v = metricData.month;
+            const factors = [0.07,0.07,0.08,0.08,0.09,0.09,0.08,0.08,0.09,0.09,0.09,0.09];
+            metricData.month = factors.map(f => Math.round(v * f * 12));
+          }
+          if (!Array.isArray(metricData.month)) metricData.month = Array(12).fill(0);
+          if (typeof metricData.year !== 'number') metricData.year = parseFloat(metricData.year) || 0;
+        });
+      });
+      return data;
+    }
+
+    function targetStorageKey(year) {
+      return `${TARGET_STORAGE_KEY}_${year || targetData?.year || 2026}`;
+    }
+
+    function loadTargetData(year) {
+      const desiredYear = parseInt(year || targetData?.year || 2026);
+      if (targetData && targetData.year === desiredYear) {
+        targetData = normalizeTargetData(targetData, desiredYear);
+        return;
+      }
+      const saved = localStorage.getItem(targetStorageKey(desiredYear)) || localStorage.getItem(TARGET_STORAGE_KEY);
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          // 验证数据结构完整性
           if (!parsed.categories) throw new Error('invalid target data');
-          targetData = parsed;
-          // 兼容旧数据：quarter/month 可能是 number 而不是数组
-          Object.values(targetData.categories).forEach(cat => {
-            if (!cat.metrics) cat.metrics = {};
-            Object.values(cat.metrics).forEach(metricData => {
-              if (typeof metricData.quarter === 'number') {
-                const v = metricData.quarter;
-                metricData.quarter = [Math.round(v*0.22), Math.round(v*0.25), Math.round(v*0.26), Math.round(v*0.27)];
-              }
-              if (typeof metricData.month === 'number') {
-                const v = metricData.month;
-                const factors = [0.07,0.07,0.08,0.08,0.09,0.09,0.08,0.08,0.09,0.09,0.09,0.09];
-                metricData.month = factors.map(f => Math.round(v * f * 12));
-              }
-            });
-          });
-        } catch(e) { targetData = createDefaultTargetData(2026); }
-      } else { targetData = createDefaultTargetData(2026); }
+          targetData = normalizeTargetData(parsed, desiredYear);
+        } catch(e) { targetData = createDefaultTargetData(desiredYear); }
+      } else { targetData = createDefaultTargetData(desiredYear); }
     }
 
-    function openTargetModal() {
-      loadTargetData();
+    async function fetchTargetData(year) {
+      const desiredYear = parseInt(year || targetData?.year || selectedYear || 2026);
+      try {
+        const resp = await fetch(`${API_BASE}/api/targets/${desiredYear}`, { method: 'GET' });
+        if (!resp.ok) throw new Error('target api unavailable');
+        const data = await resp.json();
+        targetData = normalizeTargetData(data && data.categories ? data : createDefaultTargetData(desiredYear), desiredYear);
+        localStorage.setItem(targetStorageKey(desiredYear), JSON.stringify(targetData));
+        return true;
+      } catch(e) {
+        loadTargetData(desiredYear);
+        return false;
+      }
+    }
+
+    async function openTargetModal() {
+      loadTargetData(targetData?.year || selectedYear || 2026);
       modalTitle.textContent = '经营目标设置';
       modalOverlay.classList.add('modal-target');
       modalBody.innerHTML = `
@@ -805,12 +848,15 @@
         </div>
         <div class="target-grid" id="targetGrid"></div>
       `;
+      await fetchTargetData(targetData.year);
+      const select = document.getElementById('targetYearSelect');
+      if (select) select.value = targetData.year;
       renderTargetForm();
       modalOverlay.classList.add('active');
     }
 
-    function changeTargetYear(year) {
-      targetData.year = parseInt(year);
+    async function changeTargetYear(year) {
+      await fetchTargetData(parseInt(year));
       renderTargetForm();
     }
 
@@ -939,18 +985,42 @@
       }
     }
 
-    function saveTargetData(evt) {
-      localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(targetData));
-      console.log('目标已保存:', targetData);
-      updateKPICards();
-      // 显示简单提示
+    async function saveTargetData(evt) {
       const btn = evt ? evt.target : null;
+      const original = btn ? btn.textContent : '';
       if (btn) {
-        const original = btn.textContent;
-        btn.textContent = '已保存';
-        setTimeout(() => { btn.textContent = original; closeModal(); }, 800);
-      } else {
-        closeModal();
+        btn.textContent = '保存中...';
+        btn.disabled = true;
+      }
+      try {
+        targetData = normalizeTargetData(targetData, targetData?.year || 2026);
+        localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
+        const resp = await fetch(`${API_BASE}/api/targets/${targetData.year}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(targetData)
+        });
+        if (!resp.ok) throw new Error('目标保存失败');
+        targetData = normalizeTargetData(await resp.json(), targetData.year);
+        localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
+        await recalculateDashboard();
+        if (btn) {
+          btn.textContent = '已保存';
+          setTimeout(() => { btn.textContent = original; closeModal(); }, 800);
+        } else {
+          closeModal();
+        }
+      } catch(e) {
+        console.error('saveTargetData error:', e);
+        if (btn) {
+          btn.textContent = '保存失败';
+          setTimeout(() => {
+            btn.textContent = original;
+            btn.disabled = false;
+          }, 1200);
+        }
+      } finally {
+        if (btn && btn.textContent !== '保存失败') btn.disabled = false;
       }
     }
 
@@ -962,19 +1032,24 @@
       URL.revokeObjectURL(url);
     }
 
-    function importTargetJSON(input) {
+    async function importTargetJSON(input) {
       const file = input.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const data = JSON.parse(e.target.result);
           if (data.year && data.categories) {
-            targetData = data;
-            localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(targetData));
+            targetData = normalizeTargetData(data, data.year);
+            localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
+            await fetch(`${API_BASE}/api/targets/${targetData.year}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(targetData)
+            });
             document.getElementById('targetYearSelect').value = targetData.year;
             renderTargetForm();
-            updateKPICards();
+            await recalculateDashboard();
           }
         } catch(err) { alert('JSON 解析失败'); }
       };
@@ -2089,8 +2164,8 @@
         btn.disabled = true;
       }
       try {
-        loadTargetData();
         const platformYear = selectedYear || '2026';
+        await fetchTargetData(platformYear);
         if (selectedTeamYear && selectedTeamYear !== platformYear) {
           await loadYearFromApi(selectedTeamYear, { updateKpi: false, updateProduct: false });
         }
@@ -12579,6 +12654,7 @@
 
     // 初始化：尝试从API加载数据，成功后覆盖本地mock
     (async function init() {
+      await fetchTargetData(2026);
       const ok = await fetchAPIData(2026);
       if (ok && apiData.platform && hasValidApiData(apiData.platform)) {
         const apiPM = convertApiToPlatformMock(apiData.platform, '2026');

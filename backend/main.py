@@ -1,6 +1,6 @@
 import os
 import sys
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import Body, FastAPI, File, UploadFile, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -8,8 +8,8 @@ import sqlite3
 
 sys.path.insert(0, os.path.dirname(__file__))
 from database import (
-    init_db, get_db, clear_year_data, replace_rows,
-    get_kpi_data, get_product_structure,
+    init_db, get_db, replace_rows,
+    get_kpi_data, get_product_structure, get_target_config, save_target_config,
 )
 from aggregator import (
     parse_performance_excel, parse_jingdai_excel, parse_hr_excel, parse_value_excel,
@@ -105,16 +105,22 @@ async def upload_files(
                 results["data_years"].add(int(r['year']))
 
     # 如果没有检测到年份，使用传入的year参数
-    years_to_clear = list(results["data_years"]) if results["data_years"] else [year]
     results["data_years"] = sorted(list(results["data_years"])) if results["data_years"] else [year]
-
-    # 清除这些年份的旧数据
-    for y in years_to_clear:
-        clear_year_data(y)
 
     # 写入数据库
     with get_db() as conn:
         c = conn.cursor()
+
+        table_rows = [
+            ('agg_performance', perf_rows),
+            ('agg_product_structure', product_rows),
+            ('agg_jingdai', jd_rows),
+            ('agg_hr_data', hr_rows),
+            ('agg_value_data', value_rows),
+        ]
+        for table, rows in table_rows:
+            for y in sorted({int(r['year']) for r in rows if 'year' in r and r['year']}):
+                c.execute(f'DELETE FROM {table} WHERE year = ?', (y,))
 
         replace_rows(conn, 'agg_performance', perf_rows)
         replace_rows(conn, 'agg_jingdai', jd_rows)
@@ -144,6 +150,21 @@ def get_kpi(year: int):
 def get_product(year: int, dimension: str = "design_cat"):
     """获取产品结构数据"""
     return get_product_structure(year, dimension)
+
+
+@app.get("/api/targets/{year}")
+def get_targets(year: int):
+    """获取服务器端统一目标配置"""
+    saved = get_target_config(year)
+    return saved or {"year": year, "categories": None}
+
+
+@app.put("/api/targets/{year}")
+def put_targets(year: int, payload: dict = Body(...)):
+    """保存服务器端统一目标配置"""
+    if not isinstance(payload, dict) or "categories" not in payload:
+        raise HTTPException(status_code=400, detail="invalid target payload")
+    return save_target_config(year, payload)
 
 
 # 静态文件服务 - 生产HTML
