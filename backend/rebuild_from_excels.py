@@ -3,7 +3,7 @@ from pathlib import Path
 from aggregator import (
     parse_performance_excel, parse_jingdai_excel, parse_hr_excel, parse_value_excel,
     aggregate_performance, aggregate_jingdai, aggregate_hr, aggregate_value,
-    aggregate_product_structure,
+    aggregate_product_structure, aggregate_active_headcount,
 )
 from database import clear_year_data, get_db, init_db, replace_rows
 
@@ -24,12 +24,13 @@ def main():
     hr_file = _pick('N1AI-人力基表*.xlsx')
     jingdai_file = _pick('*经代*业绩*.xlsx')
 
-    perf_rows, product_rows, value_rows, hr_rows, jd_rows = [], [], [], [], []
+    perf_rows, product_rows, value_rows, hr_rows, jd_rows, active_rows = [], [], [], [], [], []
 
     if performance_file:
         df = parse_performance_excel(performance_file.read_bytes())
         perf_rows = aggregate_performance(df)
         product_rows = aggregate_product_structure(df)
+        active_rows = aggregate_active_headcount(df)
         print(f'performance: {performance_file.name} -> {len(perf_rows)} rows')
 
     if jingdai_file:
@@ -46,6 +47,14 @@ def main():
         df = parse_value_excel(value_file.read_bytes())
         value_rows = aggregate_value(df)
         print(f'value: {value_file.name} -> {len(value_rows)} rows')
+
+    if hr_rows and active_rows:
+        active_index = {
+            (r['year'], r['month'], r['channel']): r['active_headcount']
+            for r in active_rows
+        }
+        for row in hr_rows:
+            row['active_headcount'] = active_index.get((row['year'], row['month'], row['channel']), 0)
 
     years = sorted({
         int(row['year'])

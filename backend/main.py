@@ -14,7 +14,7 @@ from database import (
 from aggregator import (
     parse_performance_excel, parse_jingdai_excel, parse_hr_excel, parse_value_excel,
     aggregate_performance, aggregate_jingdai, aggregate_hr, aggregate_value,
-    aggregate_product_structure,
+    aggregate_product_structure, aggregate_active_headcount,
 )
 
 app = FastAPI(title="经营分析看板API")
@@ -54,12 +54,14 @@ async def upload_files(
     hr_rows = []
     value_rows = []
     product_rows = []
+    active_rows = []
 
     if performance and performance.filename:
         try:
             df = parse_performance_excel(await performance.read())
             perf_rows = aggregate_performance(df)
             product_rows = aggregate_product_structure(df)
+            active_rows = aggregate_active_headcount(df)
             results["uploaded"].append(f"转型业务业绩: {len(perf_rows)}条")
         except Exception as e:
             results["errors"].append(f"转型业务业绩: {str(e)}")
@@ -87,6 +89,14 @@ async def upload_files(
             results["uploaded"].append(f"价值数据: {len(value_rows)}条")
         except Exception as e:
             results["errors"].append(f"价值数据: {str(e)}")
+
+    if hr_rows and active_rows:
+        active_index = {
+            (r['year'], r['month'], r['channel']): r['active_headcount']
+            for r in active_rows
+        }
+        for row in hr_rows:
+            row['active_headcount'] = active_index.get((row['year'], row['month'], row['channel']), 0)
 
     # 收集所有实际年份
     for rows in [perf_rows, jd_rows, hr_rows, value_rows, product_rows]:

@@ -306,10 +306,10 @@
     }
     .chart-container { height: 320px; }
 
-    /* Upload Module - 5 columns */
+    /* Upload Module - 4 columns */
     .upload-grid {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 16px;
     }
     .upload-card {
@@ -458,10 +458,11 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">Demo 预览</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.4 API版</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
+      <button class="chart-btn" id="recalcBtn" onclick="recalculateDashboard()" style="margin-right:8px;">重新计算</button>
       <span class="date-display" id="dataCutoff">数据截止：2026年5月</span>
     </div>
   </div>
@@ -677,15 +678,6 @@
           <input type="file" id="file4" accept=".xlsx,.xls,.csv" onchange="handleFile(this, 'info4')">
         </div>
 
-        <div class="upload-card" onclick="document.getElementById('file5').click()">
-          <div class="upload-mandatory">必需</div>
-          <div class="upload-icon">🎯</div>
-          <div class="upload-title">目标上传</div>
-          <div class="upload-desc">年度/月度目标数据</div>
-          <button class="upload-btn">选择文件</button>
-          <div class="file-info" id="info5"></div>
-          <input type="file" id="file5" accept=".xlsx,.xls,.csv" onchange="handleFile(this, 'info5')">
-        </div>
       </div>
     </div>
   </div>
@@ -1024,6 +1016,22 @@
           if (rate >= 80) return 'warning';
           return 'down';
         }
+        function getTarget(catKey, metric, dim, idx) {
+          const metricData = targetData.categories?.[catKey]?.metrics?.[metric];
+          if (!metricData) return 0;
+          if (dim === 'year') return metricData.year || 0;
+          const arr = metricData[dim];
+          return Array.isArray(arr) ? (arr[idx] || 0) : 0;
+        }
+        function valueActuals() {
+          const value = hasApiKpi && kpi.value ? kpi.value : {};
+          const oto = value['OTO'] || 0;
+          const zhengbao = value['证保'] || 0;
+          const yiqiao = value['蚁桥'] || 0;
+          const jingdai = value['经代'] || 0;
+          const transform = oto + zhengbao + yiqiao;
+          return { oto, zhengbao, yiqiao, jingdai, transform, total: jingdai + transform };
+        }
 
         // 如果API数据可用且包含有效保费，优先使用
         const kpi = apiData.kpi;
@@ -1068,13 +1076,19 @@
 
       // 2. 价值达成率
       if (hasApiKpi && kpi.value && Object.keys(kpi.value).length > 0) {
-        // 有API价值数据时计算
-        const vTargets = targetData.categories.value.metrics;
-        // 价值数据口径可能不同，简化处理
+        const actual = valueActuals();
+        const valueTarget = getTarget('value', '整体', 'year');
+        const transformTarget = getTarget('value', '转型业务', 'year');
+        const valueRate = calcRate(actual.total, valueTarget);
+        const transformRate = calcRate(actual.transform, transformTarget);
         const valueRateEl = document.getElementById('kpi-value-rate');
-        if (valueRateEl) valueRateEl.textContent = '待计算';
+        if (valueRateEl) valueRateEl.textContent = valueRate + '%';
         const valueSubEl = document.getElementById('kpi-value-sub');
-        if (valueSubEl) valueSubEl.innerHTML = '<span style="color:var(--text-secondary)">价值数据已上传</span>';
+        if (valueSubEl) {
+          valueSubEl.innerHTML = `
+            <span>实际 <span class="${rateClass(valueRate)}">${Math.round(actual.total).toLocaleString('zh-CN')}万</span></span>
+            <span>转型 <span class="${rateClass(transformRate)}">${transformRate}%</span></span>`;
+        }
       } else {
         const valueRateEl = document.getElementById('kpi-value-rate');
         if (valueRateEl) valueRateEl.textContent = '--';
@@ -1243,50 +1257,80 @@
           };
         }
         case 'value':
+          loadTargetData();
+          const valueTargets = targetData.categories.value.metrics;
+          const valueApi = apiData.kpi && apiData.kpi.value ? apiData.kpi.value : {};
+          const valueMonthly = { OTO: [], '证保': [], '蚁桥': [], '经代': [] };
+          if (apiData.platform && Array.isArray(apiData.platform.value)) {
+            apiData.platform.value.forEach(r => {
+              if (valueMonthly[r.channel]) valueMonthly[r.channel][(r.month || 1) - 1] = r.value_premium || 0;
+            });
+          }
+          function sumValueMonths(channels, start, end) {
+            let sum = 0;
+            channels.forEach(ch => {
+              for (let i = start; i <= end; i++) sum += valueMonthly[ch]?.[i] || 0;
+            });
+            return sum;
+          }
+          const valueRows = [
+            { label: '整体', targetKey: '整体', channels: ['经代', 'OTO', '证保', '蚁桥'], sub: false },
+            { label: '经代', targetKey: '经代', channels: ['经代'], sub: false },
+            { label: '转型业务', targetKey: '转型业务', channels: ['OTO', '证保', '蚁桥'], sub: false },
+            { label: 'OTO', targetKey: 'OTO', channels: ['OTO'], sub: true },
+            { label: '证保', targetKey: '证保', channels: ['证保'], sub: true },
+            { label: '蚁桥', targetKey: '蚁桥', channels: ['蚁桥'], sub: true }
+          ];
+          function fmtValue(n) { return (n || 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 }); }
+          function calcValueRate(actual, target) { return target > 0 ? Math.round(actual / target * 1000) / 10 : 0; }
+          function valueClass(rate) { return rate >= 100 ? 'up' : rate >= 80 ? 'warning' : 'down'; }
+          function valueTarget(metric, dim, idx) {
+            const item = valueTargets[metric];
+            if (!item) return 0;
+            if (dim === 'year') return item.year || 0;
+            const arr = item[dim];
+            return Array.isArray(arr) ? (arr[idx] || 0) : 0;
+          }
+          function renderValueRows(dim, idx) {
+            return valueRows.map(row => {
+              const target = valueTarget(row.targetKey, dim, idx);
+              const actual = dim === 'year'
+                ? sumValueMonths(row.channels, 0, 11)
+                : dim === 'quarter'
+                  ? sumValueMonths(row.channels, idx * 3, idx * 3 + 2)
+                  : sumValueMonths(row.channels, idx, idx);
+              const rate = calcValueRate(actual, target);
+              return `<tr ${row.label === '整体' ? 'style="font-weight:600;"' : ''}>
+                <td style="text-align:left;${row.sub ? 'padding-left:20px;color:var(--text-secondary);' : ''}">${row.label}</td>
+                <td>${fmtValue(target)}</td>
+                <td>${fmtValue(actual)}</td>
+                <td style="color:var(--${valueClass(rate)});">${rate}%</td>
+              </tr>`;
+            }).join('');
+          }
           return {
             title: '价值达成率',
             body: `
               <div class="modal-section-title">年度累计</div>
               <table class="modal-table">
-                <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th><th>规模同比</th></tr></thead>
-                <tbody>
-                  <tr style="font-weight:600;"><td style="text-align:left;">整体</td><td>8,200</td><td>5,950</td><td style="color:var(--warning);">72.5%</td><td class="up">▲ +9.8%</td></tr>
-                  <tr><td style="text-align:left;">经代</td><td>3,600</td><td>3,420</td><td style="color:var(--success);">95.0%</td><td class="up">▲ +5.5%</td></tr>
-                  <tr><td style="text-align:left;">转型业务</td><td>4,600</td><td>2,530</td><td style="color:var(--danger);">55.0%</td><td class="up">▲ +14.2%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">OTO</td><td>2,000</td><td>1,500</td><td style="color:var(--warning);">75.0%</td><td class="up">▲ +11.8%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">证保</td><td>1,800</td><td>1,410</td><td style="color:var(--warning);">78.3%</td><td class="up">▲ +16.5%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">蚁桥</td><td>800</td><td>620</td><td style="color:var(--warning);">77.5%</td><td class="up">▲ +6.2%</td></tr>
-                </tbody>
+                <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th></tr></thead>
+                <tbody>${renderValueRows('year')}</tbody>
               </table>
 
               <div class="modal-section-title">季度累计（Q2）</div>
               <table class="modal-table">
-                <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th><th>规模同比</th></tr></thead>
-                <tbody>
-                  <tr style="font-weight:600;"><td style="text-align:left;">整体</td><td>2,200</td><td>1,680</td><td style="color:var(--warning);">76.4%</td><td class="up">▲ +8.2%</td></tr>
-                  <tr><td style="text-align:left;">经代</td><td>960</td><td>920</td><td style="color:var(--success);">95.8%</td><td class="up">▲ +4.8%</td></tr>
-                  <tr><td style="text-align:left;">转型业务</td><td>1,240</td><td>760</td><td style="color:var(--danger);">61.3%</td><td class="up">▲ +12.5%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">OTO</td><td>540</td><td>420</td><td style="color:var(--warning);">77.8%</td><td class="up">▲ +10.2%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">证保</td><td>480</td><td>390</td><td style="color:var(--warning);">81.3%</td><td class="up">▲ +15.2%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">蚁桥</td><td>220</td><td>170</td><td style="color:var(--warning);">77.3%</td><td class="up">▲ +5.8%</td></tr>
-                </tbody>
+                <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th></tr></thead>
+                <tbody>${renderValueRows('quarter', 1)}</tbody>
               </table>
 
-              <div class="modal-section-title">月度累计（4月）</div>
+              <div class="modal-section-title">月度目标（5月）</div>
               <table class="modal-table">
-                <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th><th>规模同比</th></tr></thead>
-                <tbody>
-                  <tr style="font-weight:600;"><td style="text-align:left;">整体</td><td>780</td><td>620</td><td style="color:var(--warning);">79.5%</td><td class="up">▲ +6.5%</td></tr>
-                  <tr><td style="text-align:left;">经代</td><td>340</td><td>330</td><td style="color:var(--success);">97.1%</td><td class="up">▲ +3.2%</td></tr>
-                  <tr><td style="text-align:left;">转型业务</td><td>440</td><td>290</td><td style="color:var(--danger);">65.9%</td><td class="up">▲ +10.8%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">OTO</td><td>190</td><td>155</td><td style="color:var(--warning);">81.6%</td><td class="up">▲ +8.5%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">证保</td><td>170</td><td>145</td><td style="color:var(--warning);">85.3%</td><td class="up">▲ +13.2%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">蚁桥</td><td>80</td><td>65</td><td style="color:var(--warning);">81.3%</td><td class="up">▲ +4.5%</td></tr>
-                </tbody>
+                <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th></tr></thead>
+                <tbody>${renderValueRows('month', 4)}</tbody>
               </table>
 
               <div id="modalChart" class="modal-chart" style="margin-top:16px;"></div>
-              <p style="color: var(--text-secondary); font-size: 13px; margin-top: 8px;">价值清单上传后可自动计算价值保费、价值率等指标。</p>
+              <p style="color: var(--text-secondary); font-size: 13px; margin-top: 8px;">注：当前价值清单覆盖转型业务，若后续补充经代价值数据，整体口径将自动纳入。</p>
             `,
             initChart: () => {
               const chart = echarts.init(document.getElementById('modalChart'));
@@ -1294,12 +1338,12 @@
                 tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
                 legend: { data: ['OTO', '证保', '蚁桥'], textStyle: { color: '#94a3b8' }, bottom: 0 },
                 grid: { left: 50, right: 20, top: 10, bottom: 30 },
-                xAxis: { type: 'category', data: ['1月','2月','3月','4月'], axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: ['1月','2月','3月','4月','5月'], axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
                 yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
                 series: [
-                  { name: 'OTO', type: 'line', smooth: true, data: [420,480,550,620], itemStyle: { color: '#3b82f6' }, areaStyle: { opacity: 0.1 } },
-                  { name: '证保', type: 'line', smooth: true, data: [360,400,460,520], itemStyle: { color: '#10b981' }, areaStyle: { opacity: 0.1 } },
-                  { name: '蚁桥', type: 'line', smooth: true, data: [220,260,290,310], itemStyle: { color: '#f59e0b' }, areaStyle: { opacity: 0.1 } }
+                  { name: 'OTO', type: 'line', smooth: true, data: months.slice(0,5).map((_,i)=>valueMonthly.OTO[i]||0), itemStyle: { color: '#3b82f6' }, areaStyle: { opacity: 0.1 } },
+                  { name: '证保', type: 'line', smooth: true, data: months.slice(0,5).map((_,i)=>valueMonthly['证保'][i]||0), itemStyle: { color: '#10b981' }, areaStyle: { opacity: 0.1 } },
+                  { name: '蚁桥', type: 'line', smooth: true, data: months.slice(0,5).map((_,i)=>valueMonthly['蚁桥'][i]||0), itemStyle: { color: '#f59e0b' }, areaStyle: { opacity: 0.1 } }
                 ]
               });
             }
@@ -1894,20 +1938,25 @@
       : (window.location.protocol === 'file:' ? 'http://localhost:8000' : '');
 
     let apiData = { kpi: null, platform: null, team: null, product: null };
+    const apiCache = {};
     let apiAvailable = false;
 
     async function fetchAPIData(year) {
       try {
         const resp = await fetch(`${API_BASE}/api/data/${year}`, { method: 'GET' });
         if (!resp.ok) return false;
-        apiData.platform = await resp.json();
+        const platform = await resp.json();
 
         const kpiResp = await fetch(`${API_BASE}/api/kpi/${year}`, { method: 'GET' });
-        if (kpiResp.ok) apiData.kpi = await kpiResp.json();
+        const kpi = kpiResp.ok ? await kpiResp.json() : null;
 
         const productResp = await fetch(`${API_BASE}/api/product/${year}`, { method: 'GET' });
-        if (productResp.ok) apiData.product = await productResp.json();
+        const product = productResp.ok ? await productResp.json() : null;
 
+        apiCache[String(year)] = { platform, kpi, product };
+        apiData.platform = platform;
+        apiData.kpi = kpi;
+        apiData.product = product;
         apiAvailable = true;
         return true;
       } catch (e) {
@@ -2030,6 +2079,42 @@
       productData.premium = product.premium;
       productData.count = Array.isArray(product.count) && product.count.length > 0 ? product.count : product.premium;
       return true;
+    }
+
+    async function recalculateDashboard() {
+      const btn = document.getElementById('recalcBtn');
+      const original = btn ? btn.textContent : '';
+      if (btn) {
+        btn.textContent = '计算中...';
+        btn.disabled = true;
+      }
+      try {
+        loadTargetData();
+        const platformYear = selectedYear || '2026';
+        if (selectedTeamYear && selectedTeamYear !== platformYear) {
+          await loadYearFromApi(selectedTeamYear, { updateKpi: false, updateProduct: false });
+        }
+        await loadYearFromApi(platformYear, { updateKpi: true, updateProduct: true });
+        platformChart.setOption(getPlatformOption(), true);
+        productChart.setOption(getPieOption(currentPieType), true);
+        teamChart.setOption(getTeamOption(), true);
+        updateCutoffLabel(platformYear);
+        updateKPICards();
+        if (btn) {
+          btn.textContent = '已重算';
+          setTimeout(() => { btn.textContent = original; }, 900);
+        }
+      } catch (e) {
+        console.error('recalculateDashboard error:', e);
+        if (btn) btn.textContent = '重算失败';
+      } finally {
+        if (btn) {
+          setTimeout(() => {
+            btn.disabled = false;
+            if (btn.textContent === '重算失败') btn.textContent = original;
+          }, 900);
+        }
+      }
     }
 
     // 将API数据转换为 teamMock 格式
@@ -11986,6 +12071,13 @@
       const selectedKeys = Object.keys(selectedSeries).filter(k => selectedSeries[k]);
       const year = parseInt(selectedYear);
       const prevYear = year - 1;
+      const emptyOption = (message) => ({
+        title: { text: message, left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } },
+        xAxis: { type: 'category', data: [] },
+        yAxis: { type: 'value' },
+        series: []
+      });
+      if (!platformMock[year]) return emptyOption('暂无该年份数据');
 
       if (currentTimeDim === 'year') {
         const data = platformMock[year].year[currentPremiumType];
@@ -12012,7 +12104,7 @@
           let prevCum = 0;
           const prevTotal = months.map((_, i) => {
             let sum = 0;
-            for (const key of selectedKeys) sum += prevData[key][i];
+            for (const key of selectedKeys) sum += prevData[key]?.[i] || 0;
             prevCum += sum;
             return Math.round(prevCum * 10) / 10;
           });
@@ -12032,36 +12124,46 @@
       if (currentTimeDim === 'quarter') {
         const quarter = selectedQuarter;
         const data = platformMock[year].quarter[quarter][currentPremiumType];
+        if (!data) return emptyOption('暂无该季度数据');
         const days = data['经代'].length;
         const qStartMonth = { 'Q1': 1, 'Q2': 4, 'Q3': 7, 'Q4': 10 };
         const startM = qStartMonth[quarter];
+        const isMonthlyQuarter = days <= 3;
         const dates = [];
-        for (let m = startM; m < startM + 3; m++) {
-          const dim = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
-          for (let d = 1; d <= dim; d++) dates.push(`${m}/${d}`);
+        if (isMonthlyQuarter) {
+          for (let m = startM; m < startM + 3; m++) dates.push(`${m}月`);
+        } else {
+          for (let m = startM; m < startM + 3; m++) {
+            const dim = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+            for (let d = 1; d <= dim; d++) dates.push(`${m}/${d}`);
+          }
         }
 
         const maxDay = days;
         const visibleDates = dates.slice(0, maxDay);
 
         const currentTotal = [];
+        let currentCum = 0;
         for (let i = 0; i < maxDay; i++) {
           let sum = 0;
-          for (const key of selectedKeys) sum += data[key][i];
-          currentTotal.push(Math.round(sum * 10) / 10);
+          for (const key of selectedKeys) sum += data[key]?.[i] || 0;
+          currentCum += sum || 0;
+          currentTotal.push(Math.round((isMonthlyQuarter ? currentCum : sum) * 10) / 10);
         }
 
         const seriesList = [
           { name: year + '年' + quarter, type: 'line', data: currentTotal, smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
         ];
 
-        if (platformMock[prevYear]) {
+        if (platformMock[prevYear] && platformMock[prevYear].quarter[quarter] && platformMock[prevYear].quarter[quarter][currentPremiumType]) {
           const prevData = platformMock[prevYear].quarter[quarter][currentPremiumType];
           const prevTotal = [];
+          let prevCum = 0;
           for (let i = 0; i < maxDay; i++) {
             let sum = 0;
-            for (const key of selectedKeys) sum += prevData[key][i];
-            prevTotal.push(Math.round(sum * 10) / 10);
+            for (const key of selectedKeys) sum += prevData[key]?.[i] || 0;
+            prevCum += sum || 0;
+            prevTotal.push(Math.round((isMonthlyQuarter ? prevCum : sum) * 10) / 10);
           }
           seriesList.push({ name: prevYear + '年' + quarter, type: 'line', data: prevTotal, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
         }
@@ -12078,16 +12180,19 @@
 
       const month = parseInt(selectedMonth);
       const data = platformMock[year].month[month][currentPremiumType];
+      if (!data) return emptyOption('暂无该月份数据');
+      const apiMonthMode = (data['经代'] || []).length <= 1;
       const dates = [];
-      for (let d = 1; d <= 30; d++) dates.push(`${d}日`);
+      if (apiMonthMode) dates.push(`${month}月`);
+      else for (let d = 1; d <= 30; d++) dates.push(`${d}日`);
 
-      const maxDay = month > getLatestMonthForYear(year) ? 0 : 30;
+      const maxDay = month > getLatestMonthForYear(year) ? 0 : (apiMonthMode ? 1 : 30);
       const visibleDates = maxDay > 0 ? dates.slice(0, maxDay) : [];
 
       const currentTotal = [];
       for (let i = 0; i < maxDay; i++) {
         let sum = 0;
-        for (const key of selectedKeys) sum += data[key][i];
+        for (const key of selectedKeys) sum += data[key]?.[i] || 0;
         currentTotal.push(Math.round(sum * 10) / 10);
       }
 
@@ -12095,12 +12200,12 @@
         { name: year + '年' + month + '月', type: 'line', data: currentTotal, smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
       ];
 
-      if (platformMock[prevYear] && maxDay > 0) {
+      if (platformMock[prevYear] && platformMock[prevYear].month[month] && platformMock[prevYear].month[month][currentPremiumType] && maxDay > 0) {
         const prevData = platformMock[prevYear].month[month][currentPremiumType];
         const prevTotal = [];
         for (let i = 0; i < maxDay; i++) {
           let sum = 0;
-          for (const key of selectedKeys) sum += prevData[key][i];
+          for (const key of selectedKeys) sum += prevData[key]?.[i] || 0;
           prevTotal.push(Math.round(sum * 10) / 10);
         }
         seriesList.push({ name: prevYear + '年' + month + '月', type: 'line', data: prevTotal, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
@@ -12118,9 +12223,39 @@
 
     platformChart.setOption(getPlatformOption());
 
-    function switchYear(value) {
+    async function loadYearFromApi(year, options = {}) {
+      const updateKpi = options.updateKpi !== false;
+      const updateProduct = options.updateProduct !== false;
+      const yearKey = String(year);
+      if (!apiCache[yearKey]) {
+        const ok = await fetchAPIData(parseInt(year));
+        if (!ok) return false;
+      }
+      const cached = apiCache[yearKey];
+      if (cached && cached.platform && hasValidApiData(cached.platform)) {
+        const apiPM = convertApiToPlatformMock(cached.platform, yearKey);
+        const apiTM = convertApiToTeamMock(cached.platform, yearKey);
+        Object.assign(platformMock, apiPM);
+        Object.assign(teamMock, apiTM);
+        if (updateKpi) {
+          apiData.platform = cached.platform;
+          apiData.kpi = cached.kpi;
+        }
+        if (updateProduct) {
+          apiData.product = cached.product;
+          updateProductDataFromApi();
+        }
+        return true;
+      }
+      return false;
+    }
+
+    async function switchYear(value) {
       selectedYear = value;
+      await loadYearFromApi(value, { updateKpi: true, updateProduct: true });
+      updateCutoffLabel(value);
       platformChart.setOption(getPlatformOption(), true);
+      productChart.setOption(getPieOption(currentPieType), true);
     }
 
     function switchTimeDim(btn, dim) {
@@ -12341,8 +12476,9 @@
 
     teamChart.setOption(getTeamOption());
 
-    function switchTeamYear(value) {
+    async function switchTeamYear(value) {
       selectedTeamYear = value;
+      await loadYearFromApi(value, { updateKpi: false, updateProduct: false });
       teamChart.setOption(getTeamOption(), true);
     }
     function switchTeamMetric(btn, metric) {
@@ -12389,9 +12525,9 @@
       const f2 = document.getElementById('file2').files[0];
       const f3 = document.getElementById('file3').files[0];
       const f4 = document.getElementById('file4').files[0];
-      if (f1) fd.append('performance', f1);
-      if (f2) fd.append('jingdai', f2);
-      if (f3) fd.append('hr', f3);
+      if (f1) fd.append('hr', f1);
+      if (f2) fd.append('performance', f2);
+      if (f3) fd.append('jingdai', f3);
       if (f4) fd.append('value', f4);
 
       try {

@@ -216,6 +216,35 @@ def aggregate_hr(df: pd.DataFrame) -> List[Dict]:
     return rows
 
 
+def aggregate_active_headcount(df: pd.DataFrame) -> List[Dict]:
+    year_col = _pick_col(df, ['年'])
+    month_col = _pick_col(df, ['年月', '月', '月份'])
+    channel_col = _pick_col(df, ['业务模式', '业务模式名称', '渠道'])
+    staff_col = _pick_col(df, ['人员工号', '人员代码'])
+    amount_col = _pick_col(df, ['折算保费', '期交保费'])
+
+    if not all([year_col, month_col, channel_col, staff_col, amount_col]):
+        return []
+
+    work = _period_year_month(df, year_col, month_col)
+    work['_channel'] = work[channel_col].map(_normalize_channel)
+    work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
+    work['_staff'] = work[staff_col].fillna('').astype(str).str.strip()
+    work['_amount'] = _to_number(work[amount_col])
+    work = work[(work['_staff'] != '') & (work['_amount'] > 0)]
+
+    grouped = work.groupby(['_year', '_month', '_channel'], dropna=False)
+    rows = []
+    for (year, month, channel), group in grouped:
+        rows.append({
+            'year': int(year),
+            'month': int(month),
+            'channel': str(channel),
+            'active_headcount': int(group['_staff'].nunique()),
+        })
+    return rows
+
+
 def aggregate_value(df: pd.DataFrame) -> List[Dict]:
     month_col = _pick_col(df, ['年月', '时间'])
     channel_col = _pick_col(df, ['业务模式名称', '业务模式', '渠道'])
