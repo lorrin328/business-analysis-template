@@ -462,7 +462,7 @@
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
-      <span class="date-display">数据截止：2026年4月</span>
+      <span class="date-display" id="dataCutoff">数据截止：2026年5月</span>
     </div>
   </div>
 
@@ -1005,6 +1005,16 @@
           for (const v of arr) { if (v === null || v === undefined) break; sum += v; }
           return sum;
         }
+        function avgArr(arr) {
+          if (!Array.isArray(arr)) return 0;
+          let sum = 0, n = 0;
+          for (const v of arr) {
+            if (v === null || v === undefined) break;
+            sum += v;
+            n += 1;
+          }
+          return n > 0 ? sum / n : 0;
+        }
         function calcRate(actual, target) {
           if (!target || target <= 0) return 0;
           return Math.round(actual / target * 1000) / 10;
@@ -1077,7 +1087,7 @@
       if (hasApiHr) {
         let 总在职 = 0, 总活动 = 0;
         Object.values(kpi.hr).forEach(h => {
-          总在职 += (h.avg || 0);
+          总在职 += (h.avg_sum || h.avg || 0);
           总活动 += (h.active || 0);
         });
         const 活动率 = 总在职 > 0 ? Math.round(总活动 / 总在职 * 1000) / 10 : 0;
@@ -1120,15 +1130,15 @@
         const 保费证保 = sumArr(tm.premium['证保']);
         const 保费蚁桥 = sumArr(tm.premium['蚁桥']);
         const 总保费 = 保费OTO + 保费证保 + 保费蚁桥;
-        const 总在职 = sumArr(tm.headcount['OTO']) + sumArr(tm.headcount['证保']) + sumArr(tm.headcount['蚁桥']);
+        const 总在职 = avgArr(tm.headcount['OTO']) + avgArr(tm.headcount['证保']) + avgArr(tm.headcount['蚁桥']);
         const 人均保费 = 总在职 > 0 ? Math.round(总保费 / 总在职 * 10) / 10 : 0;
         const perCapitaEl = document.getElementById('kpi-percapita');
         if (perCapitaEl) perCapitaEl.innerHTML = 人均保费 + '<span style="font-size:18px">万</span>';
         const perCapitaSubEl = document.getElementById('kpi-percapita-sub');
         if (perCapitaSubEl) {
-          const otoPc = sumArr(tm.headcount['OTO']) > 0 ? Math.round(保费OTO / sumArr(tm.headcount['OTO']) * 10) / 10 : 0;
-          const zbPc = sumArr(tm.headcount['证保']) > 0 ? Math.round(保费证保 / sumArr(tm.headcount['证保']) * 10) / 10 : 0;
-          const yqPc = sumArr(tm.headcount['蚁桥']) > 0 ? Math.round(保费蚁桥 / sumArr(tm.headcount['蚁桥']) * 10) / 10 : 0;
+          const otoPc = avgArr(tm.headcount['OTO']) > 0 ? Math.round(保费OTO / avgArr(tm.headcount['OTO']) * 10) / 10 : 0;
+          const zbPc = avgArr(tm.headcount['证保']) > 0 ? Math.round(保费证保 / avgArr(tm.headcount['证保']) * 10) / 10 : 0;
+          const yqPc = avgArr(tm.headcount['蚁桥']) > 0 ? Math.round(保费蚁桥 / avgArr(tm.headcount['蚁桥']) * 10) / 10 : 0;
           perCapitaSubEl.innerHTML = `
             <span>OTO <span class="${otoPc >= 3 ? 'up' : 'down'}">${otoPc}万</span></span>
             <span>证保 <span class="${zbPc >= 3 ? 'up' : 'down'}">${zbPc}万</span></span>
@@ -1883,7 +1893,7 @@
     const API_BASE = typeof BACKEND_URL !== 'undefined' ? BACKEND_URL
       : (window.location.protocol === 'file:' ? 'http://localhost:8000' : '');
 
-    let apiData = { kpi: null, platform: null, team: null };
+    let apiData = { kpi: null, platform: null, team: null, product: null };
     let apiAvailable = false;
 
     async function fetchAPIData(year) {
@@ -1895,12 +1905,35 @@
         const kpiResp = await fetch(`${API_BASE}/api/kpi/${year}`, { method: 'GET' });
         if (kpiResp.ok) apiData.kpi = await kpiResp.json();
 
+        const productResp = await fetch(`${API_BASE}/api/product/${year}`, { method: 'GET' });
+        if (productResp.ok) apiData.product = await productResp.json();
+
         apiAvailable = true;
         return true;
       } catch (e) {
         apiAvailable = false;
         return false;
       }
+    }
+
+    function getLatestMonthForYear(year) {
+      const pm = platformMock[year];
+      const data = pm && pm.year && pm.year.qj;
+      if (!data) return 12;
+      const channels = Object.keys(data);
+      for (let i = 11; i >= 0; i--) {
+        if (channels.some(ch => data[ch][i] !== null && data[ch][i] !== undefined && data[ch][i] !== 0)) {
+          return i + 1;
+        }
+      }
+      return 12;
+    }
+
+    function updateCutoffLabel(year) {
+      const el = document.getElementById('dataCutoff');
+      if (!el) return;
+      const latest = getLatestMonthForYear(year);
+      el.textContent = `数据截止：${year}年${latest}月`;
     }
 
     // 检查API数据是否包含有效记录（非空）
@@ -1989,6 +2022,14 @@
       }
 
       return { [year]: mock };
+    }
+
+    function updateProductDataFromApi() {
+      const product = apiData.product;
+      if (!product || !Array.isArray(product.premium) || product.premium.length === 0) return false;
+      productData.premium = product.premium;
+      productData.count = Array.isArray(product.count) && product.count.length > 0 ? product.count : product.premium;
+      return true;
     }
 
     // 将API数据转换为 teamMock 格式
@@ -11948,6 +11989,7 @@
 
       if (currentTimeDim === 'year') {
         const data = platformMock[year].year[currentPremiumType];
+        let currentCum = 0;
         const currentTotal = months.map((_, i) => {
           let sum = 0, hasValue = false;
           for (const key of selectedKeys) {
@@ -11956,7 +11998,9 @@
               hasValue = true;
             }
           }
-          return hasValue ? Math.round(sum * 10) / 10 : '-';
+          if (!hasValue) return '-';
+          currentCum += sum;
+          return Math.round(currentCum * 10) / 10;
         });
 
         const seriesList = [
@@ -11965,10 +12009,12 @@
 
         if (platformMock[prevYear]) {
           const prevData = platformMock[prevYear].year[currentPremiumType];
+          let prevCum = 0;
           const prevTotal = months.map((_, i) => {
             let sum = 0;
             for (const key of selectedKeys) sum += prevData[key][i];
-            return Math.round(sum * 10) / 10;
+            prevCum += sum;
+            return Math.round(prevCum * 10) / 10;
           });
           seriesList.push({ name: prevYear + '年', type: 'line', data: prevTotal, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
         }
@@ -11995,7 +12041,7 @@
           for (let d = 1; d <= dim; d++) dates.push(`${m}/${d}`);
         }
 
-        const maxDay = (year === 2026 && quarter === 'Q2') ? 30 : days;
+        const maxDay = days;
         const visibleDates = dates.slice(0, maxDay);
 
         const currentTotal = [];
@@ -12035,7 +12081,7 @@
       const dates = [];
       for (let d = 1; d <= 30; d++) dates.push(`${d}日`);
 
-      const maxDay = (year === 2026 && month > 4) ? 0 : 30;
+      const maxDay = month > getLatestMonthForYear(year) ? 0 : 30;
       const visibleDates = maxDay > 0 ? dates.slice(0, maxDay) : [];
 
       const currentTotal = [];
@@ -12152,11 +12198,13 @@
         }]
       };
     }
-    productChart.setOption(getPieOption('premium'));
+    let currentPieType = 'premium';
+    productChart.setOption(getPieOption(currentPieType));
 
     function switchPie(btn, type) {
       btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      currentPieType = type;
       productChart.setOption(getPieOption(type), true);
     }
 
@@ -12368,8 +12416,11 @@
             const apiTM = convertApiToTeamMock(apiData.platform, String(queryYear));
             Object.assign(platformMock, apiPM);
             Object.assign(teamMock, apiTM);
+            updateProductDataFromApi();
             platformChart.setOption(getPlatformOption(), true);
+            productChart.setOption(getPieOption(currentPieType), true);
             teamChart.setOption(getTeamOption(), true);
+            updateCutoffLabel(String(queryYear));
             updateKPICards();
             info.textContent = `✓ 已上传: ${result.uploaded.join(', ')} · ${queryYear}年数据已刷新`;
           } else {
@@ -12398,9 +12449,12 @@
         const apiTM = convertApiToTeamMock(apiData.platform, '2026');
         Object.assign(platformMock, apiPM);
         Object.assign(teamMock, apiTM);
+        updateProductDataFromApi();
         platformChart.setOption(getPlatformOption(), true);
+        productChart.setOption(getPieOption(currentPieType), true);
         teamChart.setOption(getTeamOption(), true);
       }
+      updateCutoffLabel('2026');
       updateKPICards();
     })();
   </script>
