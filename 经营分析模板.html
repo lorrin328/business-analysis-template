@@ -277,6 +277,7 @@
     input.target-input:focus {
       outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
     }
+    input.target-input-sm { width: 58px; padding: 3px 4px; font-size: 11px; }
     .target-actions {
       display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end;
       padding-top: 12px; border-top: 1px solid var(--border);
@@ -759,25 +760,30 @@
 
     function createDefaultTargetData(year) {
       const metrics = ['整体', '经代', '转型业务', 'OTO', '证保', '蚁桥'];
-      const dims = ['year', 'quarter', 'month'];
       const categories = [
         { key: 'qjPremium', name: '期交保费', color: '#3b82f6',
-          targets: { year: [10500,4800,5700,2500,2200,1000], quarter: [2800,1200,1600,700,600,300], month: [950,420,530,280,180,120] } },
+          yearTargets: [10500,4800,5700,2500,2200,1000] },
         { key: 'value', name: '价值保费', color: '#8b5cf6',
-          targets: { year: [8200,3600,4600,2000,1800,800], quarter: [2200,960,1240,540,480,220], month: [780,340,440,200,170,70] } },
+          yearTargets: [8200,3600,4600,2000,1800,800] },
         { key: 'shangbao', name: '商保年金', color: '#10b981',
-          targets: { year: [3500,1500,2000,900,700,400], quarter: [900,400,500,220,180,100], month: [320,140,180,80,65,35] } },
+          yearTargets: [3500,1500,2000,900,700,400] },
         { key: 'baozhang', name: '保障类产品', color: '#f59e0b',
-          targets: { year: [4200,1800,2400,1000,900,500], quarter: [1100,480,620,270,240,130], month: [380,170,210,95,80,35] } },
+          yearTargets: [4200,1800,2400,1000,900,500] },
         { key: 'tenYear', name: '10年期产品', color: '#ef4444',
-          targets: { year: [2800,1200,1600,700,600,300], quarter: [750,320,430,190,170,70], month: [260,115,145,65,55,25] } }
+          yearTargets: [2800,1200,1600,700,600,300] }
       ];
+      const qFactors = [0.22, 0.25, 0.26, 0.27];
+      const mFactors = [0.07,0.07,0.08,0.08,0.09,0.09,0.08,0.08,0.09,0.09,0.09,0.09];
       const data = { year: parseInt(year), categories: {} };
       categories.forEach(cat => {
         data.categories[cat.key] = { name: cat.name, color: cat.color, metrics: {} };
         metrics.forEach((m, i) => {
-          data.categories[cat.key].metrics[m] = {};
-          dims.forEach(d => { data.categories[cat.key].metrics[m][d] = cat.targets[d][i]; });
+          const yearVal = cat.yearTargets[i];
+          data.categories[cat.key].metrics[m] = {
+            year: yearVal,
+            quarter: qFactors.map(f => Math.round(yearVal * f)),
+            month: mFactors.map(f => Math.round(yearVal * f))
+          };
         });
       });
       return data;
@@ -785,8 +791,25 @@
 
     function loadTargetData() {
       const saved = localStorage.getItem(TARGET_STORAGE_KEY);
-      if (saved) { try { targetData = JSON.parse(saved); } catch(e) { targetData = createDefaultTargetData(2026); } }
-      else { targetData = createDefaultTargetData(2026); }
+      if (saved) {
+        try {
+          targetData = JSON.parse(saved);
+          // 兼容旧数据：quarter/month 可能是 number 而不是数组
+          Object.values(targetData.categories).forEach(cat => {
+            Object.values(cat.metrics).forEach(metricData => {
+              if (typeof metricData.quarter === 'number') {
+                const v = metricData.quarter;
+                metricData.quarter = [Math.round(v*0.22), Math.round(v*0.25), Math.round(v*0.26), Math.round(v*0.27)];
+              }
+              if (typeof metricData.month === 'number') {
+                const v = metricData.month;
+                const factors = [0.07,0.07,0.08,0.08,0.09,0.09,0.08,0.08,0.09,0.09,0.09,0.09];
+                metricData.month = factors.map(f => Math.round(v * f * 12));
+              }
+            });
+          });
+        } catch(e) { targetData = createDefaultTargetData(2026); }
+      } else { targetData = createDefaultTargetData(2026); }
     }
 
     function openTargetModal() {
@@ -839,9 +862,10 @@
 
     function renderTargetCategoryTable(catKey, cat) {
       const metrics = ['整体', '经代', '转型业务', 'OTO', '证保', '蚁桥'];
-      const dims = [{ key: 'year', label: '年度目标' }, { key: 'quarter', label: '季度目标' }, { key: 'month', label: '月度目标' }];
-      return dims.map(dim => `
-        <div class="target-dim-title">${dim.label}</div>
+
+      // 年度目标
+      let html = `
+        <div class="target-dim-title">年度目标</div>
         <table class="target-table">
           <thead><tr><th style="width:40%">口径</th><th>目标值（万）</th></tr></thead>
           <tbody>
@@ -849,21 +873,93 @@
               <tr class="${m === 'OTO' || m === '证保' || m === '蚁桥' ? 'sub' : ''}">
                 <td>${m}</td>
                 <td><input type="number" class="target-input"
-                  value="${cat.metrics[m]?.[dim.key] ?? 0}"
-                  data-cat="${catKey}" data-metric="${m}" data-dim="${dim.key}"
+                  value="${cat.metrics[m]?.year ?? 0}"
+                  data-cat="${catKey}" data-metric="${m}" data-dim="year"
                   onchange="updateTargetValue(this)"></td>
               </tr>
             `).join('')}
           </tbody>
         </table>
-      `).join('');
+      `;
+
+      // 季度目标（Q1-Q4）
+      html += `
+        <div class="target-dim-title">季度目标</div>
+        <table class="target-table">
+          <thead><tr><th>口径</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th></tr></thead>
+          <tbody>
+            ${metrics.map(m => `
+              <tr class="${m === 'OTO' || m === '证保' || m === '蚁桥' ? 'sub' : ''}">
+                <td>${m}</td>
+                ${[0,1,2,3].map(q => `
+                  <td><input type="number" class="target-input target-input-sm"
+                    value="${cat.metrics[m]?.quarter?.[q] ?? 0}"
+                    data-cat="${catKey}" data-metric="${m}" data-dim="quarter" data-idx="${q}"
+                    onchange="updateTargetValue(this)"></td>
+                `).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+
+      // 月度目标 - 上半年
+      html += `
+        <div class="target-dim-title">月度目标（1-6月）</div>
+        <table class="target-table">
+          <thead><tr><th>口径</th>${[1,2,3,4,5,6].map(mo => `<th>${mo}月</th>`).join('')}</tr></thead>
+          <tbody>
+            ${metrics.map(m => `
+              <tr class="${m === 'OTO' || m === '证保' || m === '蚁桥' ? 'sub' : ''}">
+                <td>${m}</td>
+                ${[0,1,2,3,4,5].map(mi => `
+                  <td><input type="number" class="target-input target-input-sm"
+                    value="${cat.metrics[m]?.month?.[mi] ?? 0}"
+                    data-cat="${catKey}" data-metric="${m}" data-dim="month" data-idx="${mi}"
+                    onchange="updateTargetValue(this)"></td>
+                `).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+
+      // 月度目标 - 下半年
+      html += `
+        <div class="target-dim-title">月度目标（7-12月）</div>
+        <table class="target-table">
+          <thead><tr><th>口径</th>${[7,8,9,10,11,12].map(mo => `<th>${mo}月</th>`).join('')}</tr></thead>
+          <tbody>
+            ${metrics.map(m => `
+              <tr class="${m === 'OTO' || m === '证保' || m === '蚁桥' ? 'sub' : ''}">
+                <td>${m}</td>
+                ${[6,7,8,9,10,11].map(mi => `
+                  <td><input type="number" class="target-input target-input-sm"
+                    value="${cat.metrics[m]?.month?.[mi] ?? 0}"
+                    data-cat="${catKey}" data-metric="${m}" data-dim="month" data-idx="${mi}"
+                    onchange="updateTargetValue(this)"></td>
+                `).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+
+      return html;
     }
 
     function updateTargetValue(input) {
       const cat = input.dataset.cat, metric = input.dataset.metric, dim = input.dataset.dim;
+      const idx = input.dataset.idx;
       const val = parseFloat(input.value) || 0;
-      if (!targetData.categories[cat].metrics[metric]) targetData.categories[cat].metrics[metric] = {};
-      targetData.categories[cat].metrics[metric][dim] = val;
+      if (!targetData.categories[cat].metrics[metric]) {
+        targetData.categories[cat].metrics[metric] = { year: 0, quarter: [0,0,0,0], month: Array(12).fill(0) };
+      }
+      if (dim === 'year') {
+        targetData.categories[cat].metrics[metric][dim] = val;
+      } else {
+        targetData.categories[cat].metrics[metric][dim][parseInt(idx)] = val;
+      }
     }
 
     function saveTargetData() {
