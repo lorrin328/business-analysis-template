@@ -474,72 +474,51 @@
         <!-- 1. 整体达成率（期交保费） -->
         <div class="kpi-card" onclick="openModal('overall')">
           <div class="kpi-top-label">期交保费达成率</div>
-          <div class="kpi-big-value" style="color: var(--accent-light);">85.3%</div>
-          <div class="kpi-bottom-meta">
-            <span>经代 <span class="up">95.4%</span></span>
-            <span>转型 <span class="warning">76.8%</span></span>
-          </div>
+          <div class="kpi-big-value" id="kpi-qj-rate" style="color: var(--accent-light);">--</div>
+          <div class="kpi-bottom-meta" id="kpi-qj-sub"></div>
         </div>
 
         <!-- 2. 价值达成率 -->
         <div class="kpi-card" onclick="openModal('value')">
           <div class="kpi-upload-badge">需上传</div>
           <div class="kpi-top-label">价值达成率</div>
-          <div class="kpi-big-value" style="color: var(--success);">72.5%</div>
-          <div class="kpi-bottom-meta">
-            <span>经代 <span class="up">95.0%</span></span>
-            <span>转型 <span class="down">55.0%</span></span>
-          </div>
+          <div class="kpi-big-value" id="kpi-value-rate" style="color: var(--success);">--</div>
+          <div class="kpi-bottom-meta" id="kpi-value-sub"></div>
         </div>
 
         <!-- 3. 活动率 -->
         <div class="kpi-card" onclick="openModal('activity')">
           <div class="kpi-top-label">活动率</div>
-          <div class="kpi-big-value" style="color: var(--warning);">68.5%</div>
-          <div class="kpi-bottom-meta">
-            <span>点击查看分模式明细</span>
-          </div>
+          <div class="kpi-big-value" id="kpi-activity-rate" style="color: var(--warning);">--</div>
+          <div class="kpi-bottom-meta" id="kpi-activity-sub"></div>
         </div>
 
         <!-- 4. 商保年金 -->
         <div class="kpi-card" onclick="openModal('annuity')">
           <div class="kpi-top-label">商保年金达成率</div>
-          <div class="kpi-big-value" style="color: #8b5cf6;">90.2%</div>
-          <div class="kpi-bottom-meta">
-            <span>经代 <span class="up">88.1%</span></span>
-            <span>转型 <span class="up">93.5%</span></span>
-          </div>
+          <div class="kpi-big-value" id="kpi-annuity-rate" style="color: #8b5cf6;">--</div>
+          <div class="kpi-bottom-meta" id="kpi-annuity-sub"></div>
         </div>
 
         <!-- 5. 保障类产品 -->
         <div class="kpi-card" onclick="openModal('protection')">
           <div class="kpi-top-label">保障类产品达成率</div>
-          <div class="kpi-big-value" style="color: #ec4899;">82.0%</div>
-          <div class="kpi-bottom-meta">
-            <span>经代 <span class="down">80.2%</span></span>
-            <span>转型 <span class="up">85.1%</span></span>
-          </div>
+          <div class="kpi-big-value" id="kpi-protection-rate" style="color: #ec4899;">--</div>
+          <div class="kpi-bottom-meta" id="kpi-protection-sub"></div>
         </div>
 
         <!-- 6. 10年期产品 -->
         <div class="kpi-card" onclick="openModal('10year')">
           <div class="kpi-top-label">10年期产品达成率</div>
-          <div class="kpi-big-value" style="color: #06b6d4;">79.8%</div>
-          <div class="kpi-bottom-meta">
-            <span>经代 <span class="up">82.5%</span></span>
-            <span>转型 <span class="warning">76.5%</span></span>
-          </div>
+          <div class="kpi-big-value" id="kpi-10year-rate" style="color: #06b6d4;">--</div>
+          <div class="kpi-bottom-meta" id="kpi-10year-sub"></div>
         </div>
 
         <!-- 7. 人均保费（转型业务） -->
         <div class="kpi-card" onclick="openModal('percapita')">
           <div class="kpi-top-label">人均保费 <span style="font-size:10px;color:var(--text-secondary);">(年累计)</span></div>
-          <div class="kpi-big-value" style="color: #f97316;">3.42<span style="font-size:18px">万</span></div>
-          <div class="kpi-bottom-meta">
-            <span>OTO <span class="up">3.85万</span></span>
-            <span>证保 <span class="up">3.62万</span></span>
-            <span>蚁桥 <span class="down">2.45万</span></span>
-          </div>
+          <div class="kpi-big-value" id="kpi-percapita" style="color: #f97316;">--</div>
+          <div class="kpi-bottom-meta" id="kpi-percapita-sub"></div>
         </div>
       </div>
     </div>
@@ -961,11 +940,12 @@
 
     function saveTargetData() {
       localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(targetData));
+      updateKPICards();
       // 显示简单提示
       const btn = event.target;
       const original = btn.textContent;
       btn.textContent = '已保存';
-      setTimeout(() => btn.textContent = original, 1500);
+      setTimeout(() => { btn.textContent = original; closeModal(); }, 800);
     }
 
     function exportTargetJSON() {
@@ -988,11 +968,107 @@
             localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(targetData));
             document.getElementById('targetYearSelect').value = targetData.year;
             renderTargetForm();
+            updateKPICards();
           }
         } catch(err) { alert('JSON 解析失败'); }
       };
       reader.readAsText(file);
       input.value = '';
+    }
+
+    // ---------- KPI Dynamic Calculation ----------
+    function updateKPICards() {
+      loadTargetData();
+      const year = 2026;
+      const pm = platformMock[year];
+      const tm = teamMock[year];
+      if (!pm) return;
+
+      function sumArr(arr) {
+        let sum = 0;
+        for (const v of arr) { if (v === null || v === undefined) break; sum += v; }
+        return sum;
+      }
+      function calcRate(actual, target) {
+        if (!target || target <= 0) return 0;
+        return Math.round(actual / target * 1000) / 10;
+      }
+      function rateClass(rate) {
+        if (rate >= 100) return 'up';
+        if (rate >= 80) return 'warning';
+        return 'down';
+      }
+
+      // 1. 期交保费达成率
+      const qjData = pm.year.qj;
+      const 经代实际 = sumArr(qjData['经代']);
+      const OTO实际 = sumArr(qjData['OTO']);
+      const 证保实际 = sumArr(qjData['证保']);
+      const 蚁桥实际 = sumArr(qjData['蚁桥']);
+      const 转型实际 = OTO实际 + 证保实际 + 蚁桥实际;
+      const 整体实际 = 经代实际 + 转型实际;
+      const qjTargets = targetData.categories.qjPremium.metrics;
+      const 整体目标 = qjTargets['整体']?.year || 0;
+      const 经代目标 = qjTargets['经代']?.year || 0;
+      const 转型目标 = qjTargets['转型业务']?.year || 0;
+      const 整体达成率 = calcRate(整体实际, 整体目标);
+      const 经代达成率 = calcRate(经代实际, 经代目标);
+      const 转型达成率 = calcRate(转型实际, 转型目标);
+      const qjRateEl = document.getElementById('kpi-qj-rate');
+      if (qjRateEl) qjRateEl.textContent = 整体达成率 + '%';
+      const qjSubEl = document.getElementById('kpi-qj-sub');
+      if (qjSubEl) {
+        qjSubEl.innerHTML = `
+          <span>经代 <span class="${rateClass(经代达成率)}">${经代达成率}%</span></span>
+          <span>转型 <span class="${rateClass(转型达成率)}">${转型达成率}%</span></span>`;
+      }
+
+      // 2. 价值达成率 — platformMock 中暂无价值数据
+      const valueRateEl = document.getElementById('kpi-value-rate');
+      if (valueRateEl) valueRateEl.textContent = '--';
+      const valueSubEl = document.getElementById('kpi-value-sub');
+      if (valueSubEl) valueSubEl.innerHTML = '<span style="color:var(--text-secondary)">需上传价值清单</span>';
+
+      // 3. 活动率
+      if (tm) {
+        const 总在职 = sumArr(tm.headcount['OTO']) + sumArr(tm.headcount['证保']) + sumArr(tm.headcount['蚁桥']);
+        const 总活动 = sumArr(tm.activeHeadcount['OTO']) + sumArr(tm.activeHeadcount['证保']) + sumArr(tm.activeHeadcount['蚁桥']);
+        const 活动率 = 总在职 > 0 ? Math.round(总活动 / 总在职 * 1000) / 10 : 0;
+        const activityRateEl = document.getElementById('kpi-activity-rate');
+        if (activityRateEl) activityRateEl.textContent = 活动率 + '%';
+        const activitySubEl = document.getElementById('kpi-activity-sub');
+        if (activitySubEl) activitySubEl.innerHTML = '<span>点击查看分模式明细</span>';
+      }
+
+      // 4-6. 商保年金 / 保障类 / 10年期 — 暂无实际数据
+      ['annuity','protection','10year'].forEach(key => {
+        const el = document.getElementById('kpi-' + key + '-rate');
+        if (el) el.textContent = '--';
+        const sub = document.getElementById('kpi-' + key + '-sub');
+        if (sub) sub.innerHTML = '<span style="color:var(--text-secondary)">暂无数据</span>';
+      });
+
+      // 7. 人均保费
+      if (tm) {
+        const 保费OTO = sumArr(tm.premium['OTO']);
+        const 保费证保 = sumArr(tm.premium['证保']);
+        const 保费蚁桥 = sumArr(tm.premium['蚁桥']);
+        const 总保费 = 保费OTO + 保费证保 + 保费蚁桥;
+        const 总在职 = sumArr(tm.headcount['OTO']) + sumArr(tm.headcount['证保']) + sumArr(tm.headcount['蚁桥']);
+        const 人均保费 = 总在职 > 0 ? Math.round(总保费 / 总在职 * 10) / 10 : 0;
+        const perCapitaEl = document.getElementById('kpi-percapita');
+        if (perCapitaEl) perCapitaEl.innerHTML = 人均保费 + '<span style="font-size:18px">万</span>';
+        const perCapitaSubEl = document.getElementById('kpi-percapita-sub');
+        if (perCapitaSubEl) {
+          const otoPc = sumArr(tm.headcount['OTO']) > 0 ? Math.round(保费OTO / sumArr(tm.headcount['OTO']) * 10) / 10 : 0;
+          const zbPc = sumArr(tm.headcount['证保']) > 0 ? Math.round(保费证保 / sumArr(tm.headcount['证保']) * 10) / 10 : 0;
+          const yqPc = sumArr(tm.headcount['蚁桥']) > 0 ? Math.round(保费蚁桥 / sumArr(tm.headcount['蚁桥']) * 10) / 10 : 0;
+          perCapitaSubEl.innerHTML = `
+            <span>OTO <span class="${otoPc >= 3 ? 'up' : 'down'}">${otoPc}万</span></span>
+            <span>证保 <span class="${zbPc >= 3 ? 'up' : 'down'}">${zbPc}万</span></span>
+            <span>蚁桥 <span class="${yqPc >= 3 ? 'up' : 'down'}">${yqPc}万</span></span>`;
+        }
+      }
     }
 
     function getModalContent(type) {
@@ -12017,6 +12093,9 @@
       productChart.resize();
       teamChart.resize();
     });
+
+    // 初始化KPI卡片
+    updateKPICards();
   </script>
 </body>
 </html>
