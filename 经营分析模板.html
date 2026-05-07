@@ -769,9 +769,13 @@
       const saved = localStorage.getItem(TARGET_STORAGE_KEY);
       if (saved) {
         try {
-          targetData = JSON.parse(saved);
+          const parsed = JSON.parse(saved);
+          // 验证数据结构完整性
+          if (!parsed.categories) throw new Error('invalid target data');
+          targetData = parsed;
           // 兼容旧数据：quarter/month 可能是 number 而不是数组
           Object.values(targetData.categories).forEach(cat => {
+            if (!cat.metrics) cat.metrics = {};
             Object.values(cat.metrics).forEach(metricData => {
               if (typeof metricData.quarter === 'number') {
                 const v = metricData.quarter;
@@ -800,12 +804,12 @@
             <option value="2025" ${targetData.year === 2025 ? 'selected' : ''}>2025</option>
             <option value="2024" ${targetData.year === 2024 ? 'selected' : ''}>2024</option>
           </select>
-          <span style="color:var(--text-secondary);font-size:12px;">所有目标值单位：万</span>
+          <span style="color:var(--text-secondary);font-size:12px;">单位：万 · 年度目标影响KPI概览达成率</span>
           <div style="flex:1;"></div>
           <button class="chart-btn" onclick="exportTargetJSON()">导出 JSON</button>
           <button class="chart-btn" onclick="document.getElementById('targetFileInput').click()">导入 JSON</button>
           <input type="file" id="targetFileInput" accept=".json" style="display:none;" onchange="importTargetJSON(this)">
-          <button class="chart-btn active" onclick="saveTargetData()">保存</button>
+          <button class="chart-btn active" onclick="saveTargetData(event)">保存</button>
         </div>
         <div class="target-grid" id="targetGrid"></div>
       `;
@@ -925,27 +929,37 @@
     }
 
     function updateTargetValue(input) {
+      if (!targetData || !targetData.categories) return;
       const cat = input.dataset.cat, metric = input.dataset.metric, dim = input.dataset.dim;
       const idx = input.dataset.idx;
       const val = parseFloat(input.value) || 0;
+      if (!targetData.categories[cat]) return;
       if (!targetData.categories[cat].metrics[metric]) {
         targetData.categories[cat].metrics[metric] = { year: 0, quarter: [0,0,0,0], month: Array(12).fill(0) };
       }
       if (dim === 'year') {
         targetData.categories[cat].metrics[metric][dim] = val;
       } else {
-        targetData.categories[cat].metrics[metric][dim][parseInt(idx)] = val;
+        const arr = targetData.categories[cat].metrics[metric][dim];
+        if (Array.isArray(arr) && idx !== undefined) {
+          arr[parseInt(idx)] = val;
+        }
       }
     }
 
-    function saveTargetData() {
+    function saveTargetData(evt) {
       localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(targetData));
+      console.log('目标已保存:', targetData);
       updateKPICards();
       // 显示简单提示
-      const btn = event.target;
-      const original = btn.textContent;
-      btn.textContent = '已保存';
-      setTimeout(() => { btn.textContent = original; closeModal(); }, 800);
+      const btn = evt ? evt.target : null;
+      if (btn) {
+        const original = btn.textContent;
+        btn.textContent = '已保存';
+        setTimeout(() => { btn.textContent = original; closeModal(); }, 800);
+      } else {
+        closeModal();
+      }
     }
 
     function exportTargetJSON() {
@@ -978,30 +992,32 @@
 
     // ---------- KPI Dynamic Calculation ----------
     function updateKPICards() {
-      loadTargetData();
-      const year = 2026;
-      const pm = platformMock[year];
-      const tm = teamMock[year];
-      if (!pm) return;
+      try {
+        loadTargetData();
+        const year = 2026;
+        const pm = platformMock[year];
+        const tm = teamMock[year];
+        if (!pm) return;
 
-      function sumArr(arr) {
-        let sum = 0;
-        for (const v of arr) { if (v === null || v === undefined) break; sum += v; }
-        return sum;
-      }
-      function calcRate(actual, target) {
-        if (!target || target <= 0) return 0;
-        return Math.round(actual / target * 1000) / 10;
-      }
-      function rateClass(rate) {
-        if (rate >= 100) return 'up';
-        if (rate >= 80) return 'warning';
-        return 'down';
-      }
+        function sumArr(arr) {
+          if (!Array.isArray(arr)) return 0;
+          let sum = 0;
+          for (const v of arr) { if (v === null || v === undefined) break; sum += v; }
+          return sum;
+        }
+        function calcRate(actual, target) {
+          if (!target || target <= 0) return 0;
+          return Math.round(actual / target * 1000) / 10;
+        }
+        function rateClass(rate) {
+          if (rate >= 100) return 'up';
+          if (rate >= 80) return 'warning';
+          return 'down';
+        }
 
-      // 如果API数据可用，优先使用
-      const kpi = apiData.kpi;
-      const hasApiKpi = kpi && kpi.year === year;
+        // 如果API数据可用，优先使用
+        const kpi = apiData.kpi;
+        const hasApiKpi = kpi && kpi.year === year;
 
       // 1. 期交保费达成率
       let 经代实际, OTO实际, 证保实际, 蚁桥实际, 转型实际, 整体实际;
@@ -1029,6 +1045,8 @@
       const 整体达成率 = calcRate(整体实际, 整体目标);
       const 经代达成率 = calcRate(经代实际, 经代目标);
       const 转型达成率 = calcRate(转型实际, 转型目标);
+      // 调试输出
+      console.log('KPI更新: 整体目标=' + 整体目标 + ' 整体实际=' + Math.round(整体实际) + ' 达成率=' + 整体达成率 + '%');
       const qjRateEl = document.getElementById('kpi-qj-rate');
       if (qjRateEl) qjRateEl.textContent = 整体达成率 + '%';
       const qjSubEl = document.getElementById('kpi-qj-sub');
@@ -1116,6 +1134,7 @@
             <span>蚁桥 <span class="${yqPc >= 3 ? 'up' : 'down'}">${yqPc}万</span></span>`;
         }
       }
+      } catch (e) { console.error('updateKPICards error:', e); }
     }
 
     function getModalContent(type) {
@@ -1829,7 +1848,8 @@
 };
 
     // ---------- API Integration ----------
-    const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    // file:// 协议（本地直接打开HTML）也尝试连接本地后端
+    const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:')
       ? 'http://localhost:8000'
       : '';
 
