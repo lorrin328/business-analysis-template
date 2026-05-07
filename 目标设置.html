@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>经营分析 - 目标设置</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+      background: #0f172a; color: #e2e8f0; padding: 24px;
+    }
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #334155;
+    }
+    .header h1 { font-size: 20px; font-weight: 600; color: #f8fafc; }
+    .header-actions { display: flex; gap: 10px; }
+    .btn {
+      padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer;
+      font-size: 13px; font-weight: 500; transition: all 0.2s;
+    }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #334155; color: #e2e8f0; }
+    .btn-secondary:hover { background: #475569; }
+    .btn-success { background: #10b981; color: #fff; }
+    .btn-success:hover { background: #059669; }
+
+    .toolbar {
+      display: flex; align-items: center; gap: 16px; margin-bottom: 20px;
+      padding: 12px 16px; background: #1e293b; border-radius: 8px;
+    }
+    .toolbar label { font-size: 13px; color: #94a3b8; }
+    .toolbar select {
+      padding: 6px 10px; border-radius: 4px; border: 1px solid #334155;
+      background: #0f172a; color: #e2e8f0; font-size: 13px;
+    }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+
+    .card {
+      background: #1e293b; border-radius: 10px; border: 1px solid #334155;
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 12px 16px; background: #1e293b;
+      border-bottom: 1px solid #334155; font-weight: 600; font-size: 14px;
+      color: #f8fafc; display: flex; align-items: center; gap: 8px;
+    }
+    .card-header .icon { width: 8px; height: 8px; border-radius: 50%; }
+    .card-body { padding: 12px 16px; }
+
+    .section-title {
+      font-size: 12px; color: #94a3b8; text-transform: uppercase;
+      letter-spacing: 0.5px; margin: 12px 0 8px;
+    }
+    .section-title:first-child { margin-top: 0; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; font-weight: 500; font-size: 12px; background: #1e293b; }
+    td { color: #e2e8f0; }
+    tr:hover td { background: #334155; }
+    tr.sub td:first-child { padding-left: 24px; color: #94a3b8; }
+
+    input.target-input {
+      width: 90px; padding: 5px 8px; border-radius: 4px;
+      border: 1px solid #334155; background: #0f172a; color: #e2e8f0;
+      font-size: 13px; text-align: right;
+    }
+    input.target-input:focus {
+      outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+    }
+
+    .toast {
+      position: fixed; top: 20px; right: 20px; padding: 12px 20px;
+      border-radius: 8px; font-size: 13px; font-weight: 500;
+      transform: translateX(150%); transition: transform 0.3s ease;
+      z-index: 1000;
+    }
+    .toast.show { transform: translateX(0); }
+    .toast-success { background: #10b981; color: #fff; }
+    .toast-error { background: #ef4444; color: #fff; }
+
+    #fileInput { display: none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>经营目标设置</h1>
+    <div class="header-actions">
+      <button class="btn btn-secondary" onclick="exportJSON()">导出 JSON</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">导入 JSON</button>
+      <input type="file" id="fileInput" accept=".json" onchange="importJSON(this)">
+      <button class="btn btn-success" onclick="saveToLocal()">保存到本地</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <label>目标年份</label>
+    <select id="yearSelect" onchange="changeYear(this.value)">
+      <option value="2026" selected>2026</option>
+      <option value="2025">2025</option>
+      <option value="2024">2024</option>
+    </select>
+    <span style="color:#64748b;font-size:12px;">所有目标值单位：万</span>
+  </div>
+
+  <div class="grid" id="formGrid"></div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // 默认数据结构
+    function createDefaultData(year) {
+      const metrics = ['整体', '经代', '转型业务', 'OTO', '证保', '蚁桥'];
+      const dims = ['year', 'quarter', 'month'];
+      const dimLabels = { year: '年度目标', quarter: '季度目标', month: '月度目标' };
+
+      const categories = [
+        { key: 'qjPremium', name: '期交保费', color: '#3b82f6',
+          targets: { year: [10500,4800,5700,2500,2200,1000], quarter: [2800,1200,1600,700,600,300], month: [950,420,530,280,180,120] } },
+        { key: 'value', name: '价值保费', color: '#8b5cf6',
+          targets: { year: [8200,3600,4600,2000,1800,800], quarter: [2200,960,1240,540,480,220], month: [780,340,440,200,170,70] } },
+        { key: 'shangbao', name: '商保年金', color: '#10b981',
+          targets: { year: [3500,1500,2000,900,700,400], quarter: [900,400,500,220,180,100], month: [320,140,180,80,65,35] } },
+        { key: 'baozhang', name: '保障类产品', color: '#f59e0b',
+          targets: { year: [4200,1800,2400,1000,900,500], quarter: [1100,480,620,270,240,130], month: [380,170,210,95,80,35] } },
+        { key: 'tenYear', name: '10年期产品', color: '#ef4444',
+          targets: { year: [2800,1200,1600,700,600,300], quarter: [750,320,430,190,170,70], month: [260,115,145,65,55,25] } }
+      ];
+
+      const data = { year: parseInt(year), categories: {} };
+      categories.forEach(cat => {
+        data.categories[cat.key] = { name: cat.name, color: cat.color, metrics: {} };
+        metrics.forEach((m, i) => {
+          data.categories[cat.key].metrics[m] = {};
+          dims.forEach(d => {
+            data.categories[cat.key].metrics[m][d] = cat.targets[d][i];
+          });
+        });
+      });
+      return data;
+    }
+
+    let currentData = null;
+    const STORAGE_KEY = 'business_targets_v1';
+
+    function loadData() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          currentData = JSON.parse(saved);
+        } catch(e) {
+          currentData = createDefaultData(2026);
+        }
+      } else {
+        currentData = createDefaultData(2026);
+      }
+      document.getElementById('yearSelect').value = currentData.year;
+      renderForm();
+    }
+
+    function changeYear(year) {
+      currentData.year = parseInt(year);
+      renderForm();
+    }
+
+    function renderForm() {
+      const grid = document.getElementById('formGrid');
+      grid.innerHTML = '';
+
+      Object.entries(currentData.categories).forEach(([catKey, cat]) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="card-header">
+            <span class="icon" style="background:${cat.color}"></span>
+            ${cat.name}目标
+          </div>
+          <div class="card-body">
+            ${renderCategoryTable(catKey, cat)}
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function renderCategoryTable(catKey, cat) {
+      const metrics = ['整体', '经代', '转型业务', 'OTO', '证保', '蚁桥'];
+      const dims = [
+        { key: 'year', label: '年度目标' },
+        { key: 'quarter', label: '季度目标' },
+        { key: 'month', label: '月度目标' }
+      ];
+
+      return dims.map(dim => `
+        <div class="section-title">${dim.label}</div>
+        <table>
+          <thead>
+            <tr><th style="width:40%">口径</th><th>目标值（万）</th></tr>
+          </thead>
+          <tbody>
+            ${metrics.map(m => `
+              <tr class="${m === 'OTO' || m === '证保' || m === '蚁桥' ? 'sub' : ''}">
+                <td>${m}</td>
+                <td>
+                  <input type="number" class="target-input"
+                    value="${cat.metrics[m]?.[dim.key] ?? 0}"
+                    data-cat="${catKey}" data-metric="${m}" data-dim="${dim.key}"
+                    onchange="updateValue(this)">
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `).join('');
+    }
+
+    function updateValue(input) {
+      const cat = input.dataset.cat;
+      const metric = input.dataset.metric;
+      const dim = input.dataset.dim;
+      const val = parseFloat(input.value) || 0;
+      if (!currentData.categories[cat].metrics[metric]) {
+        currentData.categories[cat].metrics[metric] = {};
+      }
+      currentData.categories[cat].metrics[metric][dim] = val;
+    }
+
+    function saveToLocal() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
+      showToast('目标数据已保存到浏览器本地存储', 'success');
+    }
+
+    function exportJSON() {
+      const blob = new Blob([JSON.stringify(currentData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `经营目标_${currentData.year}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('JSON 文件已导出', 'success');
+    }
+
+    function importJSON(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (data.year && data.categories) {
+            currentData = data;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(currentData));
+            document.getElementById('yearSelect').value = currentData.year;
+            renderForm();
+            showToast('目标数据导入成功', 'success');
+          } else {
+            showToast('文件格式不正确', 'error');
+          }
+        } catch(err) {
+          showToast('JSON 解析失败', 'error');
+        }
+      };
+      reader.readAsText(file);
+      input.value = '';
+    }
+
+    function showToast(msg, type) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.className = `toast toast-${type} show`;
+      setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    loadData();
+  </script>
+</body>
+</html>

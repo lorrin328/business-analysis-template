@@ -2,7 +2,9 @@
 
 ## 项目概述
 
-经营分析网页应用，基于原生JS + sql.js + ECharts + XLSX + IndexedDB，单文件HTML交付。
+**太平人寿网电多元条线** 经营分析网页应用，覆盖 OTO、证保、蚁桥、线上经代等业务线。当前重点推进职域营销（团险合作，试点阶段），原电销业务已全面关停。
+
+基于原生JS + sql.js + ECharts + XLSX + IndexedDB，单文件HTML交付。
 
 ---
 
