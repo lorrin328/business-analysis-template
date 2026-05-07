@@ -999,14 +999,29 @@
         return 'down';
       }
 
+      // 如果API数据可用，优先使用
+      const kpi = apiData.kpi;
+      const hasApiKpi = kpi && kpi.year === year;
+
       // 1. 期交保费达成率
-      const qjData = pm.year.qj;
-      const 经代实际 = sumArr(qjData['经代']);
-      const OTO实际 = sumArr(qjData['OTO']);
-      const 证保实际 = sumArr(qjData['证保']);
-      const 蚁桥实际 = sumArr(qjData['蚁桥']);
-      const 转型实际 = OTO实际 + 证保实际 + 蚁桥实际;
-      const 整体实际 = 经代实际 + 转型实际;
+      let 经代实际, OTO实际, 证保实际, 蚁桥实际, 转型实际, 整体实际;
+      if (hasApiKpi && kpi.qj_premium) {
+        经代实际 = kpi.qj_premium.jingdai || 0;
+        OTO实际 = kpi.qj_premium.oto || 0;
+        证保实际 = kpi.qj_premium.zhengbao || 0;
+        蚁桥实际 = kpi.qj_premium.yiqiao || 0;
+        转型实际 = kpi.qj_premium.total_transform || 0;
+        整体实际 = kpi.qj_premium.total || 0;
+      } else {
+        const qjData = pm.year.qj;
+        经代实际 = sumArr(qjData['经代']);
+        OTO实际 = sumArr(qjData['OTO']);
+        证保实际 = sumArr(qjData['证保']);
+        蚁桥实际 = sumArr(qjData['蚁桥']);
+        转型实际 = OTO实际 + 证保实际 + 蚁桥实际;
+        整体实际 = 经代实际 + 转型实际;
+      }
+
       const qjTargets = targetData.categories.qjPremium.metrics;
       const 整体目标 = qjTargets['整体']?.year || 0;
       const 经代目标 = qjTargets['经代']?.year || 0;
@@ -1023,14 +1038,35 @@
           <span>转型 <span class="${rateClass(转型达成率)}">${转型达成率}%</span></span>`;
       }
 
-      // 2. 价值达成率 — platformMock 中暂无价值数据
-      const valueRateEl = document.getElementById('kpi-value-rate');
-      if (valueRateEl) valueRateEl.textContent = '--';
-      const valueSubEl = document.getElementById('kpi-value-sub');
-      if (valueSubEl) valueSubEl.innerHTML = '<span style="color:var(--text-secondary)">需上传价值清单</span>';
+      // 2. 价值达成率
+      if (hasApiKpi && kpi.value && Object.keys(kpi.value).length > 0) {
+        // 有API价值数据时计算
+        const vTargets = targetData.categories.value.metrics;
+        // 价值数据口径可能不同，简化处理
+        const valueRateEl = document.getElementById('kpi-value-rate');
+        if (valueRateEl) valueRateEl.textContent = '待计算';
+        const valueSubEl = document.getElementById('kpi-value-sub');
+        if (valueSubEl) valueSubEl.innerHTML = '<span style="color:var(--text-secondary)">价值数据已上传</span>';
+      } else {
+        const valueRateEl = document.getElementById('kpi-value-rate');
+        if (valueRateEl) valueRateEl.textContent = '--';
+        const valueSubEl = document.getElementById('kpi-value-sub');
+        if (valueSubEl) valueSubEl.innerHTML = '<span style="color:var(--text-secondary)">需上传价值清单</span>';
+      }
 
       // 3. 活动率
-      if (tm) {
+      if (hasApiKpi && kpi.hr) {
+        let 总在职 = 0, 总活动 = 0;
+        Object.values(kpi.hr).forEach(h => {
+          总在职 += (h.avg || 0);
+          总活动 += (h.active || 0);
+        });
+        const 活动率 = 总在职 > 0 ? Math.round(总活动 / 总在职 * 1000) / 10 : 0;
+        const activityRateEl = document.getElementById('kpi-activity-rate');
+        if (activityRateEl) activityRateEl.textContent = 活动率 + '%';
+        const activitySubEl = document.getElementById('kpi-activity-sub');
+        if (activitySubEl) activitySubEl.innerHTML = '<span>点击查看分模式明细</span>';
+      } else if (tm) {
         const 总在职 = sumArr(tm.headcount['OTO']) + sumArr(tm.headcount['证保']) + sumArr(tm.headcount['蚁桥']);
         const 总活动 = sumArr(tm.activeHeadcount['OTO']) + sumArr(tm.activeHeadcount['证保']) + sumArr(tm.activeHeadcount['蚁桥']);
         const 活动率 = 总在职 > 0 ? Math.round(总活动 / 总在职 * 1000) / 10 : 0;
@@ -1040,7 +1076,7 @@
         if (activitySubEl) activitySubEl.innerHTML = '<span>点击查看分模式明细</span>';
       }
 
-      // 4-6. 商保年金 / 保障类 / 10年期 — 暂无实际数据
+      // 4-6. 商保年金 / 保障类 / 10年期
       ['annuity','protection','10year'].forEach(key => {
         const el = document.getElementById('kpi-' + key + '-rate');
         if (el) el.textContent = '--';
@@ -1049,7 +1085,18 @@
       });
 
       // 7. 人均保费
-      if (tm) {
+      if (hasApiKpi && kpi.qj_premium && kpi.hr) {
+        let 总保费 = kpi.qj_premium.total_transform || 0;
+        let 总在职 = 0;
+        Object.values(kpi.hr).forEach(h => { 总在职 += (h.avg || 0); });
+        const 人均保费 = 总在职 > 0 ? Math.round(总保费 / 总在职 * 10) / 10 : 0;
+        const perCapitaEl = document.getElementById('kpi-percapita');
+        if (perCapitaEl) perCapitaEl.innerHTML = 人均保费 + '<span style="font-size:18px">万</span>';
+        const perCapitaSubEl = document.getElementById('kpi-percapita-sub');
+        if (perCapitaSubEl) {
+          perCapitaSubEl.innerHTML = '<span style="color:var(--text-secondary)">转型业务人均保费</span>';
+        }
+      } else if (tm) {
         const 保费OTO = sumArr(tm.premium['OTO']);
         const 保费证保 = sumArr(tm.premium['证保']);
         const 保费蚁桥 = sumArr(tm.premium['蚁桥']);
@@ -1780,6 +1827,144 @@
     }
   }
 };
+
+    // ---------- API Integration ----------
+    const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:8000'
+      : '';
+
+    let apiData = { kpi: null, platform: null, team: null };
+    let apiAvailable = false;
+
+    async function fetchAPIData(year) {
+      try {
+        const resp = await fetch(`${API_BASE}/api/data/${year}`, { method: 'GET' });
+        if (!resp.ok) return false;
+        apiData.platform = await resp.json();
+
+        const kpiResp = await fetch(`${API_BASE}/api/kpi/${year}`, { method: 'GET' });
+        if (kpiResp.ok) apiData.kpi = await kpiResp.json();
+
+        apiAvailable = true;
+        return true;
+      } catch (e) {
+        apiAvailable = false;
+        return false;
+      }
+    }
+
+    // 将API数据转换为 platformMock 格式
+    function convertApiToPlatformMock(apiPlatform, year) {
+      const mock = { year: {}, quarter: {}, month: {} };
+      ['qj', 'gm', 'zs'].forEach(type => {
+        mock.year[type] = { 'OTO': [], '证保': [], '蚁桥': [], '经代': [] };
+        for (let m = 0; m < 12; m++) {
+          mock.year[type]['OTO'][m] = 0;
+          mock.year[type]['证保'][m] = 0;
+          mock.year[type]['蚁桥'][m] = 0;
+          mock.year[type]['经代'][m] = 0;
+        }
+      });
+
+      // 填充转型业务数据
+      if (apiPlatform.performance) {
+        apiPlatform.performance.forEach(r => {
+          const m = r.month - 1;
+          if (m >= 0 && m < 12) {
+            if (mock.year.qj[r.channel]) mock.year.qj[r.channel][m] = r.qj_premium || 0;
+            if (mock.year.gm[r.channel]) mock.year.gm[r.channel][m] = r.gm_premium || 0;
+            if (mock.year.zs[r.channel]) mock.year.zs[r.channel][m] = r.zs_premium || 0;
+          }
+        });
+      }
+
+      // 填充经代数据
+      if (apiPlatform.jingdai) {
+        apiPlatform.jingdai.forEach(r => {
+          const m = r.month - 1;
+          if (m >= 0 && m < 12) {
+            mock.year.qj['经代'][m] = r.qj_premium || 0;
+            mock.year.gm['经代'][m] = r.gm_premium || 0;
+            mock.year.zs['经代'][m] = r.zs_premium || 0;
+          }
+        });
+      }
+
+      // 补null表示未到月份：找到第一个全为0的月份之后置null
+      const channels = ['OTO', '证保', '蚁桥', '经代'];
+      for (let m = 11; m >= 0; m--) {
+        const hasData = channels.some(ch => mock.year.qj[ch][m] > 0);
+        if (!hasData) {
+          channels.forEach(ch => {
+            mock.year.qj[ch][m] = null;
+            mock.year.gm[ch][m] = null;
+            mock.year.zs[ch][m] = null;
+          });
+        } else break;
+      }
+
+      // quarter 和 month 数据（简化：基于year数据生成）
+      ['Q1', 'Q2', 'Q3', 'Q4'].forEach((q, qi) => {
+        const qm = [qi * 3, qi * 3 + 1, qi * 3 + 2];
+        mock.quarter[q] = { qj: {}, gm: {}, zs: {} };
+        ['qj', 'gm', 'zs'].forEach(t => {
+          mock.quarter[q][t] = {};
+          channels.forEach(ch => {
+            mock.quarter[q][t][ch] = qm.map(i => mock.year[t][ch][i]).filter(v => v !== null);
+          });
+        });
+      });
+
+      for (let mon = 1; mon <= 12; mon++) {
+        mock.month[mon] = { qj: {}, gm: {}, zs: {} };
+        ['qj', 'gm', 'zs'].forEach(t => {
+          mock.month[mon][t] = {};
+          channels.forEach(ch => {
+            const v = mock.year[t][ch][mon - 1];
+            mock.month[mon][t][ch] = v !== null ? [v] : [];
+          });
+        });
+      }
+
+      return { [year]: mock };
+    }
+
+    // 将API数据转换为 teamMock 格式
+    function convertApiToTeamMock(apiPlatform, year) {
+      const mock = {
+        headcount: { 'OTO': [], '证保': [], '蚁桥': [] },
+        activeHeadcount: { 'OTO': [], '证保': [], '蚁桥': [] },
+        premium: { 'OTO': [], '证保': [], '蚁桥': [] }
+      };
+      for (let m = 0; m < 12; m++) {
+        ['OTO', '证保', '蚁桥'].forEach(ch => {
+          mock.headcount[ch][m] = null;
+          mock.activeHeadcount[ch][m] = null;
+          mock.premium[ch][m] = null;
+        });
+      }
+
+      if (apiPlatform.hr) {
+        apiPlatform.hr.forEach(r => {
+          const m = r.month - 1;
+          if (m >= 0 && m < 12 && mock.headcount[r.channel]) {
+            mock.headcount[r.channel][m] = Math.round((r.start_headcount + r.end_headcount) / 2);
+            mock.activeHeadcount[r.channel][m] = r.active_headcount;
+          }
+        });
+      }
+
+      if (apiPlatform.performance) {
+        apiPlatform.performance.forEach(r => {
+          const m = r.month - 1;
+          if (m >= 0 && m < 12 && mock.premium[r.channel]) {
+            mock.premium[r.channel][m] = r.qj_premium || 0;
+          }
+        });
+      }
+
+      return { [year]: mock };
+    }
 
     // ---------- Chart 1: Platform Trend ----------
     const platformChart = echarts.init(document.getElementById('platformChart'));
@@ -12073,17 +12258,59 @@
     }
 
     // ---------- Upload Handler ----------
-    function handleFile(input, infoId) {
-      if (input.files && input.files[0]) {
-        const file = input.files[0];
-        const card = input.closest('.upload-card');
-        const info = document.getElementById(infoId);
-        const sizeKB = (file.size / 1024).toFixed(0);
-        info.textContent = `✓ 已选择: ${file.name} (${sizeKB}KB) - 点击上传`;
-        card.classList.add('has-file');
-        setTimeout(() => {
-          info.textContent = `✓ 已上传: ${file.name} (${sizeKB}KB)`;
-        }, 800);
+    async function handleFile(input, infoId) {
+      if (!input.files || !input.files[0]) return;
+      const file = input.files[0];
+      const card = input.closest('.upload-card');
+      const info = document.getElementById(infoId);
+      const sizeKB = (file.size / 1024).toFixed(0);
+      info.textContent = `✓ 已选择: ${file.name} (${sizeKB}KB)`;
+      card.classList.add('has-file');
+
+      if (!apiAvailable) {
+        info.textContent = `✗ 后端未连接，请在Ubuntu部署后使用`;
+        card.classList.remove('has-file');
+        return;
+      }
+
+      // 收集所有已选文件
+      const fd = new FormData();
+      const f1 = document.getElementById('file1').files[0];
+      const f2 = document.getElementById('file2').files[0];
+      const f3 = document.getElementById('file3').files[0];
+      const f4 = document.getElementById('file4').files[0];
+      if (f1) fd.append('performance', f1);
+      if (f2) fd.append('jingdai', f2);
+      if (f3) fd.append('hr', f3);
+      if (f4) fd.append('value', f4);
+
+      try {
+        info.textContent = `⏳ 正在上传并聚合...`;
+        const resp = await fetch(`${API_BASE}/api/upload`, {
+          method: 'POST',
+          body: fd
+        });
+        const result = await resp.json();
+        if (result.errors && result.errors.length > 0) {
+          info.textContent = `✗ 错误: ${result.errors.join('; ')}`;
+          card.classList.remove('has-file');
+        } else {
+          info.textContent = `✓ 已上传: ${result.uploaded.join(', ')}`;
+          // 刷新数据
+          await fetchAPIData(2026);
+          if (apiData.platform) {
+            const apiPM = convertApiToPlatformMock(apiData.platform, '2026');
+            const apiTM = convertApiToTeamMock(apiData.platform, '2026');
+            Object.assign(platformMock, apiPM);
+            Object.assign(teamMock, apiTM);
+            platformChart.setOption(getPlatformOption(), true);
+            teamChart.setOption(getTeamOption(), true);
+            updateKPICards();
+          }
+        }
+      } catch (e) {
+        info.textContent = `✗ 上传失败: ${e.message}`;
+        card.classList.remove('has-file');
       }
     }
 
@@ -12094,8 +12321,19 @@
       teamChart.resize();
     });
 
-    // 初始化KPI卡片
-    updateKPICards();
+    // 初始化：尝试从API加载数据，成功后覆盖本地mock
+    (async function init() {
+      const ok = await fetchAPIData(2026);
+      if (ok) {
+        const apiPM = convertApiToPlatformMock(apiData.platform, '2026');
+        const apiTM = convertApiToTeamMock(apiData.platform, '2026');
+        Object.assign(platformMock, apiPM);
+        Object.assign(teamMock, apiTM);
+        platformChart.setOption(getPlatformOption(), true);
+        teamChart.setOption(getTeamOption(), true);
+      }
+      updateKPICards();
+    })();
   </script>
 </body>
 </html>
