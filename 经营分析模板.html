@@ -282,6 +282,10 @@
       display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end;
       padding-top: 12px; border-top: 1px solid var(--border);
     }
+    .org-dim-btn { padding:5px 14px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text-secondary);font-size:12px;cursor:pointer; }
+    .org-dim-btn.active, .org-dim-btn:hover { background:var(--accent);color:#fff;border-color:var(--accent); }
+    .org-target-table { min-width: 900px; }
+    .org-target-table th { text-align: center; }
 
     /* Charts Row */
     .chart-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
@@ -1047,7 +1051,7 @@
       ];
       const qFactors = [0.22, 0.25, 0.26, 0.27];
       const mFactors = [0.07,0.07,0.08,0.08,0.09,0.09,0.08,0.08,0.09,0.09,0.09,0.09];
-      const data = { year: parseInt(year), categories: {} };
+      const data = { year: parseInt(year), categories: {}, orgTargets: {} };
       categories.forEach(cat => {
         data.categories[cat.key] = { name: cat.name, color: cat.color, metrics: {} };
         metrics.forEach((m, i) => {
@@ -1057,6 +1061,19 @@
             quarter: qFactors.map(f => Math.round(yearVal * f)),
             month: mFactors.map(f => Math.round(yearVal * f))
           };
+        });
+      });
+      // 初始化机构目标
+      const orgList = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
+      const orgChannels = ['OTO','证保','蚁桥'];
+      const orgCats = ['qjPremium','value','shangbao','baozhang','tenYear'];
+      orgList.forEach(org => {
+        orgChannels.forEach(ch => {
+          const key = `${org}|${ch}`;
+          data.orgTargets[key] = {};
+          orgCats.forEach(cat => {
+            data.orgTargets[key][cat] = { year: 0, quarter: [0,0,0,0], month: Array(12).fill(0) };
+          });
         });
       });
       return data;
@@ -1092,6 +1109,24 @@
           }
           if (!Array.isArray(metricData.month)) metricData.month = Array(12).fill(0);
           if (typeof metricData.year !== 'number') metricData.year = parseFloat(metricData.year) || 0;
+        });
+      });
+      // 规范化 orgTargets
+      if (!data.orgTargets) data.orgTargets = {};
+      const orgList = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
+      const orgChannels = ['OTO','证保','蚁桥'];
+      const orgCats = ['qjPremium','value','shangbao','baozhang','tenYear'];
+      orgList.forEach(org => {
+        orgChannels.forEach(ch => {
+          const key = `${org}|${ch}`;
+          if (!data.orgTargets[key]) data.orgTargets[key] = {};
+          orgCats.forEach(cat => {
+            if (!data.orgTargets[key][cat]) data.orgTargets[key][cat] = { year: 0, quarter: [0,0,0,0], month: Array(12).fill(0) };
+            const item = data.orgTargets[key][cat];
+            if (typeof item.year !== 'number') item.year = parseFloat(item.year) || 0;
+            if (!Array.isArray(item.quarter)) item.quarter = [0,0,0,0];
+            if (!Array.isArray(item.month)) item.month = Array(12).fill(0);
+          });
         });
       });
       return data;
@@ -1181,6 +1216,7 @@
         `;
         grid.appendChild(card);
       });
+      renderOrgTargetForm(grid);
     }
 
     function renderTargetCategoryTable(catKey, cat) {
@@ -1286,6 +1322,157 @@
         const arr = targetData.categories[cat].metrics[metric][dim];
         if (Array.isArray(arr) && idx !== undefined) {
           arr[parseInt(idx)] = val;
+        }
+      }
+    }
+
+    const ORG_TARGET_LIST = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
+    const ORG_TARGET_CHANNELS = ['OTO','证保','蚁桥'];
+    const ORG_TARGET_CATS = [
+      { key: 'qjPremium', name: '期交保费' },
+      { key: 'value', name: '价值保费' },
+      { key: 'shangbao', name: '商保年金' },
+      { key: 'baozhang', name: '保障类产品' },
+      { key: 'tenYear', name: '10年期产品' }
+    ];
+    let orgTargetDim = 'year';
+
+    function renderOrgTargetForm(grid) {
+      const card = document.createElement('div');
+      card.className = 'target-card';
+      card.style.gridColumn = '1 / -1';
+      card.innerHTML = `
+        <div class="target-card-header">
+          <span class="icon" style="background:#64748b"></span>
+          机构目标
+        </div>
+        <div class="target-card-body" id="orgTargetBody">${renderOrgTargetTable()}</div>
+      `;
+      grid.appendChild(card);
+    }
+
+    function switchOrgTargetDim(dim) {
+      orgTargetDim = dim;
+      const body = document.getElementById('orgTargetBody');
+      if (body) body.innerHTML = renderOrgTargetTable();
+    }
+
+    function renderOrgTargetTable() {
+      const dim = orgTargetDim;
+      const isYear = dim === 'year';
+      const isQuarter = dim === 'quarter';
+      const isMonth1 = dim === 'month1';
+      const isMonth2 = dim === 'month2';
+
+      let html = `
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+          <button class="org-dim-btn ${isYear ? 'active' : ''}" onclick="switchOrgTargetDim('year')">年度</button>
+          <button class="org-dim-btn ${isQuarter ? 'active' : ''}" onclick="switchOrgTargetDim('quarter')">季度</button>
+          <button class="org-dim-btn ${isMonth1 ? 'active' : ''}" onclick="switchOrgTargetDim('month1')">月度（1-6月）</button>
+          <button class="org-dim-btn ${isMonth2 ? 'active' : ''}" onclick="switchOrgTargetDim('month2')">月度（7-12月）</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="target-table org-target-table">
+            <thead>
+              <tr>
+                <th style="width:60px;">机构</th>
+                <th style="width:60px;">业务模式</th>
+      `;
+
+      if (isYear) {
+        html += ORG_TARGET_CATS.map(c => `<th style="text-align:center;">${c.name}（万）</th>`).join('');
+      } else if (isQuarter) {
+        ORG_TARGET_CATS.forEach(c => {
+          html += `<th colspan="4" style="text-align:center;background:var(--bg);">${c.name}</th>`;
+        });
+        html += `</tr><tr><th></th><th></th>`;
+        ORG_TARGET_CATS.forEach(() => {
+          html += `<th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th>`;
+        });
+      } else if (isMonth1) {
+        ORG_TARGET_CATS.forEach(c => {
+          html += `<th colspan="6" style="text-align:center;background:var(--bg);">${c.name}</th>`;
+        });
+        html += `</tr><tr><th></th><th></th>`;
+        ORG_TARGET_CATS.forEach(() => {
+          [1,2,3,4,5,6].forEach(m => { html += `<th>${m}月</th>`; });
+        });
+      } else {
+        ORG_TARGET_CATS.forEach(c => {
+          html += `<th colspan="6" style="text-align:center;background:var(--bg);">${c.name}</th>`;
+        });
+        html += `</tr><tr><th></th><th></th>`;
+        ORG_TARGET_CATS.forEach(() => {
+          [7,8,9,10,11,12].forEach(m => { html += `<th>${m}月</th>`; });
+        });
+      }
+
+      html += `</tr></thead><tbody>`;
+
+      ORG_TARGET_LIST.forEach(org => {
+        ORG_TARGET_CHANNELS.forEach((ch, chIdx) => {
+          const key = `${org}|${ch}`;
+          const targets = targetData?.orgTargets?.[key] || {};
+          html += `<tr class="${chIdx > 0 ? 'sub' : ''}">`;
+          if (chIdx === 0) {
+            html += `<td rowspan="${ORG_TARGET_CHANNELS.length}" style="font-weight:600;vertical-align:middle;">${org}</td>`;
+          }
+          html += `<td>${ch}</td>`;
+
+          ORG_TARGET_CATS.forEach(cat => {
+            const t = targets[cat.key] || { year: 0, quarter: [0,0,0,0], month: Array(12).fill(0) };
+            if (isYear) {
+              html += `<td style="text-align:center;"><input type="number" class="target-input"
+                value="${t.year}" data-org="${org}" data-ch="${ch}" data-cat="${cat.key}" data-dim="year"
+                onchange="updateOrgTargetValue(this)" style="width:80px;"></td>`;
+            } else if (isQuarter) {
+              [0,1,2,3].forEach(qi => {
+                html += `<td style="text-align:center;"><input type="number" class="target-input target-input-sm"
+                  value="${t.quarter[qi]}" data-org="${org}" data-ch="${ch}" data-cat="${cat.key}" data-dim="quarter" data-idx="${qi}"
+                  onchange="updateOrgTargetValue(this)"></td>`;
+              });
+            } else if (isMonth1) {
+              [0,1,2,3,4,5].forEach(mi => {
+                html += `<td style="text-align:center;"><input type="number" class="target-input target-input-sm"
+                  value="${t.month[mi]}" data-org="${org}" data-ch="${ch}" data-cat="${cat.key}" data-dim="month" data-idx="${mi}"
+                  onchange="updateOrgTargetValue(this)"></td>`;
+              });
+            } else {
+              [6,7,8,9,10,11].forEach(mi => {
+                html += `<td style="text-align:center;"><input type="number" class="target-input target-input-sm"
+                  value="${t.month[mi]}" data-org="${org}" data-ch="${ch}" data-cat="${cat.key}" data-dim="month" data-idx="${mi}"
+                  onchange="updateOrgTargetValue(this)"></td>`;
+              });
+            }
+          });
+
+          html += `</tr>`;
+        });
+      });
+
+      html += `</tbody></table></div>`;
+      return html;
+    }
+
+    function updateOrgTargetValue(input) {
+      const org = input.dataset.org;
+      const ch = input.dataset.ch;
+      const cat = input.dataset.cat;
+      const dim = input.dataset.dim;
+      const val = parseFloat(input.value) || 0;
+      const key = `${org}|${ch}`;
+      if (!targetData.orgTargets) targetData.orgTargets = {};
+      if (!targetData.orgTargets[key]) targetData.orgTargets[key] = {};
+      if (!targetData.orgTargets[key][cat]) {
+        targetData.orgTargets[key][cat] = { year: 0, quarter: [0,0,0,0], month: Array(12).fill(0) };
+      }
+      if (dim === 'year') {
+        targetData.orgTargets[key][cat].year = val;
+      } else {
+        const idx = parseInt(input.dataset.idx);
+        const arr = targetData.orgTargets[key][cat][dim];
+        if (Array.isArray(arr) && idx >= 0 && idx < arr.length) {
+          arr[idx] = val;
         }
       }
     }
@@ -12995,6 +13182,24 @@
         if (updateProduct) {
           apiData.product = cached.product;
           updateProductDataFromApi();
+        }
+        // 同时加载上一年数据到 platformMock，用于季度/月度同比趋势线
+        const prevYearNum = parseInt(year) - 1;
+        const prevYearKey = String(prevYearNum);
+        if (!platformMock[prevYearKey]) {
+          if (!apiCache[prevYearKey]) {
+            try {
+              const prevResp = await fetch(`${API_BASE}/api/data/${prevYearNum}`, { method: 'GET' });
+              if (prevResp.ok) {
+                const prevPlatform = await prevResp.json();
+                apiCache[prevYearKey] = { platform: prevPlatform };
+              }
+            } catch(e) {}
+          }
+          if (apiCache[prevYearKey] && apiCache[prevYearKey].platform && hasValidApiData(apiCache[prevYearKey].platform)) {
+            const prevPM = convertApiToPlatformMock(apiCache[prevYearKey].platform, prevYearKey);
+            Object.assign(platformMock, prevPM);
+          }
         }
         return true;
       }
