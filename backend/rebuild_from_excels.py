@@ -2,7 +2,7 @@ from pathlib import Path
 
 from aggregator import (
     parse_performance_excel, parse_jingdai_excel, parse_hr_excel, parse_value_excel,
-    aggregate_performance, aggregate_jingdai, aggregate_hr, aggregate_value,
+    aggregate_performance, aggregate_jingdai, aggregate_jingdai_daily, aggregate_hr, aggregate_value,
     aggregate_product_structure, aggregate_active_headcount,
     aggregate_daily_performance, aggregate_org_daily_performance,
     aggregate_org_performance, aggregate_org_value,
@@ -28,7 +28,7 @@ def main():
 
     perf_rows, daily_rows, org_daily_rows = [], [], []
     product_rows, value_rows, org_value_rows = [], [], []
-    hr_rows, jd_rows, active_rows, org_perf_rows = [], [], [], []
+    hr_rows, jd_rows, jd_daily_rows, active_rows, org_perf_rows = [], [], [], [], []
 
     if performance_file:
         df = parse_performance_excel(performance_file.read_bytes())
@@ -46,7 +46,8 @@ def main():
     if jingdai_file:
         df = parse_jingdai_excel(jingdai_file.read_bytes())
         jd_rows = aggregate_jingdai(df)
-        print(f'jingdai: {jingdai_file.name} -> {len(jd_rows)} rows')
+        jd_daily_rows = aggregate_jingdai_daily(df)
+        print(f'jingdai: {jingdai_file.name} -> {len(jd_rows)} monthly, {len(jd_daily_rows)} daily')
 
     if hr_file:
         df = parse_hr_excel(hr_file.read_bytes())
@@ -71,7 +72,7 @@ def main():
         int(row['year'])
         for rows in [
             perf_rows, daily_rows, org_daily_rows, product_rows,
-            value_rows, org_value_rows, hr_rows, jd_rows, org_perf_rows,
+            value_rows, org_value_rows, hr_rows, jd_rows, jd_daily_rows, org_perf_rows,
         ]
         for row in rows
         if row.get('year')
@@ -85,6 +86,7 @@ def main():
         replace_rows(conn, 'agg_daily_performance', daily_rows)
         replace_rows(conn, 'agg_org_daily_performance', org_daily_rows)
         replace_rows(conn, 'agg_jingdai', jd_rows)
+        replace_rows(conn, 'agg_jingdai_daily', jd_daily_rows)
         replace_rows(conn, 'agg_hr_data', hr_rows)
         replace_rows(conn, 'agg_value_data', value_rows)
         replace_rows(conn, 'agg_org_value', org_value_rows)

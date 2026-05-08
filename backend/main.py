@@ -14,7 +14,7 @@ from database import (
 )
 from aggregator import (
     parse_performance_excel, parse_jingdai_excel, parse_hr_excel, parse_value_excel,
-    aggregate_performance, aggregate_jingdai, aggregate_hr, aggregate_value,
+    aggregate_performance, aggregate_jingdai, aggregate_jingdai_daily, aggregate_hr, aggregate_value,
     aggregate_product_structure, aggregate_active_headcount,
     aggregate_org_performance, aggregate_org_value,
     aggregate_daily_performance, aggregate_org_daily_performance,
@@ -59,6 +59,7 @@ async def upload_files(
     daily_rows = []
     org_daily_rows = []
     jd_rows = []
+    jd_daily_rows = []
     hr_rows = []
     value_rows = []
     product_rows = []
@@ -84,6 +85,7 @@ async def upload_files(
         try:
             df = parse_jingdai_excel(await jingdai.read())
             jd_rows = aggregate_jingdai(df)
+            jd_daily_rows = aggregate_jingdai_daily(df)
             results["uploaded"].append(f"经代业务业绩: {len(jd_rows)}条")
         except Exception as e:
             results["errors"].append(f"经代业务业绩: {str(e)}")
@@ -115,7 +117,7 @@ async def upload_files(
             row['active_headcount'] = active_index.get((row['year'], row['month'], row['channel']), 0)
 
     # 收集所有实际年份
-    for rows in [perf_rows, daily_rows, org_daily_rows, jd_rows, hr_rows, value_rows, product_rows, org_perf_rows, org_value_rows]:
+    for rows in [perf_rows, daily_rows, org_daily_rows, jd_rows, jd_daily_rows, hr_rows, value_rows, product_rows, org_perf_rows, org_value_rows]:
         for r in rows:
             if 'year' in r and r['year']:
                 results["data_years"].add(int(r['year']))
@@ -133,6 +135,7 @@ async def upload_files(
             ('agg_org_daily_performance', org_daily_rows),
             ('agg_product_structure', product_rows),
             ('agg_jingdai', jd_rows),
+            ('agg_jingdai_daily', jd_daily_rows),
             ('agg_hr_data', hr_rows),
             ('agg_value_data', value_rows),
             ('agg_org_performance', org_perf_rows),
@@ -146,6 +149,7 @@ async def upload_files(
         replace_rows(conn, 'agg_daily_performance', daily_rows)
         replace_rows(conn, 'agg_org_daily_performance', org_daily_rows)
         replace_rows(conn, 'agg_jingdai', jd_rows)
+        replace_rows(conn, 'agg_jingdai_daily', jd_daily_rows)
         replace_rows(conn, 'agg_hr_data', hr_rows)
         replace_rows(conn, 'agg_value_data', value_rows)
         replace_rows(conn, 'agg_product_structure', product_rows)

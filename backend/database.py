@@ -9,6 +9,7 @@ DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'business_data.db')
 AGG_TABLES = [
     'agg_performance',
     'agg_jingdai',
+    'agg_jingdai_daily',
     'agg_hr_data',
     'agg_value_data',
     'agg_product_structure',
@@ -57,6 +58,20 @@ def init_db():
                 zs_premium REAL NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(year, month)
+            )
+        ''')
+
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS agg_jingdai_daily (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                year INTEGER NOT NULL,
+                month INTEGER NOT NULL,
+                day INTEGER NOT NULL DEFAULT 1,
+                qj_premium REAL NOT NULL DEFAULT 0,
+                gm_premium REAL NOT NULL DEFAULT 0,
+                zs_premium REAL NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(year, month, day)
             )
         ''')
 
@@ -218,6 +233,12 @@ def get_platform_data(year: int):
         jingdai_rows = c.fetchall()
 
         c.execute('''
+            SELECT month, day, qj_premium, gm_premium, zs_premium
+            FROM agg_jingdai_daily WHERE year = ? ORDER BY month, day
+        ''', (year,))
+        jingdai_daily_rows = c.fetchall()
+
+        c.execute('''
             SELECT month, channel, start_headcount, end_headcount, active_headcount
             FROM agg_hr_data WHERE year = ? ORDER BY month, channel
         ''', (year,))
@@ -261,6 +282,7 @@ def get_platform_data(year: int):
         return {
             'performance': [dict(r) for r in perf_rows],
             'jingdai': [dict(r) for r in jingdai_rows],
+            'jingdai_daily': [dict(r) for r in jingdai_daily_rows],
             'hr': [dict(r) for r in hr_rows],
             'value': [dict(r) for r in value_rows],
             'org_performance': [dict(r) for r in org_perf_rows],
