@@ -52,22 +52,30 @@ def _pick_col(df: pd.DataFrame, candidates: List[str], contains: List[str] | Non
     return None
 
 
-def _year_month_from_series(series: pd.Series) -> tuple[pd.Series, pd.Series]:
+def _year_month_day_from_series(series: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series]:
     dt = pd.to_datetime(series, errors='coerce')
     years = dt.dt.year
     months = dt.dt.month
-    return years, months
+    days = dt.dt.day
+    return years, months, days
 
 
-def _period_year_month(df: pd.DataFrame, year_col: str | None, month_col: str | None) -> pd.DataFrame:
+def _period_year_month(df: pd.DataFrame, year_col: str | None, month_col: str | None, date_col: str | None = None) -> pd.DataFrame:
     out = df.copy()
-    if month_col and month_col in out.columns:
-        years, months = _year_month_from_series(out[month_col])
+    if date_col and date_col in out.columns:
+        years, months, days = _year_month_day_from_series(out[date_col])
         out['_year'] = years
         out['_month'] = months
+        out['_day'] = days
+    elif month_col and month_col in out.columns:
+        years, months, days = _year_month_day_from_series(out[month_col])
+        out['_year'] = years
+        out['_month'] = months
+        out['_day'] = days.fillna(1)
     else:
         out['_year'] = pd.NA
         out['_month'] = pd.NA
+        out['_day'] = 1
 
     if year_col and year_col in out.columns:
         out['_year'] = out['_year'].fillna(pd.to_numeric(out[year_col], errors='coerce'))
@@ -79,6 +87,7 @@ def _period_year_month(df: pd.DataFrame, year_col: str | None, month_col: str | 
     out = out.dropna(subset=['_year', '_month'])
     out['_year'] = out['_year'].astype(int)
     out['_month'] = out['_month'].astype(int)
+    out['_day'] = out['_day'].fillna(1).astype(int)
     out = out[(out['_month'] >= 1) & (out['_month'] <= 12)]
     return out
 
@@ -266,6 +275,43 @@ def aggregate_value(df: pd.DataFrame) -> List[Dict]:
             'month': int(month),
             'channel': str(channel),
             'value_premium': _amount_to_wan(group['_value'].sum()),
+        })
+    return rows
+
+
+def aggregate_daily_performance(df: pd.DataFrame) -> List[Dict]:
+    """按日聚合转型业务保费数据，用于月度视图的日累计趋势。"""
+    year_col = _pick_col(df, ['年'])
+    date_col = _pick_col(df, ['日期', '出单日期', '投保日期', '承保日期'])
+    month_col = _pick_col(df, ['年月', '月', '月份'])
+    channel_col = _pick_col(df, ['业务模式', '业务模式名称', '渠道'])
+    qj_col = _pick_col(df, ['期交保费'])
+    gm_col = _pick_col(df, ['年化规保', '规模保费', '规保'], ['规模', '规保'])
+    zs_col = _pick_col(df, ['折算保费'], ['折算', '标准'])
+
+    # 优先使用日期列，如果没有则回退到年月列
+    time_col = date_col or month_col
+    if not all([time_col, channel_col, qj_col]):
+        return []
+
+    work = _period_year_month(df, year_col, month_col if not date_col else None, time_col if date_col else None)
+    work['_channel'] = work[channel_col].map(_normalize_channel)
+    work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
+    work['_qj'] = _to_number(work[qj_col])
+    work['_gm'] = _to_number(work[gm_col]) if gm_col else 0
+    work['_zs'] = _to_number(work[zs_col]) if zs_col else 0
+
+    grouped = work.groupby(['_year', '_month', '_day', '_channel'], dropna=False)
+    rows = []
+    for (year, month, day, channel), group in grouped:
+        rows.append({
+            'year': int(year),
+            'month': int(month),
+            'day': int(day),
+            'channel': str(channel),
+            'qj_premium': _amount_to_wan(group['_qj'].sum()),
+            'gm_premium': _amount_to_wan(group['_gm'].sum()),
+            'zs_premium': _amount_to_wan(group['_zs'].sum()),
         })
     return rows
 

@@ -17,6 +17,7 @@ from aggregator import (
     aggregate_performance, aggregate_jingdai, aggregate_hr, aggregate_value,
     aggregate_product_structure, aggregate_active_headcount,
     aggregate_org_performance, aggregate_org_value,
+    aggregate_daily_performance,
 )
 
 app = FastAPI(title="经营分析看板API")
@@ -55,6 +56,7 @@ async def upload_files(
 
     # 第一步：解析所有Excel文件，收集实际年份
     perf_rows = []
+    daily_rows = []
     jd_rows = []
     hr_rows = []
     value_rows = []
@@ -68,6 +70,7 @@ async def upload_files(
             perf_bytes = await performance.read()
             df = parse_performance_excel(perf_bytes)
             perf_rows = aggregate_performance(df)
+            daily_rows = aggregate_daily_performance(df)
             product_rows = aggregate_product_structure(df)
             active_rows = aggregate_active_headcount(df)
             org_perf_rows = aggregate_org_performance(df)
@@ -124,6 +127,7 @@ async def upload_files(
 
         table_rows = [
             ('agg_performance', perf_rows),
+            ('agg_daily_performance', daily_rows),
             ('agg_product_structure', product_rows),
             ('agg_jingdai', jd_rows),
             ('agg_hr_data', hr_rows),
@@ -136,6 +140,7 @@ async def upload_files(
                 c.execute(f'DELETE FROM {table} WHERE year = ?', (y,))
 
         replace_rows(conn, 'agg_performance', perf_rows)
+        replace_rows(conn, 'agg_daily_performance', daily_rows)
         replace_rows(conn, 'agg_jingdai', jd_rows)
         replace_rows(conn, 'agg_hr_data', hr_rows)
         replace_rows(conn, 'agg_value_data', value_rows)

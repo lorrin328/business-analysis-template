@@ -2988,14 +2988,44 @@
         });
       });
 
-      // month 数据：单个月度总额（不再伪造日累计）
+      // month 数据：使用真实日数据生成日累计序列（如果日数据不存在则退化为单点）
+      const daysInMonthArr = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      const dailyIndex = {};
+      if (apiPlatform.daily_performance) {
+        apiPlatform.daily_performance.forEach(r => {
+          const key = `${r.month}|${r.channel}`;
+          if (!dailyIndex[key]) dailyIndex[key] = {};
+          dailyIndex[key][r.day] = r;
+        });
+      }
+
       for (let mon = 1; mon <= 12; mon++) {
         mock.month[mon] = { qj: {}, gm: {}, zs: {} };
         ['qj', 'gm', 'zs'].forEach(t => {
           mock.month[mon][t] = {};
           channels.forEach(ch => {
-            const v = mock.year[t][ch][mon - 1];
-            mock.month[mon][t][ch] = v !== null && v !== undefined ? [v] : [];
+            const yearVal = mock.year[t][ch][mon - 1];
+            if (yearVal === null || yearVal === undefined) {
+              mock.month[mon][t][ch] = [];
+              return;
+            }
+            const key = `${mon}|${ch}`;
+            const dailyData = dailyIndex[key];
+            const dim = daysInMonthArr[mon - 1];
+            if (dailyData) {
+              const cum = [];
+              let sum = 0;
+              const col = t === 'qj' ? 'qj_premium' : t === 'gm' ? 'gm_premium' : 'zs_premium';
+              for (let d = 1; d <= dim; d++) {
+                const dr = dailyData[d];
+                const val = dr ? (dr[col] || 0) : 0;
+                sum += val;
+                cum.push(Math.round(sum * 10) / 10);
+              }
+              mock.month[mon][t][ch] = cum;
+            } else {
+              mock.month[mon][t][ch] = [yearVal];
+            }
           });
         });
       }
@@ -13149,45 +13179,109 @@
       }
 
       const month = parseInt(selectedMonth);
-      // 月度视图：展示当年该月 vs 上年同月的柱状图对比（使用真实的月度数据）
-      const yearData = platformMock[year]?.year?.[currentPremiumType];
-      if (!yearData) return emptyOption('暂无该月份数据');
+      const monthData = platformMock[year]?.month?.[month]?.[currentPremiumType];
+      if (!monthData) return emptyOption('暂无该月份数据');
 
-      const latestMonth = getLatestMonthForYear(year);
-      if (month > latestMonth) return emptyOption('暂无该月份数据');
+      // 判断是否有机构筛选（非全选且非全不选时，无日数据，退化为月度柱状图）
+      const allSelected = ORG_LIST_PLATFORM.every(o => selectedPlatformOrgs[o]);
+      const noneSelected = ORG_LIST_PLATFORM.every(o => !selectedPlatformOrgs[o]);
+      const hasOrgFilter = !allSelected && !noneSelected;
 
-      let currentVal = 0;
-      let hasCurrent = false;
+      if (hasOrgFilter) {
+        // 有机构筛选时，退化为月度柱状图（无日累计粒度）
+        let currentVal = 0, hasCurrent = false;
+        for (const key of selectedKeys) {
+          const v = getChannelValue(year, currentPremiumType, key, month - 1);
+          if (v !== null && v !== undefined) { currentVal += v; hasCurrent = true; }
+        }
+        if (!hasCurrent) return emptyOption('暂无该月份数据');
+        let prevVal = 0;
+        for (const key of selectedKeys) {
+          const v = getChannelValue(prevYear, currentPremiumType, key, month - 1);
+          if (v !== null && v !== undefined) prevVal += v;
+        }
+        const seriesList = [
+          { name: year + '年', type: 'bar', data: [Math.round(currentVal * 10) / 10], itemStyle: { color: '#3b82f6' }, barWidth: '30%' }
+        ];
+        if (prevVal > 0) {
+          seriesList.push({ name: prevYear + '年', type: 'bar', data: [Math.round(prevVal * 10) / 10], itemStyle: { color: '#94a3b8' }, barWidth: '30%' });
+        }
+        return {
+          tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
+          legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
+          grid: { left: 50, right: 20, top: 20, bottom: 40 },
+          xAxis: { type: 'category', data: [`${month}月`], axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
+          yAxis: { type: 'value', name: '万', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
+          series: seriesList
+        };
+      }
+
+      // 月度视图：展示该月的日累计保费趋势（使用真实日数据）
+      let maxDays = 0;
+      const currentDaily = [];
       for (const key of selectedKeys) {
-        const v = getChannelValue(year, currentPremiumType, key, month - 1);
-        if (v !== null && v !== undefined) {
-          currentVal += v;
-          hasCurrent = true;
+        const arr = monthData[key];
+        if (arr && arr.length > 0) {
+          maxDays = Math.max(maxDays, arr.length);
+          for (let d = 0; d < arr.length; d++) {
+            currentDaily[d] = (currentDaily[d] || 0) + (arr[d] || 0);
+          }
         }
       }
-      if (!hasCurrent) return emptyOption('暂无该月份数据');
+      if (maxDays === 0) return emptyOption('暂无该月份数据');
 
-      let prevVal = 0;
-      for (const key of selectedKeys) {
-        const v = getChannelValue(prevYear, currentPremiumType, key, month - 1);
-        if (v !== null && v !== undefined) {
-          prevVal += v;
-        }
+      // 找到最后一个有数据的日子（避免展示全零的后续日期）
+      let lastValidDay = 0;
+      for (let d = maxDays - 1; d >= 0; d--) {
+        if (currentDaily[d] > 0) { lastValidDay = d; break; }
       }
+      const displayDays = lastValidDay + 1;
+      const labels = [];
+      for (let d = 1; d <= displayDays; d++) labels.push(`${d}日`);
+      const currentSeries = currentDaily.slice(0, displayDays).map(v => Math.round(v * 10) / 10);
 
       const seriesList = [
-        { name: year + '年', type: 'bar', data: [Math.round(currentVal * 10) / 10], itemStyle: { color: '#3b82f6' }, barWidth: '30%' }
+        { name: year + '年' + month + '月累计', type: 'line', data: currentSeries, smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
       ];
-      if (prevVal > 0) {
-        seriesList.push({ name: prevYear + '年', type: 'bar', data: [Math.round(prevVal * 10) / 10], itemStyle: { color: '#94a3b8' }, barWidth: '30%' });
+
+      // 上年同月日累计
+      const prevMonthData = platformMock[prevYear]?.month?.[month]?.[currentPremiumType];
+      if (prevMonthData) {
+        let prevMaxDays = 0;
+        const prevDaily = [];
+        for (const key of selectedKeys) {
+          const arr = prevMonthData[key];
+          if (arr && arr.length > 0) {
+            prevMaxDays = Math.max(prevMaxDays, arr.length);
+            for (let d = 0; d < arr.length; d++) {
+              prevDaily[d] = (prevDaily[d] || 0) + (arr[d] || 0);
+            }
+          }
+        }
+        if (prevMaxDays > 0) {
+          let prevLastValid = 0;
+          for (let d = prevMaxDays - 1; d >= 0; d--) {
+            if (prevDaily[d] > 0) { prevLastValid = d; break; }
+          }
+          const prevDisplayDays = Math.max(prevLastValid + 1, displayDays);
+          // 如果上年数据天数更多，需要扩展 labels
+          if (prevDisplayDays > labels.length) {
+            for (let d = labels.length + 1; d <= prevDisplayDays; d++) labels.push(`${d}日`);
+          }
+          const prevSeries = [];
+          for (let d = 0; d < prevDisplayDays; d++) {
+            prevSeries.push(prevDaily[d] !== undefined ? Math.round(prevDaily[d] * 10) / 10 : '-');
+          }
+          seriesList.push({ name: prevYear + '年' + month + '月累计', type: 'line', data: prevSeries, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
+        }
       }
 
       return {
         tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
         legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
         grid: { left: 50, right: 20, top: 20, bottom: 40 },
-        xAxis: { type: 'category', data: [`${month}月`], axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
-        yAxis: { type: 'value', name: '万', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
+        xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
+        yAxis: { type: 'value', name: '累计(万)', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
         series: seriesList
       };
     }

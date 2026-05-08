@@ -6,7 +6,7 @@ from contextlib import contextmanager
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'business_data.db')
 
-AGG_TABLES = ['agg_performance', 'agg_jingdai', 'agg_hr_data', 'agg_value_data', 'agg_product_structure']
+AGG_TABLES = ['agg_performance', 'agg_jingdai', 'agg_hr_data', 'agg_value_data', 'agg_product_structure', 'agg_daily_performance', 'agg_org_performance', 'agg_org_value']
 
 
 @contextmanager
@@ -121,6 +121,21 @@ def init_db():
         ''')
 
         c.execute('''
+            CREATE TABLE IF NOT EXISTS agg_daily_performance (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                year INTEGER NOT NULL,
+                month INTEGER NOT NULL,
+                day INTEGER NOT NULL DEFAULT 1,
+                channel TEXT NOT NULL,
+                qj_premium REAL NOT NULL DEFAULT 0,
+                gm_premium REAL NOT NULL DEFAULT 0,
+                zs_premium REAL NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(year, month, day, channel)
+            )
+        ''')
+
+        c.execute('''
             CREATE TABLE IF NOT EXISTS target_config (
                 year INTEGER PRIMARY KEY,
                 payload TEXT NOT NULL,
@@ -195,6 +210,12 @@ def get_platform_data(year: int):
         org_perf_rows = c.fetchall()
 
         c.execute('''
+            SELECT month, day, channel, qj_premium, gm_premium, zs_premium
+            FROM agg_daily_performance WHERE year = ? ORDER BY month, day, channel
+        ''', (year,))
+        daily_rows = c.fetchall()
+
+        c.execute('''
             SELECT MAX(year * 100 + month) AS latest_period
             FROM (
               SELECT year, month FROM agg_performance
@@ -211,6 +232,7 @@ def get_platform_data(year: int):
             'hr': [dict(r) for r in hr_rows],
             'value': [dict(r) for r in value_rows],
             'org_performance': [dict(r) for r in org_perf_rows],
+            'daily_performance': [dict(r) for r in daily_rows],
             'latest_period': latest,
         }
 
