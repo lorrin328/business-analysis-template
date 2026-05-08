@@ -6,6 +6,7 @@ import pandas as pd
 
 CHANNEL_MAP = {'证券': '证保', '网服': '蚁桥'}
 TRANSFORM_CHANNELS = {'OTO', '证保', '蚁桥'}
+ORG_SCOPE = {'上海', '湖北', '四川', '辽宁', '山东', '广东', '福建', '浙江', '河南', '北京'}
 
 
 def _clean_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -316,6 +317,46 @@ def aggregate_daily_performance(df: pd.DataFrame) -> List[Dict]:
     return rows
 
 
+def aggregate_org_daily_performance(df: pd.DataFrame) -> List[Dict]:
+    """按日、机构、业务模式聚合保费，用于机构筛选后的同口径日累计趋势。"""
+    year_col = _pick_col(df, ['年'])
+    date_col = _pick_col(df, ['日期', '出单日期', '投保日期', '承保日期'])
+    month_col = _pick_col(df, ['年月', '月', '月份'])
+    channel_col = _pick_col(df, ['业务模式', '业务模式名称', '渠道'])
+    org_col = _pick_col(df, ['销售机构名称', '机构', '分公司', 'org'])
+    qj_col = _pick_col(df, ['期交保费'])
+    gm_col = _pick_col(df, ['年化规保', '规模保费', '规保'], ['规模', '规保'])
+    zs_col = _pick_col(df, ['折算保费'], ['折算', '标准'])
+
+    time_col = date_col or month_col
+    if not all([time_col, channel_col, org_col, qj_col]):
+        return []
+
+    work = _period_year_month(df, year_col, month_col if not date_col else None, time_col if date_col else None)
+    work['_channel'] = work[channel_col].map(_normalize_channel)
+    work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
+    work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知')
+    work = work[work['_org'].isin(ORG_SCOPE)]
+    work['_qj'] = _to_number(work[qj_col])
+    work['_gm'] = _to_number(work[gm_col]) if gm_col else 0
+    work['_zs'] = _to_number(work[zs_col]) if zs_col else 0
+
+    grouped = work.groupby(['_year', '_month', '_day', '_org', '_channel'], dropna=False)
+    rows = []
+    for (year, month, day, org, channel), group in grouped:
+        rows.append({
+            'year': int(year),
+            'month': int(month),
+            'day': int(day),
+            'org': str(org),
+            'channel': str(channel),
+            'qj_premium': _amount_to_wan(group['_qj'].sum()),
+            'gm_premium': _amount_to_wan(group['_gm'].sum()),
+            'zs_premium': _amount_to_wan(group['_zs'].sum()),
+        })
+    return rows
+
+
 def aggregate_product_structure(df: pd.DataFrame) -> List[Dict]:
     year_col = _pick_col(df, ['年'])
     month_col = _pick_col(df, ['年月', '月', '月份'])
@@ -373,6 +414,7 @@ def aggregate_org_performance(df: pd.DataFrame) -> List[Dict]:
     work['_channel'] = work[channel_col].map(_normalize_channel)
     work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
+    work = work[work['_org'].isin(ORG_SCOPE)]
     work['_qj'] = _to_number(work[qj_col])
     work['_gm'] = _to_number(work[gm_col]) if gm_col else 0
     work['_zs'] = _to_number(work[zs_col]) if zs_col else 0
@@ -429,6 +471,7 @@ def aggregate_org_value(df: pd.DataFrame) -> List[Dict]:
     work['_channel'] = work[channel_col].map(_normalize_channel)
     work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
+    work = work[work['_org'].isin(ORG_SCOPE)]
     work['_value'] = _to_number(work[value_col])
 
     grouped = work.groupby(['_year', '_month', '_org', '_channel'], dropna=False)

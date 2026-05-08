@@ -1827,23 +1827,56 @@
       renderOrgTable();
     }
 
-    function getOrgActual(org, channel, metric) {
-      if (!orgKpiData) return 0;
-      const key = `${org}|${channel}`;
-      if (metric === 'qj') return orgKpiData.perf?.[key]?.qj_premium || 0;
-      if (metric === 'value') return orgKpiData.value?.[key] || 0;
-      if (metric === '10year') return orgKpiData.perf?.[key]?.product_10year || 0;
-      if (metric === 'annuity') return orgKpiData.perf?.[key]?.product_annuity || 0;
-      if (metric === 'protection') return orgKpiData.perf?.[key]?.product_protection || 0;
-      return 0;
+    function getOrgPeriodKey(dim, idx) {
+      if (dim === 'quarter') return `Q${idx + 1}`;
+      if (dim === 'month') return String(idx + 1);
+      return 'year';
     }
 
-    function getOrgPrevActual(org, channel, metric) {
-      if (!orgKpiData) return 0;
+    function getOrgPerfMetric(source, org, channel, metric, dim, idx) {
+      if (!source) return 0;
       const key = `${org}|${channel}`;
-      if (metric === 'qj') return orgKpiData.perf_prev?.[key] || 0;
-      if (metric === 'value') return orgKpiData.value_prev?.[key] || 0;
-      return 0;
+      const item = source[key];
+      if (!item) return 0;
+      const fieldMap = {
+        'qj': 'qj_premium',
+        '10year': 'product_10year',
+        'annuity': 'product_annuity',
+        'protection': 'product_protection'
+      };
+      const field = fieldMap[metric];
+      if (!field) return 0;
+
+      // 兼容旧接口：旧接口只返回年度扁平值。
+      if (typeof item[field] === 'number') return item[field] || 0;
+
+      if (dim === 'year') return item.year?.[field] || 0;
+      const periodKey = getOrgPeriodKey(dim, idx);
+      return item[dim]?.[periodKey]?.[field] || 0;
+    }
+
+    function getOrgValueMetric(source, org, channel, dim, idx) {
+      if (!source) return 0;
+      const key = `${org}|${channel}`;
+      const item = source[key];
+      if (item == null) return 0;
+      if (typeof item === 'number') return item || 0;
+      if (dim === 'year') return item.year || 0;
+      const periodKey = getOrgPeriodKey(dim, idx);
+      return item[dim]?.[periodKey] || 0;
+    }
+
+    function getOrgActual(org, channel, metric, dim, idx) {
+      if (!orgKpiData) return 0;
+      if (metric === 'value') return getOrgValueMetric(orgKpiData.value, org, channel, dim, idx);
+      return getOrgPerfMetric(orgKpiData.perf, org, channel, metric, dim, idx);
+    }
+
+    function getOrgPrevActual(org, channel, metric, dim, idx) {
+      if (!orgKpiData) return 0;
+      if (metric === 'value') return getOrgValueMetric(orgKpiData.value_prev, org, channel, dim, idx);
+      if (metric === 'qj') return getOrgPerfMetric(orgKpiData.perf_prev, org, channel, metric, dim, idx);
+      return getOrgPerfMetric(orgKpiData.perf_prev, org, channel, metric, dim, idx);
     }
 
     function getOrgTarget(org, channel, metric, dim, idx) {
@@ -1912,25 +1945,26 @@
       let rows = [];
       orgs.forEach(org => {
         CHANNEL_LIST.forEach(ch => {
-          const qjActual = getOrgActual(org, ch, 'qj');
-          const valueActual = getOrgActual(org, ch, 'value');
-          const p10Actual = getOrgActual(org, ch, '10year');
-          const annuityActual = getOrgActual(org, ch, 'annuity');
-          const protectionActual = getOrgActual(org, ch, 'protection');
+          const periodIdx = dim === 'month' ? mIdx : qIdx;
+          const qjActual = getOrgActual(org, ch, 'qj', dim, periodIdx);
+          const valueActual = getOrgActual(org, ch, 'value', dim, periodIdx);
+          const p10Actual = getOrgActual(org, ch, '10year', dim, periodIdx);
+          const annuityActual = getOrgActual(org, ch, 'annuity', dim, periodIdx);
+          const protectionActual = getOrgActual(org, ch, 'protection', dim, periodIdx);
 
           // 只有有数据的行才显示
-          if (qjActual <= 0 && valueActual <= 0 && p10Actual <= 0 && annuityActual <= 0 && protectionActual <= 0) {
+          if (qjActual === 0 && valueActual === 0 && p10Actual === 0 && annuityActual === 0 && protectionActual === 0) {
             return;
           }
 
-          const qjTarget = getOrgTarget(org, ch, 'qj', dim, qIdx);
-          const valueTarget = getOrgTarget(org, ch, 'value', dim, qIdx);
-          const p10Target = getOrgTarget(org, ch, '10year', dim, qIdx);
-          const annuityTarget = getOrgTarget(org, ch, 'annuity', dim, qIdx);
-          const protectionTarget = getOrgTarget(org, ch, 'protection', dim, qIdx);
+          const qjTarget = getOrgTarget(org, ch, 'qj', dim, periodIdx);
+          const valueTarget = getOrgTarget(org, ch, 'value', dim, periodIdx);
+          const p10Target = getOrgTarget(org, ch, '10year', dim, periodIdx);
+          const annuityTarget = getOrgTarget(org, ch, 'annuity', dim, periodIdx);
+          const protectionTarget = getOrgTarget(org, ch, 'protection', dim, periodIdx);
 
-          const qjPrev = getOrgPrevActual(org, ch, 'qj');
-          const valuePrev = getOrgPrevActual(org, ch, 'value');
+          const qjPrev = getOrgPrevActual(org, ch, 'qj', dim, periodIdx);
+          const valuePrev = getOrgPrevActual(org, ch, 'value', dim, periodIdx);
 
           rows.push({
             org, channel: ch,
@@ -13030,6 +13064,128 @@
   }
 };
 
+    function hasPlatformOrgFilter() {
+      const allSelected = ORG_LIST_PLATFORM.every(o => selectedPlatformOrgs[o]);
+      const noneSelected = ORG_LIST_PLATFORM.every(o => !selectedPlatformOrgs[o]);
+      return !allSelected && !noneSelected;
+    }
+
+    function trimDailySeries(values) {
+      let lastValid = -1;
+      for (let i = values.length - 1; i >= 0; i--) {
+        if (values[i] !== null && values[i] !== undefined && values[i] > 0) {
+          lastValid = i;
+          break;
+        }
+      }
+      if (lastValid < 0) return [];
+      return values.slice(0, lastValid + 1).map(v => Math.round((v || 0) * 10) / 10);
+    }
+
+    function getMonthDailyCumulative(year, premiumType, selectedKeys, month) {
+      const col = premiumType === 'qj' ? 'qj_premium' : premiumType === 'gm' ? 'gm_premium' : 'zs_premium';
+      const useOrgDaily = hasPlatformOrgFilter();
+      const daily = [];
+
+      if (useOrgDaily) {
+        const selected = ORG_LIST_PLATFORM.filter(o => selectedPlatformOrgs[o]);
+        const orgDaily = apiCache[String(year)]?.platform?.org_daily_performance || [];
+        orgDaily.forEach(r => {
+          if (r.month === month && selectedKeys.includes(r.channel) && selected.includes(r.org)) {
+            const idx = (r.day || 1) - 1;
+            daily[idx] = (daily[idx] || 0) + (r[col] || 0);
+          }
+        });
+
+        // 经代目前无机构维度，机构筛选时仍按经代整体日累计纳入同一业务平台口径。
+        if (selectedKeys.includes('经代')) {
+          const jdArr = platformMock[year]?.month?.[month]?.[premiumType]?.['经代'] || [];
+          for (let i = 0; i < jdArr.length; i++) {
+            daily[i] = (daily[i] || 0) + (jdArr[i] || 0);
+          }
+        }
+
+        let running = 0;
+        const cumulative = [];
+        for (let i = 0; i < daily.length; i++) {
+          running += daily[i] || 0;
+          cumulative[i] = running;
+        }
+        const trimmed = trimDailySeries(cumulative);
+        if (trimmed.length > 0) return trimmed;
+
+        const fallback = [];
+        for (const key of selectedKeys) {
+          const v = getChannelValue(year, premiumType, key, month - 1);
+          if (v !== null && v !== undefined) fallback[0] = (fallback[0] || 0) + v;
+        }
+        return trimDailySeries(fallback);
+      }
+
+      const monthData = platformMock[year]?.month?.[month]?.[premiumType];
+      if (!monthData) return [];
+      for (const key of selectedKeys) {
+        const arr = monthData[key];
+        if (arr && arr.length > 0) {
+          for (let d = 0; d < arr.length; d++) {
+            daily[d] = (daily[d] || 0) + (arr[d] || 0);
+          }
+        }
+      }
+      return trimDailySeries(daily);
+    }
+
+    function getPeriodDailyCumulative(year, premiumType, selectedKeys, monthList) {
+      const labels = [];
+      const values = [];
+      let offset = 0;
+      monthList.forEach(month => {
+        const monthSeries = getMonthDailyCumulative(year, premiumType, selectedKeys, month);
+        monthSeries.forEach((v, idx) => {
+          labels.push(`${month}月${idx + 1}日`);
+          values.push(Math.round((offset + v) * 10) / 10);
+        });
+        if (monthSeries.length > 0) offset += monthSeries[monthSeries.length - 1] || 0;
+      });
+      return { labels, values };
+    }
+
+    function buildDailyTrendOption(monthList, currentName, prevName, emptyMessage) {
+      const selectedKeys = Object.keys(selectedSeries).filter(k => selectedSeries[k]);
+      const year = parseInt(selectedYear);
+      const prevYear = year - 1;
+      const current = getPeriodDailyCumulative(year, currentPremiumType, selectedKeys, monthList);
+      if (current.values.length === 0) return {
+        title: { text: emptyMessage, left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } },
+        xAxis: { type: 'category', data: [] },
+        yAxis: { type: 'value' },
+        series: []
+      };
+
+      const labels = current.labels.slice();
+      const seriesList = [
+        { name: currentName, type: 'line', data: current.values, smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
+      ];
+
+      if (platformMock[prevYear]) {
+        const prev = getPeriodDailyCumulative(prevYear, currentPremiumType, selectedKeys, monthList);
+        if (prev.values.length > 0) {
+          while (labels.length < prev.labels.length) labels.push(prev.labels[labels.length]);
+          const prevValues = labels.map((_, idx) => prev.values[idx] !== undefined ? prev.values[idx] : '-');
+          seriesList.push({ name: prevName, type: 'line', data: prevValues, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
+        }
+      }
+
+      return {
+        tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
+        legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
+        grid: { left: 50, right: 20, top: 20, bottom: 48 },
+        xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8', interval: 'auto' } },
+        yAxis: { type: 'value', name: '累计(万)', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
+        series: seriesList
+      };
+    }
+
     function getPlatformOption() {
       const selectedKeys = Object.keys(selectedSeries).filter(k => selectedSeries[k]);
       const year = parseInt(selectedYear);
@@ -13118,172 +13274,21 @@
         const quarter = selectedQuarter;
         const qStartMonth = { 'Q1': 1, 'Q2': 4, 'Q3': 7, 'Q4': 10 };
         const startM = qStartMonth[quarter];
-        const dates = [`${startM}月`, `${startM + 1}月`, `${startM + 2}月`];
-        const baseMonthIdx = startM - 1;
-
-        const currentTotal = [];
-        let currentCum = 0;
-        for (let i = 0; i < 3; i++) {
-          let sum = 0;
-          let hasValue = false;
-          for (const key of selectedKeys) {
-            const v = getChannelValue(year, currentPremiumType, key, baseMonthIdx + i);
-            if (v !== null && v !== undefined) {
-              sum += v;
-              hasValue = true;
-            }
-          }
-          if (!hasValue) {
-            currentTotal.push('-');
-          } else {
-            currentCum += sum || 0;
-            currentTotal.push(Math.round(currentCum * 10) / 10);
-          }
-        }
-
-        const seriesList = [
-          { name: year + '年' + quarter, type: 'line', data: currentTotal, smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
-        ];
-
-        if (platformMock[prevYear]) {
-          const prevTotal = [];
-          let prevCum = 0;
-          for (let i = 0; i < 3; i++) {
-            let sum = 0;
-            let hasValue = false;
-            for (const key of selectedKeys) {
-              const v = getChannelValue(prevYear, currentPremiumType, key, baseMonthIdx + i);
-              if (v !== null && v !== undefined) {
-                sum += v;
-                hasValue = true;
-              }
-            }
-            if (!hasValue) {
-              prevTotal.push('-');
-            } else {
-              prevCum += sum || 0;
-              prevTotal.push(Math.round(prevCum * 10) / 10);
-            }
-          }
-          seriesList.push({ name: prevYear + '年' + quarter, type: 'line', data: prevTotal, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
-        }
-
-        return {
-          tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
-          legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
-          grid: { left: 50, right: 20, top: 20, bottom: 40 },
-          xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
-          yAxis: { type: 'value', name: '万', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
-          series: seriesList
-        };
+        return buildDailyTrendOption(
+          [startM, startM + 1, startM + 2],
+          year + '年' + quarter + '日累计',
+          prevYear + '年' + quarter + '日累计',
+          '暂无该季度日累计数据'
+        );
       }
 
       const month = parseInt(selectedMonth);
-      const monthData = platformMock[year]?.month?.[month]?.[currentPremiumType];
-      if (!monthData) return emptyOption('暂无该月份数据');
-
-      // 判断是否有机构筛选（非全选且非全不选时，无日数据，退化为月度柱状图）
-      const allSelected = ORG_LIST_PLATFORM.every(o => selectedPlatformOrgs[o]);
-      const noneSelected = ORG_LIST_PLATFORM.every(o => !selectedPlatformOrgs[o]);
-      const hasOrgFilter = !allSelected && !noneSelected;
-
-      if (hasOrgFilter) {
-        // 有机构筛选时，退化为月度柱状图（无日累计粒度）
-        let currentVal = 0, hasCurrent = false;
-        for (const key of selectedKeys) {
-          const v = getChannelValue(year, currentPremiumType, key, month - 1);
-          if (v !== null && v !== undefined) { currentVal += v; hasCurrent = true; }
-        }
-        if (!hasCurrent) return emptyOption('暂无该月份数据');
-        let prevVal = 0;
-        for (const key of selectedKeys) {
-          const v = getChannelValue(prevYear, currentPremiumType, key, month - 1);
-          if (v !== null && v !== undefined) prevVal += v;
-        }
-        const seriesList = [
-          { name: year + '年', type: 'bar', data: [Math.round(currentVal * 10) / 10], itemStyle: { color: '#3b82f6' }, barWidth: '30%' }
-        ];
-        if (prevVal > 0) {
-          seriesList.push({ name: prevYear + '年', type: 'bar', data: [Math.round(prevVal * 10) / 10], itemStyle: { color: '#94a3b8' }, barWidth: '30%' });
-        }
-        return {
-          tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
-          legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
-          grid: { left: 50, right: 20, top: 20, bottom: 40 },
-          xAxis: { type: 'category', data: [`${month}月`], axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
-          yAxis: { type: 'value', name: '万', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
-          series: seriesList
-        };
-      }
-
-      // 月度视图：展示该月的日累计保费趋势（使用真实日数据）
-      let maxDays = 0;
-      const currentDaily = [];
-      for (const key of selectedKeys) {
-        const arr = monthData[key];
-        if (arr && arr.length > 0) {
-          maxDays = Math.max(maxDays, arr.length);
-          for (let d = 0; d < arr.length; d++) {
-            currentDaily[d] = (currentDaily[d] || 0) + (arr[d] || 0);
-          }
-        }
-      }
-      if (maxDays === 0) return emptyOption('暂无该月份数据');
-
-      // 找到最后一个有数据的日子（避免展示全零的后续日期）
-      let lastValidDay = 0;
-      for (let d = maxDays - 1; d >= 0; d--) {
-        if (currentDaily[d] > 0) { lastValidDay = d; break; }
-      }
-      const displayDays = lastValidDay + 1;
-      const labels = [];
-      for (let d = 1; d <= displayDays; d++) labels.push(`${d}日`);
-      const currentSeries = currentDaily.slice(0, displayDays).map(v => Math.round(v * 10) / 10);
-
-      const seriesList = [
-        { name: year + '年' + month + '月累计', type: 'line', data: currentSeries, smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
-      ];
-
-      // 上年同月日累计
-      const prevMonthData = platformMock[prevYear]?.month?.[month]?.[currentPremiumType];
-      if (prevMonthData) {
-        let prevMaxDays = 0;
-        const prevDaily = [];
-        for (const key of selectedKeys) {
-          const arr = prevMonthData[key];
-          if (arr && arr.length > 0) {
-            prevMaxDays = Math.max(prevMaxDays, arr.length);
-            for (let d = 0; d < arr.length; d++) {
-              prevDaily[d] = (prevDaily[d] || 0) + (arr[d] || 0);
-            }
-          }
-        }
-        if (prevMaxDays > 0) {
-          let prevLastValid = 0;
-          for (let d = prevMaxDays - 1; d >= 0; d--) {
-            if (prevDaily[d] > 0) { prevLastValid = d; break; }
-          }
-          const prevDisplayDays = Math.max(prevLastValid + 1, displayDays);
-          // 如果上年数据天数更多，需要扩展 labels
-          if (prevDisplayDays > labels.length) {
-            for (let d = labels.length + 1; d <= prevDisplayDays; d++) labels.push(`${d}日`);
-          }
-          const prevSeries = [];
-          for (let d = 0; d < prevDisplayDays; d++) {
-            prevSeries.push(prevDaily[d] !== undefined ? Math.round(prevDaily[d] * 10) / 10 : '-');
-          }
-          seriesList.push({ name: prevYear + '年' + month + '月累计', type: 'line', data: prevSeries, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
-        }
-      }
-
-      return {
-        tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
-        legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
-        grid: { left: 50, right: 20, top: 20, bottom: 40 },
-        xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
-        yAxis: { type: 'value', name: '累计(万)', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
-        series: seriesList
-      };
+      return buildDailyTrendOption(
+        [month],
+        year + '年' + month + '月日累计',
+        prevYear + '年' + month + '月日累计',
+        '暂无该月份日累计数据'
+      );
     }
 
     platformChart.setOption(getPlatformOption());
@@ -13313,20 +13318,18 @@
         // 同时加载上一年数据到 platformMock，用于季度/月度同比趋势线
         const prevYearNum = parseInt(year) - 1;
         const prevYearKey = String(prevYearNum);
-        if (!platformMock[prevYearKey]) {
-          if (!apiCache[prevYearKey]) {
-            try {
-              const prevResp = await fetch(`${API_BASE}/api/data/${prevYearNum}`, { method: 'GET' });
-              if (prevResp.ok) {
-                const prevPlatform = await prevResp.json();
-                apiCache[prevYearKey] = { platform: prevPlatform };
-              }
-            } catch(e) {}
-          }
-          if (apiCache[prevYearKey] && apiCache[prevYearKey].platform && hasValidApiData(apiCache[prevYearKey].platform)) {
-            const prevPM = convertApiToPlatformMock(apiCache[prevYearKey].platform, prevYearKey);
-            Object.assign(platformMock, prevPM);
-          }
+        if (!apiCache[prevYearKey]) {
+          try {
+            const prevResp = await fetch(`${API_BASE}/api/data/${prevYearNum}`, { method: 'GET' });
+            if (prevResp.ok) {
+              const prevPlatform = await prevResp.json();
+              apiCache[prevYearKey] = { platform: prevPlatform };
+            }
+          } catch(e) {}
+        }
+        if (apiCache[prevYearKey] && apiCache[prevYearKey].platform && hasValidApiData(apiCache[prevYearKey].platform)) {
+          const prevPM = convertApiToPlatformMock(apiCache[prevYearKey].platform, prevYearKey);
+          Object.assign(platformMock, prevPM);
         }
         return true;
       }
@@ -13700,13 +13703,8 @@
     // 初始化：尝试从API加载数据，成功后覆盖本地mock
     (async function init() {
       await fetchTargetData(2026);
-      const ok = await fetchAPIData(2026);
-      if (ok && apiData.platform && hasValidApiData(apiData.platform)) {
-        const apiPM = convertApiToPlatformMock(apiData.platform, '2026');
-        const apiTM = convertApiToTeamMock(apiData.platform, '2026');
-        Object.assign(platformMock, apiPM);
-        Object.assign(teamMock, apiTM);
-        updateProductDataFromApi();
+      const ok = await loadYearFromApi('2026', { updateKpi: true, updateProduct: true });
+      if (ok) {
         platformChart.setOption(getPlatformOption(), true);
         productChart.setOption(getPieOption(currentPieType), true);
         teamChart.setOption(getTeamOption(), true);

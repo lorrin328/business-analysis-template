@@ -6,7 +6,17 @@ from contextlib import contextmanager
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'business_data.db')
 
-AGG_TABLES = ['agg_performance', 'agg_jingdai', 'agg_hr_data', 'agg_value_data', 'agg_product_structure', 'agg_daily_performance', 'agg_org_performance', 'agg_org_value']
+AGG_TABLES = [
+    'agg_performance',
+    'agg_jingdai',
+    'agg_hr_data',
+    'agg_value_data',
+    'agg_product_structure',
+    'agg_daily_performance',
+    'agg_org_daily_performance',
+    'agg_org_performance',
+    'agg_org_value',
+]
 
 
 @contextmanager
@@ -136,6 +146,22 @@ def init_db():
         ''')
 
         c.execute('''
+            CREATE TABLE IF NOT EXISTS agg_org_daily_performance (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                year INTEGER NOT NULL,
+                month INTEGER NOT NULL,
+                day INTEGER NOT NULL DEFAULT 1,
+                org TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                qj_premium REAL NOT NULL DEFAULT 0,
+                gm_premium REAL NOT NULL DEFAULT 0,
+                zs_premium REAL NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(year, month, day, org, channel)
+            )
+        ''')
+
+        c.execute('''
             CREATE TABLE IF NOT EXISTS target_config (
                 year INTEGER PRIMARY KEY,
                 payload TEXT NOT NULL,
@@ -216,6 +242,12 @@ def get_platform_data(year: int):
         daily_rows = c.fetchall()
 
         c.execute('''
+            SELECT month, day, org, channel, qj_premium, gm_premium, zs_premium
+            FROM agg_org_daily_performance WHERE year = ? ORDER BY month, day, org, channel
+        ''', (year,))
+        org_daily_rows = c.fetchall()
+
+        c.execute('''
             SELECT MAX(year * 100 + month) AS latest_period
             FROM (
               SELECT year, month FROM agg_performance
@@ -233,6 +265,7 @@ def get_platform_data(year: int):
             'value': [dict(r) for r in value_rows],
             'org_performance': [dict(r) for r in org_perf_rows],
             'daily_performance': [dict(r) for r in daily_rows],
+            'org_daily_performance': [dict(r) for r in org_daily_rows],
             'latest_period': latest,
         }
 
@@ -302,65 +335,75 @@ def get_org_kpi_data(year: int):
     with get_db() as conn:
         c = conn.cursor()
 
-        # 机构期交保费
-        c.execute('''
-            SELECT org, channel,
-                   SUM(qj_premium) AS qj_total,
-                   SUM(product_10year) AS p10_total,
-                   SUM(product_annuity) AS annuity_total,
-                   SUM(product_protection) AS protection_total
-            FROM agg_org_performance WHERE year = ?
-            GROUP BY org, channel
-        ''', (year,))
-        org_perf = {}
-        for r in c.fetchall():
-            key = (r['org'], r['channel'])
-            org_perf[key] = {
-                'qj_premium': round(r['qj_total'] or 0, 2),
-                'product_10year': round(r['p10_total'] or 0, 2),
-                'product_annuity': round(r['annuity_total'] or 0, 2),
-                'product_protection': round(r['protection_total'] or 0, 2),
-            }
+        def collect_perf(query_year: int):
+            c.execute('''
+                SELECT org, channel, month,
+                       SUM(qj_premium) AS qj_total,
+                       SUM(product_10year) AS p10_total,
+                       SUM(product_annuity) AS annuity_total,
+                       SUM(product_protection) AS protection_total
+                FROM agg_org_performance
+                WHERE year = ?
+                GROUP BY org, channel, month
+            ''', (query_year,))
+            result = {}
+            for r in c.fetchall():
+                key = f"{r['org']}|{r['channel']}"
+                month = int(r['month'])
+                item = result.setdefault(key, {
+                    'year': {'qj_premium': 0, 'product_10year': 0, 'product_annuity': 0, 'product_protection': 0},
+                    'month': {},
+                    'quarter': {},
+                })
+                month_data = {
+                    'qj_premium': round(r['qj_total'] or 0, 2),
+                    'product_10year': round(r['p10_total'] or 0, 2),
+                    'product_annuity': round(r['annuity_total'] or 0, 2),
+                    'product_protection': round(r['protection_total'] or 0, 2),
+                }
+                item['month'][str(month)] = month_data
+                q_label = f"Q{((month - 1) // 3) + 1}"
+                q_data = item['quarter'].setdefault(q_label, {
+                    'qj_premium': 0, 'product_10year': 0, 'product_annuity': 0, 'product_protection': 0
+                })
+                for field, value in month_data.items():
+                    item['year'][field] = round(item['year'][field] + value, 2)
+                    q_data[field] = round(q_data[field] + value, 2)
+            return result
 
-        # 机构价值保费
-        c.execute('''
-            SELECT org, channel, SUM(value_premium) AS value_total
-            FROM agg_org_value WHERE year = ?
-            GROUP BY org, channel
-        ''', (year,))
-        org_value = {}
-        for r in c.fetchall():
-            key = (r['org'], r['channel'])
-            org_value[key] = round(r['value_total'] or 0, 2)
+        def collect_value(query_year: int):
+            c.execute('''
+                SELECT org, channel, month, SUM(value_premium) AS value_total
+                FROM agg_org_value
+                WHERE year = ?
+                GROUP BY org, channel, month
+            ''', (query_year,))
+            result = {}
+            for r in c.fetchall():
+                key = f"{r['org']}|{r['channel']}"
+                month = int(r['month'])
+                value = round(r['value_total'] or 0, 2)
+                item = result.setdefault(key, {'year': 0, 'month': {}, 'quarter': {}})
+                item['year'] = round(item['year'] + value, 2)
+                item['month'][str(month)] = value
+                q_label = f"Q{((month - 1) // 3) + 1}"
+                item['quarter'][q_label] = round(item['quarter'].get(q_label, 0) + value, 2)
+            return result
 
-        # 上年同期（用于同比）
-        c.execute('''
-            SELECT org, channel, SUM(qj_premium) AS qj_total
-            FROM agg_org_performance WHERE year = ?
-            GROUP BY org, channel
-        ''', (year - 1,))
-        org_perf_prev = {}
-        for r in c.fetchall():
-            key = (r['org'], r['channel'])
-            org_perf_prev[key] = round(r['qj_total'] or 0, 2)
-
-        c.execute('''
-            SELECT org, channel, SUM(value_premium) AS value_total
-            FROM agg_org_value WHERE year = ?
-            GROUP BY org, channel
-        ''', (year - 1,))
-        org_value_prev = {}
-        for r in c.fetchall():
-            key = (r['org'], r['channel'])
-            org_value_prev[key] = round(r['value_total'] or 0, 2)
+        org_perf = collect_perf(year)
+        org_value = collect_value(year)
+        org_perf_prev = collect_perf(year - 1)
+        org_value_prev = collect_value(year - 1)
+        org_keys = set(org_perf.keys()) | set(org_value.keys())
+        orgs = sorted({key.split('|', 1)[0] for key in org_keys})
 
         return {
             'year': year,
-            'orgs': list({k[0] for k in org_perf.keys()}),
-            'perf': {f"{k[0]}|{k[1]}": v for k, v in org_perf.items()},
-            'value': {f"{k[0]}|{k[1]}": v for k, v in org_value.items()},
-            'perf_prev': {f"{k[0]}|{k[1]}": v for k, v in org_perf_prev.items()},
-            'value_prev': {f"{k[0]}|{k[1]}": v for k, v in org_value_prev.items()},
+            'orgs': orgs,
+            'perf': org_perf,
+            'value': org_value,
+            'perf_prev': org_perf_prev,
+            'value_prev': org_value_prev,
         }
 
 
