@@ -1645,8 +1645,24 @@
     }
 
     function getOrgTarget(org, channel, metric, dim, idx) {
-      // TODO: 支持机构级目标配置
-      // 当前返回0，表示无目标
+      const metricMap = {
+        'qj': 'qjPremium',
+        'value': 'value',
+        '10year': 'tenYear',
+        'annuity': 'shangbao',
+        'protection': 'baozhang'
+      };
+      const catKey = metricMap[metric];
+      if (!catKey) return 0;
+
+      const key = `${org}|${channel}`;
+      const orgTargets = targetData?.orgTargets;
+      if (!orgTargets || !orgTargets[key] || !orgTargets[key][catKey]) return 0;
+
+      const item = orgTargets[key][catKey];
+      if (dim === 'year') return item.year || 0;
+      if (dim === 'quarter') return item.quarter?.[idx] || 0;
+      if (dim === 'month') return item.month?.[idx] || 0;
       return 0;
     }
 

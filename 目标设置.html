@@ -180,6 +180,15 @@
       : (window.location.protocol === 'file:' ? 'http://localhost:8000' : '');
 
     const METRICS = ['整体', '经代', '转型业务', 'OTO', '证保', '蚁桥'];
+    const ORG_LIST = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
+    const ORG_CHANNELS = ['OTO','证保','蚁桥'];
+    const ORG_CATS = [
+      { key: 'qjPremium', name: '期交保费' },
+      { key: 'value', name: '价值保费' },
+      { key: 'shangbao', name: '商保年金' },
+      { key: 'baozhang', name: '保障类产品' },
+      { key: 'tenYear', name: '10年期产品' }
+    ];
 
     function createDefaultData(year) {
       const categories = [
@@ -208,13 +217,24 @@
           };
         });
       });
+      // 机构目标：支持年度/季度/月度三个维度
+      data.orgTargets = {};
+      ORG_LIST.forEach(org => {
+        ORG_CHANNELS.forEach(ch => {
+          const key = `${org}|${ch}`;
+          data.orgTargets[key] = {};
+          ORG_CATS.forEach(cat => {
+            data.orgTargets[key][cat.key] = { year: 0, quarter: [0,0,0,0], month: [0,0,0,0,0,0,0,0,0,0,0,0] };
+          });
+        });
+      });
       return data;
     }
 
     function normalizeData(data, year) {
       const base = createDefaultData(year || data?.year || 2026);
       if (!data || !data.categories) return base;
-      const result = { year: parseInt(year || data.year || 2026), categories: {} };
+      const result = { year: parseInt(year || data.year || 2026), categories: {}, orgTargets: {} };
       Object.keys(base.categories).forEach(catKey => {
         result.categories[catKey] = {
           name: data.categories[catKey]?.name || base.categories[catKey].name,
@@ -232,6 +252,24 @@
           };
         });
       });
+      // 归一化机构目标
+      if (data.orgTargets && typeof data.orgTargets === 'object') {
+        Object.keys(base.orgTargets).forEach(key => {
+          result.orgTargets[key] = {};
+          ORG_CATS.forEach(cat => {
+            const src = data.orgTargets[key]?.[cat.key];
+            result.orgTargets[key][cat.key] = {
+              year: src?.year ?? 0,
+              quarter: Array.isArray(src?.quarter) && src.quarter.length === 4
+                ? src.quarter : [0,0,0,0],
+              month: Array.isArray(src?.month) && src.month.length === 12
+                ? src.month : [0,0,0,0,0,0,0,0,0,0,0,0]
+            };
+          });
+        });
+      } else {
+        result.orgTargets = base.orgTargets;
+      }
       return result;
     }
 
@@ -273,6 +311,164 @@
         `;
         grid.appendChild(card);
       });
+      // 机构目标卡片（全宽）
+      const orgCard = document.createElement('div');
+      orgCard.className = 'card';
+      orgCard.style.gridColumn = '1 / -1';
+      orgCard.innerHTML = `
+        <div class="card-header">
+          <span class="icon" style="background:#06b6d4"></span>
+          机构目标（年度）
+        </div>
+        <div class="card-body">${renderOrgTargetTable()}</div>
+      `;
+      grid.appendChild(orgCard);
+    }
+
+    let orgTargetDim = 'year';
+
+    function switchOrgTargetDim(dim) {
+      orgTargetDim = dim;
+      document.querySelectorAll('.org-dim-btn').forEach(b => b.classList.remove('active'));
+      const btn = document.querySelector(`.org-dim-btn[data-dim="${dim}"]`);
+      if (btn) btn.classList.add('active');
+      renderOrgTargetTable();
+    }
+
+    function renderOrgTargetTable() {
+      const dim = orgTargetDim;
+      const isYear = dim === 'year';
+      const isQuarter = dim === 'quarter';
+      const isMonth1 = dim === 'month1';
+      const isMonth2 = dim === 'month2';
+
+      let html = `
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+          <button class="org-dim-btn ${isYear ? 'active' : ''}" data-dim="year" onclick="switchOrgTargetDim('year')">年度</button>
+          <button class="org-dim-btn ${isQuarter ? 'active' : ''}" data-dim="quarter" onclick="switchOrgTargetDim('quarter')">季度</button>
+          <button class="org-dim-btn ${isMonth1 ? 'active' : ''}" data-dim="month1" onclick="switchOrgTargetDim('month1')">月度（1-6月）</button>
+          <button class="org-dim-btn ${isMonth2 ? 'active' : ''}" data-dim="month2" onclick="switchOrgTargetDim('month2')">月度（7-12月）</button>
+        </div>
+        <style>
+          .org-dim-btn { padding:5px 14px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#94a3b8;font-size:12px;cursor:pointer; }
+          .org-dim-btn.active, .org-dim-btn:hover { background:#3b82f6;color:#fff;border-color:#3b82f6; }
+        </style>
+        <div style="overflow-x:auto;">
+          <table style="min-width:${isYear ? 800 : isQuarter ? 900 : 1100}px;font-size:13px;">
+            <thead>
+              <tr>
+                <th style="width:60px;">机构</th>
+                <th style="width:60px;">业务模式</th>
+      `;
+
+      if (isYear) {
+        html += ORG_CATS.map(c => `<th style="text-align:center;">${c.name}（万）</th>`).join('');
+      } else if (isQuarter) {
+        ORG_CATS.forEach(c => {
+          html += `<th colspan="4" style="text-align:center;background:#1e293b;">${c.name}</th>`;
+        });
+        html += `</tr><tr><th></th><th></th>`;
+        ORG_CATS.forEach(() => {
+          html += `<th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th>`;
+        });
+      } else if (isMonth1) {
+        ORG_CATS.forEach(c => {
+          html += `<th colspan="6" style="text-align:center;background:#1e293b;">${c.name}</th>`;
+        });
+        html += `</tr><tr><th></th><th></th>`;
+        ORG_CATS.forEach(() => {
+          html += `<th>1月</th><th>2月</th><th>3月</th><th>4月</th><th>5月</th><th>6月</th>`;
+        });
+      } else {
+        ORG_CATS.forEach(c => {
+          html += `<th colspan="6" style="text-align:center;background:#1e293b;">${c.name}</th>`;
+        });
+        html += `</tr><tr><th></th><th></th>`;
+        ORG_CATS.forEach(() => {
+          html += `<th>7月</th><th>8月</th><th>9月</th><th>10月</th><th>11月</th><th>12月</th>`;
+        });
+      }
+
+      html += `</tr></thead><tbody>`;
+
+      ORG_LIST.forEach(org => {
+        ORG_CHANNELS.forEach((ch, chIdx) => {
+          const key = `${org}|${ch}`;
+          const targets = currentData.orgTargets?.[key] || {};
+          html += `<tr class="${chIdx > 0 ? 'sub' : ''}">`;
+          if (chIdx === 0) {
+            html += `<td rowspan="${ORG_CHANNELS.length}" style="font-weight:600;vertical-align:middle;">${org}</td>`;
+          }
+          html += `<td>${ch}</td>`;
+
+          ORG_CATS.forEach(cat => {
+            const t = targets[cat.key] || { year: 0, quarter: [0,0,0,0], month: [0,0,0,0,0,0,0,0,0,0,0,0] };
+            if (isYear) {
+              html += `<td style="text-align:center;">
+                <input type="number" class="target-input" value="${t.year}"
+                  data-org="${org}" data-ch="${ch}" data-cat="${cat.key}" data-dim="year"
+                  onchange="updateOrgValue(this)" style="width:80px;">
+              </td>`;
+            } else if (isQuarter) {
+              [0,1,2,3].forEach(qi => {
+                html += `<td style="text-align:center;">
+                  <input type="number" class="target-input target-input-sm" value="${t.quarter[qi]}"
+                    data-org="${org}" data-ch="${ch}" data-cat="${cat.key}" data-dim="quarter" data-idx="${qi}"
+                    onchange="updateOrgValue(this)">
+                </td>`;
+              });
+            } else if (isMonth1) {
+              [0,1,2,3,4,5].forEach(mi => {
+                html += `<td style="text-align:center;">
+                  <input type="number" class="target-input target-input-sm" value="${t.month[mi]}"
+                    data-org="${org}" data-ch="${ch}" data-cat="${cat.key}" data-dim="month" data-idx="${mi}"
+                    onchange="updateOrgValue(this)">
+                </td>`;
+              });
+            } else {
+              [6,7,8,9,10,11].forEach(mi => {
+                html += `<td style="text-align:center;">
+                  <input type="number" class="target-input target-input-sm" value="${t.month[mi]}"
+                    data-org="${org}" data-ch="${ch}" data-cat="${cat.key}" data-dim="month" data-idx="${mi}"
+                    onchange="updateOrgValue(this)">
+                </td>`;
+              });
+            }
+          });
+
+          html += `</tr>`;
+        });
+      });
+
+      html += `
+            </tbody>
+          </table>
+        </div>
+      `;
+      return html;
+    }
+
+    function updateOrgValue(input) {
+      const org = input.dataset.org;
+      const ch = input.dataset.ch;
+      const cat = input.dataset.cat;
+      const dim = input.dataset.dim;
+      const val = parseFloat(input.value) || 0;
+      const key = `${org}|${ch}`;
+      if (!currentData.orgTargets) currentData.orgTargets = {};
+      if (!currentData.orgTargets[key]) currentData.orgTargets[key] = {};
+      if (!currentData.orgTargets[key][cat]) {
+        currentData.orgTargets[key][cat] = { year: 0, quarter: [0,0,0,0], month: [0,0,0,0,0,0,0,0,0,0,0,0] };
+      }
+      if (dim === 'year') {
+        currentData.orgTargets[key][cat].year = val;
+      } else {
+        const idx = parseInt(input.dataset.idx);
+        const arr = currentData.orgTargets[key][cat][dim];
+        if (Array.isArray(arr) && idx >= 0 && idx < arr.length) {
+          arr[idx] = val;
+        }
+      }
     }
 
     function renderCategoryTable(catKey, cat) {
