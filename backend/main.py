@@ -10,11 +10,13 @@ sys.path.insert(0, os.path.dirname(__file__))
 from database import (
     init_db, get_db, replace_rows,
     get_kpi_data, get_product_structure, get_target_config, save_target_config,
+    get_org_kpi_data,
 )
 from aggregator import (
     parse_performance_excel, parse_jingdai_excel, parse_hr_excel, parse_value_excel,
     aggregate_performance, aggregate_jingdai, aggregate_hr, aggregate_value,
     aggregate_product_structure, aggregate_active_headcount,
+    aggregate_org_performance, aggregate_org_value,
 )
 
 app = FastAPI(title="经营分析看板API")
@@ -58,13 +60,17 @@ async def upload_files(
     value_rows = []
     product_rows = []
     active_rows = []
+    org_perf_rows = []
+    org_value_rows = []
 
     if performance and performance.filename:
         try:
-            df = parse_performance_excel(await performance.read())
+            perf_bytes = await performance.read()
+            df = parse_performance_excel(perf_bytes)
             perf_rows = aggregate_performance(df)
             product_rows = aggregate_product_structure(df)
             active_rows = aggregate_active_headcount(df)
+            org_perf_rows = aggregate_org_performance(df)
             results["uploaded"].append(f"转型业务业绩: {len(perf_rows)}条")
         except Exception as e:
             results["errors"].append(f"转型业务业绩: {str(e)}")
@@ -87,8 +93,10 @@ async def upload_files(
 
     if value and value.filename:
         try:
-            df = parse_value_excel(await value.read())
+            val_bytes = await value.read()
+            df = parse_value_excel(val_bytes)
             value_rows = aggregate_value(df)
+            org_value_rows = aggregate_org_value(df)
             results["uploaded"].append(f"价值数据: {len(value_rows)}条")
         except Exception as e:
             results["errors"].append(f"价值数据: {str(e)}")
@@ -102,7 +110,7 @@ async def upload_files(
             row['active_headcount'] = active_index.get((row['year'], row['month'], row['channel']), 0)
 
     # 收集所有实际年份
-    for rows in [perf_rows, jd_rows, hr_rows, value_rows, product_rows]:
+    for rows in [perf_rows, jd_rows, hr_rows, value_rows, product_rows, org_perf_rows, org_value_rows]:
         for r in rows:
             if 'year' in r and r['year']:
                 results["data_years"].add(int(r['year']))
@@ -120,6 +128,8 @@ async def upload_files(
             ('agg_jingdai', jd_rows),
             ('agg_hr_data', hr_rows),
             ('agg_value_data', value_rows),
+            ('agg_org_performance', org_perf_rows),
+            ('agg_org_value', org_value_rows),
         ]
         for table, rows in table_rows:
             for y in sorted({int(r['year']) for r in rows if 'year' in r and r['year']}):
@@ -130,6 +140,8 @@ async def upload_files(
         replace_rows(conn, 'agg_hr_data', hr_rows)
         replace_rows(conn, 'agg_value_data', value_rows)
         replace_rows(conn, 'agg_product_structure', product_rows)
+        replace_rows(conn, 'agg_org_performance', org_perf_rows)
+        replace_rows(conn, 'agg_org_value', org_value_rows)
 
         conn.commit()
 
@@ -153,6 +165,12 @@ def get_kpi(year: int):
 def get_product(year: int, dimension: str = "design_cat"):
     """获取产品结构数据"""
     return get_product_structure(year, dimension)
+
+
+@app.get("/api/org-kpi/{year}")
+def get_org_kpi(year: int):
+    """获取机构维度KPI数据"""
+    return get_org_kpi_data(year)
 
 
 @app.get("/api/targets/{year}")

@@ -90,6 +90,37 @@ def init_db():
         ''')
 
         c.execute('''
+            CREATE TABLE IF NOT EXISTS agg_org_performance (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                year INTEGER NOT NULL,
+                month INTEGER NOT NULL,
+                org TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                qj_premium REAL NOT NULL DEFAULT 0,
+                gm_premium REAL NOT NULL DEFAULT 0,
+                zs_premium REAL NOT NULL DEFAULT 0,
+                product_10year REAL NOT NULL DEFAULT 0,
+                product_annuity REAL NOT NULL DEFAULT 0,
+                product_protection REAL NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(year, month, org, channel)
+            )
+        ''')
+
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS agg_org_value (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                year INTEGER NOT NULL,
+                month INTEGER NOT NULL,
+                org TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                value_premium REAL NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(year, month, org, channel)
+            )
+        ''')
+
+        c.execute('''
             CREATE TABLE IF NOT EXISTS target_config (
                 year INTEGER PRIMARY KEY,
                 payload TEXT NOT NULL,
@@ -233,6 +264,74 @@ def get_kpi_data(year: int):
             },
             'hr': hr,
             'value': value,
+        }
+
+
+def get_org_kpi_data(year: int):
+    """获取机构维度KPI数据"""
+    init_db()
+    with get_db() as conn:
+        c = conn.cursor()
+
+        # 机构期交保费
+        c.execute('''
+            SELECT org, channel,
+                   SUM(qj_premium) AS qj_total,
+                   SUM(product_10year) AS p10_total,
+                   SUM(product_annuity) AS annuity_total,
+                   SUM(product_protection) AS protection_total
+            FROM agg_org_performance WHERE year = ?
+            GROUP BY org, channel
+        ''', (year,))
+        org_perf = {}
+        for r in c.fetchall():
+            key = (r['org'], r['channel'])
+            org_perf[key] = {
+                'qj_premium': round(r['qj_total'] or 0, 2),
+                'product_10year': round(r['p10_total'] or 0, 2),
+                'product_annuity': round(r['annuity_total'] or 0, 2),
+                'product_protection': round(r['protection_total'] or 0, 2),
+            }
+
+        # 机构价值保费
+        c.execute('''
+            SELECT org, channel, SUM(value_premium) AS value_total
+            FROM agg_org_value WHERE year = ?
+            GROUP BY org, channel
+        ''', (year,))
+        org_value = {}
+        for r in c.fetchall():
+            key = (r['org'], r['channel'])
+            org_value[key] = round(r['value_total'] or 0, 2)
+
+        # 上年同期（用于同比）
+        c.execute('''
+            SELECT org, channel, SUM(qj_premium) AS qj_total
+            FROM agg_org_performance WHERE year = ?
+            GROUP BY org, channel
+        ''', (year - 1,))
+        org_perf_prev = {}
+        for r in c.fetchall():
+            key = (r['org'], r['channel'])
+            org_perf_prev[key] = round(r['qj_total'] or 0, 2)
+
+        c.execute('''
+            SELECT org, channel, SUM(value_premium) AS value_total
+            FROM agg_org_value WHERE year = ?
+            GROUP BY org, channel
+        ''', (year - 1,))
+        org_value_prev = {}
+        for r in c.fetchall():
+            key = (r['org'], r['channel'])
+            org_value_prev[key] = round(r['value_total'] or 0, 2)
+
+        return {
+            'year': year,
+            'orgs': list({k[0] for k in org_perf.keys()}),
+            'perf': {f"{k[0]}|{k[1]}": v for k, v in org_perf.items()},
+            'value': {f"{k[0]}|{k[1]}": v for k, v in org_value.items()},
+            'perf_prev': {f"{k[0]}|{k[1]}": v for k, v in org_perf_prev.items()},
+            'value_prev': {f"{k[0]}|{k[1]}": v for k, v in org_value_prev.items()},
         }
 
 
