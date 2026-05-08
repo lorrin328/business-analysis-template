@@ -3094,8 +3094,8 @@
     const selectedSeries = { '经代': true, 'OTO': true, '证保': true, '蚁桥': true };
     const seriesColors = { '经代': '#8b5cf6', 'OTO': '#3b82f6', '证保': '#10b981', '蚁桥': '#f59e0b' };
     const ORG_LIST_PLATFORM = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
-    const selectedOrgs = {};
-    ORG_LIST_PLATFORM.forEach(o => selectedOrgs[o] = true);
+    const selectedPlatformOrgs = {};
+    ORG_LIST_PLATFORM.forEach(o => selectedPlatformOrgs[o] = true);
 
     function generateDailyCumulative(days, total, seed) {
       const result = [];
@@ -13289,14 +13289,14 @@
     }
 
     function toggleOrg(org, checked) {
-      selectedOrgs[org] = checked;
+      selectedPlatformOrgs[org] = checked;
       platformChart.setOption(getPlatformOption(), true);
     }
 
     // 根据机构筛选获取某渠道某月的数值（null 表示无数据；经代无机构维度，始终返回整体数据）
     function getChannelValue(year, premiumType, channel, monthIndex) {
-      const allSelected = ORG_LIST_PLATFORM.every(o => selectedOrgs[o]);
-      const noneSelected = ORG_LIST_PLATFORM.every(o => !selectedOrgs[o]);
+      const allSelected = ORG_LIST_PLATFORM.every(o => selectedPlatformOrgs[o]);
+      const noneSelected = ORG_LIST_PLATFORM.every(o => !selectedPlatformOrgs[o]);
       if (channel === '经代' || allSelected || noneSelected) {
         const v = platformMock[year]?.year?.[premiumType]?.[channel]?.[monthIndex];
         return v !== null && v !== undefined ? v : null;
@@ -13306,7 +13306,7 @@
         const v = platformMock[year]?.year?.[premiumType]?.[channel]?.[monthIndex];
         return v !== null && v !== undefined ? v : null;
       }
-      const selected = ORG_LIST_PLATFORM.filter(o => selectedOrgs[o]);
+      const selected = ORG_LIST_PLATFORM.filter(o => selectedPlatformOrgs[o]);
       let sum = 0;
       let hasAny = false;
       orgPerf.forEach(r => {
