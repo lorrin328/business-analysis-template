@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.7 经代日累计版</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.8 经代日累计修复版</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -3028,6 +3028,15 @@
       if (apiPlatform.daily_performance) {
         apiPlatform.daily_performance.forEach(r => {
           const key = `${r.month}|${r.channel}`;
+          if (!dailyIndex[key]) dailyIndex[key] = {};
+          dailyIndex[key][r.day] = r;
+        });
+      }
+
+      // 将经代日明细也纳入 dailyIndex，使 mock.month 中经代数据也能生成日累计
+      if (apiPlatform.jingdai_daily) {
+        apiPlatform.jingdai_daily.forEach(r => {
+          const key = `${r.month}|经代`;
           if (!dailyIndex[key]) dailyIndex[key] = {};
           dailyIndex[key][r.day] = r;
         });
