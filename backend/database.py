@@ -189,6 +189,12 @@ def get_platform_data(year: int):
         value_rows = c.fetchall()
 
         c.execute('''
+            SELECT month, org, channel, qj_premium, gm_premium, zs_premium
+            FROM agg_org_performance WHERE year = ? ORDER BY month, org, channel
+        ''', (year,))
+        org_perf_rows = c.fetchall()
+
+        c.execute('''
             SELECT MAX(year * 100 + month) AS latest_period
             FROM (
               SELECT year, month FROM agg_performance
@@ -204,6 +210,7 @@ def get_platform_data(year: int):
             'jingdai': [dict(r) for r in jingdai_rows],
             'hr': [dict(r) for r in hr_rows],
             'value': [dict(r) for r in value_rows],
+            'org_performance': [dict(r) for r in org_perf_rows],
             'latest_period': latest,
         }
 
