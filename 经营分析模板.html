@@ -13086,6 +13086,7 @@
       const col = premiumType === 'qj' ? 'qj_premium' : premiumType === 'gm' ? 'gm_premium' : 'zs_premium';
       const useOrgDaily = hasPlatformOrgFilter();
       const daily = [];
+      let hasDailyRows = false;
 
       if (useOrgDaily) {
         const selected = ORG_LIST_PLATFORM.filter(o => selectedPlatformOrgs[o]);
@@ -13094,25 +13095,28 @@
           if (r.month === month && selectedKeys.includes(r.channel) && selected.includes(r.org)) {
             const idx = (r.day || 1) - 1;
             daily[idx] = (daily[idx] || 0) + (r[col] || 0);
+            hasDailyRows = true;
           }
         });
 
-        // 经代目前无机构维度，机构筛选时仍按经代整体日累计纳入同一业务平台口径。
+        // 经代目前无机构日明细，机构筛选时只能按月度值放在当月首日。
         if (selectedKeys.includes('经代')) {
-          const jdArr = platformMock[year]?.month?.[month]?.[premiumType]?.['经代'] || [];
-          for (let i = 0; i < jdArr.length; i++) {
-            daily[i] = (daily[i] || 0) + (jdArr[i] || 0);
+          const jdVal = getChannelValue(year, premiumType, '经代', month - 1);
+          if (jdVal !== null && jdVal !== undefined) {
+            daily[0] = (daily[0] || 0) + jdVal;
+            hasDailyRows = true;
           }
         }
 
-        let running = 0;
-        const cumulative = [];
-        for (let i = 0; i < daily.length; i++) {
-          running += daily[i] || 0;
-          cumulative[i] = running;
+        if (hasDailyRows) {
+          let running = 0;
+          const cumulative = [];
+          for (let i = 0; i < daily.length; i++) {
+            running += daily[i] || 0;
+            cumulative[i] = running;
+          }
+          return trimDailySeries(cumulative);
         }
-        const trimmed = trimDailySeries(cumulative);
-        if (trimmed.length > 0) return trimmed;
 
         const fallback = [];
         for (const key of selectedKeys) {
@@ -13120,6 +13124,33 @@
           if (v !== null && v !== undefined) fallback[0] = (fallback[0] || 0) + v;
         }
         return trimDailySeries(fallback);
+      }
+
+      const rawDaily = apiCache[String(year)]?.platform?.daily_performance || [];
+      rawDaily.forEach(r => {
+        if (r.month === month && selectedKeys.includes(r.channel)) {
+          const idx = (r.day || 1) - 1;
+          daily[idx] = (daily[idx] || 0) + (r[col] || 0);
+          hasDailyRows = true;
+        }
+      });
+
+      if (selectedKeys.includes('经代')) {
+        const jdVal = getChannelValue(year, premiumType, '经代', month - 1);
+        if (jdVal !== null && jdVal !== undefined) {
+          daily[0] = (daily[0] || 0) + jdVal;
+          hasDailyRows = true;
+        }
+      }
+
+      if (hasDailyRows) {
+        let running = 0;
+        const cumulative = [];
+        for (let i = 0; i < daily.length; i++) {
+          running += daily[i] || 0;
+          cumulative[i] = running;
+        }
+        return trimDailySeries(cumulative);
       }
 
       const monthData = platformMock[year]?.month?.[month]?.[premiumType];
