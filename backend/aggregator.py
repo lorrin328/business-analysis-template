@@ -283,7 +283,7 @@ def aggregate_value(df: pd.DataFrame) -> List[Dict]:
 def aggregate_daily_performance(df: pd.DataFrame) -> List[Dict]:
     """按日聚合转型业务保费数据，用于月度视图的日累计趋势。"""
     year_col = _pick_col(df, ['年'])
-    date_col = _pick_col(df, ['日期', '出单日期', '投保日期', '承保日期'])
+    date_col = _pick_col(df, ['年月日', '入账时间', '日期', '出单日期', '投保日期', '承保日期'])
     month_col = _pick_col(df, ['年月', '月', '月份'])
     channel_col = _pick_col(df, ['业务模式', '业务模式名称', '渠道'])
     qj_col = _pick_col(df, ['期交保费'])
@@ -320,7 +320,7 @@ def aggregate_daily_performance(df: pd.DataFrame) -> List[Dict]:
 def aggregate_org_daily_performance(df: pd.DataFrame) -> List[Dict]:
     """按日、机构、业务模式聚合保费，用于机构筛选后的同口径日累计趋势。"""
     year_col = _pick_col(df, ['年'])
-    date_col = _pick_col(df, ['日期', '出单日期', '投保日期', '承保日期'])
+    date_col = _pick_col(df, ['年月日', '入账时间', '日期', '出单日期', '投保日期', '承保日期'])
     month_col = _pick_col(df, ['年月', '月', '月份'])
     channel_col = _pick_col(df, ['业务模式', '业务模式名称', '渠道'])
     org_col = _pick_col(df, ['销售机构名称', '机构', '分公司', 'org'])
