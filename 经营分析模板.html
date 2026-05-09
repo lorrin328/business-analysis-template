@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>经营分析看板 - Demo</title>
+  <title>经营分析看板</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.8 经代日累计修复版</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.2</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -1004,7 +1004,7 @@
   </div>
 
   <div class="footer">
-    太平人寿网电多元条线 · 经营分析系统 · Demo 版本仅供展示
+    太平人寿网电多元条线 · 经营分析系统
   </div>
 
   <!-- Modal -->
@@ -19508,7 +19508,7 @@
         const orgDaily = apiCache[String(year)]?.platform?.org_daily_performance || [];
         let hasJdDaily = false;
         orgDaily.forEach(r => {
-          if (r.month === month && selectedKeys.includes(r.channel) && selected.includes(r.org)) {
+          if (r.month == month && selectedKeys.includes(r.channel) && selected.includes(r.org)) {
             const idx = (r.day || 1) - 1;
             daily[idx] = (daily[idx] || 0) + (r[col] || 0);
             hasDailyRows = true;
@@ -19518,7 +19518,7 @@
         if (selectedKeys.includes('经代')) {
           const jdDaily = apiCache[String(year)]?.platform?.jingdai_daily || [];
           jdDaily.forEach(r => {
-            if (r.month === month) {
+            if (r.month == month) {
               const idx = (r.day || 1) - 1;
               daily[idx] = (daily[idx] || 0) + (r[col] || 0);
               hasDailyRows = true;
@@ -19557,7 +19557,7 @@
       const rawDaily = apiCache[String(year)]?.platform?.daily_performance || [];
       let hasJdDaily = false;
       rawDaily.forEach(r => {
-        if (r.month === month && selectedKeys.includes(r.channel)) {
+        if (r.month == month && selectedKeys.includes(r.channel)) {
           const idx = (r.day || 1) - 1;
           daily[idx] = (daily[idx] || 0) + (r[col] || 0);
           hasDailyRows = true;
@@ -19567,7 +19567,7 @@
       if (selectedKeys.includes('经代')) {
         const jdDaily = apiCache[String(year)]?.platform?.jingdai_daily || [];
         jdDaily.forEach(r => {
-          if (r.month === month) {
+          if (r.month == month) {
             const idx = (r.day || 1) - 1;
             daily[idx] = (daily[idx] || 0) + (r[col] || 0);
             hasDailyRows = true;
