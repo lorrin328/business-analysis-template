@@ -19620,25 +19620,27 @@
       const year = parseInt(selectedYear);
       const prevYear = year - 1;
       const current = getPeriodDailyCumulative(year, currentPremiumType, selectedKeys, monthList);
-      if (current.values.length === 0) return {
+      const prev = platformMock[prevYear] ? getPeriodDailyCumulative(prevYear, currentPremiumType, selectedKeys, monthList) : { labels: [], values: [] };
+      if (current.values.length === 0 && prev.values.length === 0) return {
         title: { text: emptyMessage, left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } },
         xAxis: { type: 'category', data: [] },
         yAxis: { type: 'value' },
         series: []
       };
 
-      const labels = current.labels.slice();
+      // 优先使用当前年数据，若当前年无数据但有上年数据则以上年为主
+      const hasCurrent = current.values.length > 0;
+      const primaryData = hasCurrent ? current : prev;
+      const primaryName = hasCurrent ? currentName : prevName;
+      const labels = primaryData.labels.slice();
       const seriesList = [
-        { name: currentName, type: 'line', data: current.values, smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
+        { name: primaryName, type: 'line', data: primaryData.values, smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
       ];
 
-      if (platformMock[prevYear]) {
-        const prev = getPeriodDailyCumulative(prevYear, currentPremiumType, selectedKeys, monthList);
-        if (prev.values.length > 0) {
-          while (labels.length < prev.labels.length) labels.push(prev.labels[labels.length]);
-          const prevValues = labels.map((_, idx) => prev.values[idx] !== undefined ? prev.values[idx] : '-');
-          seriesList.push({ name: prevName, type: 'line', data: prevValues, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
-        }
+      if (hasCurrent && prev.values.length > 0) {
+        while (labels.length < prev.labels.length) labels.push(prev.labels[labels.length]);
+        const prevValues = labels.map((_, idx) => prev.values[idx] !== undefined ? prev.values[idx] : '-');
+        seriesList.push({ name: prevName, type: 'line', data: prevValues, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
       }
 
       return {
@@ -19796,6 +19798,8 @@
         if (apiCache[prevYearKey] && apiCache[prevYearKey].platform && hasValidApiData(apiCache[prevYearKey].platform)) {
           const prevPM = convertApiToPlatformMock(apiCache[prevYearKey].platform, prevYearKey);
           Object.assign(platformMock, prevPM);
+          const prevTM = convertApiToTeamMock(apiCache[prevYearKey].platform, prevYearKey);
+          Object.assign(teamMock, prevTM);
         }
         return true;
       }
@@ -19807,6 +19811,7 @@
       await loadYearFromApi(value, { updateKpi: true, updateProduct: true });
       updateCutoffLabel(value);
       updatePlatformScopeNote();
+      platformChart.clear();
       platformChart.setOption(getPlatformOption(), true);
       productChart.setOption(getPieOption(currentPieType), true);
       fetchOrgKpiData(value);
@@ -19830,12 +19835,14 @@
         subSelect.style.display = 'inline-block';
       }
 
+      platformChart.clear();
       platformChart.setOption(getPlatformOption(), true);
     }
 
     function switchSubPeriod(value) {
       if (currentTimeDim === 'quarter') selectedQuarter = value;
       else if (currentTimeDim === 'month') selectedMonth = value;
+      platformChart.clear();
       platformChart.setOption(getPlatformOption(), true);
     }
 
@@ -19844,18 +19851,21 @@
       row.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentPremiumType = type;
+      platformChart.clear();
       platformChart.setOption(getPlatformOption(), true);
     }
 
     function toggleSeries(key, checked) {
       selectedSeries[key] = checked;
       updatePlatformScopeNote();
+      platformChart.clear();
       platformChart.setOption(getPlatformOption(), true);
     }
 
     function toggleOrg(org, checked) {
       selectedPlatformOrgs[org] = checked;
       updatePlatformScopeNote();
+      platformChart.clear();
       platformChart.setOption(getPlatformOption(), true);
     }
 
@@ -20069,12 +20079,14 @@
     async function switchTeamYear(value) {
       selectedTeamYear = value;
       await loadYearFromApi(value, { updateKpi: false, updateProduct: false });
+      teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
     }
     function switchTeamMetric(btn, metric) {
       btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentTeamMetric = metric;
+      teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
     }
     function switchTeamDim(btn, dim) {
@@ -20082,14 +20094,17 @@
       btn.classList.add('active');
       currentTeamDim = dim;
       document.getElementById('teamQuarterSelect').style.display = dim === 'quarter' ? 'inline-block' : 'none';
+      teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
     }
     function switchTeamQuarter(value) {
       selectedTeamQuarter = value;
+      teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
     }
     function toggleTeamSeries(key, checked) {
       selectedTeamSeries[key] = checked;
+      teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
     }
 
