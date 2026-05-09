@@ -1,4 +1,5 @@
 import math
+from calendar import monthrange
 from datetime import date
 from typing import Any
 
@@ -45,15 +46,23 @@ def mom_rate(current: Any, previous: Any) -> float | None:
     return yoy_rate(current, previous)
 
 
-def time_progress(period_type: str, period_value: int, *, as_of: date | None = None) -> float | None:
+def time_progress(
+    period_type: str,
+    elapsed: int | float | None = None,
+    total: int | float | None = None,
+    *,
+    as_of: date | None = None,
+) -> float | None:
+    if elapsed is not None or total is not None:
+        return round_metric(safe_divide(elapsed, total))
     if period_type == "year":
-        return safe_divide(period_value, 12)
+        return None
     if period_type == "quarter":
-        return safe_divide(period_value, 4)
-    if period_type == "month":
-        return safe_divide(period_value, 12)
+        return None
+    if period_type == "month" and as_of:
+        return round_metric(safe_divide(as_of.day, monthrange(as_of.year, as_of.month)[1]))
     if period_type == "day" and as_of:
-        return safe_divide(as_of.timetuple().tm_yday, 366 if as_of.year % 4 == 0 else 365)
+        return round_metric(safe_divide(as_of.timetuple().tm_yday, 366 if as_of.year % 4 == 0 else 365))
     return None
 
 

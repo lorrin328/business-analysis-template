@@ -16,9 +16,11 @@ async function request(path, options = {}) {
 
 export const api = {
   getKpi: (year) => request(`/api/kpi?year=${encodeURIComponent(year)}`),
-  getPlatformTrend: ({ year, month, businessLines, metric = 'qj' }) => {
-    const params = new URLSearchParams({ year, metric });
+  getPlatformTrend: ({ year, periodType = 'year', periodValue, month, quarter, businessLines, metric = 'qj' }) => {
+    const params = new URLSearchParams({ year, metric, periodType });
     if (month) params.set('month', month);
+    if (quarter) params.set('quarter', quarter);
+    if (periodValue != null) params.set('periodValue', periodValue);
     if (businessLines?.length) params.set('businessLines', businessLines.join(','));
     return request(`/api/platform-trend?${params.toString()}`);
   },
