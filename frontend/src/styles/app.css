@@ -1,0 +1,6 @@
+/* 生产页面当前仍以内联样式为准。本文件作为模块化迁移后的样式入口。 */
+.chart-note {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+}

@@ -5,8 +5,16 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import sqlite3
+import logging
+from logging.handlers import RotatingFileHandler
 
 sys.path.insert(0, os.path.dirname(__file__))
+from api.kpi import router as kpi_router
+from api.org import router as org_router
+from api.product import router as product_router
+from api.targets import router as targets_router
+from api.team import router as team_router
+from api.trend import router as trend_router
 from database import (
     init_db, get_db, replace_rows,
     get_kpi_data, get_product_structure, get_target_config, save_target_config,
@@ -20,7 +28,19 @@ from aggregator import (
     aggregate_daily_performance, aggregate_org_daily_performance,
 )
 
+from validators.data_validator import validate_rows
+from validators.target_validator import validate_target_payload
+
 app = FastAPI(title="经营分析看板API")
+
+LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+logger = logging.getLogger("business-analysis")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    handler = RotatingFileHandler(os.path.join(LOG_DIR, "app.log"), maxBytes=5_000_000, backupCount=5, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    logger.addHandler(handler)
 
 # CORS：生产环境不需要（HTML从同一服务提供），开发环境按需配置
 # 如需跨域，设置环境变量 CORS_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
@@ -36,6 +56,9 @@ if _cors_origins:
 
 # 初始化数据库
 init_db()
+
+for router in [kpi_router, trend_router, org_router, team_router, product_router, targets_router]:
+    app.include_router(router)
 
 
 @app.get("/api/health")
@@ -53,6 +76,7 @@ async def upload_files(
 ):
     """上传Excel文件并聚合到SQLite"""
     results = {"uploaded": [], "errors": [], "data_years": set()}
+    logger.info("import started year=%s", year)
 
     # 第一步：解析所有Excel文件，收集实际年份
     perf_rows = []
@@ -77,18 +101,26 @@ async def upload_files(
             product_rows = aggregate_product_structure(df)
             active_rows = aggregate_active_headcount(df)
             org_perf_rows = aggregate_org_performance(df)
+            validation = validate_rows(perf_rows, required=["year", "month", "channel"], unique_keys=["year", "month", "channel"])
+            if not validation.valid:
+                raise ValueError(validation.to_dict())
             results["uploaded"].append(f"转型业务业绩: {len(perf_rows)}条")
         except Exception as e:
             results["errors"].append(f"转型业务业绩: {str(e)}")
+            logger.exception("performance import failed")
 
     if jingdai and jingdai.filename:
         try:
             df = parse_jingdai_excel(await jingdai.read())
             jd_rows = aggregate_jingdai(df)
             jd_daily_rows = aggregate_jingdai_daily(df)
+            validation = validate_rows(jd_rows, required=["year", "month"], unique_keys=["year", "month"])
+            if not validation.valid:
+                raise ValueError(validation.to_dict())
             results["uploaded"].append(f"经代业务业绩: {len(jd_rows)}条")
         except Exception as e:
             results["errors"].append(f"经代业务业绩: {str(e)}")
+            logger.exception("jingdai import failed")
 
     if hr and hr.filename:
         try:
@@ -97,6 +129,7 @@ async def upload_files(
             results["uploaded"].append(f"人力数据: {len(hr_rows)}条")
         except Exception as e:
             results["errors"].append(f"人力数据: {str(e)}")
+            logger.exception("hr import failed")
 
     if value and value.filename:
         try:
@@ -107,6 +140,7 @@ async def upload_files(
             results["uploaded"].append(f"价值数据: {len(value_rows)}条")
         except Exception as e:
             results["errors"].append(f"价值数据: {str(e)}")
+            logger.exception("value import failed")
 
     if hr_rows and active_rows:
         active_index = {
@@ -158,7 +192,19 @@ async def upload_files(
 
         conn.commit()
 
+    logger.info("import finished uploaded=%s errors=%s years=%s", len(results["uploaded"]), len(results["errors"]), results["data_years"])
     return results
+
+
+@app.post("/api/import")
+async def import_files(
+    performance: UploadFile = File(None),
+    jingdai: UploadFile = File(None),
+    hr: UploadFile = File(None),
+    value: UploadFile = File(None),
+    year: int = 2026,
+):
+    return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year)
 
 
 @app.get("/api/data/{year}")
@@ -196,9 +242,10 @@ def get_targets(year: int):
 @app.put("/api/targets/{year}")
 def put_targets(year: int, payload: dict = Body(...)):
     """保存服务器端统一目标配置"""
-    if not isinstance(payload, dict) or "categories" not in payload:
-        raise HTTPException(status_code=400, detail="invalid target payload")
-    return save_target_config(year, payload)
+    validation = validate_target_payload(payload)
+    if not validation.valid:
+        raise HTTPException(status_code=400, detail=validation.to_dict())
+    return save_target_config(year, payload, updated_by="admin")
 
 
 # 静态文件服务 - 生产HTML

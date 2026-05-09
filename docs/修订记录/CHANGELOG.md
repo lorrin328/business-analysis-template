@@ -703,3 +703,16 @@ js/
 ## [2026-04-25] 9d41639 经营分析模板：保费趋势对比看板
 
 初代版本，内联 JSON 数据。
+# 2026-05-09
+
+## 应用级重构与修复
+
+- 新增 `backend/metrics/` 指标中心，统一 `safe_divide`、达成率、同比、环比、活动率、人均保费、人均产能、费用率、投产比等公式。
+- 新增 `backend/config/business_lines.py` 和 `frontend/src/config/business-lines.js`，统一经代、OTO、证保、蚁桥、转型业务、整体业务配置，经代默认无机构维度。
+- 新增 `backend/services/data_transform.py`，统一月份、数字、机构和业务线标准化。
+- 新增 `backend/api/`，提供 `/api/kpi`、`/api/platform-trend`、`/api/org-analysis`、`/api/team-analysis`、`/api/product-analysis`、`/api/targets` 等统一接口，同时保留旧接口兼容现有页面。
+- 新增 `target_values` 表和索引，目标配置保存时同步写入年度、季度、月度、业务线、机构、指标行表。
+- 修复平台趋势日累计：月份统一转数字，经代日累计避免重复叠加，无日数据不再生成伪曲线，机构筛选时展示经代整体口径提示。
+- 新增 `deploy/` 下 Nginx、systemd、docker-compose、部署脚本。
+- 新增系统架构、指标口径、数据流、API、部署、平台趋势口径文档。
+- 新增基础测试，覆盖指标公式、月份转换、经代去重、无日数据、经代机构提示、目标保存读取和统一响应格式。

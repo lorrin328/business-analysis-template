@@ -8,7 +8,9 @@
 
 ## 项目概览
 
-本项目为太平人寿网电多元条线提供经营分析可视化看板，覆盖以下业务线：
+本项目定位为太平人寿网电多元条线经营分析看板/经营驾驶舱，当前采用 **FastAPI + SQLite + 原生 HTML/JS + ECharts** 的轻量架构。核心目标是保证数据处理准确、指标口径统一、页面展示清晰、多人访问稳定，并为后续扩展预留空间。
+
+本项目覆盖以下业务线：
 
 | 业务线 | 说明 |
 |--------|------|
@@ -56,6 +58,30 @@
 
 ---
 
+## 当前架构
+
+```text
+Excel 基表
+  -> FastAPI 后端导入
+  -> 字段转换与数据校验
+  -> SQLite 聚合表与目标表
+  -> 统一 API
+  -> 经营分析模板.html + ECharts 展示
+```
+
+主要目录：
+
+| 目录 | 用途 |
+|---|---|
+| `backend/api/` | 统一 API 路由 |
+| `backend/metrics/` | 指标公式中心 |
+| `backend/config/` | 业务线、指标、机构、运行配置 |
+| `backend/services/` | 数据转换、查询服务、响应格式 |
+| `backend/validators/` | 导入、目标、机构校验 |
+| `frontend/src/` | 前端模块化迁移骨架 |
+| `deploy/` | Ubuntu 部署文件 |
+| `tests/` | 基础验收测试 |
+
 ## 数据流程
 
 ```
@@ -79,24 +105,21 @@ ECharts 图表
 
 ### 数据更新步骤
 
-1. 将新的 Excel 文件放到项目根目录
-2. 运行 Python 脚本重新聚合：
-   ```bash
-   python aggregate_data.py
-   ```
-3. 脚本会自动更新 `data.json`，然后手动将其嵌入 `经营分析模板.html`
-4. （可选）更新 `business_data.db` 供 SQLite 查询使用
+1. 启动 FastAPI 服务。
+2. 通过页面上传 Excel，或调用 `/api/import`。
+3. 后端完成解析、校验、聚合并写入 `business_data.db`。
+4. 页面通过 API 重新读取数据并刷新 KPI、平台趋势、机构、队伍和产品图表。
 
 ---
 
 ## 目标设置
 
-打开 `目标设置.html`（浏览器中直接双击打开）：
+目标数据已迁移为服务端优先：
 
-1. 选择目标年份
-2. 在表单中填写各指标的目标值（单位：万）
-3. 点击「保存到本地」存储到浏览器 localStorage
-4. 点击「导出 JSON」生成备份文件
+1. 当前生产页面保存目标时优先调用 `/api/targets/{year}`。
+2. 后端同时写入 `target_config` JSON 配置和 `target_values` 行表。
+3. `localStorage` 仅作为后端不可用时的降级缓存，不作为正式多人共享数据源。
+4. 修改目标后可通过页面“重新计算”刷新相关 KPI 和图表。
 
 支持指标：
 - 期交保费
@@ -115,7 +138,35 @@ ECharts 图表
 |------|------|------|
 | ECharts 5.x | 图表渲染 | CDN |
 | SQLite (Python) | 数据存储与聚合 | Python 标准库 + pandas |
-| 纯静态 HTML | 最终交付物 | 无后端依赖 |
+| FastAPI | 后端 API 与导入服务 | `backend/main.py` |
+| SQLite | 服务端数据存储 | `business_data.db` |
+| 纯 HTML + JS | 前端展示 | `经营分析模板.html` |
+
+---
+
+## 本地运行
+
+```bash
+pip install -r requirements.txt
+cd backend
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+访问：`http://127.0.0.1:8000/`
+
+## 测试
+
+```bash
+pytest
+```
+
+## Ubuntu 部署
+
+```bash
+sudo bash deploy/deploy.sh
+```
+
+详细说明见 `docs/部署说明.md`。
 
 ---
 

@@ -38,3 +38,7 @@ Thumbs.db
 dist/
 build/
 node_modules/
+__pycache__/
+*.pyc
+backend/venv/
+backend/logs/*.log

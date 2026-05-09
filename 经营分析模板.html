@@ -890,6 +890,7 @@
             </div>
           </div>
           <div class="chart-container" id="platformChart"></div>
+          <div class="chart-note" id="platformScopeNote" style="padding: 0 16px 12px; color:#94a3b8; font-size:12px; line-height:1.5;"></div>
         </div>
         <div class="chart-card">
           <div class="chart-header">
@@ -3027,16 +3028,20 @@
       const dailyIndex = {};
       if (apiPlatform.daily_performance) {
         apiPlatform.daily_performance.forEach(r => {
-          const key = `${r.month}|${r.channel}`;
+          const monthKey = normalizeMonth(r.month);
+          if (!monthKey) return;
+          const key = `${monthKey}|${r.channel}`;
           if (!dailyIndex[key]) dailyIndex[key] = {};
           dailyIndex[key][r.day] = r;
         });
       }
 
-      // 将经代日明细也纳入 dailyIndex，使 mock.month 中经代数据也能生成日累计
-      if (apiPlatform.jingdai_daily) {
+      // 经代日累计来源必须清晰：daily_performance 已含经代时不再叠加 jingdai_daily。
+      if (apiPlatform.jingdai_daily && !dailyRowsContainJingdai(apiPlatform.daily_performance || [])) {
         apiPlatform.jingdai_daily.forEach(r => {
-          const key = `${r.month}|经代`;
+          const monthKey = normalizeMonth(r.month);
+          if (!monthKey) return;
+          const key = `${monthKey}|经代`;
           if (!dailyIndex[key]) dailyIndex[key] = {};
           dailyIndex[key][r.day] = r;
         });
@@ -3067,7 +3072,7 @@
               }
               mock.month[mon][t][ch] = cum;
             } else {
-              mock.month[mon][t][ch] = [yearVal];
+              mock.month[mon][t][ch] = [];
             }
           });
         });
@@ -3170,22 +3175,35 @@
     const selectedPlatformOrgs = {};
     ORG_LIST_PLATFORM.forEach(o => selectedPlatformOrgs[o] = true);
 
-    function generateDailyCumulative(days, total, seed) {
-      const result = [];
-      let cum = 0;
-      let rand = seed || 1;
-      for (let i = 0; i < days; i++) {
-        rand = (rand * 9301 + 49297) % 233280;
-        const r = rand / 233280;
-        const progress = (i + 1) / days;
-        const baseDaily = total / days;
-        const factor = 0.6 + 0.8 * progress;
-        const noise = 0.7 + r * 0.6;
-        const daily = baseDaily * factor * noise;
-        cum += daily;
-        result.push(Math.round(cum * 10) / 10);
+    function normalizeMonth(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return null;
+      if (n >= 1 && n <= 12) return n;
+      const text = String(value || '').trim();
+      if (/^\d{6,8}$/.test(text)) {
+        const m = Number(text.slice(4, 6));
+        return m >= 1 && m <= 12 ? m : null;
       }
-      return result;
+      return null;
+    }
+
+    function dailyRowsContainJingdai(rows, month) {
+      return (rows || []).some(r => normalizeMonth(r.month) === Number(month) && r.channel === '经代');
+    }
+
+    function selectedPlatformOrgNames() {
+      return ORG_LIST_PLATFORM.filter(o => selectedPlatformOrgs[o]);
+    }
+
+    function updatePlatformScopeNote() {
+      const el = document.getElementById('platformScopeNote');
+      if (!el) return;
+      const orgFiltered = hasPlatformOrgFilter();
+      const includesJingdai = Boolean(selectedSeries['经代']);
+      const selected = selectedPlatformOrgNames();
+      const rangeText = orgFiltered ? `当前机构范围：${selected.join('、') || '未选择机构'}。` : '当前机构范围：全部机构。';
+      const jdText = orgFiltered && includesJingdai ? '经代暂无机构维度，当前经代数据按整体口径展示。' : '';
+      el.textContent = [rangeText, jdText].filter(Boolean).join(' ');
     }
 
     const platformMock = {
@@ -19504,36 +19522,35 @@
       let hasDailyRows = false;
 
       if (useOrgDaily) {
-        const selected = ORG_LIST_PLATFORM.filter(o => selectedPlatformOrgs[o]);
+        const selected = selectedPlatformOrgNames();
         const orgDaily = apiCache[String(year)]?.platform?.org_daily_performance || [];
-        let hasJdDaily = false;
+        const rawDaily = apiCache[String(year)]?.platform?.daily_performance || [];
+        const rawDailyHasJd = dailyRowsContainJingdai(rawDaily, month);
+        const jdDaily = apiCache[String(year)]?.platform?.jingdai_daily || [];
         orgDaily.forEach(r => {
-          if (r.month == month && selectedKeys.includes(r.channel) && selected.includes(r.org)) {
+          if (normalizeMonth(r.month) === Number(month) && selectedKeys.includes(r.channel) && selected.includes(r.org)) {
             const idx = (r.day || 1) - 1;
             daily[idx] = (daily[idx] || 0) + (r[col] || 0);
             hasDailyRows = true;
           }
         });
 
-        if (selectedKeys.includes('经代')) {
-          const jdDaily = apiCache[String(year)]?.platform?.jingdai_daily || [];
-          jdDaily.forEach(r => {
-            if (r.month == month) {
+        if (selectedKeys.includes('经代') && rawDailyHasJd) {
+          rawDaily.forEach(r => {
+            if (normalizeMonth(r.month) === Number(month) && r.channel === '经代') {
               const idx = (r.day || 1) - 1;
               daily[idx] = (daily[idx] || 0) + (r[col] || 0);
               hasDailyRows = true;
-              hasJdDaily = true;
             }
           });
-        }
-
-        // 仅当经代没有日明细时，才用月度值兜底。
-        if (!hasJdDaily && hasDailyRows && selectedKeys.includes('经代')) {
-          const jdVal = getChannelValue(year, premiumType, '经代', month - 1);
-          if (jdVal !== null && jdVal !== undefined) {
-            daily[0] = (daily[0] || 0) + jdVal;
-            hasDailyRows = true;
-          }
+        } else if (selectedKeys.includes('经代')) {
+          jdDaily.forEach(r => {
+            if (normalizeMonth(r.month) === Number(month)) {
+              const idx = (r.day || 1) - 1;
+              daily[idx] = (daily[idx] || 0) + (r[col] || 0);
+              hasDailyRows = true;
+            }
+          });
         }
 
         if (hasDailyRows) {
@@ -19546,42 +19563,28 @@
           return trimDailySeries(cumulative);
         }
 
-        const fallback = [];
-        for (const key of selectedKeys) {
-          const v = getChannelValue(year, premiumType, key, month - 1);
-          if (v !== null && v !== undefined) fallback[0] = (fallback[0] || 0) + v;
-        }
-        return trimDailySeries(fallback);
+        return [];
       }
 
       const rawDaily = apiCache[String(year)]?.platform?.daily_performance || [];
-      let hasJdDaily = false;
+      const rawDailyHasJd = dailyRowsContainJingdai(rawDaily, month);
       rawDaily.forEach(r => {
-        if (r.month == month && selectedKeys.includes(r.channel)) {
+        if (normalizeMonth(r.month) === Number(month) && selectedKeys.includes(r.channel)) {
           const idx = (r.day || 1) - 1;
           daily[idx] = (daily[idx] || 0) + (r[col] || 0);
           hasDailyRows = true;
         }
       });
 
-      if (selectedKeys.includes('经代')) {
+      if (selectedKeys.includes('经代') && !rawDailyHasJd) {
         const jdDaily = apiCache[String(year)]?.platform?.jingdai_daily || [];
         jdDaily.forEach(r => {
-          if (r.month == month) {
+          if (normalizeMonth(r.month) === Number(month)) {
             const idx = (r.day || 1) - 1;
             daily[idx] = (daily[idx] || 0) + (r[col] || 0);
             hasDailyRows = true;
-            hasJdDaily = true;
           }
         });
-      }
-
-      if (!hasJdDaily && hasDailyRows && selectedKeys.includes('经代')) {
-        const jdVal = getChannelValue(year, premiumType, '经代', month - 1);
-        if (jdVal !== null && jdVal !== undefined) {
-          daily[0] = (daily[0] || 0) + jdVal;
-          hasDailyRows = true;
-        }
       }
 
       if (hasDailyRows) {
@@ -19594,23 +19597,7 @@
         return trimDailySeries(cumulative);
       }
 
-      const monthData = platformMock[year]?.month?.[month]?.[premiumType];
-      if (!monthData) return [];
-      const maxLen = selectedKeys.reduce((max, key) => {
-        const arr = monthData[key];
-        return arr && arr.length > max ? arr.length : max;
-      }, 0);
-      for (const key of selectedKeys) {
-        const arr = monthData[key];
-        if (arr && arr.length > 0) {
-          let last = 0;
-          for (let d = 0; d < maxLen; d++) {
-            if (arr[d] !== null && arr[d] !== undefined) last = arr[d] || 0;
-            daily[d] = (daily[d] || 0) + last;
-          }
-        }
-      }
-      return trimDailySeries(daily);
+      return [];
     }
 
     function getPeriodDailyCumulative(year, premiumType, selectedKeys, monthList) {
@@ -19769,6 +19756,7 @@
       );
     }
 
+    updatePlatformScopeNote();
     platformChart.setOption(getPlatformOption());
 
     async function loadYearFromApi(year, options = {}) {
@@ -19818,6 +19806,7 @@
       selectedYear = value;
       await loadYearFromApi(value, { updateKpi: true, updateProduct: true });
       updateCutoffLabel(value);
+      updatePlatformScopeNote();
       platformChart.setOption(getPlatformOption(), true);
       productChart.setOption(getPieOption(currentPieType), true);
       fetchOrgKpiData(value);
@@ -19860,11 +19849,13 @@
 
     function toggleSeries(key, checked) {
       selectedSeries[key] = checked;
+      updatePlatformScopeNote();
       platformChart.setOption(getPlatformOption(), true);
     }
 
     function toggleOrg(org, checked) {
       selectedPlatformOrgs[org] = checked;
+      updatePlatformScopeNote();
       platformChart.setOption(getPlatformOption(), true);
     }
 
@@ -19885,7 +19876,7 @@
       let sum = 0;
       let hasAny = false;
       orgPerf.forEach(r => {
-        if (r.channel === channel && selected.includes(r.org) && r.month === monthIndex + 1) {
+        if (r.channel === channel && selected.includes(r.org) && normalizeMonth(r.month) === monthIndex + 1) {
           const col = premiumType === 'qj' ? 'qj_premium' : premiumType === 'gm' ? 'gm_premium' : 'zs_premium';
           const v = r[col];
           if (v !== null && v !== undefined) {

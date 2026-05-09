@@ -1,0 +1,15 @@
+TARGET_VALUE_COLUMNS = [
+    "id",
+    "year",
+    "period_type",
+    "period_value",
+    "business_line",
+    "org",
+    "metric_code",
+    "target_value",
+    "version",
+    "created_at",
+    "updated_at",
+    "updated_by",
+    "role_scope",
+]
