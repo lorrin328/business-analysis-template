@@ -296,3 +296,42 @@ business-analysis-template/
 - `test_get_platform_data_includes_year_and_ymd_in_jingdai_daily` — API 返回 year+ymd
 - `test_prev_year_team_mock_loaded` — 上年队伍数据可加载
 - `test_field_mappings_jingdai_day_aliases` — jingdai day 别名覆盖
+
+---
+
+## 2026-05-10 — 修复 getMonthDailyCumulative org-path 缺失 platformMock 兜底 (commit 439258a)
+
+### 问题
+
+经代业务线在季度/月度维度下趋势线可能不显示，尤其当机构筛选条件生效时。
+
+### 根因
+
+`getMonthDailyCumulative` 的 org 分支（`useOrgDaily=true`）在 apiCache 无日数据时直接返回 `[]`，缺少非 org 分支已有的 platformMock 兜底逻辑。
+
+### 数据流
+
+经代日累计数据路径：
+```
+Excel 上传 → jingdai_daily 行 → SQLite agg_jingdai_daily →
+GET /api/data/{year} → apiCache[year].platform.jingdai_daily →
+getMonthDailyCumulative 的 jdDaily 分支
+```
+
+备用路径（apiCache 为空时）：
+```
+platformMock（嵌入式 JSON）→ month[m][type]['经代'] →
+getJingdaiMonthFallback
+```
+
+### 修复内容
+
+在 org 分支添加与非 org 分支相同的两级兜底：
+1. `platformMock.month` — 从嵌入式 mock 数据读取日累计
+2. `getJingdaiMonthFallback` — 经代专属兜底
+
+### 注意事项
+
+- `agg_daily_performance` 不包含经代数据（经代使用独立的 `agg_jingdai_daily`）
+- `dist/` 为构建产物（gitignored），已同步更新
+- 构建脚本 `build.sh` 当前不可用（模板缺少 `<!-- BUILD:JS:CORE -->` 标记）
