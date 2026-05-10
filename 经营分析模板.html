@@ -2524,6 +2524,14 @@
           {"name":"未分类","premium":56.92,"count":73},
           {"name":"短期险","premium":14.76,"count":222}
         ],
+        "transform:证保": [
+          {"name":"寿险","premium":1527.55,"count":222},
+          {"name":"年金","premium":775.3,"count":42},
+          {"name":"短期险","premium":0.11,"count":2}
+        ],
+        "transform:蚁桥": [
+          {"name":"年金","premium":2730.9,"count":3258}
+        ],
         "jingdai:支付宝-电商": [
           {"name":"4265e定盈互联网","premium":0,"count":6}
         ],
@@ -3176,10 +3184,11 @@
       return { [year]: mock };
     }
 
-    function mergeProductRows(rows) {
+    function mergeProductRows(rows, mixedSources = false) {
       const merged = {};
       rows.forEach(row => {
-        const name = row.name || '未分类';
+        const sourcePrefix = mixedSources && row.source ? `${row.source}-` : '';
+        const name = sourcePrefix + (row.name || '未分类');
         if (!merged[name]) merged[name] = { name, premium: 0, count: 0 };
         merged[name].premium += Number(row.premium ?? row.value ?? 0) || 0;
         merged[name].count += Number(row.count ?? 0) || 0;
@@ -3200,8 +3209,9 @@
       const groups = productFallbackData[String(year)] || {};
       const rows = [];
       const transformLines = Object.keys(productFilters.transformLines).filter(k => productFilters.transformLines[k]);
+      const mixedSources = productFilters.transform && productFilters.jingdai;
       if (productFilters.transform) {
-        transformLines.forEach(line => rows.push(...(groups[`transform:${line}`] || [])));
+        transformLines.forEach(line => rows.push(...(groups[`transform:${line}`] || []).map(row => ({ ...row, source: '转型' }))));
       }
       const orgs = productFallbackOrgs(year);
       renderProductJingdaiOrgs(orgs);
@@ -3209,9 +3219,9 @@
         const selectedOrgs = productFilters.orgsInitialized
           ? Object.keys(productFilters.jingdaiOrgs).filter(k => productFilters.jingdaiOrgs[k])
           : orgs;
-        selectedOrgs.forEach(org => rows.push(...(groups[`jingdai:${org}`] || [])));
+        selectedOrgs.forEach(org => rows.push(...(groups[`jingdai:${org}`] || []).map(row => ({ ...row, source: '经代' }))));
       }
-      const data = mergeProductRows(rows);
+      const data = mergeProductRows(rows, mixedSources);
       productData.premium = data.premium;
       productData.count = data.count;
       return productData.premium.length > 0 || productData.count.length > 0;
@@ -19685,6 +19695,19 @@
       return values.slice(0, lastValid + 1).map(v => Math.round((v || 0) * 10) / 10);
     }
 
+    function findJingdaiChannelKey(channelMap) {
+      if (!channelMap) return null;
+      if (Object.prototype.hasOwnProperty.call(channelMap, '经代')) return '经代';
+      return Object.keys(channelMap).find(k => k.includes('经') && k.includes('代')) || null;
+    }
+
+    function getJingdaiMonthFallback(year, premiumType, month) {
+      const monthData = platformMock[year]?.month?.[String(month)]?.[premiumType];
+      const key = findJingdaiChannelKey(monthData);
+      if (!key || !Array.isArray(monthData[key]) || monthData[key].length === 0) return [];
+      return trimDailySeries(monthData[key]);
+    }
+
     function getMonthDailyCumulative(year, premiumType, selectedKeys, month) {
       const col = premiumType === 'qj' ? 'qj_premium' : premiumType === 'gm' ? 'gm_premium' : 'zs_premium';
       const useOrgDaily = hasPlatformOrgFilter();
@@ -19798,6 +19821,14 @@
         if (combined) {
           const result = trimDailySeries(combined);
           console.log('[getMonthDailyCumulative] platformMock fallback resultLen:', result.length, 'month:', month, 'selectedKeys:', selectedKeys);
+          return result;
+        }
+      }
+
+      if (selectedKeys.some(k => k === '经代' || (k.includes('经') && k.includes('代')))) {
+        const result = getJingdaiMonthFallback(year, typeKey, month);
+        if (result.length > 0) {
+          console.log('[getMonthDailyCumulative] direct jingdai fallback resultLen:', result.length, 'month:', month);
           return result;
         }
       }
@@ -20162,8 +20193,13 @@
 
     function getPieOption(type) {
       const data = productData[type] || [];
+      if (data.length === 0) {
+        return {
+          title: { text: '暂无产品结构数据', left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } },
+          series: []
+        };
+      }
       return {
-        title: data.length === 0 ? { text: '暂无产品结构数据', left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } } : undefined,
         tooltip: {
           trigger: 'item',
           backgroundColor: '#1e293b',

@@ -486,8 +486,16 @@ def _query_product_structure_raw(
     rows: list[dict] = []
     c = conn.cursor()
 
-    if include_transform and transform_lines:
-        placeholders = ','.join(['?'] * len(transform_lines))
+    normalized_transform_lines = set(transform_lines or [])
+    raw_transform_lines = set(normalized_transform_lines)
+    if '证保' in normalized_transform_lines:
+        raw_transform_lines.add('证券')
+    if '蚁桥' in normalized_transform_lines:
+        raw_transform_lines.add('网服')
+
+    raw_transform_line_list = sorted(raw_transform_lines)
+    if include_transform and raw_transform_line_list:
+        placeholders = ','.join(['?'] * len(raw_transform_line_list))
         c.execute(f'''
             SELECT COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类') AS label,
                    SUM(COALESCE("期交保费", 0)) / 10000.0 AS premium,
@@ -496,8 +504,11 @@ def _query_product_structure_raw(
             WHERE CAST(substr("年月", 1, 4) AS INTEGER) = ?
               AND "业务模式" IN ({placeholders})
             GROUP BY COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类')
-        ''', [year, *transform_lines])
-        rows.extend(dict(r) for r in c.fetchall())
+        ''', [year, *raw_transform_line_list])
+        for row in c.fetchall():
+            item = dict(row)
+            item['source'] = '转型'
+            rows.append(item)
 
     if include_jingdai:
         params: list = [year]
@@ -515,11 +526,17 @@ def _query_product_structure_raw(
               {org_clause}
             GROUP BY COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类')
         ''', params)
-        rows.extend(dict(r) for r in c.fetchall())
+        for row in c.fetchall():
+            item = dict(row)
+            item['source'] = '经代'
+            rows.append(item)
 
     merged: dict[str, dict] = {}
+    mixed_sources = include_transform and include_jingdai
     for row in rows:
         label = row.get('label') or '未分类'
+        if mixed_sources:
+            label = f"{row.get('source')}-{label}"
         item = merged.setdefault(label, {'label': label, 'premium': 0.0, 'count': 0})
         item['premium'] += float(row.get('premium') or 0)
         item['count'] += int(row.get('count') or 0)

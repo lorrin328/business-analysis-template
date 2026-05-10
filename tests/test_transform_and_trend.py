@@ -473,3 +473,38 @@ def test_product_structure_uses_transform_product_type_and_jingdai_product_name(
     )
     assert jd_result["premium"]
     assert jd_orgs[0] in jd_result["jingdaiOrgs"]
+
+
+def test_product_structure_normalizes_transform_channel_aliases():
+    zhengbao = get_product_structure(
+        2026,
+        dimension="product_mix",
+        transform_lines=["证保"],
+        jingdai_orgs=[],
+        include_transform=True,
+        include_jingdai=False,
+    )
+    yiqiao = get_product_structure(
+        2026,
+        dimension="product_mix",
+        transform_lines=["蚁桥"],
+        jingdai_orgs=[],
+        include_transform=True,
+        include_jingdai=False,
+    )
+    assert zhengbao["premium"]
+    assert yiqiao["premium"]
+
+
+def test_product_structure_keeps_transform_and_jingdai_labels_separate_when_mixed():
+    mixed = get_product_structure(
+        2026,
+        dimension="product_mix",
+        transform_lines=["OTO", "证保", "蚁桥"],
+        jingdai_orgs=[],
+        include_transform=True,
+        include_jingdai=True,
+    )
+    labels = {row["name"] for row in mixed["premium"]}
+    assert any(label.startswith("转型-") for label in labels)
+    assert any(label.startswith("经代-") for label in labels)
