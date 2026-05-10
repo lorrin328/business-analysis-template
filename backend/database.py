@@ -469,9 +469,107 @@ def get_org_kpi_data(year: int):
         }
 
 
-def get_product_structure(year: int, dimension: str = 'design_cat'):
+def _split_csv(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in str(value).split(',') if item and item.strip()]
+
+
+def _query_product_structure_raw(
+    conn: sqlite3.Connection,
+    year: int,
+    transform_lines: list[str],
+    jingdai_orgs: list[str],
+    include_transform: bool,
+    include_jingdai: bool,
+) -> list[dict]:
+    rows: list[dict] = []
+    c = conn.cursor()
+
+    if include_transform and transform_lines:
+        placeholders = ','.join(['?'] * len(transform_lines))
+        c.execute(f'''
+            SELECT COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类') AS label,
+                   SUM(COALESCE("期交保费", 0)) / 10000.0 AS premium,
+                   SUM(COALESCE("承保件数", 1)) AS count
+            FROM performance
+            WHERE CAST(strftime('%Y', "年月") AS INTEGER) = ?
+              AND "业务模式" IN ({placeholders})
+            GROUP BY COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类')
+        ''', [year, *transform_lines])
+        rows.extend(dict(r) for r in c.fetchall())
+
+    if include_jingdai:
+        params: list = [year]
+        org_clause = ''
+        if jingdai_orgs:
+            placeholders = ','.join(['?'] * len(jingdai_orgs))
+            org_clause = f' AND "经代机构" IN ({placeholders})'
+            params.extend(jingdai_orgs)
+        c.execute(f'''
+            SELECT COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类') AS label,
+                   SUM(COALESCE("期交保费", 0)) / 10000.0 AS premium,
+                   COUNT(*) AS count
+            FROM jingdai
+            WHERE CAST(strftime('%Y', "时间") AS INTEGER) = ?
+              {org_clause}
+            GROUP BY COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类')
+        ''', params)
+        rows.extend(dict(r) for r in c.fetchall())
+
+    merged: dict[str, dict] = {}
+    for row in rows:
+        label = row.get('label') or '未分类'
+        item = merged.setdefault(label, {'label': label, 'premium': 0.0, 'count': 0})
+        item['premium'] += float(row.get('premium') or 0)
+        item['count'] += int(row.get('count') or 0)
+    return sorted(merged.values(), key=lambda r: abs(r['premium']), reverse=True)[:20]
+
+
+def get_jingdai_orgs(year: int | None = None) -> list[str]:
     init_db()
     with get_db() as conn:
+        params: list = []
+        where = ''
+        if year:
+            where = 'WHERE CAST(strftime(\'%Y\', "时间") AS INTEGER) = ?'
+            params.append(year)
+        rows = conn.execute(f'''
+            SELECT DISTINCT TRIM("经代机构") AS org
+            FROM jingdai
+            {where}
+            ORDER BY org
+        ''', params).fetchall()
+        return [r['org'] for r in rows if r['org']]
+
+
+def get_product_structure(
+    year: int,
+    dimension: str = 'design_cat',
+    transform_lines: str | list[str] | None = None,
+    jingdai_orgs: str | list[str] | None = None,
+    include_transform: bool = True,
+    include_jingdai: bool = True,
+):
+    init_db()
+    with get_db() as conn:
+        transform_list = transform_lines if isinstance(transform_lines, list) else _split_csv(transform_lines)
+        jingdai_org_list = jingdai_orgs if isinstance(jingdai_orgs, list) else _split_csv(jingdai_orgs)
+        if not transform_list:
+            transform_list = ['OTO', '证保', '蚁桥']
+
+        if dimension == 'product_mix':
+            rows = _query_product_structure_raw(
+                conn, year, transform_list, jingdai_org_list, include_transform, include_jingdai
+            )
+            return {
+                'year': year,
+                'dimension': dimension,
+                'premium': [{'name': r['label'], 'value': round(r['premium'], 2)} for r in rows if round(r['premium'], 2) != 0],
+                'count': [{'name': r['label'], 'value': int(r['count'])} for r in rows if int(r['count']) != 0],
+                'jingdaiOrgs': get_jingdai_orgs(year),
+            }
+
         c = conn.cursor()
         c.execute('''
             SELECT label, premium, count
@@ -486,6 +584,7 @@ def get_product_structure(year: int, dimension: str = 'design_cat'):
             'dimension': dimension,
             'premium': [{'name': r['label'], 'value': round(r['premium'], 2)} for r in rows],
             'count': [{'name': r['label'], 'value': int(r['count'])} for r in rows],
+            'jingdaiOrgs': get_jingdai_orgs(year),
         }
 
 

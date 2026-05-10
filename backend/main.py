@@ -221,9 +221,16 @@ def get_kpi(year: int):
 
 
 @app.get("/api/product/{year}")
-def get_product(year: int, dimension: str = "design_cat"):
+def get_product(
+    year: int,
+    dimension: str = "product_mix",
+    transformLines: str | None = None,
+    jingdaiOrgs: str | None = None,
+    includeTransform: bool = True,
+    includeJingdai: bool = True,
+):
     """获取产品结构数据"""
-    return get_product_structure(year, dimension)
+    return get_product_structure(year, dimension, transformLines, jingdaiOrgs, includeTransform, includeJingdai)
 
 
 @app.get("/api/org-kpi/{year}")

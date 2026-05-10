@@ -13,6 +13,7 @@ from services.query_service import (
 from validators.data_validator import validate_rows
 from validators.org_validator import org_scope_note
 from database import get_platform_data
+from database import get_product_structure, get_jingdai_orgs
 
 
 JINGDAI = JINGDAI_LINE
@@ -445,3 +446,30 @@ def test_field_mappings_jingdai_day_aliases():
     day_aliases = FIELD_MAPPINGS["jingdai"]["day"]
     for expected in ["日", "日期", "时间", "入账时间", "生效日期", "出单日期", "承保日期"]:
         assert expected in day_aliases, f"Missing jingdai day alias: {expected}"
+
+
+def test_product_structure_uses_transform_product_type_and_jingdai_product_name():
+    result = get_product_structure(
+        2026,
+        dimension="product_mix",
+        transform_lines=["OTO"],
+        jingdai_orgs=[],
+        include_transform=True,
+        include_jingdai=False,
+    )
+    labels = {row["name"] for row in result["premium"]}
+    assert labels
+    assert {"寿险", "年金", "短期险"} & labels
+
+    jd_orgs = get_jingdai_orgs(2026)
+    assert jd_orgs
+    jd_result = get_product_structure(
+        2026,
+        dimension="product_mix",
+        transform_lines=[],
+        jingdai_orgs=[jd_orgs[0]],
+        include_transform=False,
+        include_jingdai=True,
+    )
+    assert jd_result["premium"]
+    assert jd_orgs[0] in jd_result["jingdaiOrgs"]
