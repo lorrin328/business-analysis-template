@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.4</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.6</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -19763,7 +19763,40 @@
           console.log('[getMonthDailyCumulative:org] resultLen:', result.length, 'hasDailyRows:', hasDailyRows);
           return result;
         }
-        console.log('[getMonthDailyCumulative:org] no daily rows, returning []');
+        // Fallback: read from platformMock.month if apiCache has no daily data (same as non-org path)
+        const pm = platformMock[year];
+        const typeKey = premiumType === 'qj' ? 'qj' : premiumType === 'gm' ? 'gm' : 'zs';
+        if (pm && pm.month && pm.month[month] && pm.month[month][typeKey]) {
+          const monthData = pm.month[month][typeKey];
+          let combined = null;
+          for (const key of selectedKeys) {
+            const arr = monthData[key];
+            if (arr && arr.length > 0) {
+              if (!combined) {
+                combined = arr.slice();
+              } else {
+                for (let i = 0; i < arr.length; i++) {
+                  combined[i] = (combined[i] || 0) + (arr[i] || 0);
+                }
+              }
+            }
+          }
+          if (combined) {
+            const result = trimDailySeries(combined);
+            console.log('[getMonthDailyCumulative:org] platformMock fallback resultLen:', result.length, 'month:', month, 'selectedKeys:', selectedKeys);
+            return result;
+          }
+        }
+
+        if (selectedKeys.some(k => k === '经代' || (k.includes('经') && k.includes('代')))) {
+          const result = getJingdaiMonthFallback(year, typeKey, month);
+          if (result.length > 0) {
+            console.log('[getMonthDailyCumulative:org] direct jingdai fallback resultLen:', result.length, 'month:', month);
+            return result;
+          }
+        }
+
+        console.log('[getMonthDailyCumulative:org] no daily rows (including fallbacks), returning []');
         return [];
       }
 
