@@ -493,7 +493,7 @@ def _query_product_structure_raw(
                    SUM(COALESCE("期交保费", 0)) / 10000.0 AS premium,
                    SUM(COALESCE("承保件数", 1)) AS count
             FROM performance
-            WHERE CAST(strftime('%Y', "年月") AS INTEGER) = ?
+            WHERE CAST(substr("年月", 1, 4) AS INTEGER) = ?
               AND "业务模式" IN ({placeholders})
             GROUP BY COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类')
         ''', [year, *transform_lines])
@@ -511,7 +511,7 @@ def _query_product_structure_raw(
                    SUM(COALESCE("期交保费", 0)) / 10000.0 AS premium,
                    COUNT(*) AS count
             FROM jingdai
-            WHERE CAST(strftime('%Y', "时间") AS INTEGER) = ?
+            WHERE CAST(substr("时间", 1, 4) AS INTEGER) = ?
               {org_clause}
             GROUP BY COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类')
         ''', params)
@@ -532,7 +532,7 @@ def get_jingdai_orgs(year: int | None = None) -> list[str]:
         params: list = []
         where = ''
         if year:
-            where = 'WHERE CAST(strftime(\'%Y\', "时间") AS INTEGER) = ?'
+            where = 'WHERE CAST(substr("时间", 1, 4) AS INTEGER) = ?'
             params.append(year)
         rows = conn.execute(f'''
             SELECT DISTINCT TRIM("经代机构") AS org

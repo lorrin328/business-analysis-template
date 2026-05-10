@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.2</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.4</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -2516,6 +2516,61 @@
       jingdaiOrgs: {},
       orgsInitialized: false
     };
+    const productFallbackData = {
+      "2026": {
+        "transform:OTO": [
+          {"name":"寿险","premium":6122.98,"count":2199},
+          {"name":"年金","premium":2623.49,"count":451},
+          {"name":"未分类","premium":56.92,"count":73},
+          {"name":"短期险","premium":14.76,"count":222}
+        ],
+        "jingdai:支付宝-电商": [
+          {"name":"4265e定盈互联网","premium":0,"count":6}
+        ],
+        "jingdai:蚂蚁保": [
+          {"name":"7030e满利互联网","premium":17655.42,"count":368},
+          {"name":"7043e满利2.0互联网","premium":2116.84,"count":79},
+          {"name":"7032e百分年金互联网","premium":1906.06,"count":496},
+          {"name":"7033e起领2.0互联网","premium":1679.88,"count":552},
+          {"name":"7037e满多互联网","premium":777.22,"count":263},
+          {"name":"7038e成长互联网","premium":653.92,"count":582},
+          {"name":"7041利多多","premium":361.94,"count":65},
+          {"name":"7031鑫多多2.0互联网","premium":292.73,"count":388},
+          {"name":"4144专属商业养老-B账户","premium":160.34,"count":1023},
+          {"name":"4265e定盈互联网","premium":83.83,"count":221},
+          {"name":"4143专属商业养老-A账户","premium":9.06,"count":219},
+          {"name":"7040e满分分红","premium":4.08,"count":16}
+        ],
+        "jingdai:京东保": [
+          {"name":"7032e百分年金互联网","premium":28.36,"count":101},
+          {"name":"7034e启航互联网","premium":16.9,"count":9},
+          {"name":"7031鑫多多2.0互联网","premium":9.99,"count":97}
+        ],
+        "jingdai:微保": [
+          {"name":"7032e百分年金互联网","premium":551.28,"count":439},
+          {"name":"7035e百分2.0互联网","premium":136.73,"count":149},
+          {"name":"7031鑫多多2.0互联网","premium":100.3,"count":182}
+        ],
+        "jingdai:招行网销": [
+          {"name":"7031鑫多多2.0互联网","premium":1231.01,"count":436},
+          {"name":"7032e百分年金互联网","premium":258.92,"count":148},
+          {"name":"4143专属商业养老-A账户","premium":0.1,"count":1},
+          {"name":"4144专属商业养老-B账户","premium":0.03,"count":1}
+        ],
+        "jingdai:慧择经纪": [
+          {"name":"7031鑫多多2.0互联网","premium":122.46,"count":109},
+          {"name":"7037e满多互联网","premium":2.67,"count":5},
+          {"name":"4058荣耀金账户","premium":0,"count":3},
+          {"name":"4059荣耀钻账户","premium":0,"count":1}
+        ],
+        "jingdai:经代自营": [
+          {"name":"4144专属商业养老-B账户","premium":10,"count":71},
+          {"name":"4248环球共享","premium":1.92,"count":3},
+          {"name":"4143专属商业养老-A账户","premium":1.48,"count":28},
+          {"name":"7017全球药械2022互联网","premium":0.14,"count":8}
+        ]
+      }
+    };
 
     const teamMock = {
   "2024": {
@@ -3121,14 +3176,53 @@
       return { [year]: mock };
     }
 
+    function mergeProductRows(rows) {
+      const merged = {};
+      rows.forEach(row => {
+        const name = row.name || '未分类';
+        if (!merged[name]) merged[name] = { name, premium: 0, count: 0 };
+        merged[name].premium += Number(row.premium ?? row.value ?? 0) || 0;
+        merged[name].count += Number(row.count ?? 0) || 0;
+      });
+      const sorted = Object.values(merged).sort((a, b) => Math.abs(b.premium) - Math.abs(a.premium)).slice(0, 20);
+      return {
+        premium: sorted.filter(r => r.premium !== 0).map(r => ({ name: r.name, value: Math.round(r.premium * 100) / 100 })),
+        count: sorted.filter(r => r.count !== 0).map(r => ({ name: r.name, value: Math.round(r.count) }))
+      };
+    }
+
+    function productFallbackOrgs(year) {
+      const groups = productFallbackData[String(year)] || {};
+      return Object.keys(groups).filter(k => k.startsWith('jingdai:')).map(k => k.slice('jingdai:'.length));
+    }
+
+    function applyProductFallback(year) {
+      const groups = productFallbackData[String(year)] || {};
+      const rows = [];
+      const transformLines = Object.keys(productFilters.transformLines).filter(k => productFilters.transformLines[k]);
+      if (productFilters.transform) {
+        transformLines.forEach(line => rows.push(...(groups[`transform:${line}`] || [])));
+      }
+      const orgs = productFallbackOrgs(year);
+      renderProductJingdaiOrgs(orgs);
+      if (productFilters.jingdai) {
+        const selectedOrgs = productFilters.orgsInitialized
+          ? Object.keys(productFilters.jingdaiOrgs).filter(k => productFilters.jingdaiOrgs[k])
+          : orgs;
+        selectedOrgs.forEach(org => rows.push(...(groups[`jingdai:${org}`] || [])));
+      }
+      const data = mergeProductRows(rows);
+      productData.premium = data.premium;
+      productData.count = data.count;
+      return productData.premium.length > 0 || productData.count.length > 0;
+    }
+
     function updateProductDataFromApi() {
       const product = apiData.product;
-      if (!product || !Array.isArray(product.premium)) return false;
+      if (!product || !Array.isArray(product.premium)) return applyProductFallback(selectedYear || '2026');
       renderProductJingdaiOrgs(product.jingdaiOrgs || []);
       if (product.premium.length === 0) {
-        productData.premium = [];
-        productData.count = [];
-        return true;
+        return applyProductFallback(selectedYear || '2026');
       }
       productData.premium = product.premium;
       productData.count = Array.isArray(product.count) && product.count.length > 0 ? product.count : product.premium;
@@ -3143,7 +3237,7 @@
         return updateProductDataFromApi();
       } catch (e) {
         console.error('fetchProductData error:', e);
-        return false;
+        return applyProductFallback(year);
       }
     }
 
@@ -19741,8 +19835,10 @@
       params.set('periodValue', String(periodValue));
       params.set('metric', currentPremiumType);
       if (selectedKeys.length > 0) params.set('businessLines', selectedKeys.join(','));
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), 2500) : null;
       try {
-        const resp = await fetch(`${API_BASE}/api/platform-trend?${params.toString()}`);
+        const resp = await fetch(`${API_BASE}/api/platform-trend?${params.toString()}`, controller ? { signal: controller.signal } : undefined);
         if (!resp.ok) return;
         const payload = await resp.json();
         const data = payload && payload.success ? payload.data : payload;
@@ -19754,11 +19850,15 @@
         }
       } catch (e) {
         console.error('fetchPlatformTrendDaily error:', e);
+      } finally {
+        if (timer) clearTimeout(timer);
       }
     }
 
     async function refreshPlatformChart() {
       const year = parseInt(selectedYear);
+      platformChart.clear();
+      platformChart.setOption(getPlatformOption(), true);
       if (currentTimeDim === 'month') {
         const month = parseInt(selectedMonth);
         await fetchPlatformTrendDaily(year, 'month', month);
@@ -19768,7 +19868,6 @@
         await fetchPlatformTrendDaily(year, 'quarter', quarter);
         await fetchPlatformTrendDaily(year - 1, 'quarter', quarter);
       }
-      platformChart.clear();
       platformChart.setOption(getPlatformOption(), true);
     }
 
