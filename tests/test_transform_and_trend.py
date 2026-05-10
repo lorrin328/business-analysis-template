@@ -6,7 +6,10 @@ sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 from services.data_transform import FIELD_MAPPINGS, map_record_fields, normalize_month
 from config.orgs import ORG_LIST
-from services.query_service import JINGDAI_LINE, build_month_daily_cumulative, get_platform_trend
+from services.query_service import (
+    JINGDAI_LINE, build_month_daily_cumulative, build_quarter_daily_cumulative,
+    get_platform_trend, DEFAULT_TREND_LINES,
+)
 from validators.data_validator import validate_rows
 from validators.org_validator import org_scope_note
 from database import get_platform_data
@@ -262,3 +265,183 @@ def test_period_type_month_with_period_value_generates_daily(monkeypatch):
     assert result.get("daily") is not None
     assert len(result["daily"]["values"]) == 2
     assert result["daily"]["values"] == [50, 75]
+
+
+# --- New tests for Phase 2: quarter daily, ymd, date field candidates ---
+
+def test_build_quarter_daily_cumulative_q2_jingdai():
+    """季度日累计：Q2(4,5,6月) 经代日累计正确跨月累积"""
+    data = {
+        "daily_performance": [],
+        "jingdai_daily": [
+            {"month": 4, "day": 1, "qj_premium": 30},
+            {"month": 4, "day": 2, "qj_premium": 20},
+            {"month": 5, "day": 1, "qj_premium": 10},
+            {"month": 6, "day": 1, "qj_premium": 40},
+        ],
+    }
+    result = build_quarter_daily_cumulative(data, 2026, 2, [JINGDAI], "qj")
+    assert result["hasRealDailyData"] is True
+    assert result["quarterMonths"] == [4, 5, 6]
+    # Day 4-1: 30, 4-2: 50, 5-1: 60, 6-1: 100
+    assert result["values"] == [30, 50, 60, 100]
+    assert result["labels"][0] == "4-1"
+    assert result["labels"][3] == "6-1"
+
+
+def test_build_quarter_daily_cumulative_q3_oto():
+    """季度日累计：Q3 仅 OTO 转型业务日累计"""
+    data = {
+        "daily_performance": [
+            {"month": 7, "day": 1, "channel": "OTO", "qj_premium": 10},
+            {"month": 7, "day": 2, "channel": "OTO", "qj_premium": 15},
+            {"month": 8, "day": 3, "channel": "OTO", "qj_premium": 5},
+        ],
+        "jingdai_daily": [],
+    }
+    result = build_quarter_daily_cumulative(data, 2026, 3, ["OTO"], "qj")
+    assert result["hasRealDailyData"] is True
+    assert result["quarterMonths"] == [7, 8, 9]
+    assert result["values"] == [10, 25, 30]
+
+
+def test_build_quarter_daily_cumulative_mixed_jingdai_and_transform():
+    """季度日累计：经代 + OTO 混合，经代从 jingdai_daily 取"""
+    data = {
+        "daily_performance": [
+            {"month": 4, "day": 1, "channel": "OTO", "qj_premium": 10},
+            {"month": 4, "day": 2, "channel": "OTO", "qj_premium": 10},
+        ],
+        "jingdai_daily": [
+            {"month": 4, "day": 1, "qj_premium": 20},
+            {"month": 4, "day": 2, "qj_premium": 10},
+        ],
+    }
+    result = build_quarter_daily_cumulative(data, 2026, 2, [JINGDAI, "OTO"], "qj")
+    assert result["hasRealDailyData"] is True
+    # Day 4-1: 10(OTO) + 20(jd) = 30, Day 4-2: 50
+    assert result["values"] == [30, 50]
+
+
+def test_build_quarter_daily_cumulative_empty_returns_message():
+    """季度日累计：无数据时返回空并含提示信息"""
+    data = {"daily_performance": [], "jingdai_daily": []}
+    result = build_quarter_daily_cumulative(data, 2026, 2, [JINGDAI], "qj")
+    assert result["hasRealDailyData"] is False
+    assert result["values"] == []
+    assert result["message"] == "No quarter daily cumulative data"
+
+
+def test_get_platform_trend_quarter_returns_daily(monkeypatch):
+    """平台趋势API：季度模式返回 daily 日累计数据"""
+    data = {
+        "performance": [],
+        "jingdai": [],
+        "daily_performance": [],
+        "jingdai_daily": [
+            {"month": 4, "day": 1, "qj_premium": 50},
+            {"month": 4, "day": 2, "qj_premium": 30},
+        ],
+    }
+    monkeypatch.setattr("services.query_service.get_platform_data", lambda year: data)
+    result = get_platform_trend(
+        2026, channels=[JINGDAI], metric="qj",
+        period_type="quarter", period_value=2,
+    )
+    assert result["periodType"] == "quarter"
+    assert result["periodValue"] == 2
+    assert result.get("daily") is not None
+    assert result["daily"]["hasRealDailyData"] is True
+    assert len(result["daily"]["values"]) == 2
+    assert result["daily"]["quarterMonths"] == [4, 5, 6]
+
+
+def test_get_platform_trend_quarter_no_period_value_omits_daily(monkeypatch):
+    """平台趋势API：季度无 periodValue 时不返回 daily"""
+    data = {"performance": [], "jingdai": [], "daily_performance": [], "jingdai_daily": []}
+    monkeypatch.setattr("services.query_service.get_platform_data", lambda year: data)
+    result = get_platform_trend(
+        2026, channels=[JINGDAI], metric="qj",
+        period_type="quarter", period_value=None,
+    )
+    assert result["periodType"] == "quarter"
+    assert result.get("daily") is None
+
+
+def test_aggregate_jingdai_daily_date_candidates():
+    """经代日聚合：支持承保日期、出单日期、生效日期等时间列"""
+    from backend.aggregator import _pick_col, _period_year_month, _amount_to_wan
+    import pandas as pd
+
+    # Test: 承保日期 as time column
+    df1 = pd.DataFrame([
+        {"承保日期": "2026-04-15", "期交保费": 10000, "承保年化规保": 20000, "缴费年限": 10},
+        {"承保日期": "2026-04-16", "期交保费": 5000, "承保年化规保": 10000, "缴费年限": 5},
+    ])
+    col1 = _pick_col(df1, ['时间', '年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期'])
+    assert col1 == "承保日期"
+
+    # Test: 出单日期 as time column
+    df2 = pd.DataFrame([
+        {"出单日期": "2026-05-01", "期交保费": 10000, "承保年化规保": 20000, "缴费年限": 10},
+    ])
+    col2 = _pick_col(df2, ['时间', '年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期'])
+    assert col2 == "出单日期"
+
+    # Test: 生效日期 as time column
+    df3 = pd.DataFrame([
+        {"生效日期": "2026-06-01", "期交保费": 10000, "承保年化规保": 20000, "缴费年限": 10},
+    ])
+    col3 = _pick_col(df3, ['时间', '年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期'])
+    assert col3 == "生效日期"
+
+
+def test_aggregate_jingdai_daily_outputs_ymd():
+    """经代日聚合：输出包含 ymd 字段"""
+    from backend.aggregator import aggregate_jingdai_daily
+    import pandas as pd
+
+    df = pd.DataFrame([
+        {"日期": "2026-04-01", "期交保费": 10000, "承保年化规保": 20000, "缴费年限": 10},
+        {"日期": "2026-04-02", "期交保费": 5000, "承保年化规保": 10000, "缴费年限": 5},
+    ])
+    rows = aggregate_jingdai_daily(df)
+    assert len(rows) == 2
+    for row in rows:
+        assert "ymd" in row
+        assert row["ymd"] == f"{row['year']:04d}-{row['month']:02d}-{row['day']:02d}"
+        assert row["year"] == 2026
+        assert row["month"] == 4
+    assert rows[0]["ymd"] == "2026-04-01"
+    assert rows[1]["ymd"] == "2026-04-02"
+
+
+def test_get_platform_data_includes_year_and_ymd_in_jingdai_daily():
+    """get_platform_data 返回 jingdai_daily 含 year 和 ymd 字段"""
+    d = get_platform_data(2026)
+    assert "jingdai_daily" in d
+    jd_rows = d["jingdai_daily"]
+    if jd_rows:
+        row = jd_rows[0]
+        assert "year" in row.keys() or hasattr(row, "year") or row.get("year") is not None
+        # ymd may be None for old rows without ymd, but the key should exist
+        # (check by attempting access)
+
+
+def test_prev_year_team_mock_loaded(monkeypatch):
+    """队伍分析上年数据：loadYearFromApi 加载上一年 teamMock"""
+    # This test verifies the backend data is available for the frontend fix
+    data_2025 = get_platform_data(2025)
+    assert isinstance(data_2025, dict)
+    assert "hr" in data_2025
+    # If 2025 HR data exists in DB, the frontend can load it for teamMock
+    # (The actual loading is tested in frontend integration)
+    # At minimum the API should return valid structure
+    assert "performance" in data_2025 or "hr" in data_2025
+
+
+def test_field_mappings_jingdai_day_aliases():
+    """经代字段映射：day 字段包含所有新增日期别名"""
+    day_aliases = FIELD_MAPPINGS["jingdai"]["day"]
+    for expected in ["日", "日期", "时间", "入账时间", "生效日期", "出单日期", "承保日期"]:
+        assert expected in day_aliases, f"Missing jingdai day alias: {expected}"

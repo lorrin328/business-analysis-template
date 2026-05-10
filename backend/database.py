@@ -68,6 +68,7 @@ def init_db():
                 year INTEGER NOT NULL,
                 month INTEGER NOT NULL,
                 day INTEGER NOT NULL DEFAULT 1,
+                ymd TEXT,
                 qj_premium REAL NOT NULL DEFAULT 0,
                 gm_premium REAL NOT NULL DEFAULT 0,
                 zs_premium REAL NOT NULL DEFAULT 0,
@@ -75,6 +76,10 @@ def init_db():
                 UNIQUE(year, month, day)
             )
         ''')
+        try:
+            c.execute("ALTER TABLE agg_jingdai_daily ADD COLUMN ymd TEXT")
+        except sqlite3.OperationalError:
+            pass
 
         c.execute('''
             CREATE TABLE IF NOT EXISTS agg_hr_data (
@@ -268,7 +273,7 @@ def get_platform_data(year: int):
         jingdai_rows = c.fetchall()
 
         c.execute('''
-            SELECT month, day, qj_premium, gm_premium, zs_premium
+            SELECT year, month, day, ymd, qj_premium, gm_premium, zs_premium
             FROM agg_jingdai_daily WHERE year = ? ORDER BY month, day
         ''', (year,))
         jingdai_daily_rows = c.fetchall()

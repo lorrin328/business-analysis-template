@@ -19520,6 +19520,12 @@
       const useOrgDaily = hasPlatformOrgFilter();
       const daily = [];
       let hasDailyRows = false;
+      const jdDailyFromCache = apiCache[String(year)]?.platform?.jingdai_daily || [];
+      const rawDailyFromCache = apiCache[String(year)]?.platform?.daily_performance || [];
+      const orgDailyFromCache = apiCache[String(year)]?.platform?.org_daily_performance || [];
+      console.log('[getMonthDailyCumulative]', { year, premiumType, selectedKeys, month, useOrgDaily,
+        jdDailyLen: jdDailyFromCache.length, rawDailyLen: rawDailyFromCache.length, orgDailyLen: orgDailyFromCache.length,
+        jdDailySample: jdDailyFromCache.slice(0, 3) });
 
       if (useOrgDaily) {
         const selected = selectedPlatformOrgNames();
@@ -19560,9 +19566,11 @@
             running += daily[i] || 0;
             cumulative[i] = running;
           }
-          return trimDailySeries(cumulative);
+          const result = trimDailySeries(cumulative);
+          console.log('[getMonthDailyCumulative:org] resultLen:', result.length, 'hasDailyRows:', hasDailyRows);
+          return result;
         }
-
+        console.log('[getMonthDailyCumulative:org] no daily rows, returning []');
         return [];
       }
 
@@ -19594,9 +19602,12 @@
           running += daily[i] || 0;
           cumulative[i] = running;
         }
-        return trimDailySeries(cumulative);
+        const result = trimDailySeries(cumulative);
+        console.log('[getMonthDailyCumulative] resultLen:', result.length, 'rawDailyHasJd:', rawDailyHasJd, 'hasDailyRows:', hasDailyRows, 'sample:', result.slice(0, 3));
+        return result;
       }
 
+      console.log('[getMonthDailyCumulative] no daily rows, rawDailyHasJd:', rawDailyHasJd, 'selectedKeys:', selectedKeys, 'month:', month);
       return [];
     }
 
@@ -19621,6 +19632,9 @@
       const prevYear = year - 1;
       const current = getPeriodDailyCumulative(year, currentPremiumType, selectedKeys, monthList);
       const prev = platformMock[prevYear] ? getPeriodDailyCumulative(prevYear, currentPremiumType, selectedKeys, monthList) : { labels: [], values: [] };
+      console.log('[buildDailyTrendOption]', { year, prevYear, monthList, currentPremiumType, selectedKeys,
+        currentLen: current.values.length, prevLen: prev.values.length,
+        currentSample: current.values.slice(0, 3), prevSample: prev.values.slice(0, 3) });
       if (current.values.length === 0 && prev.values.length === 0) return {
         title: { text: emptyMessage, left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } },
         xAxis: { type: 'category', data: [] },
@@ -19800,6 +19814,9 @@
           Object.assign(platformMock, prevPM);
           const prevTM = convertApiToTeamMock(apiCache[prevYearKey].platform, prevYearKey);
           Object.assign(teamMock, prevTM);
+          console.log('[loadYearFromApi] prev year loaded:', { year, prevYear: prevYearNum, platformMockKeys: Object.keys(platformMock).filter(k => k === prevYearKey),
+            teamMockKeys: Object.keys(teamMock).filter(k => k === prevYearKey),
+            hasPrevYearPlatform: !!platformMock[prevYearKey], hasPrevYearTeam: !!teamMock[prevYearKey] });
         }
         return true;
       }

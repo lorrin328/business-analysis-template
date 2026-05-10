@@ -131,6 +131,51 @@ def build_month_daily_cumulative(
     }
 
 
+def build_quarter_daily_cumulative(
+    platform_data: dict,
+    year: int,
+    quarter: int,
+    channels: list[str],
+    metric: str = "qj",
+) -> dict:
+    """Generate daily cumulative for a specific quarter (e.g. Q2 = months 4,5,6)."""
+    quarter = int(quarter)
+    start_month = (quarter - 1) * 3 + 1
+    end_month = start_month + 2
+    col = _metric_col(metric)
+    all_daily = defaultdict(float)
+    raw_daily = platform_data.get("daily_performance") or []
+    jd_daily = platform_data.get("jingdai_daily") or []
+
+    for month in range(start_month, end_month + 1):
+        daily_has_jingdai = _daily_contains_jingdai(raw_daily, month)
+
+        for row in raw_daily:
+            if normalize_month(row.get("month")) == month and row.get("channel") in channels:
+                all_daily[(month, int(row.get("day") or 1))] += float(row.get(col) or 0)
+
+        if JINGDAI_LINE in channels and not daily_has_jingdai:
+            for row in jd_daily:
+                if normalize_month(row.get("month")) == month:
+                    all_daily[(month, int(row.get("day") or 1))] += float(row.get(col) or 0)
+
+    labels, values = [], []
+    running = 0.0
+    for (month, day) in sorted(all_daily):
+        running += all_daily[(month, day)]
+        if running > 0:
+            labels.append(f"{month}-{day}")
+            values.append(round(running, 2))
+
+    return {
+        "labels": labels,
+        "values": values,
+        "hasRealDailyData": bool(values),
+        "quarterMonths": list(range(start_month, end_month + 1)),
+        "message": "" if values else "No quarter daily cumulative data",
+    }
+
+
 def get_platform_trend(
     year: int,
     month: int | None = None,
@@ -154,4 +199,6 @@ def get_platform_trend(
     }
     if period_type == "month" and selected_month:
         result["daily"] = build_month_daily_cumulative(data, year, selected_month, channels, metric)
+    elif period_type == "quarter" and period_value:
+        result["daily"] = build_quarter_daily_cumulative(data, year, period_value, channels, metric)
     return result

@@ -250,3 +250,49 @@ business-analysis-template/
 - 新增平台趋势测试（2 项）：经代月度/季度日累计
 - 新增队伍分析测试（1 项）：上年数据可正常加载
 - 全部 23 个测试通过
+
+---
+
+# 2026-05-10 fix: 经代平台趋势深度修复（Phase 2 — 数据链路全闭环）
+
+## 核心结论
+
+沿"数据导入 → 聚合表 → API → 前端渲染 → 测试"链路排查，补齐 5 处缺口：经代日聚合缺少 ymd 字段、日期列候选不足、季度趋势 API 无 daily 输出、前端无调试日志、缺少季度日累计/ymd/日期候选相关测试。
+
+## 后端修复
+
+### database.py
+- `agg_jingdai_daily` 表新增 `ymd TEXT` 列（`CREATE TABLE` + `ALTER TABLE` 兼容旧库）
+- `get_platform_data` SELECT jingdai_daily 增加 `year` 和 `ymd` 字段返回
+
+### aggregator.py
+- `aggregate_jingdai_daily` 时间列候选扩展：`['时间', '年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期']`
+- 输出行新增 `'ymd': f"{y:04d}-{m:02d}-{d:02d}"` 字段
+
+### data_transform.py
+- `FIELD_MAPPINGS["jingdai"]["day"]` 增加 `生效日期`, `出单日期`, `承保日期` 别名
+
+### query_service.py
+- 新增 `build_quarter_daily_cumulative()` 函数：按季度（3个月）跨月生成日累计序列
+- `get_platform_trend` 季度模式新增 `daily` 输出（`periodType=quarter` + `periodValue` 时）
+
+## 前端修复（经营分析模板.html）
+
+### 调试日志
+- `getMonthDailyCumulative`: 入口记录 year/month/premiumType/selectedKeys 及各数据源长度、jdDaily 样本；出口记录 resultLen
+- `buildDailyTrendOption`: 记录 current/prev values 长度和样本
+- `loadYearFromApi`: 记录上一年 platformMock/teamMock 加载状态
+
+## 测试补充（11 项新增，全部 34 项通过）
+
+- `test_build_quarter_daily_cumulative_q2_jingdai` — 经代 Q2 跨月日累计
+- `test_build_quarter_daily_cumulative_q3_oto` — OTO Q3 日累计
+- `test_build_quarter_daily_cumulative_mixed_jingdai_and_transform` — 经代+转型混合
+- `test_build_quarter_daily_cumulative_empty_returns_message` — 空数据提示
+- `test_get_platform_trend_quarter_returns_daily` — 季度 API 返回 daily
+- `test_get_platform_trend_quarter_no_period_value_omits_daily` — 无 periodValue 不返回 daily
+- `test_aggregate_jingdai_daily_date_candidates` — 承保日期/出单日期/生效日期 候选识别
+- `test_aggregate_jingdai_daily_outputs_ymd` — ymd 字段输出验证
+- `test_get_platform_data_includes_year_and_ymd_in_jingdai_daily` — API 返回 year+ymd
+- `test_prev_year_team_mock_loaded` — 上年队伍数据可加载
+- `test_field_mappings_jingdai_day_aliases` — jingdai day 别名覆盖

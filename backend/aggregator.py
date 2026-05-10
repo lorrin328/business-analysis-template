@@ -198,7 +198,7 @@ def aggregate_jingdai(df: pd.DataFrame) -> List[Dict]:
 
 def aggregate_jingdai_daily(df: pd.DataFrame) -> List[Dict]:
     """按经代基表的时间字段聚合到日，用于经代月度/季度日累计趋势。"""
-    time_col = _pick_col(df, ['时间', '年月日', '入账时间', '日期'])
+    time_col = _pick_col(df, ['时间', '年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期'])
     qj_col = _pick_col(df, ['期交保费'])
     gm_col = _pick_col(df, ['承保年化规保', '年化规保', '规模保费'])
     pay_col = _pick_col(df, ['缴费年限'])
@@ -218,10 +218,14 @@ def aggregate_jingdai_daily(df: pd.DataFrame) -> List[Dict]:
     grouped = work.groupby(['_year', '_month', '_day'], dropna=False)
     rows = []
     for (year, month, day), group in grouped:
+        y = int(year)
+        m = int(month)
+        d = int(day)
         rows.append({
-            'year': int(year),
-            'month': int(month),
-            'day': int(day),
+            'year': y,
+            'month': m,
+            'day': d,
+            'ymd': f"{y:04d}-{m:02d}-{d:02d}",
             'qj_premium': _amount_to_wan(group['_qj'].sum()),
             'gm_premium': _amount_to_wan(group['_gm'].sum()),
             'zs_premium': _amount_to_wan(group['_zs'].sum()),
