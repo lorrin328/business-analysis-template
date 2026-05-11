@@ -16,8 +16,20 @@ apt-get update
 apt-get install -y python3 python3-venv python3-pip nginx rsync
 
 mkdir -p "$APP_DIR" "$BACKUP_DIR"
+# 仅当数据库有目标数据时才备份（避免空库覆盖有效备份）
 if [ -f "$APP_DIR/business_data.db" ]; then
-  cp "$APP_DIR/business_data.db" "$BACKUP_DIR/business_data.db.$(date +%Y%m%d_%H%M%S)"
+  HAS_TARGETS=$(python3 -c "
+import sqlite3
+try:
+    c=sqlite3.connect('$APP_DIR/business_data.db')
+    n=c.execute('SELECT COUNT(*) FROM target_config').fetchone()[0]
+    print(n)
+except: print(0)
+" 2>/dev/null || echo "0")
+  if [ "$HAS_TARGETS" -gt 0 ] 2>/dev/null; then
+    cp "$APP_DIR/business_data.db" "$BACKUP_DIR/business_data.db.$(date +%Y%m%d_%H%M%S)"
+    echo "已备份数据库（含 $HAS_TARGETS 条目标配置）"
+  fi
 fi
 
 rsync -a --delete \
@@ -36,11 +48,8 @@ python3 -m venv "$APP_DIR/backend/venv"
 cd "$APP_DIR/backend"
 "$APP_DIR/backend/venv/bin/python" -c "from db import init_db; init_db()"
 
-# 从备份恢复目标数据（target_config / target_values 不在聚合表重建范围内）
-LATEST_BACKUP=$(ls -t "$BACKUP_DIR"/business_data.db.* 2>/dev/null | head -1)
-if [ -n "$LATEST_BACKUP" ]; then
-  "$APP_DIR/backend/venv/bin/python" "$APP_DIR/deploy/restore_targets.py" "$LATEST_BACKUP" "$APP_DIR/business_data.db" || echo '⚠ 目标数据恢复失败，请手动从备份恢复'
-fi
+# 从所有备份中自动找出目标数据最多的那个恢复
+"$APP_DIR/backend/venv/bin/python" "$APP_DIR/deploy/restore_targets.py" "$BACKUP_DIR" "$APP_DIR/business_data.db" || echo '⚠ 目标数据恢复失败'
 
 # 重建数据库（如果存在 Excel 文件）
 EXCEL_COUNT=$(find "$APP_DIR" -maxdepth 1 -name "*.xlsx" 2>/dev/null | wc -l)
