@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.68</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.69</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -19880,7 +19880,6 @@
         }
         // org筛选激活但无org_daily数据 → 返回空，不回退到全机构聚合
         return [];
-      }
 
         if (selectedKeys.some(k => k === '经代' || (k.includes('经') && k.includes('代')))) {
           const result = getJingdaiMonthFallback(year, typeKey, month);
