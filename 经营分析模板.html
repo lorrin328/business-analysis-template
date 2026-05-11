@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.61</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.62</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -20456,6 +20456,26 @@
     }
 
     // ---------- Upload Handler ----------
+    let _uploading = false;
+
+    function _allFilesReady() {
+      return ['file1','file2','file3','file4'].every(id => document.getElementById(id).files[0]);
+    }
+
+    function _setAllInfos(msg) {
+      ['info1','info2','info3','info4'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = msg;
+      });
+    }
+
+    function _resetAllCards() {
+      ['file1','file2','file3','file4'].forEach(id => {
+        const card = document.getElementById(id).closest('.upload-card');
+        if (card) card.classList.remove('has-file');
+      });
+    }
+
     async function handleFile(input, infoId) {
       if (!input.files || !input.files[0]) return;
       const file = input.files[0];
@@ -20465,36 +20485,41 @@
       info.textContent = `✓ 已选择: ${file.name} (${sizeKB}KB)`;
       card.classList.add('has-file');
 
+      // 检查后端是否可连接
       if (!apiAvailable) {
-        info.textContent = `✗ 后端未连接，请在Ubuntu部署后使用`;
-        card.classList.remove('has-file');
+        _setAllInfos('✗ 后端未连接，请确认服务已启动');
+        _resetAllCards();
         return;
       }
 
-      // 收集所有已选文件
-      const fd = new FormData();
-      const f1 = document.getElementById('file1').files[0];
-      const f2 = document.getElementById('file2').files[0];
-      const f3 = document.getElementById('file3').files[0];
-      const f4 = document.getElementById('file4').files[0];
-      if (f1) fd.append('hr', f1);
-      if (f2) fd.append('performance', f2);
-      if (f3) fd.append('jingdai', f3);
-      if (f4) fd.append('value', f4);
+      // 等待四份文件全部选完后才上传
+      if (!_allFilesReady()) {
+        const ready = ['file1','file2','file3','file4'].filter(id => document.getElementById(id).files[0]).length;
+        info.textContent = `✓ 已选择: ${file.name} (${sizeKB}KB) · 已选 ${ready}/4`;
+        return;
+      }
+
+      if (_uploading) return;
+      _uploading = true;
 
       try {
-        info.textContent = `⏳ 正在上传并聚合...`;
+        _setAllInfos('⏳ 正在上传并聚合...');
+
+        const fd = new FormData();
+        fd.append('hr', document.getElementById('file1').files[0]);
+        fd.append('performance', document.getElementById('file2').files[0]);
+        fd.append('jingdai', document.getElementById('file3').files[0]);
+        fd.append('value', document.getElementById('file4').files[0]);
+
         const resp = await fetch(`${API_BASE}/api/upload`, {
           method: 'POST',
           body: fd
         });
         const result = await resp.json();
         if (result.errors && result.errors.length > 0) {
-          info.textContent = `✗ 错误: ${result.errors.join('; ')}`;
-          card.classList.remove('has-file');
+          _setAllInfos(`✗ 错误: ${result.errors.join('; ')}`);
+          _resetAllCards();
         } else {
-          info.textContent = `✓ 已上传: ${result.uploaded.join(', ')}`;
-          // 根据后端返回的实际年份刷新数据
           const dataYears = result.data_years || [2026];
           const queryYear = dataYears[0] || 2026;
           console.log('上传成功，数据年份:', dataYears, '查询年份:', queryYear);
@@ -20511,16 +20536,18 @@
             teamChart.setOption(getTeamOption(), true);
             updateCutoffLabel(String(queryYear));
             updateKPICards();
-            info.textContent = `✓ 已上传: ${result.uploaded.join(', ')} · ${queryYear}年数据已刷新`;
+            _setAllInfos(`✓ 已上传: ${result.uploaded.join(', ')} · ${queryYear}年数据已刷新`);
           } else {
-            info.textContent = `✓ 已上传: ${result.uploaded.join(', ')} · 后端${queryYear}年数据为空，使用本地数据`;
+            _setAllInfos(`✓ 已上传: ${result.uploaded.join(', ')} · 后端${queryYear}年数据为空，使用本地数据`);
             await fetchTargetData(queryYear);
             updateKPICards();
           }
         }
       } catch (e) {
-        info.textContent = `✗ 上传失败: ${e.message}`;
-        card.classList.remove('has-file');
+        _setAllInfos(`✗ 上传失败: ${e.message}`);
+        _resetAllCards();
+      } finally {
+        _uploading = false;
       }
     }
 
