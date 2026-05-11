@@ -26,6 +26,7 @@ rsync -a --delete \
   --exclude='backend/__pycache__' \
   --exclude='backend/logs/*.log' \
   --exclude='*.xlsx' \
+  --exclude='*.db' \
   "$SRC_DIR/" "$APP_DIR/"
 
 python3 -m venv "$APP_DIR/backend/venv"
@@ -34,6 +35,27 @@ python3 -m venv "$APP_DIR/backend/venv"
 
 cd "$APP_DIR/backend"
 "$APP_DIR/backend/venv/bin/python" -c "from db import init_db; init_db()"
+
+# 从备份恢复目标数据（target_config / target_values 不在聚合表重建范围内）
+LATEST_BACKUP=$(ls -t "$BACKUP_DIR"/business_data.db.* 2>/dev/null | head -1)
+if [ -n "$LATEST_BACKUP" ]; then
+  "$APP_DIR/backend/venv/bin/python" -c "
+import sqlite3, sys
+src = '$LATEST_BACKUP'
+dst = '$APP_DIR/business_data.db'
+s = sqlite3.connect(src)
+d = sqlite3.connect(dst)
+for table in ['target_config', 'target_values']:
+    s.execute(f'SELECT * FROM {table}')
+    rows = s.fetchall()
+    if rows:
+        cols = [c[0] for c in s.execute(f'PRAGMA table_info({table})')]
+        ph = ','.join(['?']*len(cols))
+        d.executemany(f'INSERT OR REPLACE INTO {table} ({','.join(cols)}) VALUES ({ph})', rows)
+d.commit()
+print(f'Restored {len(rows)} target rows from backup')
+" || echo '⚠ 目标数据恢复失败，请手动从备份恢复'
+fi
 
 # 重建数据库（如果存在 Excel 文件）
 EXCEL_COUNT=$(find "$APP_DIR" -maxdepth 1 -name "*.xlsx" 2>/dev/null | wc -l)
