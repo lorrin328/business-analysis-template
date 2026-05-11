@@ -55,6 +55,9 @@ sudo rsync -a --delete \
   --exclude='business_data.db' \
   ./ /opt/business-analysis/
 
+# 恢复目标数据（如果当前数据库丢失了手工录入的目标）
+sudo bash /opt/business-analysis/deploy/recover_targets.sh
+
 sudo systemctl restart business-analysis
 sudo nginx -t && sudo systemctl reload nginx
 ```
