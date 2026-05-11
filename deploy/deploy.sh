@@ -51,6 +51,33 @@ cd "$APP_DIR/backend"
 # 从所有备份中自动找出目标数据最多的那个恢复
 bash "$APP_DIR/deploy/recover_targets.sh" || echo '⚠ 目标数据恢复失败，请检查备份目录'
 
+# 如果备份恢复后仍无目标数据，从 targets_import.json 导入（Excel 解析的预设目标）
+if [ -f "$APP_DIR/targets_import.json" ]; then
+  HAS_TARGETS=$("$APP_DIR/backend/venv/bin/python" -c "
+import sqlite3, json, os
+db='$APP_DIR/business_data.db'
+if os.path.exists(db):
+    c=sqlite3.connect(db)
+    n=c.execute('SELECT COUNT(*) FROM target_config').fetchone()[0]
+    c.close()
+    print(n)
+else:
+    print(0)
+" 2>/dev/null || echo "0")
+  if [ "$HAS_TARGETS" = "0" ]; then
+    echo "从 targets_import.json 导入预设目标..."
+    "$APP_DIR/backend/venv/bin/python" -c "
+import json, sys
+sys.path.insert(0, '$APP_DIR/backend')
+from db import save_target_config
+with open('$APP_DIR/targets_import.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+result = save_target_config(data['year'], data, updated_by='deploy')
+print(f'已导入 {data[\"year\"]} 年目标配置')
+" && echo '✓ 预设目标导入成功' || echo '⚠ 预设目标导入失败'
+  fi
+fi
+
 # 重建数据库（如果存在 Excel 文件）
 EXCEL_COUNT=$(find "$APP_DIR" -maxdepth 1 -name "*.xlsx" 2>/dev/null | wc -l)
 if [ "$EXCEL_COUNT" -ge 3 ]; then
