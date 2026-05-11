@@ -20335,22 +20335,36 @@
           formatter: '{b}: {c}万 ({d}%)'
         },
         legend: {
-          orient: 'vertical',
-          right: 10,
-          top: 'center',
-          textStyle: { color: '#94a3b8', fontSize: 11 },
-          itemWidth: 12,
-          itemHeight: 12
+          type: 'scroll',
+          orient: 'horizontal',
+          left: 'center',
+          bottom: 4,
+          width: '86%',
+          height: 44,
+          textStyle: { color: '#94a3b8', fontSize: 10 },
+          itemWidth: 9,
+          itemHeight: 9,
+          itemGap: 10,
+          pageIconColor: '#60a5fa',
+          pageIconInactiveColor: '#475569',
+          pageTextStyle: { color: '#94a3b8' }
         },
         series: [{
           type: 'pie',
-          radius: ['40%', '70%'],
-          center: ['35%', '50%'],
+          radius: ['36%', '62%'],
+          center: ['50%', '42%'],
           avoidLabelOverlap: true,
           itemStyle: { borderRadius: 6, borderColor: '#1e293b', borderWidth: 2 },
           label: { show: false },
           emphasis: {
-            label: { show: true, fontSize: 14, fontWeight: 'bold', color: '#f1f5f9' }
+            label: {
+              show: true,
+              fontSize: 13,
+              fontWeight: 600,
+              color: '#f8fafc',
+              textBorderWidth: 0,
+              textShadowBlur: 0
+            }
           },
           data,
           color: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4']
@@ -20485,10 +20499,26 @@
       return {
         tooltip: { trigger: 'item', formatter: '{b}: {c}' + (type === 'count' ? '件' : '万') + ' ({d}%)' },
         series: [{
-          type: 'pie', radius: ['40%', '70%'], center: ['35%', '50%'],
+          type: 'pie', radius: ['38%', '66%'], center: ['50%', '54%'],
           data: data,
           color: colors,
-          label: { formatter: '{b}\n{d}%', fontSize: 11 },
+          label: {
+            formatter: '{b}\n{d}%',
+            color: '#e5e7eb',
+            fontSize: 12,
+            fontWeight: 600,
+            lineHeight: 14,
+            textBorderWidth: 0,
+            textShadowBlur: 0,
+            textShadowColor: 'transparent'
+          },
+          labelLine: {
+            length: 18,
+            length2: 14,
+            lineStyle: { width: 1.5 },
+            smooth: false
+          },
+          labelLayout: { hideOverlap: true },
           emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,.2)' } }
         }]
       };
