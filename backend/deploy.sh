@@ -89,7 +89,7 @@ User=$USER
 Group=$USER
 WorkingDirectory=$APP_DIR/backend
 Environment="PATH=$APP_DIR/backend/venv/bin"
-ExecStart=$APP_DIR/backend/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+ExecStart=$APP_DIR/backend/venv/bin/uvicorn main:app --host 0.0.0.0 --port 45679
 Restart=always
 RestartSec=5
 
@@ -106,7 +106,7 @@ server {
     server_name _;
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:45679;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

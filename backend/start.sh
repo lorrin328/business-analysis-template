@@ -29,12 +29,12 @@ python3 -c "from db import init_db; init_db(); print('Database initialized')"
 
 echo ""
 echo "=== 启动服务 ==="
-echo "访问地址: http://localhost:8000"
+echo "访问地址: http://localhost:45679"
 echo "按 Ctrl+C 停止服务"
 echo ""
 
 # 延迟打开浏览器
-(sleep 2 && open http://localhost:8000 2>/dev/null || xdg-open http://localhost:8000 2>/dev/null || true) &
+(sleep 2 && open http://localhost:45679 2>/dev/null || xdg-open http://localhost:45679 2>/dev/null || true) &
 
 # 启动服务
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 45679 --reload

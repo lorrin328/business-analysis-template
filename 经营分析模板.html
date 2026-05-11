@@ -3087,9 +3087,9 @@
 
     // ---------- API Integration ----------
     // 如需手动指定后端地址，取消下面一行的注释并修改：
-    // const BACKEND_URL = 'http://your-server-ip:8000';
+    // const BACKEND_URL = 'http://your-server-ip:45679';
     const API_BASE = typeof BACKEND_URL !== 'undefined' ? BACKEND_URL
-      : (window.location.protocol === 'file:' ? 'http://localhost:8000' : '');
+      : (window.location.protocol === 'file:' ? 'http://localhost:45679' : '');
 
     let apiData = { kpi: null, platform: null, team: null, product: null };
     const apiCache = {};

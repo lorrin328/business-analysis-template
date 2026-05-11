@@ -33,12 +33,12 @@ python -c "from db import init_db; init_db(); print('Database initialized')"
 
 echo.
 echo === 启动服务 ===
-echo 浏览器将自动打开 http://localhost:8000
+echo 浏览器将自动打开 http://localhost:45679
 echo 按 Ctrl+C 停止服务
 echo.
 
 :: 启动浏览器（延迟2秒确保服务启动）
-start "" /b cmd /c "timeout /t 2 >nul && start http://localhost:8000"
+start "" /b cmd /c "timeout /t 2 >nul && start http://localhost:45679"
 
 :: 启动服务
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 45679 --reload

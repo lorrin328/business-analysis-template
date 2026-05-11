@@ -149,10 +149,10 @@ ECharts 图表
 ```bash
 pip install -r requirements.txt
 cd backend
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
+uvicorn main:app --reload --host 127.0.0.1 --port 45679
 ```
 
-访问：`http://127.0.0.1:8000/`
+访问：`http://127.0.0.1:45679/`
 
 ## 测试
 
