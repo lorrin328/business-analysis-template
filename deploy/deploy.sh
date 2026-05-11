@@ -33,7 +33,7 @@ python3 -m venv "$APP_DIR/backend/venv"
 "$APP_DIR/backend/venv/bin/pip" install -r "$APP_DIR/backend/requirements.txt"
 
 cd "$APP_DIR/backend"
-"$APP_DIR/backend/venv/bin/python" -c "from database import init_db; init_db()"
+"$APP_DIR/backend/venv/bin/python" -c "from db import init_db; init_db()"
 
 # 重建数据库（如果存在 Excel 文件）
 EXCEL_COUNT=$(find "$APP_DIR" -maxdepth 1 -name "*.xlsx" 2>/dev/null | wc -l)

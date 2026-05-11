@@ -4,7 +4,7 @@ import sys
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 
-import database
+import db as database
 from services.response import error_response, success_response
 
 

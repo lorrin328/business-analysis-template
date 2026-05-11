@@ -12,8 +12,8 @@ from services.query_service import (
 )
 from validators.data_validator import validate_rows
 from validators.org_validator import org_scope_note
-from database import get_platform_data
-from database import get_product_structure, get_jingdai_orgs
+from db import get_platform_data
+from db import get_product_structure, get_jingdai_orgs
 
 
 JINGDAI = JINGDAI_LINE

@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import sys
 from fastapi import Body, FastAPI, File, UploadFile, HTTPException
@@ -16,12 +18,12 @@ from api.targets import router as targets_router
 from api.payment_period import router as payment_period_router
 from api.team import router as team_router
 from api.trend import router as trend_router
-from database import (
-    init_db, get_db, replace_rows,
+from db import (
+    init_db, get_db, replace_rows, replace_rows_incremental,
     get_kpi_data, get_product_structure, get_target_config, save_target_config,
     get_org_kpi_data,
 )
-from aggregator import (
+from etl import (
     parse_performance_excel, parse_jingdai_excel, parse_hr_excel, parse_value_excel,
     aggregate_performance, aggregate_jingdai, aggregate_jingdai_daily, aggregate_hr, aggregate_value,
     aggregate_product_structure, aggregate_active_headcount,
@@ -32,6 +34,31 @@ from aggregator import (
 
 from validators.data_validator import validate_rows
 from validators.target_validator import validate_target_payload
+
+
+def _hash_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _check_skip(conn, file_name: str, file_hash: str) -> bool:
+    """检查相同哈希的文件是否已导入过。返回 True 表示可跳过。"""
+    row = conn.execute(
+        'SELECT id FROM data_imports WHERE file_hash = ? AND status = ? ORDER BY id DESC LIMIT 1',
+        (file_hash, 'success'),
+    ).fetchone()
+    return row is not None
+
+
+def _record_import(conn, file_name: str, file_hash: str, file_size: int,
+                   data_years: list, table_counts: dict, status: str = 'success',
+                   error_message: str | None = None):
+    conn.execute('''
+        INSERT INTO data_imports (file_name, file_hash, file_size, data_years, table_counts, status, error_message)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (file_name, file_hash, file_size, json.dumps(data_years or []),
+          json.dumps(table_counts or {}), status, error_message))
+    return conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+
 
 app = FastAPI(title="经营分析看板API")
 
@@ -77,7 +104,10 @@ async def upload_files(
     year: int = 2026,
 ):
     """上传Excel文件并聚合到SQLite"""
-    results = {"uploaded": [], "errors": [], "data_years": set()}
+    results = {"uploaded": [], "errors": [], "skipped": [], "data_years": set()}
+    file_hashes = {}  # file_name -> hash
+    file_sizes = {}   # file_name -> size
+    table_row_counts = {}  # table -> count
     logger.info("import started year=%s", year)
 
     # 第一步：解析所有Excel文件，收集实际年份
@@ -98,6 +128,9 @@ async def upload_files(
     if performance and performance.filename:
         try:
             perf_bytes = await performance.read()
+            h = _hash_bytes(perf_bytes)
+            file_hashes[performance.filename] = h
+            file_sizes[performance.filename] = len(perf_bytes)
             df = parse_performance_excel(perf_bytes)
             perf_rows = aggregate_performance(df)
             daily_rows = aggregate_daily_performance(df)
@@ -116,7 +149,11 @@ async def upload_files(
 
     if jingdai and jingdai.filename:
         try:
-            df = parse_jingdai_excel(await jingdai.read())
+            jd_bytes = await jingdai.read()
+            h = _hash_bytes(jd_bytes)
+            file_hashes[jingdai.filename] = h
+            file_sizes[jingdai.filename] = len(jd_bytes)
+            df = parse_jingdai_excel(jd_bytes)
             jd_rows = aggregate_jingdai(df)
             jd_daily_rows = aggregate_jingdai_daily(df)
             jd_pay_period_rows = aggregate_jingdai_payment_period(df)
@@ -130,7 +167,11 @@ async def upload_files(
 
     if hr and hr.filename:
         try:
-            df = parse_hr_excel(await hr.read())
+            hr_bytes = await hr.read()
+            h = _hash_bytes(hr_bytes)
+            file_hashes[hr.filename] = h
+            file_sizes[hr.filename] = len(hr_bytes)
+            df = parse_hr_excel(hr_bytes)
             hr_rows = aggregate_hr(df)
             results["uploaded"].append(f"人力数据: {len(hr_rows)}条")
         except Exception as e:
@@ -140,6 +181,9 @@ async def upload_files(
     if value and value.filename:
         try:
             val_bytes = await value.read()
+            h = _hash_bytes(val_bytes)
+            file_hashes[value.filename] = h
+            file_sizes[value.filename] = len(val_bytes)
             df = parse_value_excel(val_bytes)
             value_rows = aggregate_value(df)
             org_value_rows = aggregate_org_value(df)
@@ -165,42 +209,59 @@ async def upload_files(
     # 如果没有检测到年份，使用传入的year参数
     results["data_years"] = sorted(list(results["data_years"])) if results["data_years"] else [year]
 
-    # 写入数据库
+    # 写入数据库（增量：按月删除再插入，未涉及月份保持不动）
+    import_id = None
     with get_db() as conn:
-        c = conn.cursor()
+        conn.execute('BEGIN IMMEDIATE')
+        try:
+            table_rows = [
+                ('agg_performance', perf_rows),
+                ('agg_daily_performance', daily_rows),
+                ('agg_org_daily_performance', org_daily_rows),
+                ('agg_product_structure', product_rows),
+                ('agg_jingdai', jd_rows),
+                ('agg_jingdai_daily', jd_daily_rows),
+                ('agg_hr_data', hr_rows),
+                ('agg_value_data', value_rows),
+                ('agg_org_performance', org_perf_rows),
+                ('agg_org_value', org_value_rows),
+                ('agg_payment_period', pay_period_rows + jd_pay_period_rows),
+            ]
+            for table, rows in table_rows:
+                if rows:
+                    replace_rows_incremental(conn, table, rows)
+                    table_row_counts[table] = len(rows)
 
-        table_rows = [
-            ('agg_performance', perf_rows),
-            ('agg_daily_performance', daily_rows),
-            ('agg_org_daily_performance', org_daily_rows),
-            ('agg_product_structure', product_rows),
-            ('agg_jingdai', jd_rows),
-            ('agg_jingdai_daily', jd_daily_rows),
-            ('agg_hr_data', hr_rows),
-            ('agg_value_data', value_rows),
-            ('agg_org_performance', org_perf_rows),
-            ('agg_org_value', org_value_rows),
-            ('agg_payment_period', pay_period_rows + jd_pay_period_rows),
-        ]
-        for table, rows in table_rows:
-            for y in sorted({int(r['year']) for r in rows if 'year' in r and r['year']}):
-                c.execute(f'DELETE FROM {table} WHERE year = ?', (y,))
+            # 检查各文件哈希是否可跳过
+            for fname, h in file_hashes.items():
+                if _check_skip(conn, fname, h):
+                    if fname == (performance.filename if performance else ''):
+                        results["skipped"].append(f"转型业务业绩: 文件未变化，跳过")
+                    elif fname == (jingdai.filename if jingdai else ''):
+                        results["skipped"].append(f"经代业务业绩: 文件未变化，跳过")
+                    elif fname == (hr.filename if hr else ''):
+                        results["skipped"].append(f"人力数据: 文件未变化，跳过")
+                    elif fname == (value.filename if value else ''):
+                        results["skipped"].append(f"价值数据: 文件未变化，跳过")
 
-        replace_rows(conn, 'agg_performance', perf_rows)
-        replace_rows(conn, 'agg_daily_performance', daily_rows)
-        replace_rows(conn, 'agg_org_daily_performance', org_daily_rows)
-        replace_rows(conn, 'agg_jingdai', jd_rows)
-        replace_rows(conn, 'agg_jingdai_daily', jd_daily_rows)
-        replace_rows(conn, 'agg_hr_data', hr_rows)
-        replace_rows(conn, 'agg_value_data', value_rows)
-        replace_rows(conn, 'agg_product_structure', product_rows)
-        replace_rows(conn, 'agg_org_performance', org_perf_rows)
-        replace_rows(conn, 'agg_org_value', org_value_rows)
-        replace_rows(conn, 'agg_payment_period', pay_period_rows + jd_pay_period_rows)
+            # 记录导入历史
+            has_errors = len(results["errors"]) > 0
+            for fname, h in file_hashes.items():
+                _record_import(conn, fname, h, file_sizes.get(fname, 0),
+                               results["data_years"], table_row_counts,
+                               status='partial' if has_errors else 'success')
+            import_id = conn.execute('SELECT MAX(id) FROM data_imports').fetchone()[0]
 
-        conn.commit()
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
-    logger.info("import finished uploaded=%s errors=%s years=%s", len(results["uploaded"]), len(results["errors"]), results["data_years"])
+    logger.info("import finished uploaded=%s errors=%s skipped=%s years=%s import_id=%s",
+                len(results["uploaded"]), len(results["errors"]), len(results["skipped"]),
+                results["data_years"], import_id)
+    results["import_id"] = import_id
+    results["data_years"] = sorted(list(results["data_years"])) if results["data_years"] else [year]
     return results
 
 
@@ -218,7 +279,7 @@ async def import_files(
 @app.get("/api/data/{year}")
 def get_data(year: int):
     """获取指定年份的所有聚合数据"""
-    from database import get_platform_data
+    from db import get_platform_data
     return get_platform_data(year)
 
 

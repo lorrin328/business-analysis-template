@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Body, HTTPException, Query
 
-from database import get_target_config, get_target_values, save_target_config
+from db import get_target_config, get_target_values, save_target_config
 from services.response import success_response
 from validators.target_validator import validate_target_payload
 

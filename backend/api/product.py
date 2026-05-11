@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from database import get_product_structure
+from db import get_product_structure
 from services.response import success_response
 
 router = APIRouter(prefix="/api", tags=["product"])

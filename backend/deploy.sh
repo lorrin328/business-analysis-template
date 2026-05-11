@@ -74,7 +74,7 @@ pip install -r requirements.txt > /dev/null
 
 # 5. 初始化数据库（不会覆盖已有数据）
 echo "[5/6] 初始化SQLite数据库..."
-python3 -c "from database import init_db; init_db(); print('Database initialized')"
+python3 -c "from db import init_db; init_db(); print('Database initialized')"
 
 # 6. 创建systemd服务
 echo "[6/6] 配置systemd服务..."

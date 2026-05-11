@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 from config.business_lines import BUSINESS_LINES
-from database import get_platform_data
+from db import get_platform_data
 from services.data_transform import normalize_month
 
 

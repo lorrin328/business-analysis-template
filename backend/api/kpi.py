@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query
 
 from config.metrics import METRICS
-from database import get_kpi_data
+from db import get_kpi_data
 from services.response import success_response
 
 router = APIRouter(prefix="/api", tags=["kpi"])

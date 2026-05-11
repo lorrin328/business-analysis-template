@@ -25,7 +25,7 @@ pip install -q -r requirements.txt
 
 # 初始化数据库
 echo "[3/3] 初始化数据库..."
-python3 -c "from database import init_db; init_db(); print('Database initialized')"
+python3 -c "from db import init_db; init_db(); print('Database initialized')"
 
 echo ""
 echo "=== 启动服务 ==="

@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Query
 
-from database import get_payment_period_structure
+from db import get_payment_period_structure
 
 router = APIRouter(tags=["payment-period"])
 
@@ -29,7 +29,7 @@ def payment_period_analysis(
     - jingdaiOrgs: 逗号分隔经代机构
     - metric: qj=期交保费, gm=规模保费
     """
-    from database import _split_csv
+    from db import _split_csv
 
     return get_payment_period_structure(
         year=year,

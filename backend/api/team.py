@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from database import get_platform_data
+from db import get_platform_data
 from services.response import success_response
 
 router = APIRouter(prefix="/api", tags=["team"])
