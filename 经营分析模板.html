@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.66</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.67</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -920,8 +920,96 @@
               <span class="control-label">经代机构</span>
               <div class="control-checks" id="productJingdaiOrgChecks"></div>
             </div>
+            <div class="control-row" id="productOrgRow">
+              <span class="control-label">转型机构</span>
+              <div class="control-checks" id="productOrgChecks">
+                <label class="check-label"><input type="checkbox" checked data-org="all" onchange="toggleProductOrg('all', this.checked)"> <span>全部</span></label>
+              </div>
+            </div>
+            <div class="control-row">
+              <span class="control-label">时间维度</span>
+              <div class="control-btns">
+                <button class="chart-btn active" onclick="switchProductDim(this, 'year')">年度</button>
+                <button class="chart-btn" onclick="switchProductDim(this, 'quarter')">季度</button>
+                <button class="chart-btn" onclick="switchProductDim(this, 'month')">月度</button>
+              </div>
+              <select class="period-select" id="productSubSelect" onchange="switchProductSub(this.value)" style="display:none;"></select>
+            </div>
+            <div class="control-row">
+              <span class="control-label">保费类型</span>
+              <div class="control-btns">
+                <button class="chart-btn active" onclick="switchProductMetric(this, 'qj')">期交保费</button>
+                <button class="chart-btn" onclick="switchProductMetric(this, 'gm')">规模保费</button>
+              </div>
+            </div>
           </div>
           <div class="chart-container" id="productChart"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Row 1.5: Payment Period Structure -->
+    <div class="section" id="payPeriodSection">
+      <div class="section-title">交期结构</div>
+      <div class="chart-row" style="grid-template-columns: 1fr;">
+        <div class="chart-card">
+          <div class="chart-header">
+            <span class="chart-title">交期结构</span>
+            <div class="chart-actions">
+              <button class="chart-btn active" onclick="switchPayPeriodPie(this, 'premium')">保费</button>
+              <button class="chart-btn" onclick="switchPayPeriodPie(this, 'count')">件数</button>
+            </div>
+          </div>
+          <div class="chart-controls">
+            <div class="control-row">
+              <span class="control-label">年份</span>
+              <select class="period-select" id="payPeriodYearSelect" onchange="switchPayPeriodYear(this.value)">
+                <option value="2026">2026年</option>
+                <option value="2025">2025年</option>
+                <option value="2024">2024年</option>
+              </select>
+              <span class="control-label" style="margin-left:12px;">时间维度</span>
+              <div class="control-btns">
+                <button class="chart-btn active" onclick="switchPayPeriodDim(this, 'year')">年度</button>
+                <button class="chart-btn" onclick="switchPayPeriodDim(this, 'quarter')">季度</button>
+                <button class="chart-btn" onclick="switchPayPeriodDim(this, 'month')">月度</button>
+              </div>
+              <select class="period-select" id="payPeriodSubSelect" onchange="switchPayPeriodSub(this.value)" style="display:none;"></select>
+            </div>
+            <div class="control-row">
+              <span class="control-label">业务系列</span>
+              <div class="control-checks">
+                <label class="check-label"><input type="checkbox" checked onchange="togglePayPeriodBiz('转型', this.checked)"> <span>转型</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="togglePayPeriodBiz('经代', this.checked)"> <span>经代</span></label>
+              </div>
+            </div>
+            <div class="control-row" id="payPeriodTransformRow">
+              <span class="control-label">转型渠道</span>
+              <div class="control-checks">
+                <label class="check-label"><input type="checkbox" checked onchange="togglePayPeriodChannel('OTO', this.checked)"> <span>OTO</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="togglePayPeriodChannel('证保', this.checked)"> <span>证保</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="togglePayPeriodChannel('蚁桥', this.checked)"> <span>蚁桥</span></label>
+              </div>
+            </div>
+            <div class="control-row" id="payPeriodTransformOrgRow">
+              <span class="control-label">转型机构</span>
+              <div class="control-checks" id="payPeriodTransformOrgChecks">
+                <label class="check-label"><input type="checkbox" checked data-org="all" onchange="togglePayPeriodOrg('all', this.checked)"> <span>全部</span></label>
+              </div>
+            </div>
+            <div class="control-row" id="payPeriodJingdaiOrgRow" style="display:none;">
+              <span class="control-label">经代机构</span>
+              <div class="control-checks" id="payPeriodJingdaiOrgChecks"></div>
+            </div>
+            <div class="control-row">
+              <span class="control-label">保费类型</span>
+              <div class="control-btns">
+                <button class="chart-btn active" onclick="switchPayPeriodMetric(this, 'qj')">期交保费</button>
+                <button class="chart-btn" onclick="switchPayPeriodMetric(this, 'gm')">规模保费</button>
+              </div>
+            </div>
+          </div>
+          <div class="chart-container" id="payPeriodChart"></div>
         </div>
       </div>
     </div>
@@ -3016,6 +3104,21 @@
       if (productFilters.transform) params.set('transformLines', transformLines.length > 0 ? transformLines.join(',') : '__none__');
       const selectedOrgs = Object.keys(productFilters.jingdaiOrgs).filter(k => productFilters.jingdaiOrgs[k]);
       if (productFilters.orgsInitialized) params.set('jingdaiOrgs', selectedOrgs.length > 0 ? selectedOrgs.join(',') : '__none__');
+      // New: org filter, time dim, metric
+      if (productFilters.orgs && !productFilters.orgs['all']) {
+        const o = Object.keys(productFilters.orgs).filter(k => k !== 'all' && productFilters.orgs[k]);
+        if (o.length > 0) params.set('orgs', o.join(','));
+      }
+      if (productFilters.timeDim && productFilters.timeDim !== 'year' && productFilters.subPeriod !== 'all') {
+        if (productFilters.timeDim === 'quarter') {
+          const qNum = parseInt(productFilters.subPeriod.replace('Q',''));
+          const m = Array.from({length:3},(_,i)=>(qNum-1)*3+i+1).join(',');
+          params.set('months', m);
+        } else {
+          params.set('months', productFilters.subPeriod);
+        }
+      }
+      if (productFilters.metric && productFilters.metric !== 'qj') params.set('metric', productFilters.metric);
       return `${API_BASE}/api/product/${year}?${params.toString()}`;
     }
 
@@ -20154,6 +20257,7 @@
       updatePlatformScopeNote();
       await refreshPlatformChart();
       productChart.setOption(getPieOption(currentPieType), true);
+      fetchPayPeriodData(value);
       fetchOrgKpiData(value);
     }
 
@@ -20300,6 +20404,252 @@
     function toggleProductJingdaiOrg(org, checked) {
       productFilters.jingdaiOrgs[org] = checked;
       refreshProductChart();
+    }
+
+    // ---------- Product Structure Enhancement ----------
+    productFilters.orgs = { 'all': true };
+    ORG_LIST.forEach(o => productFilters.orgs[o] = true);
+    productFilters.timeDim = 'year';
+    productFilters.subPeriod = 'all';
+    productFilters.metric = 'qj';
+
+    function toggleProductOrg(org, checked) {
+      if (org === 'all') {
+        productFilters.orgs['all'] = checked;
+        ORG_LIST.forEach(o => productFilters.orgs[o] = checked);
+        const allLabel = document.querySelector('#productOrgChecks [data-org="all"]');
+        document.querySelectorAll('#productOrgChecks [data-org]:not([data-org="all"])').forEach(cb => cb.checked = checked);
+      } else {
+        productFilters.orgs[org] = checked;
+        const allChecked = ORG_LIST.every(o => productFilters.orgs[o]);
+        productFilters.orgs['all'] = allChecked;
+        const allLabel = document.querySelector('#productOrgChecks [data-org="all"]');
+        if (allLabel) allLabel.checked = allChecked;
+      }
+      refreshProductChart();
+    }
+
+    function switchProductDim(btn, dim) {
+      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      productFilters.timeDim = dim;
+      const sub = document.getElementById('productSubSelect');
+      if (dim === 'year') { sub.style.display = 'none'; productFilters.subPeriod = 'all'; }
+      else if (dim === 'quarter') {
+        sub.style.display = ''; sub.innerHTML = '<option value="all">全部</option>'+['Q1','Q2','Q3','Q4'].map(q => `<option value="${q}">${q}</option>`).join('');
+        productFilters.subPeriod = 'all';
+      } else {
+        sub.style.display = ''; sub.innerHTML = '<option value="all">全年</option>'+Array.from({length:12},(_,i)=>`<option value="${i+1}">${i+1}月</option>`).join('');
+        productFilters.subPeriod = 'all';
+      }
+      refreshProductChart();
+    }
+
+    function switchProductSub(value) {
+      productFilters.subPeriod = value;
+      refreshProductChart();
+    }
+
+    function switchProductMetric(btn, metric) {
+      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      productFilters.metric = metric;
+      refreshProductChart();
+    }
+
+    // ---------- Payment Period Structure ----------
+    const payPeriodData = { premium: [], count: [] };
+    const payPeriodFilters = {
+      transform: true,
+      jingdai: true,
+      channels: { 'OTO': true, '证保': true, '蚁桥': true },
+      orgs: { 'all': true },
+      jingdaiOrgs: {},
+      orgsInitialized: false,
+      metric: 'qj',
+      timeDim: 'year',
+      year: '2026',
+      subPeriod: 'all',
+      currentPieType: 'premium'
+    };
+    ORG_LIST.forEach(o => payPeriodFilters.orgs[o] = true);
+
+    // Init org checkboxes for 交期结构
+    (function initPayPeriodOrgChecks() {
+      const container = document.getElementById('payPeriodTransformOrgChecks');
+      ORG_LIST.forEach(org => {
+        const label = document.createElement('label');
+        label.className = 'check-label';
+        label.innerHTML = `<input type="checkbox" checked data-org="${org}" onchange="togglePayPeriodOrg('${org}', this.checked)"> <span>${org}</span>`;
+        container.appendChild(label);
+      });
+      // Also init product org checks
+      const prodContainer = document.getElementById('productOrgChecks');
+      ORG_LIST.forEach(org => {
+        const label = document.createElement('label');
+        label.className = 'check-label';
+        label.innerHTML = `<input type="checkbox" checked data-org="${org}" onchange="toggleProductOrg('${org}', this.checked)"> <span>${org}</span>`;
+        prodContainer.appendChild(label);
+      });
+    })();
+
+    const payPeriodChart = echarts.init(document.getElementById('payPeriodChart'));
+
+    function getPayPeriodPieOption(type) {
+      const data = type === 'count' ? payPeriodData.count : payPeriodData.premium;
+      if (!data || data.length === 0) {
+        return {
+          title: { text: '暂无交期结构数据', left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } },
+          series: [{ type: 'pie', data: [], radius: ['40%', '70%'], center: ['35%', '50%'] }]
+        };
+      }
+      const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+      return {
+        tooltip: { trigger: 'item', formatter: '{b}: {c}' + (type === 'count' ? '件' : '万') + ' ({d}%)' },
+        series: [{
+          type: 'pie', radius: ['40%', '70%'], center: ['35%', '50%'],
+          data: data,
+          color: colors,
+          label: { formatter: '{b}\n{d}%', fontSize: 11 },
+          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,.2)' } }
+        }]
+      };
+    }
+
+    function applyPayPeriodFallback(year) {
+      payPeriodData.premium = [];
+      payPeriodData.count = [];
+      const chart = payPeriodChart;
+      if (chart) chart.setOption(getPayPeriodPieOption('premium'), true);
+    }
+
+    function renderPayPeriodChart() {
+      const type = payPeriodFilters.currentPieType;
+      payPeriodChart.setOption(getPayPeriodPieOption(type), true);
+    }
+
+    function switchPayPeriodPie(btn, type) {
+      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      payPeriodFilters.currentPieType = type;
+      renderPayPeriodChart();
+    }
+
+    function _buildPeriodMonths() {
+      const dim = payPeriodFilters.timeDim;
+      const sub = payPeriodFilters.subPeriod;
+      if (dim === 'year' || sub === 'all') return null;
+      if (dim === 'quarter') { const q = parseInt(sub.replace('Q','')); return Array.from({length:3},(_,i)=>(q-1)*3+i+1); }
+      return [parseInt(sub)];
+    }
+
+    function buildPayPeriodQuery(year) {
+      const params = new URLSearchParams();
+      const bts = []; if (payPeriodFilters.transform) bts.push('转型'); if (payPeriodFilters.jingdai) bts.push('经代');
+      if (bts.length < 2) params.set('businessTypes', bts.join(','));
+      if (payPeriodFilters.transform) {
+        const chs = Object.entries(payPeriodFilters.channels).filter(([,v])=>v).map(([k])=>k);
+        if (chs.length < 3) params.set('channels', chs.join(','));
+        const orgs = payPeriodFilters.orgs['all'] ? null : Object.entries(payPeriodFilters.orgs).filter(([k,v])=>k!=='all'&&v).map(([k])=>k);
+        if (orgs && orgs.length < ORG_LIST.length) params.set('orgs', orgs.join(','));
+      }
+      if (payPeriodFilters.jingdai && !payPeriodFilters.orgsInitialized === false) {
+        const jdOrgs = Object.entries(payPeriodFilters.jingdaiOrgs).filter(([,v])=>v).map(([k])=>k);
+        if (jdOrgs.length > 0 && jdOrgs.length < Object.keys(payPeriodFilters.jingdaiOrgs).length) params.set('jingdaiOrgs', jdOrgs.join(','));
+      }
+      const months = _buildPeriodMonths(); if (months) params.set('month', months[0]);
+      if (payPeriodFilters.metric !== 'qj') params.set('metric', payPeriodFilters.metric);
+      return `${API_BASE}/api/payment-period/${year}?${params.toString()}`;
+    }
+
+    async function fetchPayPeriodData(year) {
+      try {
+        const url = buildPayPeriodQuery(year);
+        const resp = await fetch(url);
+        if (resp.ok) {
+          const data = await resp.json();
+          payPeriodData.premium = data.premium || [];
+          payPeriodData.count = data.count || [];
+          if (data.jingdai_orgs && data.jingdai_orgs.length > 0) {
+            renderPayPeriodJingdaiOrgs(data.jingdai_orgs);
+          }
+        } else {
+          applyPayPeriodFallback(year);
+        }
+      } catch (e) { applyPayPeriodFallback(year); }
+      renderPayPeriodChart();
+    }
+
+    function refreshPayPeriodChart() { fetchPayPeriodData(payPeriodFilters.year); }
+
+    function togglePayPeriodBiz(type, checked) {
+      payPeriodFilters[type === '转型' ? 'transform' : 'jingdai'] = checked;
+      document.getElementById('payPeriodTransformRow').style.display = payPeriodFilters.transform ? 'flex' : 'none';
+      document.getElementById('payPeriodTransformOrgRow').style.display = payPeriodFilters.transform ? 'flex' : 'none';
+      document.getElementById('payPeriodJingdaiOrgRow').style.display = payPeriodFilters.jingdai ? 'flex' : 'none';
+      refreshPayPeriodChart();
+    }
+
+    function togglePayPeriodChannel(ch, checked) {
+      payPeriodFilters.channels[ch] = checked;
+      refreshPayPeriodChart();
+    }
+
+    function togglePayPeriodOrg(org, checked) {
+      if (org === 'all') {
+        payPeriodFilters.orgs['all'] = checked;
+        ORG_LIST.forEach(o => payPeriodFilters.orgs[o] = checked);
+        document.querySelectorAll('#payPeriodTransformOrgChecks [data-org]:not([data-org="all"])').forEach(cb => cb.checked = checked);
+      } else {
+        payPeriodFilters.orgs[org] = checked;
+        const allChecked = ORG_LIST.every(o => payPeriodFilters.orgs[o]);
+        payPeriodFilters.orgs['all'] = allChecked;
+        const allCb = document.querySelector('#payPeriodTransformOrgChecks [data-org="all"]');
+        if (allCb) allCb.checked = allChecked;
+      }
+      refreshPayPeriodChart();
+    }
+
+    function togglePayPeriodJingdaiOrg(org, checked) {
+      payPeriodFilters.jingdaiOrgs[org] = checked;
+      refreshPayPeriodChart();
+    }
+
+    function switchPayPeriodDim(btn, dim) {
+      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      payPeriodFilters.timeDim = dim;
+      const sub = document.getElementById('payPeriodSubSelect');
+      if (dim === 'year') { sub.style.display = 'none'; payPeriodFilters.subPeriod = 'all'; }
+      else if (dim === 'quarter') {
+        sub.style.display = ''; sub.innerHTML = '<option value="all">全部</option>'+['Q1','Q2','Q3','Q4'].map(q => `<option value="${q}">${q}</option>`).join('');
+        payPeriodFilters.subPeriod = 'all';
+      } else {
+        sub.style.display = ''; sub.innerHTML = '<option value="all">全年</option>'+Array.from({length:12},(_,i)=>`<option value="${i+1}">${i+1}月</option>`).join('');
+        payPeriodFilters.subPeriod = 'all';
+      }
+      refreshPayPeriodChart();
+    }
+
+    function switchPayPeriodSub(value) { payPeriodFilters.subPeriod = value; refreshPayPeriodChart(); }
+    function switchPayPeriodYear(value) { payPeriodFilters.year = value; refreshPayPeriodChart(); }
+
+    function switchPayPeriodMetric(btn, metric) {
+      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      payPeriodFilters.metric = metric;
+      refreshPayPeriodChart();
+    }
+
+    function renderPayPeriodJingdaiOrgs(orgs) {
+      const container = document.getElementById('payPeriodJingdaiOrgChecks');
+      if (!orgs || orgs.length === 0) { container.innerHTML = ''; return; }
+      container.innerHTML = orgs.map(org => {
+        const checked = payPeriodFilters.orgsInitialized ? (payPeriodFilters.jingdaiOrgs[org] !== false) : true;
+        if (!payPeriodFilters.orgsInitialized) payPeriodFilters.jingdaiOrgs[org] = true;
+        return `<label class="check-label"><input type="checkbox" ${checked ? 'checked' : ''} data-org="${org}" onchange="togglePayPeriodJingdaiOrg(this.dataset.org, this.checked)"> <span>${org}</span></label>`;
+      }).join('');
+      payPeriodFilters.orgsInitialized = true;
     }
 
     // ---------- Chart 3: Team Trend ----------
@@ -20579,6 +20929,7 @@
     window.addEventListener('resize', () => {
       platformChart.resize();
       productChart.resize();
+      payPeriodChart.resize();
       teamChart.resize();
     });
 
@@ -20591,6 +20942,7 @@
         productChart.setOption(getPieOption(currentPieType), true);
         teamChart.setOption(getTeamOption(), true);
       }
+      fetchPayPeriodData('2026');
       updateCutoffLabel('2026');
       updateKPICards();
       fetchOrgKpiData(2026);

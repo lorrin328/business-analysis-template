@@ -13,6 +13,7 @@ from api.kpi import router as kpi_router
 from api.org import router as org_router
 from api.product import router as product_router
 from api.targets import router as targets_router
+from api.payment_period import router as payment_period_router
 from api.team import router as team_router
 from api.trend import router as trend_router
 from database import (
@@ -26,6 +27,7 @@ from aggregator import (
     aggregate_product_structure, aggregate_active_headcount,
     aggregate_org_performance, aggregate_org_value,
     aggregate_daily_performance, aggregate_org_daily_performance,
+    aggregate_payment_period, aggregate_jingdai_payment_period,
 )
 
 from validators.data_validator import validate_rows
@@ -57,7 +59,7 @@ if _cors_origins:
 # 初始化数据库
 init_db()
 
-for router in [kpi_router, trend_router, org_router, team_router, product_router, targets_router]:
+for router in [kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router]:
     app.include_router(router)
 
 
@@ -90,6 +92,8 @@ async def upload_files(
     active_rows = []
     org_perf_rows = []
     org_value_rows = []
+    pay_period_rows = []
+    jd_pay_period_rows = []
 
     if performance and performance.filename:
         try:
@@ -101,6 +105,7 @@ async def upload_files(
             product_rows = aggregate_product_structure(df)
             active_rows = aggregate_active_headcount(df)
             org_perf_rows = aggregate_org_performance(df)
+            pay_period_rows = aggregate_payment_period(df)
             validation = validate_rows(perf_rows, required=["year", "month", "channel"], unique_keys=["year", "month", "channel"])
             if not validation.valid:
                 raise ValueError(validation.to_dict())
@@ -114,6 +119,7 @@ async def upload_files(
             df = parse_jingdai_excel(await jingdai.read())
             jd_rows = aggregate_jingdai(df)
             jd_daily_rows = aggregate_jingdai_daily(df)
+            jd_pay_period_rows = aggregate_jingdai_payment_period(df)
             validation = validate_rows(jd_rows, required=["year", "month"], unique_keys=["year", "month"])
             if not validation.valid:
                 raise ValueError(validation.to_dict())
@@ -174,6 +180,7 @@ async def upload_files(
             ('agg_value_data', value_rows),
             ('agg_org_performance', org_perf_rows),
             ('agg_org_value', org_value_rows),
+            ('agg_payment_period', pay_period_rows + jd_pay_period_rows),
         ]
         for table, rows in table_rows:
             for y in sorted({int(r['year']) for r in rows if 'year' in r and r['year']}):
@@ -189,6 +196,7 @@ async def upload_files(
         replace_rows(conn, 'agg_product_structure', product_rows)
         replace_rows(conn, 'agg_org_performance', org_perf_rows)
         replace_rows(conn, 'agg_org_value', org_value_rows)
+        replace_rows(conn, 'agg_payment_period', pay_period_rows + jd_pay_period_rows)
 
         conn.commit()
 
@@ -228,9 +236,12 @@ def get_product(
     jingdaiOrgs: str | None = None,
     includeTransform: bool = True,
     includeJingdai: bool = True,
+    orgs: str | None = None,
+    months: str | None = None,
+    metric: str = "qj",
 ):
     """获取产品结构数据"""
-    return get_product_structure(year, dimension, transformLines, jingdaiOrgs, includeTransform, includeJingdai)
+    return get_product_structure(year, dimension, transformLines, jingdaiOrgs, includeTransform, includeJingdai, orgs, months, metric)
 
 
 @app.get("/api/org-kpi/{year}")

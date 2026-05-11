@@ -18,6 +18,7 @@ AGG_TABLES = [
     'agg_org_daily_performance',
     'agg_org_performance',
     'agg_org_value',
+    'agg_payment_period',
 ]
 
 
@@ -152,6 +153,23 @@ def init_db():
         ''')
 
         c.execute('''
+            CREATE TABLE IF NOT EXISTS agg_payment_period (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                year INTEGER NOT NULL,
+                month INTEGER NOT NULL,
+                business_type TEXT NOT NULL,
+                channel TEXT NOT NULL DEFAULT '',
+                org TEXT NOT NULL DEFAULT '',
+                category TEXT NOT NULL,
+                qj_premium REAL NOT NULL DEFAULT 0,
+                gm_premium REAL NOT NULL DEFAULT 0,
+                count INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(year, month, business_type, channel, org, category)
+            )
+        ''')
+
+        c.execute('''
             CREATE TABLE IF NOT EXISTS agg_daily_performance (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 year INTEGER NOT NULL,
@@ -221,6 +239,7 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_product_year_dimension ON agg_product_structure(year, dimension)',
             'CREATE INDEX IF NOT EXISTS ix_target_values_year_period ON target_values(year, period_type, period_value)',
             'CREATE INDEX IF NOT EXISTS ix_target_values_line_org_metric ON target_values(business_line, org, metric_code)',
+            'CREATE INDEX IF NOT EXISTS ix_pay_period_year_month_type ON agg_payment_period(year, month, business_type)',
         ]:
             c.execute(sql)
 
@@ -523,6 +542,85 @@ def get_org_kpi_data(year: int):
         }
 
 
+def get_payment_period_structure(
+    year: int,
+    month: int | None = None,
+    business_types: list[str] | None = None,
+    channels: list[str] | None = None,
+    orgs: list[str] | None = None,
+    jingdai_orgs: list[str] | None = None,
+    metric: str = 'qj',
+):
+    """获取交期结构数据，按交期分类聚合保费/件数"""
+    init_db()
+    premium_field = 'gm_premium' if metric == 'gm' else 'qj_premium'
+    with get_db() as conn:
+        c = conn.cursor()
+
+        conditions = ['year = ?']
+        params = [year]
+
+        if month is not None:
+            conditions.append('month = ?')
+            params.append(month)
+
+        if business_types:
+            placeholders = ','.join(['?'] * len(business_types))
+            conditions.append(f'business_type IN ({placeholders})')
+            params.extend(business_types)
+
+        if channels:
+            placeholders = ','.join(['?'] * len(channels))
+            conditions.append(f'channel IN ({placeholders})')
+            params.extend(channels)
+
+        if orgs and 'all' not in orgs:
+            placeholders = ','.join(['?'] * len(orgs))
+            conditions.append(f'org IN ({placeholders})')
+            params.extend(orgs)
+
+        if jingdai_orgs and 'all' not in jingdai_orgs:
+            placeholders = ','.join(['?'] * len(jingdai_orgs))
+            conditions.append(f'business_type != \'经代\' OR org IN ({placeholders})')
+            params.extend(jingdai_orgs)
+
+        where = ' AND '.join(conditions) if conditions else '1=1'
+
+        c.execute(f'''
+            SELECT category,
+                   SUM({premium_field}) AS premium_total,
+                   SUM(count) AS count_total
+            FROM agg_payment_period
+            WHERE {where}
+            GROUP BY category
+            ORDER BY premium_total DESC
+        ''', params)
+
+        premium_rows = []
+        count_rows = []
+        for r in c.fetchall():
+            premium_rows.append({'name': r['category'], 'value': round(r['premium_total'] or 0, 2)})
+            count_rows.append({'name': r['category'], 'value': int(r['count_total'] or 0)})
+
+        # 获取经代机构列表
+        jd_orgs = []
+        if business_types is None or '经代' in business_types:
+            c2 = conn.cursor()
+            c2.execute('''
+                SELECT DISTINCT org FROM agg_payment_period
+                WHERE year = ? AND business_type = '经代' AND org != '' AND org != '未知'
+                ORDER BY org
+            ''', (year,))
+            jd_orgs = [r['org'] for r in c2.fetchall()]
+
+        return {
+            'year': year,
+            'premium': premium_rows,
+            'count': count_rows,
+            'jingdai_orgs': jd_orgs,
+        }
+
+
 def _split_csv(value: str | None) -> list[str]:
     if not value:
         return []
@@ -536,9 +634,15 @@ def _query_product_structure_raw(
     jingdai_orgs: list[str],
     include_transform: bool,
     include_jingdai: bool,
+    orgs: list[str] | None = None,
+    months: list[int] | None = None,
+    metric_type: str = 'qj',
 ) -> list[dict]:
     rows: list[dict] = []
     c = conn.cursor()
+
+    perf_premium_col = 'COALESCE("年化规保", COALESCE("规模保费", 0))' if metric_type == 'gm' else 'COALESCE("期交保费", 0)'
+    jd_premium_col = 'COALESCE("承保年化规保", 0)' if metric_type == 'gm' else 'COALESCE("期交保费", 0)'
 
     normalized_transform_lines = set(transform_lines or [])
     raw_transform_lines = set(normalized_transform_lines)
@@ -549,37 +653,54 @@ def _query_product_structure_raw(
 
     raw_transform_line_list = sorted(raw_transform_lines)
     if include_transform and raw_transform_line_list:
+        t_params: list = [year]
+        extra_where = ''
+        if months:
+            m_placeholders = ','.join(['?'] * len(months))
+            extra_where += f' AND CAST(substr("年月", 5, 2) AS INTEGER) IN ({m_placeholders})'
+            t_params.extend(months)
+        if orgs:
+            o_placeholders = ','.join(['?'] * len(orgs))
+            extra_where += f' AND "销售机构名称" IN ({o_placeholders})'
+            t_params.extend(orgs)
         placeholders = ','.join(['?'] * len(raw_transform_line_list))
         c.execute(f'''
             SELECT COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类') AS label,
-                   SUM(COALESCE("期交保费", 0)) / 10000.0 AS premium,
+                   SUM({perf_premium_col}) / 10000.0 AS premium,
                    SUM(COALESCE("承保件数", 1)) AS count
             FROM performance
             WHERE CAST(substr("年月", 1, 4) AS INTEGER) = ?
               AND "业务模式" IN ({placeholders})
+              {extra_where}
             GROUP BY COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类')
-        ''', [year, *raw_transform_line_list])
+        ''', [*t_params, *raw_transform_line_list])
         for row in c.fetchall():
             item = dict(row)
             item['source'] = '转型'
             rows.append(item)
 
     if include_jingdai:
-        params: list = [year]
+        jd_params: list = [year]
+        jd_extra_where = ''
+        if months:
+            m_placeholders = ','.join(['?'] * len(months))
+            jd_extra_where += f' AND CAST(substr("时间", 5, 2) AS INTEGER) IN ({m_placeholders})'
+            jd_params.extend(months)
         org_clause = ''
         if jingdai_orgs:
             placeholders = ','.join(['?'] * len(jingdai_orgs))
             org_clause = f' AND "经代机构" IN ({placeholders})'
-            params.extend(jingdai_orgs)
+            jd_params.extend(jingdai_orgs)
         c.execute(f'''
             SELECT COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类') AS label,
-                   SUM(COALESCE("期交保费", 0)) / 10000.0 AS premium,
+                   SUM({jd_premium_col}) / 10000.0 AS premium,
                    COUNT(*) AS count
             FROM jingdai
             WHERE CAST(substr("时间", 1, 4) AS INTEGER) = ?
+              {jd_extra_where}
               {org_clause}
             GROUP BY COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类')
-        ''', params)
+        ''', jd_params)
         for row in c.fetchall():
             item = dict(row)
             item['source'] = '经代'
@@ -621,17 +742,24 @@ def get_product_structure(
     jingdai_orgs: str | list[str] | None = None,
     include_transform: bool = True,
     include_jingdai: bool = True,
+    orgs: str | list[str] | None = None,
+    months: str | list[int] | None = None,
+    metric_type: str = 'qj',
 ):
     init_db()
     with get_db() as conn:
         transform_list = transform_lines if isinstance(transform_lines, list) else _split_csv(transform_lines)
         jingdai_org_list = jingdai_orgs if isinstance(jingdai_orgs, list) else _split_csv(jingdai_orgs)
+        org_list = orgs if isinstance(orgs, list) else _split_csv(orgs) if isinstance(orgs, str) else None
+        month_list = months if isinstance(months, list) else [int(m.strip()) for m in months.split(',') if m.strip().isdigit()] if isinstance(months, str) else None
         if not transform_list:
             transform_list = ['OTO', '证保', '蚁桥']
 
         if dimension == 'product_mix':
             rows = _query_product_structure_raw(
-                conn, year, transform_list, jingdai_org_list, include_transform, include_jingdai
+                conn, year, transform_list, jingdai_org_list,
+                include_transform, include_jingdai,
+                orgs=org_list, months=month_list, metric_type=metric_type,
             )
             return {
                 'year': year,

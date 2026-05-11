@@ -6,6 +6,7 @@ from aggregator import (
     aggregate_product_structure, aggregate_active_headcount,
     aggregate_daily_performance, aggregate_org_daily_performance,
     aggregate_org_performance, aggregate_org_value,
+    aggregate_payment_period, aggregate_jingdai_payment_period,
 )
 from database import clear_year_data, get_db, init_db, replace_rows
 
@@ -29,6 +30,7 @@ def main():
     perf_rows, daily_rows, org_daily_rows = [], [], []
     product_rows, value_rows, org_value_rows = [], [], []
     hr_rows, jd_rows, jd_daily_rows, active_rows, org_perf_rows = [], [], [], [], []
+    pay_period_rows, jd_pay_period_rows = [], []
 
     if performance_file:
         df = parse_performance_excel(performance_file.read_bytes())
@@ -38,16 +40,20 @@ def main():
         product_rows = aggregate_product_structure(df)
         active_rows = aggregate_active_headcount(df)
         org_perf_rows = aggregate_org_performance(df)
+        pay_period_rows = aggregate_payment_period(df)
         print(
             f'performance: {performance_file.name} -> {len(perf_rows)} monthly, '
-            f'{len(daily_rows)} daily, {len(org_perf_rows)} org rows'
+            f'{len(daily_rows)} daily, {len(org_perf_rows)} org rows, '
+            f'{len(pay_period_rows)} pay period rows'
         )
 
     if jingdai_file:
         df = parse_jingdai_excel(jingdai_file.read_bytes())
         jd_rows = aggregate_jingdai(df)
         jd_daily_rows = aggregate_jingdai_daily(df)
-        print(f'jingdai: {jingdai_file.name} -> {len(jd_rows)} monthly, {len(jd_daily_rows)} daily')
+        jd_pay_period_rows = aggregate_jingdai_payment_period(df)
+        print(f'jingdai: {jingdai_file.name} -> {len(jd_rows)} monthly, {len(jd_daily_rows)} daily, '
+              f'{len(jd_pay_period_rows)} pay period rows')
 
     if hr_file:
         df = parse_hr_excel(hr_file.read_bytes())
@@ -73,6 +79,7 @@ def main():
         for rows in [
             perf_rows, daily_rows, org_daily_rows, product_rows,
             value_rows, org_value_rows, hr_rows, jd_rows, jd_daily_rows, org_perf_rows,
+            pay_period_rows, jd_pay_period_rows,
         ]
         for row in rows
         if row.get('year')
@@ -92,6 +99,7 @@ def main():
         replace_rows(conn, 'agg_org_value', org_value_rows)
         replace_rows(conn, 'agg_product_structure', product_rows)
         replace_rows(conn, 'agg_org_performance', org_perf_rows)
+        replace_rows(conn, 'agg_payment_period', pay_period_rows + jd_pay_period_rows)
         conn.commit()
 
     print(f'loaded years: {years}')
