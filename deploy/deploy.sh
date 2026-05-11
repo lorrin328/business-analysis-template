@@ -35,10 +35,25 @@ python3 -m venv "$APP_DIR/backend/venv"
 cd "$APP_DIR/backend"
 "$APP_DIR/backend/venv/bin/python" -c "from database import init_db; init_db()"
 
+# 重建数据库（如果存在 Excel 文件）
+EXCEL_COUNT=$(find "$APP_DIR" -maxdepth 1 -name "*.xlsx" 2>/dev/null | wc -l)
+if [ "$EXCEL_COUNT" -ge 3 ]; then
+  echo "检测到 $EXCEL_COUNT 个 Excel 文件，正在重建数据库..."
+  "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_from_excels.py" || echo "⚠ 数据库重建失败，请手动运行 rebuild_from_excels.py"
+else
+  echo "⚠ 未检测到足够 Excel 文件（需 ≥3），跳过数据库重建"
+  echo "  请上传 Excel 后通过 Web 界面导入，或手动运行 rebuild_from_excels.py"
+fi
+
 cp "$APP_DIR/deploy/systemd.service" "/etc/systemd/system/${SERVICE_NAME}.service"
 cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/business-analysis
 ln -sf /etc/nginx/sites-available/business-analysis /etc/nginx/sites-enabled/business-analysis
 rm -f /etc/nginx/sites-enabled/default
+
+# 验证 nginx 配置（client_max_body_size 必须包含）
+if ! grep -q "client_max_body_size" /etc/nginx/sites-available/business-analysis; then
+  echo "⚠ 警告：nginx 配置缺少 client_max_body_size，大文件上传将被拒绝（413 错误）"
+fi
 
 mkdir -p "$APP_DIR/backend/logs"
 chown -R "$RUN_USER:$RUN_USER" "$APP_DIR"
@@ -46,7 +61,11 @@ chown -R "$RUN_USER:$RUN_USER" "$APP_DIR"
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
-nginx -t
-systemctl restart nginx
+nginx -t && systemctl restart nginx
 
-echo "部署完成：请访问 http://<服务器IP>/"
+echo ""
+echo "============================================"
+echo "  部署完成"
+echo "  访问地址: http://<服务器IP>/"
+echo "  版本: $(grep -oP 'v\d+\.\d+\.\d+' "$APP_DIR/经营分析模板.html" | head -1)"
+echo "============================================"
