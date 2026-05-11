@@ -14,6 +14,8 @@ from validators.data_validator import validate_rows
 from validators.org_validator import org_scope_note
 from db import get_platform_data
 from db import get_product_structure, get_jingdai_orgs
+from db.repositories.payment import get_payment_period_structure
+from etl.aggregates.payment import aggregate_payment_period, aggregate_jingdai_payment_period
 
 
 JINGDAI = JINGDAI_LINE
@@ -179,7 +181,7 @@ def test_jingdai_daily_not_doubled_when_daily_contains_jingdai():
     assert result["jingdaiDeduped"] is True
 
 
-def test_platform_trend_jingdai_quarter_has_current_and_prev_year():
+def test_platform_trend_jingdai_quarter_has_current_and_prev_year(monkeypatch):
     """2026年Q2经代季度趋势有当年线和去年同期线"""
     data_2026 = {
         "performance": [],
@@ -191,7 +193,7 @@ def test_platform_trend_jingdai_quarter_has_current_and_prev_year():
         "daily_performance": [],
         "jingdai_daily": [],
     }
-    # Simulate loading of both years
+    monkeypatch.setattr("services.query_service.get_platform_data", lambda year: data_2026)
     result = get_platform_trend(
         2026, channels=[JINGDAI], metric="qj", period_type="quarter",
     )
@@ -371,7 +373,7 @@ def test_get_platform_trend_quarter_no_period_value_omits_daily(monkeypatch):
 
 def test_aggregate_jingdai_daily_date_candidates():
     """经代日聚合：支持承保日期、出单日期、生效日期等时间列"""
-    from backend.aggregator import _pick_col, _period_year_month, _amount_to_wan
+    from etl.columns import _pick_col
     import pandas as pd
 
     # Test: 承保日期 as time column
@@ -399,7 +401,7 @@ def test_aggregate_jingdai_daily_date_candidates():
 
 def test_aggregate_jingdai_daily_outputs_ymd():
     """经代日聚合：输出包含 ymd 字段"""
-    from backend.aggregator import aggregate_jingdai_daily
+    from etl.aggregates.jingdai import aggregate_jingdai_daily
     import pandas as pd
 
     df = pd.DataFrame([
@@ -415,6 +417,61 @@ def test_aggregate_jingdai_daily_outputs_ymd():
         assert row["month"] == 4
     assert rows[0]["ymd"] == "2026-04-01"
     assert rows[1]["ymd"] == "2026-04-02"
+
+
+def test_payment_period_aggregates_classify_transform_and_jingdai():
+    """交期结构聚合：转型和经代均能生成分类数据。"""
+    import pandas as pd
+
+    transform = pd.DataFrame([
+        {"年": 2026, "年月": "202605", "业务模式": "OTO", "销售机构名称": "上海", "期交保费": 10000, "年化规保": 12000, "承保件数": 1, "长短险": "长期", "缴费年限": 10},
+        {"年": 2026, "年月": "202605", "业务模式": "证券", "销售机构名称": "北京", "期交保费": 5000, "年化规保": 6000, "承保件数": 2, "长短险": "短期", "缴费年限": 1},
+    ])
+    transform_rows = aggregate_payment_period(transform)
+    assert {row["category"] for row in transform_rows} == {"10年及以上", "短期险"}
+    assert {row["channel"] for row in transform_rows} == {"OTO", "证保"}
+
+    jingdai = pd.DataFrame([
+        {"时间": "2026-05-01", "当前缴别大类": "趸交", "缴费年限": 0, "经代机构": "支付宝", "承保年化规保": 20000, "期交保费": 10000},
+        {"时间": "2026-05-02", "当前缴别大类": "期交", "缴费年限": 5, "经代机构": "支付宝", "承保年化规保": 30000, "期交保费": 15000},
+    ])
+    jingdai_rows = aggregate_jingdai_payment_period(jingdai)
+    assert {row["category"] for row in jingdai_rows} == {"趸交", "5年交"}
+
+
+def test_payment_period_query_accepts_multiple_months(monkeypatch):
+    """交期结构查询：季度模式可以按完整月份列表汇总。"""
+    import sqlite3
+    from contextlib import contextmanager
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("""
+        CREATE TABLE agg_payment_period (
+            year INTEGER, month INTEGER, business_type TEXT, channel TEXT, org TEXT,
+            category TEXT, qj_premium REAL, gm_premium REAL, count INTEGER
+        )
+    """)
+    conn.executemany(
+        "INSERT INTO agg_payment_period VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (2026, 4, "转型", "OTO", "上海", "10年及以上", 10, 12, 1),
+            (2026, 5, "转型", "OTO", "上海", "10年及以上", 20, 24, 2),
+            (2026, 6, "转型", "OTO", "上海", "5年交", 30, 36, 3),
+            (2026, 7, "转型", "OTO", "上海", "5年交", 999, 999, 9),
+        ],
+    )
+
+    @contextmanager
+    def fake_db():
+        yield conn
+
+    monkeypatch.setattr("db.repositories.payment.init_db", lambda: None)
+    monkeypatch.setattr("db.repositories.payment.get_db", fake_db)
+
+    result = get_payment_period_structure(2026, months=[4, 5, 6])
+    premium = {row["name"]: row["value"] for row in result["premium"]}
+    assert premium == {"5年交": 30, "10年及以上": 30}
 
 
 def test_get_platform_data_includes_year_and_ymd_in_jingdai_daily():

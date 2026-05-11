@@ -20531,11 +20531,13 @@
         const orgs = payPeriodFilters.orgs['all'] ? null : Object.entries(payPeriodFilters.orgs).filter(([k,v])=>k!=='all'&&v).map(([k])=>k);
         if (orgs && orgs.length < ORG_LIST.length) params.set('orgs', orgs.join(','));
       }
-      if (payPeriodFilters.jingdai && !payPeriodFilters.orgsInitialized === false) {
+      if (payPeriodFilters.jingdai && payPeriodFilters.orgsInitialized) {
         const jdOrgs = Object.entries(payPeriodFilters.jingdaiOrgs).filter(([,v])=>v).map(([k])=>k);
         if (jdOrgs.length > 0 && jdOrgs.length < Object.keys(payPeriodFilters.jingdaiOrgs).length) params.set('jingdaiOrgs', jdOrgs.join(','));
       }
-      const months = _buildPeriodMonths(); if (months) params.set('month', months[0]);
+      const months = _buildPeriodMonths();
+      if (months && months.length === 1) params.set('month', months[0]);
+      else if (months && months.length > 1) params.set('months', months.join(','));
       if (payPeriodFilters.metric !== 'qj') params.set('metric', payPeriodFilters.metric);
       return `${API_BASE}/api/payment-period/${year}?${params.toString()}`;
     }

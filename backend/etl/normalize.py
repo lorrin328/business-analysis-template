@@ -16,7 +16,22 @@ def _normalize_channel(value) -> str:
 
 
 def _year_month_day_from_series(series: pd.Series):
-    dt = pd.to_datetime(series, errors='coerce')
+    text = series.astype(str).str.strip()
+    digit_text = text.where(text.str.fullmatch(r'\d+'), '')
+    dt = pd.to_datetime(series.mask(digit_text != ''), errors='coerce')
+
+    # pandas treats bare numbers like 5 or 202605 as nanoseconds after epoch.
+    # In these Excel files they mean month or YYYYMM, so parse them explicitly.
+    short_number = digit_text.str.fullmatch(r'\d{1,2}', na=False)
+    dt = dt.mask(short_number)
+
+    yyyymm = digit_text.str.fullmatch(r'\d{6}', na=False)
+    if yyyymm.any():
+        dt = dt.mask(yyyymm, pd.to_datetime(text.where(yyyymm), format='%Y%m', errors='coerce'))
+
+    yyyymmdd = digit_text.str.fullmatch(r'\d{8}', na=False)
+    if yyyymmdd.any():
+        dt = dt.mask(yyyymmdd, pd.to_datetime(text.where(yyyymmdd), format='%Y%m%d', errors='coerce'))
     return dt.dt.year, dt.dt.month, dt.dt.day
 
 

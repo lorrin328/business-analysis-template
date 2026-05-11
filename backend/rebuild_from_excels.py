@@ -31,9 +31,11 @@ def main():
     product_rows, value_rows, org_value_rows = [], [], []
     hr_rows, jd_rows, jd_daily_rows, active_rows, org_perf_rows = [], [], [], [], []
     pay_period_rows, jd_pay_period_rows = [], []
+    raw_tables = {}
 
     if performance_file:
         df = parse_performance_excel(performance_file.read_bytes())
+        raw_tables['performance'] = df
         perf_rows = aggregate_performance(df)
         daily_rows = aggregate_daily_performance(df)
         org_daily_rows = aggregate_org_daily_performance(df)
@@ -49,6 +51,7 @@ def main():
 
     if jingdai_file:
         df = parse_jingdai_excel(jingdai_file.read_bytes())
+        raw_tables['jingdai'] = df
         jd_rows = aggregate_jingdai(df)
         jd_daily_rows = aggregate_jingdai_daily(df)
         jd_pay_period_rows = aggregate_jingdai_payment_period(df)
@@ -57,11 +60,13 @@ def main():
 
     if hr_file:
         df = parse_hr_excel(hr_file.read_bytes())
+        raw_tables['hr_data'] = df
         hr_rows = aggregate_hr(df)
         print(f'hr: {hr_file.name} -> {len(hr_rows)} rows')
 
     if value_file:
         df = parse_value_excel(value_file.read_bytes())
+        raw_tables['value_data'] = df
         value_rows = aggregate_value(df)
         org_value_rows = aggregate_org_value(df)
         print(f'value: {value_file.name} -> {len(value_rows)} rows, {len(org_value_rows)} org rows')
@@ -100,6 +105,8 @@ def main():
         replace_rows(conn, 'agg_product_structure', product_rows)
         replace_rows(conn, 'agg_org_performance', org_perf_rows)
         replace_rows(conn, 'agg_payment_period', pay_period_rows + jd_pay_period_rows)
+        for table, df in raw_tables.items():
+            df.to_sql(table, conn, if_exists='replace', index=False)
         conn.commit()
 
     print(f'loaded years: {years}')

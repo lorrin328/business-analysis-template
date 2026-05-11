@@ -124,6 +124,7 @@ async def upload_files(
     org_value_rows = []
     pay_period_rows = []
     jd_pay_period_rows = []
+    raw_tables = {}
 
     if performance and performance.filename:
         try:
@@ -132,6 +133,7 @@ async def upload_files(
             file_hashes[performance.filename] = h
             file_sizes[performance.filename] = len(perf_bytes)
             df = parse_performance_excel(perf_bytes)
+            raw_tables['performance'] = df
             perf_rows = aggregate_performance(df)
             daily_rows = aggregate_daily_performance(df)
             org_daily_rows = aggregate_org_daily_performance(df)
@@ -154,6 +156,7 @@ async def upload_files(
             file_hashes[jingdai.filename] = h
             file_sizes[jingdai.filename] = len(jd_bytes)
             df = parse_jingdai_excel(jd_bytes)
+            raw_tables['jingdai'] = df
             jd_rows = aggregate_jingdai(df)
             jd_daily_rows = aggregate_jingdai_daily(df)
             jd_pay_period_rows = aggregate_jingdai_payment_period(df)
@@ -172,6 +175,7 @@ async def upload_files(
             file_hashes[hr.filename] = h
             file_sizes[hr.filename] = len(hr_bytes)
             df = parse_hr_excel(hr_bytes)
+            raw_tables['hr_data'] = df
             hr_rows = aggregate_hr(df)
             results["uploaded"].append(f"人力数据: {len(hr_rows)}条")
         except Exception as e:
@@ -185,6 +189,7 @@ async def upload_files(
             file_hashes[value.filename] = h
             file_sizes[value.filename] = len(val_bytes)
             df = parse_value_excel(val_bytes)
+            raw_tables['value_data'] = df
             value_rows = aggregate_value(df)
             org_value_rows = aggregate_org_value(df)
             results["uploaded"].append(f"价值数据: {len(value_rows)}条")
@@ -231,6 +236,9 @@ async def upload_files(
                 if rows:
                     replace_rows_incremental(conn, table, rows)
                     table_row_counts[table] = len(rows)
+            for table, df in raw_tables.items():
+                df.to_sql(table, conn, if_exists='replace', index=False)
+                table_row_counts[table] = len(df)
 
             # 检查各文件哈希是否可跳过
             for fname, h in file_hashes.items():

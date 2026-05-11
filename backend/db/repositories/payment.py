@@ -8,6 +8,7 @@ from db.schema import init_db
 def get_payment_period_structure(
     year: int,
     month: int | None = None,
+    months: list[int] | None = None,
     business_types: list[str] | None = None,
     channels: list[str] | None = None,
     orgs: list[str] | None = None,
@@ -23,7 +24,12 @@ def get_payment_period_structure(
         conditions = ['year = ?']
         params = [year]
 
-        if month is not None:
+        month_list = [int(m) for m in (months or []) if 1 <= int(m) <= 12]
+        if month_list:
+            placeholders = ','.join(['?'] * len(month_list))
+            conditions.append(f'month IN ({placeholders})')
+            params.extend(month_list)
+        elif month is not None:
             conditions.append('month = ?')
             params.append(month)
 

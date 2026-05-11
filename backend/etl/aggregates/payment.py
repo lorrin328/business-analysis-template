@@ -9,6 +9,7 @@ from etl.normalize import (
     _period_year_month, _fee_weight,
 )
 from etl.columns import _pick_col
+from etl.classify import _classify_payment_period, _classify_jingdai_payment_period
 
 CHANNEL_MAP = {'证券': '证保', '网服': '蚁桥'}
 TRANSFORM_CHANNELS = {'OTO', '证保', '蚁桥'}
