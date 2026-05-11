@@ -1,0 +1,22 @@
+[Unit]
+Description=GitHub Webhook Auto-Deploy for Business Analysis
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/business-analysis/deploy
+Environment="WEBHOOK_HOST=127.0.0.1"
+Environment="WEBHOOK_PORT=9000"
+EnvironmentFile=-/opt/business-analysis/deploy/.webhook_env
+ExecStart=/opt/business-analysis/backend/venv/bin/python /opt/business-analysis/deploy/webhook.py
+Restart=always
+RestartSec=10
+
+# 允许 sudo 执行 deploy.sh（需配合 sudoers）
+# /etc/sudoers.d/webhook-deploy:
+#   www-data ALL=(ALL) NOPASSWD: /usr/bin/env bash /opt/business-analysis/deploy/deploy.sh
+
+[Install]
+WantedBy=multi-user.target

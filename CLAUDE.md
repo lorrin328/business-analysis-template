@@ -105,6 +105,59 @@ sudo nginx -t && sudo systemctl reload nginx
 | `N1AI-人力基表_*.xlsx` | 人力数据（在职/举绩） | ~1.2MB |
 | `AI-经营分析价值基表_*.xlsx` | 价值保费数据 | ~12KB |
 
+## 自动部署（GitHub Webhook）
+
+### 首次配置（服务器上执行一次）
+
+```bash
+# 1. 设置 webhook 密钥（替换为随机字符串）
+sudo mkdir -p /opt/business-analysis/deploy
+echo "WEBHOOK_SECRET=your_random_secret_here" | sudo tee /opt/business-analysis/deploy/.webhook_env
+sudo chmod 600 /opt/business-analysis/deploy/.webhook_env
+
+# 2. 允许 www-data 免密执行 deploy.sh
+echo "www-data ALL=(ALL) NOPASSWD: /usr/bin/env bash /opt/business-analysis/deploy/deploy.sh" | sudo tee /etc/sudoers.d/webhook-deploy
+sudo chmod 440 /etc/sudoers.d/webhook-deploy
+
+# 3. 安装并启动 webhook 服务
+sudo cp /opt/business-analysis/deploy/webhook.service /etc/systemd/system/webhook-deploy.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now webhook-deploy
+
+# 4. 重载 nginx（nginx.conf 已包含 /webhook/deploy 代理配置）
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### GitHub 仓库配置
+
+1. 打开 GitHub 仓库 → Settings → Webhooks → Add webhook
+2. **Payload URL**: `http://<服务器公网IP>/webhook/deploy`
+3. **Content type**: `application/json`
+4. **Secret**: 与服务器 `.webhook_env` 中的 `WEBHOOK_SECRET` 一致
+5. **Events**: 选择 `Just the push event`
+6. 点击 Add webhook，GitHub 会发送 ping 验证
+
+### 验证
+
+```bash
+# 检查 webhook 服务状态
+sudo systemctl status webhook-deploy
+
+# 查看 webhook 日志
+sudo journalctl -u webhook-deploy -f
+
+# 手动测试（服务器上）
+curl -X POST http://127.0.0.1:9000 -H "X-GitHub-Event: ping"
+```
+
+### 工作流程
+
+1. 本地 `git push` 到 GitHub master 分支
+2. GitHub 发送 webhook POST 到 `http://<server>/webhook/deploy`
+3. nginx 代理到 `127.0.0.1:9000`（webhook.py）
+4. webhook.py 验证签名后执行 `sudo bash deploy/deploy.sh`
+5. 部署日志输出到 `journalctl -u webhook-deploy`
+
 ## 版本
 
 当前版本见 `经营分析模板.html` 顶部 tag 标签。

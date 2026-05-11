@@ -55,6 +55,23 @@ if ! grep -q "client_max_body_size" /etc/nginx/sites-available/business-analysis
   echo "⚠ 警告：nginx 配置缺少 client_max_body_size，大文件上传将被拒绝（413 错误）"
 fi
 
+# 自动部署 Webhook（首次安装，后续更新保留配置）
+cp "$APP_DIR/deploy/webhook.py" "$APP_DIR/deploy/webhook.py"
+if [ ! -f /etc/systemd/system/webhook-deploy.service ]; then
+  cp "$APP_DIR/deploy/webhook.service" /etc/systemd/system/webhook-deploy.service
+  systemctl daemon-reload
+  systemctl enable webhook-deploy
+fi
+if [ ! -f /etc/sudoers.d/webhook-deploy ]; then
+  echo "$RUN_USER ALL=(ALL) NOPASSWD: /usr/bin/env bash $APP_DIR/deploy/deploy.sh" > /etc/sudoers.d/webhook-deploy
+  chmod 440 /etc/sudoers.d/webhook-deploy
+fi
+if [ ! -f "$APP_DIR/deploy/.webhook_env" ]; then
+  echo "⚠ 未配置 webhook 密钥，自动部署功能不可用"
+  echo "  请执行: echo 'WEBHOOK_SECRET=你的密钥' > $APP_DIR/deploy/.webhook_env"
+fi
+systemctl restart webhook-deploy 2>/dev/null || echo "⚠ webhook-deploy 服务未启动，请手动配置 webhook 密钥后启动"
+
 mkdir -p "$APP_DIR/backend/logs"
 chown -R "$RUN_USER:$RUN_USER" "$APP_DIR"
 
@@ -68,4 +85,10 @@ echo "============================================"
 echo "  部署完成"
 echo "  访问地址: http://<服务器IP>/"
 echo "  版本: $(grep -oP 'v\d+\.\d+\.\d+' "$APP_DIR/经营分析模板.html" | head -1)"
+echo ""
+echo "  自动部署:"
+echo "    1. 在 GitHub Settings → Webhooks 添加:"
+echo "       URL: http://<服务器IP>/webhook/deploy"
+echo "       Secret: 与服务器 $APP_DIR/deploy/.webhook_env 一致"
+echo "    2. 验证: systemctl status webhook-deploy"
 echo "============================================"
