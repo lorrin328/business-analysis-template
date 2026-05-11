@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.65</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.66</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -2017,6 +2017,7 @@
         group.forEach(r => displayRows.push(r));
         // 机构小计（仅当有多个业务模式时）
         if (group.length > 1) {
+          const periodIdx = dim === 'month' ? mIdx : qIdx;
           const sum = {
             org, channel: '小计', isSubtotal: true,
             qjTarget: 0, qjActual: 0, qjRate: null, qjYoy: null,
@@ -2026,6 +2027,7 @@
             protectionTarget: 0, protectionActual: 0, protectionRate: null,
           };
           let qjHasTarget = false, valueHasTarget = false;
+          let qjPrevSum = 0, valuePrevSum = 0;
           group.forEach(r => {
             sum.qjActual += r.qjActual;
             sum.valueActual += r.valueActual;
@@ -2037,17 +2039,22 @@
             if (r.p10Target > 0) sum.p10Target += r.p10Target;
             if (r.annuityTarget > 0) sum.annuityTarget += r.annuityTarget;
             if (r.protectionTarget > 0) sum.protectionTarget += r.protectionTarget;
+            qjPrevSum += getOrgPrevActual(org, r.channel, 'qj', dim, periodIdx);
+            valuePrevSum += getOrgPrevActual(org, r.channel, 'value', dim, periodIdx);
           });
           sum.qjRate = qjHasTarget ? calcOrgRate(sum.qjActual, sum.qjTarget) : null;
           sum.valueRate = valueHasTarget ? calcOrgRate(sum.valueActual, sum.valueTarget) : null;
           sum.p10Rate = sum.p10Target > 0 ? calcOrgRate(sum.p10Actual, sum.p10Target) : null;
           sum.annuityRate = sum.annuityTarget > 0 ? calcOrgRate(sum.annuityActual, sum.annuityTarget) : null;
           sum.protectionRate = sum.protectionTarget > 0 ? calcOrgRate(sum.protectionActual, sum.protectionTarget) : null;
+          sum.qjYoy = calcOrgYoy(sum.qjActual, qjPrevSum);
+          sum.valueYoy = calcOrgYoy(sum.valueActual, valuePrevSum);
           displayRows.push(sum);
         }
       });
 
       // 总计行
+      const totalPeriodIdx = dim === 'month' ? mIdx : qIdx;
       const totalRow = {
         org: '合计', channel: '', isTotal: true,
         qjTarget: 0, qjActual: 0, qjRate: null, qjYoy: null,
@@ -2057,6 +2064,7 @@
         protectionTarget: 0, protectionActual: 0, protectionRate: null,
       };
       let totalQjHasTarget = false, totalValueHasTarget = false;
+      let totalQjPrev = 0, totalValuePrev = 0;
       displayRows.filter(r => !r.isSubtotal && !r.isTotal).forEach(r => {
         totalRow.qjActual += r.qjActual;
         totalRow.valueActual += r.valueActual;
@@ -2068,12 +2076,16 @@
         if (r.p10Target > 0) totalRow.p10Target += r.p10Target;
         if (r.annuityTarget > 0) totalRow.annuityTarget += r.annuityTarget;
         if (r.protectionTarget > 0) totalRow.protectionTarget += r.protectionTarget;
+        totalQjPrev += getOrgPrevActual(r.org, r.channel, 'qj', dim, totalPeriodIdx);
+        totalValuePrev += getOrgPrevActual(r.org, r.channel, 'value', dim, totalPeriodIdx);
       });
       totalRow.qjRate = totalQjHasTarget ? calcOrgRate(totalRow.qjActual, totalRow.qjTarget) : null;
       totalRow.valueRate = totalValueHasTarget ? calcOrgRate(totalRow.valueActual, totalRow.valueTarget) : null;
       totalRow.p10Rate = totalRow.p10Target > 0 ? calcOrgRate(totalRow.p10Actual, totalRow.p10Target) : null;
       totalRow.annuityRate = totalRow.annuityTarget > 0 ? calcOrgRate(totalRow.annuityActual, totalRow.annuityTarget) : null;
       totalRow.protectionRate = totalRow.protectionTarget > 0 ? calcOrgRate(totalRow.protectionActual, totalRow.protectionTarget) : null;
+      totalRow.qjYoy = calcOrgYoy(totalRow.qjActual, totalQjPrev);
+      totalRow.valueYoy = calcOrgYoy(totalRow.valueActual, totalValuePrev);
 
       // 渲染表格
       const periodLabel = dim === 'year' ? '年度' : dim === 'quarter' ? `Q${qIdx+1}` : `${mIdx+1}月`;
