@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.62</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.63</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -20515,6 +20515,18 @@
           method: 'POST',
           body: fd
         });
+        if (resp.status === 413) {
+          _setAllInfos('✗ 文件过大，需调整 nginx client_max_body_size（参考 deploy/nginx.conf）');
+          _resetAllCards();
+          _uploading = false;
+          return;
+        }
+        if (!resp.ok) {
+          _setAllInfos(`✗ 服务器错误 (${resp.status})，请检查后端日志`);
+          _resetAllCards();
+          _uploading = false;
+          return;
+        }
         const result = await resp.json();
         if (result.errors && result.errors.length > 0) {
           _setAllInfos(`✗ 错误: ${result.errors.join('; ')}`);
