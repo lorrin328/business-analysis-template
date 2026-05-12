@@ -86,18 +86,14 @@ def get_kpi_data(year: int):
     with get_db() as conn:
         c = conn.cursor()
 
-        # 确定当年最新数据月（跨 performance 和 hr 两张表）
-        c.execute('''
-            SELECT MAX(m) FROM (
-                SELECT MAX(month) AS m FROM agg_performance WHERE year = ?
-                UNION ALL
-                SELECT MAX(month) AS m FROM agg_hr_data WHERE year = ?
-            )
-        ''', (year, year))
-        latest = c.fetchone()[0]
-        query_month = latest if latest else 1
+        # 两表各自最大月，取较小者确保数据齐备
+        c.execute('SELECT MAX(month) FROM agg_performance WHERE year = ?', (year,))
+        perf_max = c.fetchone()[0] or 1
+        c.execute('SELECT MAX(month) FROM agg_hr_data WHERE year = ?', (year,))
+        hr_max = c.fetchone()[0] or 1
+        query_month = min(perf_max, hr_max)
 
-        # YTD 保费（截至统计月）
+        # YTD 保费
         c.execute('''
             SELECT channel, SUM(qj_premium) AS total
             FROM agg_performance WHERE year = ? AND month <= ? GROUP BY channel
@@ -109,7 +105,7 @@ def get_kpi_data(year: int):
         ''', (year, query_month))
         jingdai_qj = c.fetchone()['total'] or 0
 
-        # HR：单月值（活动率用）+ YTD 累计（人均保费用）
+        # HR
         c.execute('''
             SELECT channel, month, start_headcount, end_headcount, active_headcount
             FROM agg_hr_data WHERE year = ? AND month <= ?
@@ -137,14 +133,13 @@ def get_kpi_data(year: int):
             if info['months'] > 1:
                 info['avg_sum'] = round(info['avg_sum'], 2)
 
-        # 去年同期（YTD + 单月）
+        # 去年同期
         c.execute('''
             SELECT channel, month, start_headcount, end_headcount, active_headcount
             FROM agg_hr_data WHERE year = ? AND month <= ?
             ORDER BY channel, month
         ''', (year - 1, query_month))
-        hr_prev = {}
-        hr_prev_latest = {}
+        hr_prev = {}; hr_prev_latest = {}
         for r in c.fetchall():
             ch = r['channel']
             avg_hc = ((r['start_headcount'] or 0) + (r['end_headcount'] or 0)) / 2.0
@@ -153,56 +148,63 @@ def get_kpi_data(year: int):
             info['months'] += 1
             if r['month'] == query_month:
                 hr_prev_latest[ch] = {
-                    'start': r['start_headcount'] or 0,
-                    'end': r['end_headcount'] or 0,
-                    'active': r['active_headcount'] or 0,
-                    'avg': avg_hc,
+                    'start': r['start_headcount'] or 0, 'end': r['end_headcount'] or 0,
+                    'active': r['active_headcount'] or 0, 'avg': avg_hc,
                 }
         for ch, info in hr_prev.items():
             info.update(hr_prev_latest.get(ch, {}))
-            if not info.get('avg'):
-                info['avg'] = 0
-            if info['months'] > 1:
-                info['avg_sum'] = round(info['avg_sum'], 2)
+            if not info.get('avg'): info['avg'] = 0
 
-        # 长险期交保费（YTD）
+        # 长险期交（YTD）
         c.execute('''
             SELECT business_type, channel, SUM(qj_premium) AS total
             FROM agg_longterm_qj WHERE year = ? AND month <= ? GROUP BY business_type, channel
         ''', (year, query_month))
-        lt_qj = {}
+        lt_qj = {}; lt_tf = 0.0; lt_jd = 0.0
         for r in c.fetchall():
+            v = round(r['total'] or 0, 2)
             key = f"{r['business_type']}|{r['channel']}" if r['channel'] else r['business_type']
-            lt_qj[key] = round(r['total'] or 0, 2)
-        lt_total = sum(lt_qj.values())
+            lt_qj[key] = v
+            if r['business_type'] == '转型': lt_tf += v
+            else: lt_jd += v
+        lt_total = lt_tf + lt_jd
 
-        # 去年长险期交（YTD，同口径）
         c.execute('''
             SELECT business_type, channel, SUM(qj_premium) AS total
             FROM agg_longterm_qj WHERE year = ? AND month <= ? GROUP BY business_type, channel
         ''', (year - 1, query_month))
-        lt_qj_prev = {}
+        lt_qj_prev = {}; lt_tf_prev = 0.0; lt_jd_prev = 0.0
         for r in c.fetchall():
-            key = f"{r['business_type']}|{r['channel']}" if r['channel'] else r['business_type']
-            lt_qj_prev[key] = round(r['total'] or 0, 2)
-        lt_total_prev = sum(lt_qj_prev.values())
+            v = round(r['total'] or 0, 2)
+            lt_qj_prev[f"{r['business_type']}|{r['channel']}" if r['channel'] else r['business_type']] = v
+            if r['business_type'] == '转型': lt_tf_prev += v
+            else: lt_jd_prev += v
+        lt_total_prev = lt_tf_prev + lt_jd_prev
 
+        # 价值（YTD）
         c.execute('''
             SELECT channel, SUM(value_premium) AS total
-            FROM agg_value_data WHERE year = ? GROUP BY channel
-        ''', (year,))
+            FROM agg_value_data WHERE year = ? AND month <= ? GROUP BY channel
+        ''', (year, query_month))
         value = {r['channel']: r['total'] or 0 for r in c.fetchall()}
 
-        # 商保年金 / 10年期产品（YTD，从机构业绩表聚合）
+        # 商保年金 / 10年期 — 转型部分
         c.execute('''
             SELECT channel, SUM(product_annuity) AS a, SUM(product_10year) AS t
             FROM agg_org_performance WHERE year = ? AND month <= ? GROUP BY channel
         ''', (year, query_month))
-        annuity_total = 0.0
-        tenyear_total = 0.0
-        for r in c.fetchall():
-            annuity_total += r['a'] or 0
-            tenyear_total += r['t'] or 0
+        annuity_tf = sum((r['a'] or 0) for r in c.fetchall())
+        # 10年期 转型部分 — 重新单独查询（上面游标已消费完）
+        c.execute('''
+            SELECT SUM(product_10year) AS t
+            FROM agg_org_performance WHERE year = ? AND month <= ?
+        ''', (year, query_month))
+        row = c.fetchone()
+        tenyear_tf = (row['t'] or 0) if row else 0.0
+
+        # 经代年金/10年期 暂缺（经代基表无年金/缴费年限分列）
+        annuity_jd = 0.0
+        tenyear_jd = 0.0
 
         total_transform = perf.get('OTO', 0) + perf.get('证保', 0) + perf.get('蚁桥', 0)
         return {
@@ -216,9 +218,11 @@ def get_kpi_data(year: int):
                 'total': round(jingdai_qj + total_transform, 2),
             },
             'longterm_qj': lt_total,
+            'longterm_qj_tf': lt_tf,
+            'longterm_qj_jd': lt_jd,
             'longterm_qj_prev': lt_total_prev,
-            'annuity_total': round(annuity_total, 2),
-            'tenyear_total': round(tenyear_total, 2),
+            'annuity_total': round(annuity_tf, 2),
+            'tenyear_total': round(tenyear_tf, 2),
             'hr': hr,
             'hr_prev': hr_prev,
             'value': value,

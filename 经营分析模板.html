@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.79</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.80</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -1857,14 +1857,15 @@
       const targetShanbao = targetData?.categories?.shangbao?.metrics?.['整体']?.year || 0;
       const targetTenYear = targetData?.categories?.tenYear?.metrics?.['整体']?.year || 0;
 
-      // 4. 商保年金
+      // 4. 商保年金（仅转型有数据，经代暂缺）
       if (hasApiKpi && kpi.annuity_total !== undefined) {
         const actual = kpi.annuity_total || 0;
         const rate = targetShanbao > 0 ? Math.round(actual / targetShanbao * 1000) / 10 : 0;
         const el = document.getElementById('kpi-annuity-rate');
         if (el) el.textContent = rate + '%';
         const sub = document.getElementById('kpi-annuity-sub');
-        if (sub) sub.innerHTML = `<span>年度累计 ${actual}万 · 目标 ${targetShanbao}万</span>`;
+        const jdTarget = targetData?.categories?.shangbao?.metrics?.['经代']?.year || 0;
+        if (sub) sub.innerHTML = `<span>经代 -- · 转型 ${rate}%（累计 ${actual}万）</span>`;
       }
 
       // 5. 保障类产品 — 暂不统计
@@ -1880,12 +1881,14 @@
         const el = document.getElementById('kpi-10year-rate');
         if (el) el.textContent = rate + '%';
         const sub = document.getElementById('kpi-10year-sub');
-        if (sub) sub.innerHTML = `<span>年度累计 ${actual}万 · 目标 ${targetTenYear}万</span>`;
+        if (sub) sub.innerHTML = `<span>经代 -- · 转型 ${rate}%（累计 ${actual}万）</span>`;
       }
 
-      // 7. 长险期交达成率（年度累计长险 / 年度期交目标）
+      // 7. 长险期交达成率
       if (hasApiKpi && kpi.longterm_qj !== undefined) {
         const ltQj = kpi.longterm_qj || 0;
+        const ltTf = kpi.longterm_qj_tf || 0;
+        const ltJd = kpi.longterm_qj_jd || 0;
         const rate = targetOverall > 0 ? Math.round(ltQj / targetOverall * 1000) / 10 : 0;
         const el = document.getElementById('kpi-longterm-rate');
         if (el) el.textContent = rate + '%';
@@ -1895,8 +1898,12 @@
           const cls = yoy >= 0 ? 'up' : 'down';
           yoyStr = ` <span class="${cls}">同比 ${yoy >= 0 ? '+' : ''}${yoy}%</span>`;
         }
+        const jdTarget = targetData?.categories?.qjPremium?.metrics?.['经代']?.year || 0;
+        const tfTarget = targetData?.categories?.qjPremium?.metrics?.['转型业务']?.year || 0;
+        const jdRate = jdTarget > 0 ? Math.round(ltJd / jdTarget * 1000) / 10 : 0;
+        const tfRate = tfTarget > 0 ? Math.round(ltTf / tfTarget * 1000) / 10 : 0;
         const sub = document.getElementById('kpi-longterm-sub');
-        if (sub) sub.innerHTML = `<span>年度累计 ${ltQj}万 · 目标 ${targetOverall}万</span>${yoyStr}`;
+        if (sub) sub.innerHTML = `<span>经代 ${jdRate}% · 转型 ${tfRate}%</span>${yoyStr}`;
       } else {
         const el = document.getElementById('kpi-longterm-rate');
         if (el) el.textContent = '--';
@@ -2628,34 +2635,34 @@
         case 'longterm': {
           const is10y = type === '10year';
           const title = is10y ? '10年期产品达成率 - 分业务模式' : '长险期交达成率 - 分业务模式';
-          // 从 orgKpiData 读取各渠道 product_10year 或 qj_premium
           const chs = ['OTO','证保','蚁桥'];
-          const targetCat = is10y ? 'tenYear' : 'qjPremium';
           const field = is10y ? 'product_10year' : 'qj_premium';
-          let jdActual = 0, tfActual = 0, chActuals = {};
+          let chActuals = {};
+          chs.forEach(ch => { chActuals[ch] = 0; });
           if (orgKpiData && orgKpiData.perf) {
-            chs.forEach(ch => {
-              let v = 0;
-              Object.values(orgKpiData.perf).forEach(item => {
-                if (item.year) v += (item.year[field] || 0);
-              });
-              chActuals[ch] = Math.round(v);
-              tfActual += v;
+            Object.entries(orgKpiData.perf).forEach(([key, item]) => {
+              const suffix = '|' + chs.find(c => key.endsWith('|' + c));
+              if (!suffix) return;
+              const ch = suffix.slice(1);
+              chActuals[ch] = (chActuals[ch] || 0) + (item.year?.[field] || 0);
             });
           }
-          // 经代: from kpi
-          if (kpi) {
-            jdActual = is10y ? 0 : (kpi.longterm_qj || 0) - tfActual;
-            if (jdActual < 0) jdActual = 0;
-          }
-          const targetTf = targetData?.categories?.[targetCat]?.metrics?.['转型业务']?.year || 0;
-          const targetJd = targetData?.categories?.[targetCat]?.metrics?.['经代']?.year || 0;
+          const tfActual = Math.round(Object.values(chActuals).reduce((s, v) => s + v, 0));
+          const jdActual = is10y ? 0 : Math.round(kpi?.longterm_qj_jd || 0);
+          const targetTf = Math.round(targetData?.categories?.qjPremium?.metrics?.['转型业务']?.year || 0);
+          const targetJd = Math.round(targetData?.categories?.qjPremium?.metrics?.['经代']?.year || 0);
           const tfRate = targetTf > 0 ? Math.round(tfActual / targetTf * 1000) / 10 : 0;
           const jdRate = targetJd > 0 ? Math.round(jdActual / targetJd * 1000) / 10 : 0;
           const chRows = chs.map(ch => {
-            const t = targetData?.orgTargets ? Object.values(targetData.orgTargets).reduce((s, v) => s + (v[targetCat]?.year || 0), 0) : 0;
-            const a = chActuals[ch] || 0;
-            const r = t > 0 ? Math.round(a / (t/3) * 1000) / 10 : 0;
+            const a = Math.round(chActuals[ch] || 0);
+            // 逐渠道目标：从 orgTargets 汇总
+            let chTarget = 0;
+            if (targetData?.orgTargets) {
+              Object.entries(targetData.orgTargets).forEach(([key, v]) => {
+                if (key.endsWith('|' + ch)) chTarget += (v?.qjPremium?.year || 0);
+              });
+            }
+            const r = chTarget > 0 ? Math.round(a / chTarget * 1000) / 10 : 0;
             return `<tr><td>${ch}</td><td>${a}万</td><td>${r}%</td></tr>`;
           }).join('');
           return {
