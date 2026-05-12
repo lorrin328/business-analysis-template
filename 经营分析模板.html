@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.80</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.81</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -1857,15 +1857,15 @@
       const targetShanbao = targetData?.categories?.shangbao?.metrics?.['整体']?.year || 0;
       const targetTenYear = targetData?.categories?.tenYear?.metrics?.['整体']?.year || 0;
 
-      // 4. 商保年金（仅转型有数据，经代暂缺）
+      // 4. 商保年金（仅转型，经代暂缺→不显示整体达成率）
       if (hasApiKpi && kpi.annuity_total !== undefined) {
         const actual = kpi.annuity_total || 0;
-        const rate = targetShanbao > 0 ? Math.round(actual / targetShanbao * 1000) / 10 : 0;
+        const tfTarget = targetData?.categories?.shangbao?.metrics?.['转型业务']?.year || 0;
+        const tfRate = tfTarget > 0 ? Math.round(actual / tfTarget * 1000) / 10 : 0;
         const el = document.getElementById('kpi-annuity-rate');
-        if (el) el.textContent = rate + '%';
+        if (el) el.textContent = tfRate + '%';
         const sub = document.getElementById('kpi-annuity-sub');
-        const jdTarget = targetData?.categories?.shangbao?.metrics?.['经代']?.year || 0;
-        if (sub) sub.innerHTML = `<span>经代 -- · 转型 ${rate}%（累计 ${actual}万）</span>`;
+        if (sub) sub.innerHTML = `<span>经代 -- · 转型 ${tfRate}%</span>`;
       }
 
       // 5. 保障类产品 — 暂不统计
@@ -1874,14 +1874,15 @@
         const sub = document.getElementById('kpi-protection-sub');
         if (sub) sub.innerHTML = '<span style="color:var(--text-secondary)">口径调整中</span>'; }
 
-      // 6. 10年期产品
+      // 6. 10年期产品（经代暂缺）
       if (hasApiKpi && kpi.tenyear_total !== undefined) {
         const actual = kpi.tenyear_total || 0;
-        const rate = targetTenYear > 0 ? Math.round(actual / targetTenYear * 1000) / 10 : 0;
+        const tfTarget = targetData?.categories?.tenYear?.metrics?.['转型业务']?.year || 0;
+        const tfRate = tfTarget > 0 ? Math.round(actual / tfTarget * 1000) / 10 : 0;
         const el = document.getElementById('kpi-10year-rate');
-        if (el) el.textContent = rate + '%';
+        if (el) el.textContent = tfRate + '%';
         const sub = document.getElementById('kpi-10year-sub');
-        if (sub) sub.innerHTML = `<span>经代 -- · 转型 ${rate}%（累计 ${actual}万）</span>`;
+        if (sub) sub.innerHTML = `<span>经代 -- · 转型 ${tfRate}%</span>`;
       }
 
       // 7. 长险期交达成率
@@ -2595,84 +2596,100 @@
               });
             }
           };
-        case 'annuity':
+        case 'annuity': {
+          // 商保年金：只有转型数据，经代暂缺
+          const chs = ['OTO','证保','蚁桥'];
+          let chVals = {}; chs.forEach(c => chVals[c] = 0);
+          if (orgKpiData?.perf) {
+            Object.entries(orgKpiData.perf).forEach(([key, item]) => {
+              const ch = chs.find(c => key.endsWith('|' + c));
+              if (ch) chVals[ch] = (chVals[ch] || 0) + (item.year?.product_annuity || 0);
+            });
+          }
+          const tfActual = Math.round(Object.values(chVals).reduce((s, v) => s + v, 0));
+          const targetTf = Math.round(targetData?.categories?.shangbao?.metrics?.['转型业务']?.year || 0);
+          const tfRate = targetTf > 0 ? Math.round(tfActual / targetTf * 1000) / 10 : 0;
+          const chRows = chs.map(ch => {
+            const a = Math.round(chVals[ch] || 0);
+            let ct = 0;
+            if (targetData?.orgTargets) {
+              Object.entries(targetData.orgTargets).forEach(([k, v]) => {
+                if (k.endsWith('|' + ch)) ct += (v?.shangbao?.year || 0);
+              });
+            }
+            const r = ct > 0 ? Math.round(a / ct * 1000) / 10 : 0;
+            return `<tr><td>${ch}</td><td>${a}万</td><td>${r}%</td></tr>`;
+          }).join('');
           return {
-            title: '商保年金达成率详情',
+            title: '商保年金达成率',
             body: `
-              <div class="modal-kpi-detail">
-                <div class="modal-kpi-item">
-                  <div class="label">经代业务商保年金达成率</div>
-                  <div class="value" style="color: var(--accent-light);">88.1%</div>
-                  <div class="sub up">▲ 同比 +2.3pp</div>
-                </div>
-                <div class="modal-kpi-item">
-                  <div class="label">转型业务商保年金达成率</div>
-                  <div class="value" style="color: var(--success);">93.5%</div>
-                  <div class="sub up">▲ 同比 +4.1pp</div>
-                </div>
-              </div>
+              <table class="modal-table">
+                <thead><tr><th>业务系列</th><th>年度累计</th><th>达成率</th><th>同比</th></tr></thead>
+                <tbody>
+                  <tr><td>经代业务</td><td>--</td><td>--</td><td>--</td></tr>
+                  <tr><td>转型业务</td><td>${tfActual}万</td><td style="color:${tfRate>=80?'var(--success)':'var(--warning)'}">${tfRate}%</td><td>--</td></tr>
+                </tbody>
+              </table>
+              <div class="modal-section-title">转型业务分渠道</div>
+              <table class="modal-table">
+                <thead><tr><th>渠道</th><th>年度累计</th><th>达成率</th></tr></thead>
+                <tbody>${chRows}</tbody>
+              </table>
             `
           };
-        case 'protection':
-          return {
-            title: '保障类产品达成率详情',
-            body: `
-              <div class="modal-kpi-detail">
-                <div class="modal-kpi-item">
-                  <div class="label">经代业务保障类产品达成率</div>
-                  <div class="value" style="color: var(--danger);">80.2%</div>
-                  <div class="sub down">▼ 同比 -1.5pp</div>
-                </div>
-                <div class="modal-kpi-item">
-                  <div class="label">转型业务保障类产品达成率</div>
-                  <div class="value" style="color: var(--success);">85.1%</div>
-                  <div class="sub up">▲ 同比 +3.2pp</div>
-                </div>
-              </div>
-            `
-          };
+        }
         case '10year':
         case 'longterm': {
           const is10y = type === '10year';
-          const title = is10y ? '10年期产品达成率 - 分业务模式' : '长险期交达成率 - 分业务模式';
+          const title = is10y ? '10年期产品达成率' : '长险期交达成率';
+          const kpiData = apiData.kpi || {};
           const chs = ['OTO','证保','蚁桥'];
           const field = is10y ? 'product_10year' : 'qj_premium';
-          let chActuals = {};
-          chs.forEach(ch => { chActuals[ch] = 0; });
-          if (orgKpiData && orgKpiData.perf) {
+          let chVals = {}; chs.forEach(c => chVals[c] = 0);
+          if (orgKpiData?.perf) {
             Object.entries(orgKpiData.perf).forEach(([key, item]) => {
-              const suffix = '|' + chs.find(c => key.endsWith('|' + c));
-              if (!suffix) return;
-              const ch = suffix.slice(1);
-              chActuals[ch] = (chActuals[ch] || 0) + (item.year?.[field] || 0);
+              const ch = chs.find(c => key.endsWith('|' + c));
+              if (ch) chVals[ch] = (chVals[ch] || 0) + (item.year?.[field] || 0);
             });
           }
-          const tfActual = Math.round(Object.values(chActuals).reduce((s, v) => s + v, 0));
-          const jdActual = is10y ? 0 : Math.round(kpi?.longterm_qj_jd || 0);
+          const tfActual = Math.round(Object.values(chVals).reduce((s, v) => s + v, 0));
+          const jdActual = is10y ? 0 : Math.round(kpiData.longterm_qj_jd || 0);
           const targetTf = Math.round(targetData?.categories?.qjPremium?.metrics?.['转型业务']?.year || 0);
           const targetJd = Math.round(targetData?.categories?.qjPremium?.metrics?.['经代']?.year || 0);
           const tfRate = targetTf > 0 ? Math.round(tfActual / targetTf * 1000) / 10 : 0;
           const jdRate = targetJd > 0 ? Math.round(jdActual / targetJd * 1000) / 10 : 0;
+          // 同比
+          let jdYoy = '--', tfYoy = '--';
+          if (is10y) {
+            // 10年期同比暂无
+          } else if (kpiData.longterm_qj_prev !== undefined) {
+            const prevJd = is10y ? 0 : (kpiData.longterm_qj_jd || 0);
+            const prevTf = is10y ? 0 : (kpiData.longterm_qj_tf || 0);
+            if (prevJd > 0) { const y = Math.round((jdActual/prevJd - 1)*1000)/10; jdYoy = (y>=0?'+':'') + y + '%'; }
+            if (prevTf > 0) { const y = Math.round((tfActual/prevTf - 1)*1000)/10; tfYoy = (y>=0?'+':'') + y + '%'; }
+          }
           const chRows = chs.map(ch => {
-            const a = Math.round(chActuals[ch] || 0);
-            // 逐渠道目标：从 orgTargets 汇总
-            let chTarget = 0;
+            const a = Math.round(chVals[ch] || 0);
+            let ct = 0;
             if (targetData?.orgTargets) {
-              Object.entries(targetData.orgTargets).forEach(([key, v]) => {
-                if (key.endsWith('|' + ch)) chTarget += (v?.qjPremium?.year || 0);
+              Object.entries(targetData.orgTargets).forEach(([k, v]) => {
+                if (k.endsWith('|' + ch)) ct += (v?.qjPremium?.year || 0);
               });
             }
-            const r = chTarget > 0 ? Math.round(a / chTarget * 1000) / 10 : 0;
+            const r = ct > 0 ? Math.round(a / ct * 1000) / 10 : 0;
             return `<tr><td>${ch}</td><td>${a}万</td><td>${r}%</td></tr>`;
           }).join('');
+          const yoyCls = (v) => v.startsWith('+') ? 'up' : 'down';
           return {
             title,
             body: `
               <table class="modal-table">
-                <thead><tr><th>业务系列</th><th>年度累计</th><th>达成率</th></tr></thead>
+                <thead><tr><th>业务系列</th><th>年度累计</th><th>达成率</th><th>同比</th></tr></thead>
                 <tbody>
-                  <tr><td>经代业务</td><td>${jdActual}万</td><td style="color:${jdRate>=80?'var(--success)':'var(--warning)'}">${jdRate}%</td></tr>
-                  <tr><td>转型业务</td><td>${tfActual}万</td><td style="color:${tfRate>=80?'var(--success)':'var(--warning)'}">${tfRate}%</td></tr>
+                  <tr><td>经代业务</td><td>${jdActual}万</td><td style="color:${jdRate>=80?'var(--success)':'var(--warning)'}">${jdRate}%</td>
+                    <td class="${yoyCls(jdYoy)}">${jdYoy}</td></tr>
+                  <tr><td>转型业务</td><td>${tfActual}万</td><td style="color:${tfRate>=80?'var(--success)':'var(--warning)'}">${tfRate}%</td>
+                    <td class="${yoyCls(tfYoy)}">${tfYoy}</td></tr>
                 </tbody>
               </table>
               <div class="modal-section-title">转型业务分渠道</div>
