@@ -82,22 +82,19 @@ def aggregate_org_performance(df: pd.DataFrame) -> List[Dict]:
     # 产品分类：10年期 / 商保年金 / 保障类
     work['_is_10year'] = False
     if pay_years_col:
-        work['_pay_years_str'] = work[pay_years_col].fillna('').astype(str).str.strip()
-        work['_is_10year'] = work['_pay_years_str'].str.contains('10年', na=False) & ~work['_pay_years_str'].str.contains('趸交', na=False)
+        work['_pay_years_num'] = pd.to_numeric(work[pay_years_col], errors='coerce').fillna(0)
+        work['_is_10year'] = work['_pay_years_num'] >= 10
 
     work['_is_annuity'] = False
     if is_annuity_col:
         work['_is_annuity'] = work[is_annuity_col].fillna('').astype(str).str.strip().str.upper().isin(['Y', 'YES', '是', 'TRUE', '1'])
 
+    # 保障类暂不统计
     work['_is_protection'] = False
-    if term_type_col:
-        work['_term_str'] = work[term_type_col].fillna('').astype(str).str.strip()
-        # 长期险中非年金视为保障类
-        work['_is_protection'] = work['_term_str'].str.contains('长期', na=False) & ~work['_is_annuity']
 
     work['_product_10year'] = work['_qj'].where(work['_is_10year'], 0)
     work['_product_annuity'] = work['_qj'].where(work['_is_annuity'], 0)
-    work['_product_protection'] = work['_qj'].where(work['_is_protection'], 0)
+    work['_product_protection'] = 0
 
     grouped = work.groupby(['_year', '_month', '_org', '_channel'], dropna=False)
     rows = []

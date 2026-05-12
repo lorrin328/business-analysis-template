@@ -7,3 +7,4 @@ from etl.aggregates.value import aggregate_value, aggregate_org_value
 from etl.aggregates.org import aggregate_org_daily_performance, aggregate_org_performance
 from etl.aggregates.product import aggregate_product_structure
 from etl.aggregates.payment import aggregate_payment_period, aggregate_jingdai_payment_period
+from etl.aggregates.longterm import aggregate_transform_longterm, aggregate_jingdai_longterm

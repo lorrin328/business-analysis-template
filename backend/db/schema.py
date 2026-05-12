@@ -16,6 +16,7 @@ AGG_TABLES = [
     'agg_org_performance',
     'agg_org_value',
     'agg_payment_period',
+    'agg_longterm_qj',
 ]
 
 
@@ -80,6 +81,12 @@ def init_db():
             count INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(year, month, business_type, channel, org, category))''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS agg_longterm_qj (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
+            business_type TEXT NOT NULL, channel TEXT NOT NULL DEFAULT '', org TEXT NOT NULL DEFAULT '',
+            qj_premium REAL NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(year, month, business_type, channel, org))''')
+
         c.execute('''CREATE TABLE IF NOT EXISTS agg_daily_performance (
             id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
             day INTEGER NOT NULL DEFAULT 1, channel TEXT NOT NULL, qj_premium REAL NOT NULL DEFAULT 0,
@@ -129,6 +136,7 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_target_values_year_period ON target_values(year, period_type, period_value)',
             'CREATE INDEX IF NOT EXISTS ix_target_values_line_org_metric ON target_values(business_line, org, metric_code)',
             'CREATE INDEX IF NOT EXISTS ix_pay_period_year_month_type ON agg_payment_period(year, month, business_type)',
+            'CREATE INDEX IF NOT EXISTS ix_longterm_qj_year_month ON agg_longterm_qj(year, month, business_type)',
             'CREATE INDEX IF NOT EXISTS ix_data_imports_hash ON data_imports(file_hash)',
         ]:
             c.execute(sql)

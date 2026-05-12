@@ -165,6 +165,28 @@ def get_kpi_data(year: int):
             if info['months'] > 1:
                 info['avg_sum'] = round(info['avg_sum'], 2)
 
+        # 长险期交保费（YTD）
+        c.execute('''
+            SELECT business_type, channel, SUM(qj_premium) AS total
+            FROM agg_longterm_qj WHERE year = ? AND month <= ? GROUP BY business_type, channel
+        ''', (year, query_month))
+        lt_qj = {}
+        for r in c.fetchall():
+            key = f"{r['business_type']}|{r['channel']}" if r['channel'] else r['business_type']
+            lt_qj[key] = round(r['total'] or 0, 2)
+        lt_total = sum(lt_qj.values())
+
+        # 去年长险期交（YTD，同口径）
+        c.execute('''
+            SELECT business_type, channel, SUM(qj_premium) AS total
+            FROM agg_longterm_qj WHERE year = ? AND month <= ? GROUP BY business_type, channel
+        ''', (year - 1, query_month))
+        lt_qj_prev = {}
+        for r in c.fetchall():
+            key = f"{r['business_type']}|{r['channel']}" if r['channel'] else r['business_type']
+            lt_qj_prev[key] = round(r['total'] or 0, 2)
+        lt_total_prev = sum(lt_qj_prev.values())
+
         c.execute('''
             SELECT channel, SUM(value_premium) AS total
             FROM agg_value_data WHERE year = ? GROUP BY channel
@@ -182,6 +204,8 @@ def get_kpi_data(year: int):
                 'total_transform': round(total_transform, 2),
                 'total': round(jingdai_qj + total_transform, 2),
             },
+            'longterm_qj': lt_total,
+            'longterm_qj_prev': lt_total_prev,
             'hr': hr,
             'hr_prev': hr_prev,
             'value': value,

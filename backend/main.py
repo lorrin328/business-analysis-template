@@ -30,6 +30,7 @@ from etl import (
     aggregate_org_performance, aggregate_org_value,
     aggregate_daily_performance, aggregate_org_daily_performance,
     aggregate_payment_period, aggregate_jingdai_payment_period,
+    aggregate_transform_longterm, aggregate_jingdai_longterm,
 )
 
 from validators.data_validator import validate_rows
@@ -128,6 +129,8 @@ async def upload_files(
     org_value_rows = []
     pay_period_rows = []
     jd_pay_period_rows = []
+    longterm_rows = []
+    jd_longterm_rows = []
     raw_tables = {}
 
     if performance and performance.filename:
@@ -145,6 +148,7 @@ async def upload_files(
             active_rows = aggregate_active_headcount(df)
             org_perf_rows = aggregate_org_performance(df)
             pay_period_rows = aggregate_payment_period(df)
+            longterm_rows = aggregate_transform_longterm(df)
             validation = validate_rows(perf_rows, required=["year", "month", "channel"], unique_keys=["year", "month", "channel"])
             if not validation.valid:
                 raise ValueError(validation.to_dict())
@@ -164,6 +168,7 @@ async def upload_files(
             jd_rows = aggregate_jingdai(df)
             jd_daily_rows = aggregate_jingdai_daily(df)
             jd_pay_period_rows = aggregate_jingdai_payment_period(df)
+            jd_longterm_rows = aggregate_jingdai_longterm(df)
             validation = validate_rows(jd_rows, required=["year", "month"], unique_keys=["year", "month"])
             if not validation.valid:
                 raise ValueError(validation.to_dict())
@@ -235,6 +240,7 @@ async def upload_files(
                 ('agg_org_performance', org_perf_rows),
                 ('agg_org_value', org_value_rows),
                 ('agg_payment_period', pay_period_rows + jd_pay_period_rows),
+                ('agg_longterm_qj', longterm_rows + jd_longterm_rows),
             ]
             for table, rows in table_rows:
                 if rows:
