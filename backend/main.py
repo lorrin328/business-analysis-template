@@ -104,6 +104,10 @@ async def upload_files(
     year: int = 2026,
 ):
     """上传Excel文件并聚合到SQLite"""
+    # 单文件最大 20MB
+    for f in [performance, jingdai, hr, value]:
+        if f and f.size and f.size > 20 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail=f"文件 {f.filename} 超过 20MB 限制")
     results = {"uploaded": [], "errors": [], "skipped": [], "data_years": set()}
     file_hashes = {}  # file_name -> hash
     file_sizes = {}   # file_name -> size
@@ -237,7 +241,8 @@ async def upload_files(
                     replace_rows_incremental(conn, table, rows)
                     table_row_counts[table] = len(rows)
             for table, df in raw_tables.items():
-                df.to_sql(table, conn, if_exists='replace', index=False)
+                conn.execute(f'DELETE FROM {table}')
+                df.to_sql(table, conn, if_exists='append', index=False)
                 table_row_counts[table] = len(df)
 
             # 检查各文件哈希是否可跳过

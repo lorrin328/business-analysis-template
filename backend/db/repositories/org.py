@@ -7,7 +7,6 @@ from db.schema import init_db
 
 def get_org_kpi_data(year: int):
     """获取机构维度KPI数据，年度同比使用日累计至统计日截止"""
-    init_db()
     with get_db() as conn:
         c = conn.cursor()
 

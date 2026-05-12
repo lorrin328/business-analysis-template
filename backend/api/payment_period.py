@@ -32,12 +32,13 @@ def payment_period_analysis(
     - metric: qj=期交保费, gm=规模保费
     """
     from db import _split_csv
+    from services.response import success_response
     month_list = [
         int(item) for item in _split_csv(months)
         if item.isdigit() and 1 <= int(item) <= 12
     ] if months else None
 
-    return get_payment_period_structure(
+    data = get_payment_period_structure(
         year=year,
         month=month,
         months=month_list,
@@ -47,3 +48,4 @@ def payment_period_analysis(
         jingdai_orgs=_split_csv(jingdaiOrgs) if jingdaiOrgs else None,
         metric=metric or "qj",
     )
+    return success_response(data, meta={"year": str(year), "metric": metric or "qj", "unit": "万元/件", "dataSource": "agg_payment_period"})

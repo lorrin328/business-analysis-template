@@ -106,7 +106,8 @@ def main():
         replace_rows(conn, 'agg_org_performance', org_perf_rows)
         replace_rows(conn, 'agg_payment_period', pay_period_rows + jd_pay_period_rows)
         for table, df in raw_tables.items():
-            df.to_sql(table, conn, if_exists='replace', index=False)
+            conn.execute(f'DELETE FROM {table}')
+            df.to_sql(table, conn, if_exists='append', index=False)
         conn.commit()
 
     print(f'loaded years: {years}')

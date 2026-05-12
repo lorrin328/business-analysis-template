@@ -60,7 +60,7 @@ def aggregate_daily_performance(df: pd.DataFrame) -> List[Dict]:
     # 优先使用日期列，如果没有则回退到年月列
     time_col = date_col or month_col
     if not all([time_col, channel_col, qj_col]):
-        return []
+        raise ValueError(f"无法识别日常业绩必要列（日期/年月、业务模式、期交保费）。当前列: {list(df.columns)}")
 
     work = _period_year_month(df, year_col, month_col if not date_col else None, time_col if date_col else None)
     work['_channel'] = work[channel_col].map(_normalize_channel)

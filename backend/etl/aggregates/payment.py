@@ -29,7 +29,7 @@ def aggregate_payment_period(df: pd.DataFrame) -> List[Dict]:
     pay_col = _pick_col(df, ['缴费年限'])
 
     if not all([channel_col, qj_col, pay_col]):
-        return []
+        raise ValueError(f"无法识别交期结构必要列。当前列: {list(df.columns)}")
 
     time_col = date_col or month_col
     work = _period_year_month(df, year_col, month_col if not date_col else None, time_col if date_col else None)
@@ -71,7 +71,7 @@ def aggregate_jingdai_payment_period(df: pd.DataFrame) -> List[Dict]:
     term_cat_col = _pick_col(df, ['当前缴别大类'])
 
     if not all([time_col, qj_col, pay_col]):
-        return []
+        raise ValueError(f"无法识别经代交期结构必要列。当前列: {list(df.columns)}")
 
     work = _period_year_month(df, None, time_col)
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'

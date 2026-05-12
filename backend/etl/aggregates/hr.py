@@ -52,7 +52,7 @@ def aggregate_active_headcount(df: pd.DataFrame) -> List[Dict]:
     amount_col = _pick_col(df, ['折算保费', '期交保费'])
 
     if not all([year_col, month_col, channel_col, staff_col, amount_col]):
-        return []
+        raise ValueError(f"无法识别活跃人力必要列。当前列: {list(df.columns)}")
 
     work = _period_year_month(df, year_col, month_col)
     work['_channel'] = work[channel_col].map(_normalize_channel)

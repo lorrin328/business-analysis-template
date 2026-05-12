@@ -7,7 +7,6 @@ from db.schema import init_db
 
 
 def get_target_config(year: int):
-    init_db()
     with get_db() as conn:
         c = conn.cursor()
         c.execute('SELECT payload FROM target_config WHERE year = ?', (year,))
@@ -84,7 +83,6 @@ def save_target_values(conn: sqlite3.Connection, year: int, payload: dict, updat
 
 
 def get_target_values(year: int, period_type: str | None = None, period_value: int | None = None):
-    init_db()
     with get_db() as conn:
         sql = 'SELECT * FROM target_values WHERE year = ?'
         params = [year]

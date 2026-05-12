@@ -48,7 +48,7 @@ def aggregate_org_value(df: pd.DataFrame) -> List[Dict]:
     value_col = _pick_col(df, ['价值'])
 
     if not all([month_col, channel_col, value_col]):
-        return []
+        raise ValueError(f"无法识别机构价值必要列。当前列: {list(df.columns)}")
 
     work = _period_year_month(df, None, month_col)
     work['_channel'] = work[channel_col].map(_normalize_channel)

@@ -6,7 +6,6 @@ from db.schema import init_db
 
 
 def get_platform_data(year: int):
-    init_db()
     with get_db() as conn:
         c = conn.cursor()
 
@@ -84,7 +83,6 @@ def get_platform_data(year: int):
 
 
 def get_kpi_data(year: int):
-    init_db()
     with get_db() as conn:
         c = conn.cursor()
 

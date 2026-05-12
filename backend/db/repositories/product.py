@@ -103,7 +103,6 @@ def _query_product_structure_raw(
 
 
 def get_jingdai_orgs(year: int | None = None) -> list[str]:
-    init_db()
     with get_db() as conn:
         params: list = []
         where = ''
@@ -130,7 +129,6 @@ def get_product_structure(
     months: str | list[int] | None = None,
     metric_type: str = 'qj',
 ):
-    init_db()
     with get_db() as conn:
         transform_list = transform_lines if isinstance(transform_lines, list) else _split_csv(transform_lines)
         jingdai_org_list = jingdai_orgs if isinstance(jingdai_orgs, list) else _split_csv(jingdai_orgs)
