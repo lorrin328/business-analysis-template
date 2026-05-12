@@ -86,56 +86,84 @@ def get_kpi_data(year: int):
     with get_db() as conn:
         c = conn.cursor()
 
+        # 确定当年最新数据月（跨 performance 和 hr 两张表）
+        c.execute('''
+            SELECT MAX(m) FROM (
+                SELECT MAX(month) AS m FROM agg_performance WHERE year = ?
+                UNION ALL
+                SELECT MAX(month) AS m FROM agg_hr_data WHERE year = ?
+            )
+        ''', (year, year))
+        latest = c.fetchone()[0]
+        query_month = latest if latest else 1
+
+        # YTD 保费（截至统计月）
         c.execute('''
             SELECT channel, SUM(qj_premium) AS total
-            FROM agg_performance WHERE year = ? GROUP BY channel
-        ''', (year,))
+            FROM agg_performance WHERE year = ? AND month <= ? GROUP BY channel
+        ''', (year, query_month))
         perf = {r['channel']: r['total'] or 0 for r in c.fetchall()}
 
         c.execute('''
-            SELECT SUM(qj_premium) AS total FROM agg_jingdai WHERE year = ?
-        ''', (year,))
+            SELECT SUM(qj_premium) AS total FROM agg_jingdai WHERE year = ? AND month <= ?
+        ''', (year, query_month))
         jingdai_qj = c.fetchone()['total'] or 0
 
-        # 确定当年最新数据月
-        c.execute('SELECT MAX(month) FROM agg_hr_data WHERE year = ?', (year,))
-        latest_month = c.fetchone()[0]
-        query_month = latest_month if latest_month else 1
-
+        # HR：单月值（活动率用）+ YTD 累计（人均保费用）
         c.execute('''
-            SELECT channel, start_headcount, end_headcount, active_headcount
-            FROM agg_hr_data WHERE year = ? AND month = ?
+            SELECT channel, month, start_headcount, end_headcount, active_headcount
+            FROM agg_hr_data WHERE year = ? AND month <= ?
+            ORDER BY channel, month
         ''', (year, query_month))
         hr = {}
+        hr_latest = {}
         for r in c.fetchall():
-            avg_headcount = ((r['start_headcount'] or 0) + (r['end_headcount'] or 0)) / 2.0
-            hr[r['channel']] = {
-                'start': r['start_headcount'] or 0,
-                'end': r['end_headcount'] or 0,
-                'active': r['active_headcount'] or 0,
-                'avg': avg_headcount,
-                'avg_sum': avg_headcount,
-                'months': 1,
-                'month': query_month,
-            }
+            ch = r['channel']
+            avg_hc = ((r['start_headcount'] or 0) + (r['end_headcount'] or 0)) / 2.0
+            info = hr.setdefault(ch, {'avg_sum': 0.0, 'months': 0, 'month': query_month})
+            info['avg_sum'] += avg_hc
+            info['months'] += 1
+            if r['month'] == query_month:
+                hr_latest[ch] = {
+                    'start': r['start_headcount'] or 0,
+                    'end': r['end_headcount'] or 0,
+                    'active': r['active_headcount'] or 0,
+                    'avg': avg_hc,
+                }
+        for ch, info in hr.items():
+            info.update(hr_latest.get(ch, {}))
+            if not info.get('avg'):
+                info['avg'] = 0
+            if info['months'] > 1:
+                info['avg_sum'] = round(info['avg_sum'], 2)
 
-        # 去年同期（同月）
+        # 去年同期（YTD + 单月）
         c.execute('''
-            SELECT channel, start_headcount, end_headcount, active_headcount
-            FROM agg_hr_data WHERE year = ? AND month = ?
+            SELECT channel, month, start_headcount, end_headcount, active_headcount
+            FROM agg_hr_data WHERE year = ? AND month <= ?
+            ORDER BY channel, month
         ''', (year - 1, query_month))
         hr_prev = {}
+        hr_prev_latest = {}
         for r in c.fetchall():
-            avg_headcount = ((r['start_headcount'] or 0) + (r['end_headcount'] or 0)) / 2.0
-            hr_prev[r['channel']] = {
-                'start': r['start_headcount'] or 0,
-                'end': r['end_headcount'] or 0,
-                'active': r['active_headcount'] or 0,
-                'avg': avg_headcount,
-                'avg_sum': avg_headcount,
-                'months': 1,
-                'month': query_month,
-            }
+            ch = r['channel']
+            avg_hc = ((r['start_headcount'] or 0) + (r['end_headcount'] or 0)) / 2.0
+            info = hr_prev.setdefault(ch, {'avg_sum': 0.0, 'months': 0, 'month': query_month})
+            info['avg_sum'] += avg_hc
+            info['months'] += 1
+            if r['month'] == query_month:
+                hr_prev_latest[ch] = {
+                    'start': r['start_headcount'] or 0,
+                    'end': r['end_headcount'] or 0,
+                    'active': r['active_headcount'] or 0,
+                    'avg': avg_hc,
+                }
+        for ch, info in hr_prev.items():
+            info.update(hr_prev_latest.get(ch, {}))
+            if not info.get('avg'):
+                info['avg'] = 0
+            if info['months'] > 1:
+                info['avg_sum'] = round(info['avg_sum'], 2)
 
         c.execute('''
             SELECT channel, SUM(value_premium) AS total
