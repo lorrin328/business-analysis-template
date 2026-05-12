@@ -97,25 +97,44 @@ def get_kpi_data(year: int):
         ''', (year,))
         jingdai_qj = c.fetchone()['total'] or 0
 
+        # 确定当年最新数据月
+        c.execute('SELECT MAX(month) FROM agg_hr_data WHERE year = ?', (year,))
+        latest_month = c.fetchone()[0]
+        query_month = latest_month if latest_month else 1
+
         c.execute('''
-            SELECT channel,
-                   SUM(start_headcount) AS start_sum,
-                   SUM(end_headcount) AS end_sum,
-                   SUM(active_headcount) AS active_sum,
-                   COUNT(*) AS months
-            FROM agg_hr_data WHERE year = ? GROUP BY channel
-        ''', (year,))
+            SELECT channel, start_headcount, end_headcount, active_headcount
+            FROM agg_hr_data WHERE year = ? AND month = ?
+        ''', (year, query_month))
         hr = {}
         for r in c.fetchall():
-            months = r['months'] or 0
-            avg_sum = ((r['start_sum'] or 0) + (r['end_sum'] or 0)) / 2.0
+            avg_headcount = ((r['start_headcount'] or 0) + (r['end_headcount'] or 0)) / 2.0
             hr[r['channel']] = {
-                'start': r['start_sum'] or 0,
-                'end': r['end_sum'] or 0,
-                'active': r['active_sum'] or 0,
-                'avg': avg_sum / months if months else 0,
-                'avg_sum': avg_sum,
-                'months': months,
+                'start': r['start_headcount'] or 0,
+                'end': r['end_headcount'] or 0,
+                'active': r['active_headcount'] or 0,
+                'avg': avg_headcount,
+                'avg_sum': avg_headcount,
+                'months': 1,
+                'month': query_month,
+            }
+
+        # 去年同期（同月）
+        c.execute('''
+            SELECT channel, start_headcount, end_headcount, active_headcount
+            FROM agg_hr_data WHERE year = ? AND month = ?
+        ''', (year - 1, query_month))
+        hr_prev = {}
+        for r in c.fetchall():
+            avg_headcount = ((r['start_headcount'] or 0) + (r['end_headcount'] or 0)) / 2.0
+            hr_prev[r['channel']] = {
+                'start': r['start_headcount'] or 0,
+                'end': r['end_headcount'] or 0,
+                'active': r['active_headcount'] or 0,
+                'avg': avg_headcount,
+                'avg_sum': avg_headcount,
+                'months': 1,
+                'month': query_month,
             }
 
         c.execute('''
@@ -136,6 +155,7 @@ def get_kpi_data(year: int):
                 'total': round(jingdai_qj + total_transform, 2),
             },
             'hr': hr,
+            'hr_prev': hr_prev,
             'value': value,
         }
 

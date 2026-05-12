@@ -45,11 +45,13 @@ def aggregate_hr(df: pd.DataFrame) -> List[Dict]:
 
 
 def aggregate_active_headcount(df: pd.DataFrame) -> List[Dict]:
+    """统计长险活动人力：当月至少出一张长期险且保费>0的唯一工号数。"""
     year_col = _pick_col(df, ['年'])
     month_col = _pick_col(df, ['年月', '月', '月份'])
     channel_col = _pick_col(df, ['业务模式', '业务模式名称', '渠道'])
     staff_col = _pick_col(df, ['人员工号', '人员代码'])
     amount_col = _pick_col(df, ['折算保费', '期交保费'])
+    term_col = _pick_col(df, ['长短险'])
 
     if not all([year_col, month_col, channel_col, staff_col, amount_col]):
         raise ValueError(f"无法识别活跃人力必要列。当前列: {list(df.columns)}")
@@ -59,6 +61,10 @@ def aggregate_active_headcount(df: pd.DataFrame) -> List[Dict]:
     work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
     work['_staff'] = work[staff_col].fillna('').astype(str).str.strip()
     work['_amount'] = _to_number(work[amount_col])
+    # 长险过滤：长短险 = '长期'，排除短期/极短期
+    if term_col:
+        term_str = work[term_col].fillna('').astype(str).str.strip()
+        work = work[~term_str.isin(['短期', '极短期'])]
     work = work[(work['_staff'] != '') & (work['_amount'] > 0)]
 
     grouped = work.groupby(['_year', '_month', '_channel'], dropna=False)

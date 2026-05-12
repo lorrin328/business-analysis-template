@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.75</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.76</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -736,9 +736,9 @@
           <div class="kpi-bottom-meta" id="kpi-value-sub"></div>
         </div>
 
-        <!-- 3. 活动率 -->
+        <!-- 3. 长险活动率 -->
         <div class="kpi-card" onclick="openModal('activity')">
-          <div class="kpi-top-label">活动率</div>
+          <div class="kpi-top-label">长险活动率</div>
           <div class="kpi-big-value" id="kpi-activity-rate" style="color: var(--warning);">--</div>
           <div class="kpi-bottom-meta" id="kpi-activity-sub"></div>
         </div>
@@ -1033,7 +1033,7 @@
               <span class="control-label" style="margin-left:12px;">指标类型</span>
               <div class="control-btns">
                 <button class="chart-btn active" onclick="switchTeamMetric(this, 'headcount')">人力规模</button>
-                <button class="chart-btn" onclick="switchTeamMetric(this, 'activity')">活动率</button>
+                <button class="chart-btn" onclick="switchTeamMetric(this, 'activity')">长险活动率</button>
                 <button class="chart-btn" onclick="switchTeamMetric(this, 'perCapitaPremium')">人均保费</button>
                 <button class="chart-btn" onclick="switchTeamMetric(this, 'perCapitaCapacity')">人均产能</button>
               </div>
@@ -1790,27 +1790,59 @@
         if (valueSubEl) valueSubEl.innerHTML = '<span style="color:var(--text-secondary)">需上传价值清单</span>';
       }
 
-      // 3. 活动率
+      // 3. 长险活动率（当月数据）
       const hasApiHr = hasApiKpi && kpi.hr && Object.keys(kpi.hr).length > 0;
       if (hasApiHr) {
         let 总在职 = 0, 总活动 = 0;
         Object.values(kpi.hr).forEach(h => {
-          总在职 += (h.avg_sum || h.avg || 0);
+          总在职 += (h.avg || 0);
           总活动 += (h.active || 0);
         });
         const 活动率 = 总在职 > 0 ? Math.round(总活动 / 总在职 * 1000) / 10 : 0;
         const activityRateEl = document.getElementById('kpi-activity-rate');
         if (activityRateEl) activityRateEl.textContent = 活动率 + '%';
+        // 同比（去年同期同月）
+        const kpiMonth = Object.values(kpi.hr)[0]?.month || 0;
+        let yoyStr = '';
+        if (kpi.hr_prev && Object.keys(kpi.hr_prev).length > 0) {
+          let 总在职Prev = 0, 总活动Prev = 0;
+          Object.values(kpi.hr_prev).forEach(h => {
+            总在职Prev += (h.avg || 0);
+            总活动Prev += (h.active || 0);
+          });
+          const 活动率Prev = 总在职Prev > 0 ? Math.round(总活动Prev / 总在职Prev * 1000) / 10 : 0;
+          if (活动率Prev > 0) {
+            const yoy = Math.round((活动率 / 活动率Prev - 1) * 1000) / 10;
+            const cls = yoy >= 0 ? 'up' : 'down';
+            const sign = yoy >= 0 ? '+' : '';
+            yoyStr = ` <span class="${cls}">同比 ${sign}${yoy}%</span>`;
+          }
+        }
         const activitySubEl = document.getElementById('kpi-activity-sub');
-        if (activitySubEl) activitySubEl.innerHTML = '<span>点击查看分模式明细</span>';
+        if (activitySubEl) activitySubEl.innerHTML = (kpiMonth ? `<span>${kpiMonth}月</span>` : '<span>点击查看分模式明细</span>') + yoyStr;
       } else if (tm) {
-        const 总在职 = sumArr(tm.headcount['OTO']) + sumArr(tm.headcount['证保']) + sumArr(tm.headcount['蚁桥']);
-        const 总活动 = sumArr(tm.activeHeadcount['OTO']) + sumArr(tm.activeHeadcount['证保']) + sumArr(tm.activeHeadcount['蚁桥']);
-        const 活动率 = 总在职 > 0 ? Math.round(总活动 / 总在职 * 1000) / 10 : 0;
-        const activityRateEl = document.getElementById('kpi-activity-rate');
-        if (activityRateEl) activityRateEl.textContent = 活动率 + '%';
-        const activitySubEl = document.getElementById('kpi-activity-sub');
-        if (activitySubEl) activitySubEl.innerHTML = '<span>点击查看分模式明细</span>';
+        // Mock路径：取最新有数据的月份
+        const channels = ['OTO','证保','蚁桥'];
+        let lastMonthIdx = -1;
+        for (let i = 11; i >= 0; i--) {
+          let hasData = false;
+          for (const ch of channels) {
+            if ((tm.headcount[ch]?.[i] ?? 0) > 0) { hasData = true; break; }
+          }
+          if (hasData) { lastMonthIdx = i; break; }
+        }
+        if (lastMonthIdx >= 0) {
+          let 总在职 = 0, 总活动 = 0;
+          for (const ch of channels) {
+            总在职 += (tm.headcount[ch]?.[lastMonthIdx] || 0);
+            总活动 += (tm.activeHeadcount[ch]?.[lastMonthIdx] || 0);
+          }
+          const 活动率 = 总在职 > 0 ? Math.round(总活动 / 总在职 * 1000) / 10 : 0;
+          const activityRateEl = document.getElementById('kpi-activity-rate');
+          if (activityRateEl) activityRateEl.textContent = 活动率 + '%';
+          const activitySubEl = document.getElementById('kpi-activity-sub');
+          if (activitySubEl) activitySubEl.innerHTML = `<span>${lastMonthIdx+1}月</span>`;
+        }
       }
 
       // 4-6. 商保年金 / 保障类 / 10年期
@@ -2435,10 +2467,10 @@
           };
         case 'activity':
           return {
-            title: '活动率 - 分业务模式',
+            title: '长险活动率 - 分业务模式',
             body: `
               <table class="modal-table">
-                <thead><tr><th style="text-align:left;">口径</th><th>活动人力</th><th>月均在职人力</th><th>活动率</th><th>同比</th></tr></thead>
+                <thead><tr><th style="text-align:left;">口径</th><th>长险活动人力</th><th>月均在职人力</th><th>长险活动率</th><th>同比</th></tr></thead>
                 <tbody>
                   <tr style="font-weight:600;"><td style="text-align:left;">整体</td><td>1,318</td><td>1,925</td><td style="color:var(--accent-light);">68.5%</td><td class="up">▲ +2.3pp</td></tr>
                   <tr><td style="text-align:left;">转型业务</td><td>798</td><td>1,205</td><td style="color:var(--warning);">66.2%</td><td class="up">▲ +2.6pp</td></tr>
@@ -20671,7 +20703,7 @@
     const selectedTeamSeries = { 'OTO': true, '证保': true, '蚁桥': true };
     const teamMetricNames = {
       headcount: '人力规模',
-      activity: '活动率',
+      activity: '长险活动率',
       perCapitaPremium: '人均保费',
       perCapitaCapacity: '人均产能'
     };
