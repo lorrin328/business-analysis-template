@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.78</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.79</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -1852,11 +1852,20 @@
         }
       }
 
+      // 商保年金 / 保障类 / 10年期 / 长险期交 — 目标值
+      const targetOverall = targetData?.categories?.qjPremium?.metrics?.['整体']?.year || 0;
+      const targetShanbao = targetData?.categories?.shangbao?.metrics?.['整体']?.year || 0;
+      const targetTenYear = targetData?.categories?.tenYear?.metrics?.['整体']?.year || 0;
+
       // 4. 商保年金
-      { const el = document.getElementById('kpi-annuity-rate');
-        if (el) el.textContent = '--';
+      if (hasApiKpi && kpi.annuity_total !== undefined) {
+        const actual = kpi.annuity_total || 0;
+        const rate = targetShanbao > 0 ? Math.round(actual / targetShanbao * 1000) / 10 : 0;
+        const el = document.getElementById('kpi-annuity-rate');
+        if (el) el.textContent = rate + '%';
         const sub = document.getElementById('kpi-annuity-sub');
-        if (sub) sub.innerHTML = '<span style="color:var(--text-secondary)">暂无数据</span>'; }
+        if (sub) sub.innerHTML = `<span>年度累计 ${actual}万 · 目标 ${targetShanbao}万</span>`;
+      }
 
       // 5. 保障类产品 — 暂不统计
       { const el = document.getElementById('kpi-protection-rate');
@@ -1865,16 +1874,19 @@
         if (sub) sub.innerHTML = '<span style="color:var(--text-secondary)">口径调整中</span>'; }
 
       // 6. 10年期产品
-      { const el = document.getElementById('kpi-10year-rate');
-        if (el) el.textContent = '--';
+      if (hasApiKpi && kpi.tenyear_total !== undefined) {
+        const actual = kpi.tenyear_total || 0;
+        const rate = targetTenYear > 0 ? Math.round(actual / targetTenYear * 1000) / 10 : 0;
+        const el = document.getElementById('kpi-10year-rate');
+        if (el) el.textContent = rate + '%';
         const sub = document.getElementById('kpi-10year-sub');
-        if (sub) sub.innerHTML = '<span style="color:var(--text-secondary)">暂无数据</span>'; }
+        if (sub) sub.innerHTML = `<span>年度累计 ${actual}万 · 目标 ${targetTenYear}万</span>`;
+      }
 
-      // 7. 长险期交达成率（年度累计 / 年度期交目标）
-      if (hasApiKpi && kpi.longterm_qj !== undefined && kpi.qj_premium) {
+      // 7. 长险期交达成率（年度累计长险 / 年度期交目标）
+      if (hasApiKpi && kpi.longterm_qj !== undefined) {
         const ltQj = kpi.longterm_qj || 0;
-        const targetQj = kpi.qj_premium.total || 0;
-        const rate = targetQj > 0 ? Math.round(ltQj / targetQj * 1000) / 10 : 0;
+        const rate = targetOverall > 0 ? Math.round(ltQj / targetOverall * 1000) / 10 : 0;
         const el = document.getElementById('kpi-longterm-rate');
         if (el) el.textContent = rate + '%';
         let yoyStr = '';
@@ -1884,7 +1896,7 @@
           yoyStr = ` <span class="${cls}">同比 ${yoy >= 0 ? '+' : ''}${yoy}%</span>`;
         }
         const sub = document.getElementById('kpi-longterm-sub');
-        if (sub) sub.innerHTML = `<span>年度累计 ${ltQj}万</span>${yoyStr}`;
+        if (sub) sub.innerHTML = `<span>年度累计 ${ltQj}万 · 目标 ${targetOverall}万</span>${yoyStr}`;
       } else {
         const el = document.getElementById('kpi-longterm-rate');
         if (el) el.textContent = '--';
@@ -2613,45 +2625,57 @@
             `
           };
         case '10year':
-          return {
-            title: '10年期产品达成率 - 分业务模式',
-            body: `
-              <div class="modal-kpi-detail three-col">
-                <div class="modal-kpi-item">
-                  <div class="label">OTO 10年期达成率</div>
-                  <div class="value" style="color: var(--accent-light);">82.1%</div>
-                  <div class="sub">规模 1,250万</div>
-                </div>
-                <div class="modal-kpi-item">
-                  <div class="label">证保 10年期达成率</div>
-                  <div class="value" style="color: var(--success);">85.6%</div>
-                  <div class="sub">规模 1,080万</div>
-                </div>
-                <div class="modal-kpi-item">
-                  <div class="label">蚁桥 10年期达成率</div>
-                  <div class="value" style="color: var(--danger);">72.3%</div>
-                  <div class="sub">规模 620万</div>
-                </div>
-              </div>
-              <div class="modal-section-title">10年期产品规模趋势</div>
-              <div id="modalChart" class="modal-chart"></div>
-            `,
-            initChart: () => {
-              const chart = echarts.init(document.getElementById('modalChart'));
-              chart.setOption({
-                tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
-                legend: { data: ['OTO', '证保', '蚁桥'], textStyle: { color: '#94a3b8' }, bottom: 0 },
-                grid: { left: 50, right: 20, top: 10, bottom: 30 },
-                xAxis: { type: 'category', data: ['1月','2月','3月','4月'], axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
-                yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
-                series: [
-                  { name: 'OTO', type: 'bar', data: [280,320,380,420], itemStyle: { color: '#3b82f6', borderRadius: [4,4,0,0] }, barWidth: '25%' },
-                  { name: '证保', type: 'bar', data: [240,270,310,350], itemStyle: { color: '#10b981', borderRadius: [4,4,0,0] }, barWidth: '25%' },
-                  { name: '蚁桥', type: 'bar', data: [140,160,180,200], itemStyle: { color: '#f59e0b', borderRadius: [4,4,0,0] }, barWidth: '25%' }
-                ]
+        case 'longterm': {
+          const is10y = type === '10year';
+          const title = is10y ? '10年期产品达成率 - 分业务模式' : '长险期交达成率 - 分业务模式';
+          // 从 orgKpiData 读取各渠道 product_10year 或 qj_premium
+          const chs = ['OTO','证保','蚁桥'];
+          const targetCat = is10y ? 'tenYear' : 'qjPremium';
+          const field = is10y ? 'product_10year' : 'qj_premium';
+          let jdActual = 0, tfActual = 0, chActuals = {};
+          if (orgKpiData && orgKpiData.perf) {
+            chs.forEach(ch => {
+              let v = 0;
+              Object.values(orgKpiData.perf).forEach(item => {
+                if (item.year) v += (item.year[field] || 0);
               });
-            }
+              chActuals[ch] = Math.round(v);
+              tfActual += v;
+            });
+          }
+          // 经代: from kpi
+          if (kpi) {
+            jdActual = is10y ? 0 : (kpi.longterm_qj || 0) - tfActual;
+            if (jdActual < 0) jdActual = 0;
+          }
+          const targetTf = targetData?.categories?.[targetCat]?.metrics?.['转型业务']?.year || 0;
+          const targetJd = targetData?.categories?.[targetCat]?.metrics?.['经代']?.year || 0;
+          const tfRate = targetTf > 0 ? Math.round(tfActual / targetTf * 1000) / 10 : 0;
+          const jdRate = targetJd > 0 ? Math.round(jdActual / targetJd * 1000) / 10 : 0;
+          const chRows = chs.map(ch => {
+            const t = targetData?.orgTargets ? Object.values(targetData.orgTargets).reduce((s, v) => s + (v[targetCat]?.year || 0), 0) : 0;
+            const a = chActuals[ch] || 0;
+            const r = t > 0 ? Math.round(a / (t/3) * 1000) / 10 : 0;
+            return `<tr><td>${ch}</td><td>${a}万</td><td>${r}%</td></tr>`;
+          }).join('');
+          return {
+            title,
+            body: `
+              <table class="modal-table">
+                <thead><tr><th>业务系列</th><th>年度累计</th><th>达成率</th></tr></thead>
+                <tbody>
+                  <tr><td>经代业务</td><td>${jdActual}万</td><td style="color:${jdRate>=80?'var(--success)':'var(--warning)'}">${jdRate}%</td></tr>
+                  <tr><td>转型业务</td><td>${tfActual}万</td><td style="color:${tfRate>=80?'var(--success)':'var(--warning)'}">${tfRate}%</td></tr>
+                </tbody>
+              </table>
+              <div class="modal-section-title">转型业务分渠道</div>
+              <table class="modal-table">
+                <thead><tr><th>渠道</th><th>年度累计</th><th>达成率</th></tr></thead>
+                <tbody>${chRows}</tbody>
+              </table>
+            `
           };
+        }
         default:
           return { title: '详情', body: '<p>暂无数据</p>' };
       }

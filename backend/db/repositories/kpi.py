@@ -193,6 +193,17 @@ def get_kpi_data(year: int):
         ''', (year,))
         value = {r['channel']: r['total'] or 0 for r in c.fetchall()}
 
+        # 商保年金 / 10年期产品（YTD，从机构业绩表聚合）
+        c.execute('''
+            SELECT channel, SUM(product_annuity) AS a, SUM(product_10year) AS t
+            FROM agg_org_performance WHERE year = ? AND month <= ? GROUP BY channel
+        ''', (year, query_month))
+        annuity_total = 0.0
+        tenyear_total = 0.0
+        for r in c.fetchall():
+            annuity_total += r['a'] or 0
+            tenyear_total += r['t'] or 0
+
         total_transform = perf.get('OTO', 0) + perf.get('证保', 0) + perf.get('蚁桥', 0)
         return {
             'year': year,
@@ -206,6 +217,8 @@ def get_kpi_data(year: int):
             },
             'longterm_qj': lt_total,
             'longterm_qj_prev': lt_total_prev,
+            'annuity_total': round(annuity_total, 2),
+            'tenyear_total': round(tenyear_total, 2),
             'hr': hr,
             'hr_prev': hr_prev,
             'value': value,
