@@ -221,6 +221,8 @@ def get_kpi_data(year: int):
             'longterm_qj_tf': lt_tf,
             'longterm_qj_jd': lt_jd,
             'longterm_qj_prev': lt_total_prev,
+            'longterm_qj_tf_prev': lt_tf_prev,
+            'longterm_qj_jd_prev': lt_jd_prev,
             'annuity_total': round(annuity_tf, 2),
             'tenyear_total': round(tenyear_tf, 2),
             'hr': hr,

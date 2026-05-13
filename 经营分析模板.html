@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.83</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.84</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -2676,7 +2676,9 @@
               body: '<p style="color: var(--text-secondary);">暂无长险期交数据，请完成长险期交聚合后再查看该指标。</p>'
             };
           }
-          const tfActual = Math.round(Object.values(chVals).reduce((s, v) => s + v, 0));
+          const tfActual = is10y
+            ? Math.round(Object.values(chVals).reduce((s, v) => s + v, 0))
+            : Math.round(kpiData.longterm_qj_tf || 0);
           const jdActual = is10y ? 0 : Math.round(kpiData.longterm_qj_jd || 0);
           const targetTf = Math.round(targetData?.categories?.qjPremium?.metrics?.['转型业务']?.year || 0);
           const targetJd = Math.round(targetData?.categories?.qjPremium?.metrics?.['经代']?.year || 0);
@@ -2687,8 +2689,8 @@
           if (is10y) {
             // 10年期同比暂无
           } else if (kpiData.longterm_qj_prev !== undefined) {
-            const prevJd = is10y ? 0 : (kpiData.longterm_qj_jd || 0);
-            const prevTf = is10y ? 0 : (kpiData.longterm_qj_tf || 0);
+            const prevJd = is10y ? 0 : (kpiData.longterm_qj_jd_prev || 0);
+            const prevTf = is10y ? 0 : (kpiData.longterm_qj_tf_prev || 0);
             if (prevJd > 0) { const y = Math.round((jdActual/prevJd - 1)*1000)/10; jdYoy = (y>=0?'+':'') + y + '%'; }
             if (prevTf > 0) { const y = Math.round((tfActual/prevTf - 1)*1000)/10; tfYoy = (y>=0?'+':'') + y + '%'; }
           }
