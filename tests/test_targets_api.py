@@ -5,6 +5,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 import db as database
+import db.connection as db_connection
 from services.response import error_response, success_response
 
 
@@ -19,8 +20,11 @@ def test_response_format():
 
 
 def test_target_save_and_read(tmp_path):
-    old_path = database.DB_PATH
-    database.DB_PATH = str(tmp_path / "business_data.db")
+    old_database_path = database.DB_PATH
+    old_connection_path = db_connection.DB_PATH
+    temp_db_path = str(tmp_path / "business_data.db")
+    database.DB_PATH = temp_db_path
+    db_connection.DB_PATH = temp_db_path
     try:
         payload = {
             "year": 2098,
@@ -39,4 +43,5 @@ def test_target_save_and_read(tmp_path):
         assert saved["updated_by"] == "pytest"
         assert any(r["period_type"] == "year" and r["target_value"] == 100 for r in rows)
     finally:
-        database.DB_PATH = old_path
+        database.DB_PATH = old_database_path
+        db_connection.DB_PATH = old_connection_path

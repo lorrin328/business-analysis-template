@@ -30,7 +30,8 @@
 | `经营分析模板.html` | **生产文件**：完整看板，含真实业务数据 |
 | `经营分析看板重构-demo.html` | **演示文件**：功能验证与样式调整 |
 | `目标设置.html` | **目标录入页面**：在浏览器中填写经营目标数据 |
-| `business_data.db` | **SQLite 数据库**：Python 聚合后的业务数据（运行时加载） |
+| `backend/business_data.db` | **运行时 SQLite 数据库**：FastAPI 实际读写的聚合数据与目标数据 |
+| `business_data.db` | **历史/备份数据库**：根目录留存文件，不作为当前服务默认运行库 |
 | `docs/` | 需求文档、修订记录、数据规范、功能逻辑与更新说明 |
 
 ---
@@ -78,7 +79,6 @@ Excel 基表
 | `backend/config/` | 业务线、指标、机构、运行配置 |
 | `backend/services/` | 数据转换、查询服务、响应格式 |
 | `backend/validators/` | 导入、目标、机构校验 |
-| `frontend/src/` | 前端模块化迁移骨架 |
 | `deploy/` | Ubuntu 部署文件 |
 | `tests/` | 基础验收测试 |
 
@@ -87,7 +87,7 @@ Excel 基表
 ```
 Excel 基表（4个文件）
     ↓  Python 解析 + 聚合
-SQLite 数据库（business_data.db）
+SQLite 数据库（backend/business_data.db）
     ↓  FastAPI 接口
 生产 HTML 动态读取（platformMock + teamMock + 机构聚合）
     ↓  浏览器渲染
@@ -107,7 +107,7 @@ ECharts 图表
 
 1. 启动 FastAPI 服务。
 2. 通过页面上传 Excel，或调用 `/api/import`。
-3. 后端完成解析、校验、聚合并写入 `business_data.db`。
+3. 后端完成解析、校验、聚合并写入 `backend/business_data.db`。
 4. 页面通过 API 重新读取数据并刷新 KPI、平台趋势、机构、队伍和产品图表。
 
 ---
@@ -139,7 +139,7 @@ ECharts 图表
 | ECharts 5.x | 图表渲染 | CDN |
 | SQLite (Python) | 数据存储与聚合 | Python 标准库 + pandas |
 | FastAPI | 后端 API 与导入服务 | `backend/main.py` |
-| SQLite | 服务端数据存储 | `business_data.db` |
+| SQLite | 服务端数据存储 | `backend/business_data.db` |
 | 纯 HTML + JS | 前端展示 | `经营分析模板.html` |
 
 ---

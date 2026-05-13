@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.81</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.82</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -1166,6 +1166,7 @@
     // ---------- Target Setting System ----------
     const TARGET_STORAGE_KEY = 'business_targets_v1';
     let targetData = null;
+    let targetDataSource = 'default';
 
     function createDefaultTargetData(year) {
       const metrics = ['整体', '经代', '转型业务', 'OTO', '证保', '蚁桥'];
@@ -1280,8 +1281,21 @@
           const parsed = JSON.parse(saved);
           if (!parsed.categories) throw new Error('invalid target data');
           targetData = normalizeTargetData(parsed, desiredYear);
-        } catch(e) { targetData = createDefaultTargetData(desiredYear); }
-      } else { targetData = createDefaultTargetData(desiredYear); }
+          targetDataSource = 'local';
+        } catch(e) {
+          targetData = createDefaultTargetData(desiredYear);
+          targetDataSource = 'default';
+        }
+      } else {
+        targetData = createDefaultTargetData(desiredYear);
+        targetDataSource = 'default';
+      }
+    }
+
+    function targetSourceLabel() {
+      if (targetDataSource === 'server') return '服务端目标';
+      if (targetDataSource === 'local') return '本地缓存目标';
+      return '默认目标，服务端尚未配置正式目标';
     }
 
     async function fetchTargetData(year) {
@@ -1290,7 +1304,9 @@
         const resp = await fetch(`${API_BASE}/api/targets/${desiredYear}`, { method: 'GET' });
         if (!resp.ok) throw new Error('target api unavailable');
         const data = await resp.json();
-        targetData = normalizeTargetData(data && data.categories ? data : createDefaultTargetData(desiredYear), desiredYear);
+        const hasServerTarget = !!(data && data.categories);
+        targetData = normalizeTargetData(hasServerTarget ? data : createDefaultTargetData(desiredYear), desiredYear);
+        targetDataSource = hasServerTarget ? 'server' : 'default';
         localStorage.setItem(targetStorageKey(desiredYear), JSON.stringify(targetData));
         return true;
       } catch(e) {
@@ -1311,7 +1327,7 @@
             <option value="2025" ${targetData.year === 2025 ? 'selected' : ''}>2025</option>
             <option value="2024" ${targetData.year === 2024 ? 'selected' : ''}>2024</option>
           </select>
-          <span style="color:var(--text-secondary);font-size:12px;">单位：万 · 年度目标影响KPI概览达成率</span>
+          <span id="targetSourceNote" style="color:var(--text-secondary);font-size:12px;">单位：万 · ${targetSourceLabel()}</span>
           <div style="flex:1;"></div>
           <button class="chart-btn" onclick="exportTargetJSON()">导出 JSON</button>
           <button class="chart-btn" onclick="document.getElementById('targetFileInput').click()">导入 JSON</button>
@@ -1323,6 +1339,8 @@
       await fetchTargetData(targetData.year);
       const select = document.getElementById('targetYearSelect');
       if (select) select.value = targetData.year;
+      const note = document.getElementById('targetSourceNote');
+      if (note) note.textContent = `单位：万 · ${targetSourceLabel()}`;
       renderTargetForm();
       modalOverlay.classList.add('active');
     }
@@ -1762,8 +1780,6 @@
       const 整体达成率 = calcRate(整体实际, 整体目标);
       const 经代达成率 = calcRate(经代实际, 经代目标);
       const 转型达成率 = calcRate(转型实际, 转型目标);
-      // 调试输出
-      console.log('KPI更新: 整体目标=' + 整体目标 + ' 整体实际=' + Math.round(整体实际) + ' 达成率=' + 整体达成率 + '%');
       const qjRateEl = document.getElementById('kpi-qj-rate');
       if (qjRateEl) qjRateEl.textContent = 整体达成率 + '%';
       const qjSubEl = document.getElementById('kpi-qj-sub');
@@ -1819,10 +1835,10 @@
           });
           const 活动率Prev = 总在职Prev > 0 ? Math.round(总活动Prev / 总在职Prev * 1000) / 10 : 0;
           if (活动率Prev > 0) {
-            const yoy = Math.round((活动率 / 活动率Prev - 1) * 1000) / 10;
+            const yoy = Math.round((活动率 - 活动率Prev) * 10) / 10;
             const cls = yoy >= 0 ? 'up' : 'down';
             const sign = yoy >= 0 ? '+' : '';
-            yoyStr = ` <span class="${cls}">同比 ${sign}${yoy}%</span>`;
+            yoyStr = ` <span class="${cls}">同比 ${sign}${yoy}pp</span>`;
           }
         }
         const activitySubEl = document.getElementById('kpi-activity-sub');
@@ -1870,9 +1886,9 @@
 
       // 5. 保障类产品 — 暂不统计
       { const el = document.getElementById('kpi-protection-rate');
-        if (el) el.textContent = '0%';
+        if (el) el.textContent = '--';
         const sub = document.getElementById('kpi-protection-sub');
-        if (sub) sub.innerHTML = '<span style="color:var(--text-secondary)">口径调整中</span>'; }
+        if (sub) sub.innerHTML = '<span style="color:var(--text-secondary)">口径待完善</span>'; }
 
       // 6. 10年期产品（经代暂缺）
       if (hasApiKpi && kpi.tenyear_total !== undefined) {
@@ -1886,7 +1902,7 @@
       }
 
       // 7. 长险期交达成率
-      if (hasApiKpi && kpi.longterm_qj !== undefined) {
+      if (hasApiKpi && kpi.longterm_qj !== undefined && kpi.longterm_qj > 0) {
         const ltQj = kpi.longterm_qj || 0;
         const ltTf = kpi.longterm_qj_tf || 0;
         const ltJd = kpi.longterm_qj_jd || 0;
@@ -1908,6 +1924,8 @@
       } else {
         const el = document.getElementById('kpi-longterm-rate');
         if (el) el.textContent = '--';
+        const sub = document.getElementById('kpi-longterm-sub');
+        if (sub) sub.innerHTML = '<span style="color:var(--text-secondary)">暂无长险期交数据</span>';
       }
 
       // 8. 人均保费（YTD累计：保费累计 / 在职人力累计）
@@ -2651,6 +2669,12 @@
               const ch = chs.find(c => key.endsWith('|' + c));
               if (ch) chVals[ch] = (chVals[ch] || 0) + (item.year?.[field] || 0);
             });
+          }
+          if (!is10y && !(kpiData.longterm_qj > 0)) {
+            return {
+              title,
+              body: '<p style="color: var(--text-secondary);">暂无长险期交数据，请完成长险期交聚合后再查看该指标。</p>'
+            };
           }
           const tfActual = Math.round(Object.values(chVals).reduce((s, v) => s + v, 0));
           const jdActual = is10y ? 0 : Math.round(kpiData.longterm_qj_jd || 0);
@@ -19945,13 +19969,6 @@
       const useOrgDaily = hasPlatformOrgFilter();
       const daily = [];
       let hasDailyRows = false;
-      const jdDailyFromCache = apiCache[String(year)]?.platform?.jingdai_daily || [];
-      const rawDailyFromCache = apiCache[String(year)]?.platform?.daily_performance || [];
-      const orgDailyFromCache = apiCache[String(year)]?.platform?.org_daily_performance || [];
-      console.log('[getMonthDailyCumulative]', { year, premiumType, selectedKeys, month, useOrgDaily,
-        jdDailyLen: jdDailyFromCache.length, rawDailyLen: rawDailyFromCache.length, orgDailyLen: orgDailyFromCache.length,
-        jdDailySample: jdDailyFromCache.slice(0, 3) });
-
       if (useOrgDaily) {
         const selected = selectedPlatformOrgNames();
         const orgDaily = apiCache[String(year)]?.platform?.org_daily_performance || [];
@@ -19992,21 +20009,9 @@
             cumulative[i] = running;
           }
           const result = trimDailySeries(cumulative);
-          console.log('[getMonthDailyCumulative:org] resultLen:', result.length, 'hasDailyRows:', hasDailyRows);
           return result;
         }
         // org筛选激活但无org_daily数据 → 返回空，不回退到全机构聚合
-        return [];
-
-        if (selectedKeys.some(k => k === '经代' || (k.includes('经') && k.includes('代')))) {
-          const result = getJingdaiMonthFallback(year, typeKey, month);
-          if (result.length > 0) {
-            console.log('[getMonthDailyCumulative:org] direct jingdai fallback resultLen:', result.length, 'month:', month);
-            return result;
-          }
-        }
-
-        console.log('[getMonthDailyCumulative:org] no daily rows (including fallbacks), returning []');
         return [];
       }
 
@@ -20039,7 +20044,6 @@
           cumulative[i] = running;
         }
         const result = trimDailySeries(cumulative);
-        console.log('[getMonthDailyCumulative] resultLen:', result.length, 'rawDailyHasJd:', rawDailyHasJd, 'hasDailyRows:', hasDailyRows, 'sample:', result.slice(0, 3));
         return result;
       }
 
@@ -20063,7 +20067,6 @@
         }
         if (combined) {
           const result = trimDailySeries(combined);
-          console.log('[getMonthDailyCumulative] platformMock fallback resultLen:', result.length, 'month:', month, 'selectedKeys:', selectedKeys);
           return result;
         }
       }
@@ -20071,12 +20074,10 @@
       if (selectedKeys.some(k => k === '经代' || (k.includes('经') && k.includes('代')))) {
         const result = getJingdaiMonthFallback(year, typeKey, month);
         if (result.length > 0) {
-          console.log('[getMonthDailyCumulative] direct jingdai fallback resultLen:', result.length, 'month:', month);
           return result;
         }
       }
 
-      console.log('[getMonthDailyCumulative] no daily rows, rawDailyHasJd:', rawDailyHasJd, 'selectedKeys:', selectedKeys, 'month:', month);
       return [];
     }
 
@@ -20155,9 +20156,6 @@
       const prevKey = platformTrendCacheKey(prevYear, currentPremiumType, selectedKeys, periodType, periodValue);
       const current = platformTrendDailyCache[currentKey] || getPeriodDailyCumulative(year, currentPremiumType, selectedKeys, monthList);
       const prev = platformTrendDailyCache[prevKey] || (platformMock[prevYear] ? getPeriodDailyCumulative(prevYear, currentPremiumType, selectedKeys, monthList) : { labels: [], values: [] });
-      console.log('[buildDailyTrendOption]', { year, prevYear, monthList, currentPremiumType, selectedKeys,
-        currentLen: current.values.length, prevLen: prev.values.length,
-        currentSample: current.values.slice(0, 3), prevSample: prev.values.slice(0, 3) });
       if (current.values.length === 0 && prev.values.length === 0) return {
         title: { text: emptyMessage, left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } },
         xAxis: { type: 'category', data: [] },
@@ -20336,9 +20334,6 @@
           Object.assign(platformMock, prevPM);
           const prevTM = convertApiToTeamMock(apiCache[prevYearKey].platform, prevYearKey);
           Object.assign(teamMock, prevTM);
-          console.log('[loadYearFromApi] prev year loaded:', { year, prevYear: prevYearNum, platformMockKeys: Object.keys(platformMock).filter(k => k === prevYearKey),
-            teamMockKeys: Object.keys(teamMock).filter(k => k === prevYearKey),
-            hasPrevYearPlatform: !!platformMock[prevYearKey], hasPrevYearTeam: !!teamMock[prevYearKey] });
         }
         return true;
       }
@@ -21024,7 +21019,6 @@
         } else {
           const dataYears = result.data_years || [2026];
           const queryYear = dataYears[0] || 2026;
-          console.log('上传成功，数据年份:', dataYears, '查询年份:', queryYear);
           await fetchAPIData(queryYear);
           await fetchTargetData(queryYear);
           if (apiData.platform && hasValidApiData(apiData.platform)) {

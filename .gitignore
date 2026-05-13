@@ -13,6 +13,7 @@ N1AI-人力基表*.xlsx
 # 中间产物
 data_agg.json
 *.db
+_cleanup_backup_*/
 
 # === Office 临时文件 ===
 ~$*.xlsx
