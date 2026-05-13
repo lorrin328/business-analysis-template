@@ -7,6 +7,7 @@ from etl import (
     aggregate_daily_performance, aggregate_org_daily_performance,
     aggregate_org_performance, aggregate_org_value,
     aggregate_payment_period, aggregate_jingdai_payment_period,
+    aggregate_transform_longterm, aggregate_jingdai_longterm,
 )
 from db import clear_year_data, get_db, init_db, replace_rows
 
@@ -31,6 +32,7 @@ def main():
     product_rows, value_rows, org_value_rows = [], [], []
     hr_rows, jd_rows, jd_daily_rows, active_rows, org_perf_rows = [], [], [], [], []
     pay_period_rows, jd_pay_period_rows = [], []
+    longterm_rows, jd_longterm_rows = [], []
     raw_tables = {}
 
     if performance_file:
@@ -43,10 +45,12 @@ def main():
         active_rows = aggregate_active_headcount(df)
         org_perf_rows = aggregate_org_performance(df)
         pay_period_rows = aggregate_payment_period(df)
+        longterm_rows = aggregate_transform_longterm(df)
         print(
             f'performance: {performance_file.name} -> {len(perf_rows)} monthly, '
             f'{len(daily_rows)} daily, {len(org_perf_rows)} org rows, '
-            f'{len(pay_period_rows)} pay period rows'
+            f'{len(pay_period_rows)} pay period rows, '
+            f'{len(longterm_rows)} longterm rows'
         )
 
     if jingdai_file:
@@ -55,8 +59,10 @@ def main():
         jd_rows = aggregate_jingdai(df)
         jd_daily_rows = aggregate_jingdai_daily(df)
         jd_pay_period_rows = aggregate_jingdai_payment_period(df)
+        jd_longterm_rows = aggregate_jingdai_longterm(df)
         print(f'jingdai: {jingdai_file.name} -> {len(jd_rows)} monthly, {len(jd_daily_rows)} daily, '
-              f'{len(jd_pay_period_rows)} pay period rows')
+              f'{len(jd_pay_period_rows)} pay period rows, '
+              f'{len(jd_longterm_rows)} longterm rows')
 
     if hr_file:
         df = parse_hr_excel(hr_file.read_bytes())
@@ -84,7 +90,7 @@ def main():
         for rows in [
             perf_rows, daily_rows, org_daily_rows, product_rows,
             value_rows, org_value_rows, hr_rows, jd_rows, jd_daily_rows, org_perf_rows,
-            pay_period_rows, jd_pay_period_rows,
+            pay_period_rows, jd_pay_period_rows, longterm_rows, jd_longterm_rows,
         ]
         for row in rows
         if row.get('year')
@@ -105,6 +111,7 @@ def main():
         replace_rows(conn, 'agg_product_structure', product_rows)
         replace_rows(conn, 'agg_org_performance', org_perf_rows)
         replace_rows(conn, 'agg_payment_period', pay_period_rows + jd_pay_period_rows)
+        replace_rows(conn, 'agg_longterm_qj', longterm_rows + jd_longterm_rows)
         for table, df in raw_tables.items():
             conn.execute(f'DELETE FROM {table}')
             df.to_sql(table, conn, if_exists='append', index=False)
