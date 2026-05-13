@@ -34,6 +34,12 @@ def get_platform_data(year: int):
         hr_rows = c.fetchall()
 
         c.execute('''
+            SELECT month, org, channel, start_headcount, end_headcount, active_headcount
+            FROM agg_org_hr_data WHERE year = ? ORDER BY month, org, channel
+        ''', (year,))
+        org_hr_rows = c.fetchall()
+
+        c.execute('''
             SELECT month, channel, value_premium
             FROM agg_value_data WHERE year = ? ORDER BY month, channel
         ''', (year,))
@@ -73,6 +79,7 @@ def get_platform_data(year: int):
             'jingdai': [dict(r) for r in jingdai_rows],
             'jingdai_daily': [dict(r) for r in jingdai_daily_rows],
             'hr': [dict(r) for r in hr_rows],
+            'org_hr': [dict(r) for r in org_hr_rows],
             'value': [dict(r) for r in value_rows],
             'org_performance': [dict(r) for r in org_perf_rows],
             'daily_performance': [dict(r) for r in daily_rows],

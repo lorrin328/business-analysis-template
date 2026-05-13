@@ -8,6 +8,7 @@ from etl import (
     aggregate_org_performance, aggregate_org_value,
     aggregate_payment_period, aggregate_jingdai_payment_period,
     aggregate_transform_longterm, aggregate_jingdai_longterm,
+    aggregate_org_hr, aggregate_org_active_headcount,
 )
 from db import clear_year_data, get_db, init_db, replace_rows
 
@@ -30,7 +31,7 @@ def main():
 
     perf_rows, daily_rows, org_daily_rows = [], [], []
     product_rows, value_rows, org_value_rows = [], [], []
-    hr_rows, jd_rows, jd_daily_rows, active_rows, org_perf_rows = [], [], [], [], []
+    hr_rows, jd_rows, jd_daily_rows, active_rows, org_perf_rows, org_hr_rows, org_active_rows = [], [], [], [], [], [], []
     pay_period_rows, jd_pay_period_rows = [], []
     longterm_rows, jd_longterm_rows = [], []
     raw_tables = {}
@@ -43,6 +44,7 @@ def main():
         org_daily_rows = aggregate_org_daily_performance(df)
         product_rows = aggregate_product_structure(df)
         active_rows = aggregate_active_headcount(df)
+        org_active_rows = aggregate_org_active_headcount(df)
         org_perf_rows = aggregate_org_performance(df)
         pay_period_rows = aggregate_payment_period(df)
         longterm_rows = aggregate_transform_longterm(df)
@@ -68,7 +70,8 @@ def main():
         df = parse_hr_excel(hr_file.read_bytes())
         raw_tables['hr_data'] = df
         hr_rows = aggregate_hr(df)
-        print(f'hr: {hr_file.name} -> {len(hr_rows)} rows')
+        org_hr_rows = aggregate_org_hr(df)
+        print(f'hr: {hr_file.name} -> {len(hr_rows)} rows, {len(org_hr_rows)} org rows')
 
     if value_file:
         df = parse_value_excel(value_file.read_bytes())
@@ -85,12 +88,21 @@ def main():
         for row in hr_rows:
             row['active_headcount'] = active_index.get((row['year'], row['month'], row['channel']), 0)
 
+    if org_hr_rows and org_active_rows:
+        org_active_index = {
+            (r['year'], r['month'], r['org'], r['channel']): r['active_headcount']
+            for r in org_active_rows
+        }
+        for row in org_hr_rows:
+            row['active_headcount'] = org_active_index.get((row['year'], row['month'], row['org'], row['channel']), 0)
+
     years = sorted({
         int(row['year'])
         for rows in [
             perf_rows, daily_rows, org_daily_rows, product_rows,
             value_rows, org_value_rows, hr_rows, jd_rows, jd_daily_rows, org_perf_rows,
             pay_period_rows, jd_pay_period_rows, longterm_rows, jd_longterm_rows,
+            org_hr_rows,
         ]
         for row in rows
         if row.get('year')
@@ -106,6 +118,7 @@ def main():
         replace_rows(conn, 'agg_jingdai', jd_rows)
         replace_rows(conn, 'agg_jingdai_daily', jd_daily_rows)
         replace_rows(conn, 'agg_hr_data', hr_rows)
+        replace_rows(conn, 'agg_org_hr_data', org_hr_rows)
         replace_rows(conn, 'agg_value_data', value_rows)
         replace_rows(conn, 'agg_org_value', org_value_rows)
         replace_rows(conn, 'agg_product_structure', product_rows)

@@ -9,6 +9,7 @@ AGG_TABLES = [
     'agg_jingdai',
     'agg_jingdai_daily',
     'agg_hr_data',
+    'agg_org_hr_data',
     'agg_value_data',
     'agg_product_structure',
     'agg_daily_performance',
@@ -49,6 +50,12 @@ def init_db():
             channel TEXT NOT NULL, start_headcount INTEGER NOT NULL DEFAULT 0,
             end_headcount INTEGER NOT NULL DEFAULT 0, active_headcount INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(year, month, channel))''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS agg_org_hr_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
+            org TEXT NOT NULL, channel TEXT NOT NULL, start_headcount INTEGER NOT NULL DEFAULT 0,
+            end_headcount INTEGER NOT NULL DEFAULT 0, active_headcount INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(year, month, org, channel))''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS agg_value_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,

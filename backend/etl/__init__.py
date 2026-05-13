@@ -2,7 +2,7 @@
 from etl.parser import parse_performance_excel, parse_jingdai_excel, parse_hr_excel, parse_value_excel
 from etl.aggregates.performance import aggregate_performance, aggregate_daily_performance
 from etl.aggregates.jingdai import aggregate_jingdai, aggregate_jingdai_daily
-from etl.aggregates.hr import aggregate_hr, aggregate_active_headcount
+from etl.aggregates.hr import aggregate_hr, aggregate_active_headcount, aggregate_org_hr, aggregate_org_active_headcount
 from etl.aggregates.value import aggregate_value, aggregate_org_value
 from etl.aggregates.org import aggregate_org_daily_performance, aggregate_org_performance
 from etl.aggregates.product import aggregate_product_structure

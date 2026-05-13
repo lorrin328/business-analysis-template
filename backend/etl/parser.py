@@ -12,7 +12,7 @@ def parse_jingdai_excel(file_bytes: bytes) -> pd.DataFrame:
 
 
 def parse_hr_excel(file_bytes: bytes) -> pd.DataFrame:
-    return _read_excel(file_bytes, {'业务模式名称', '统计日期'})
+    return _read_excel(file_bytes, {'业务模式名称', '统计日期', '销售机构名称', '月初在职人力', '月末在职人力'})
 
 
 def parse_value_excel(file_bytes: bytes) -> pd.DataFrame:

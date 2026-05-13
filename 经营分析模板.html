@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.88</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.89</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -1064,6 +1064,22 @@
                 <label class="check-label"><input type="checkbox" checked onchange="toggleTeamSeries('OTO', this.checked)"> <span>OTO</span></label>
                 <label class="check-label"><input type="checkbox" checked onchange="toggleTeamSeries('证保', this.checked)"> <span>证保</span></label>
                 <label class="check-label"><input type="checkbox" checked onchange="toggleTeamSeries('蚁桥', this.checked)"> <span>蚁桥</span></label>
+              </div>
+            </div>
+            <div class="control-row">
+              <span class="control-label">机构</span>
+              <div class="control-checks" id="teamOrgChecks">
+                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('all', this.checked)"> <span>全部</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('上海', this.checked)"> <span>上海</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('四川', this.checked)"> <span>四川</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('湖北', this.checked)"> <span>湖北</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('辽宁', this.checked)"> <span>辽宁</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('山东', this.checked)"> <span>山东</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('广东', this.checked)"> <span>广东</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('福建', this.checked)"> <span>福建</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('浙江', this.checked)"> <span>浙江</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('河南', this.checked)"> <span>河南</span></label>
+                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('北京', this.checked)"> <span>北京</span></label>
               </div>
             </div>
           </div>
@@ -3730,6 +3746,46 @@
           mock.premium[ch][m] = null;
         });
       }
+
+      // Build org-level data
+      const orgData = {};
+      ORG_LIST_TEAM.forEach(org => {
+        orgData[org] = {
+          headcount: { 'OTO': [], '证保': [], '蚁桥': [] },
+          activeHeadcount: { 'OTO': [], '证保': [], '蚁桥': [] },
+          premium: { 'OTO': [], '证保': [], '蚁桥': [] }
+        };
+        for (let m = 0; m < 12; m++) {
+          ['OTO', '证保', '蚁桥'].forEach(ch => {
+            orgData[org].headcount[ch][m] = null;
+            orgData[org].activeHeadcount[ch][m] = null;
+            orgData[org].premium[ch][m] = null;
+          });
+        }
+      });
+
+      if (apiPlatform.org_hr) {
+        apiPlatform.org_hr.forEach(r => {
+          const m = r.month - 1;
+          const org = r.org;
+          if (m >= 0 && m < 12 && orgData[org] && orgData[org].headcount[r.channel]) {
+            orgData[org].headcount[r.channel][m] = Math.round((r.start_headcount + r.end_headcount) / 2);
+            orgData[org].activeHeadcount[r.channel][m] = r.active_headcount;
+          }
+        });
+      }
+
+      if (apiPlatform.org_performance) {
+        apiPlatform.org_performance.forEach(r => {
+          const m = r.month - 1;
+          const org = r.org;
+          if (m >= 0 && m < 12 && orgData[org] && orgData[org].premium[r.channel]) {
+            orgData[org].premium[r.channel][m] = r.qj_premium || 0;
+          }
+        });
+      }
+
+      teamOrgData[year] = orgData;
 
       if (apiPlatform.hr) {
         apiPlatform.hr.forEach(r => {
@@ -21075,6 +21131,10 @@
     let selectedTeamYear = '2026';
     let selectedTeamQuarter = 'Q2';
     const selectedTeamSeries = { 'OTO': true, '证保': true, '蚁桥': true };
+    const ORG_LIST_TEAM = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
+    const selectedTeamOrgs = {};
+    ORG_LIST_TEAM.forEach(o => selectedTeamOrgs[o] = true);
+    const teamOrgData = {};
     const teamMetricNames = {
       headcount: '人力规模',
       activity: '长险活动率',
@@ -21092,15 +21152,30 @@
 
     function getTeamAggregated(year, metric) {
       const selectedKeys = Object.keys(selectedTeamSeries).filter(k => selectedTeamSeries[k]);
+      const selectedOrgs = Object.keys(selectedTeamOrgs).filter(k => selectedTeamOrgs[k]);
+      const hasOrgFilter = selectedOrgs.length > 0 && selectedOrgs.length < ORG_LIST_TEAM.length;
+      const useOrgData = hasOrgFilter && teamOrgData[year];
       const data = teamMock[year];
       const result = [];
       for (let i = 0; i < 12; i++) {
         if (year === 2026 && i >= 5) { result.push(null); continue; }
         let totalHeadcount = 0, totalActive = 0, totalPremium = 0;
-        for (const key of selectedKeys) {
-          totalHeadcount += data.headcount[key][i];
-          totalActive += data.activeHeadcount[key][i];
-          totalPremium += data.premium[key][i];
+        if (useOrgData) {
+          for (const org of selectedOrgs) {
+            const orgD = teamOrgData[year][org];
+            if (!orgD) continue;
+            for (const key of selectedKeys) {
+              totalHeadcount += (orgD.headcount[key][i] || 0);
+              totalActive += (orgD.activeHeadcount[key][i] || 0);
+              totalPremium += (orgD.premium[key][i] || 0);
+            }
+          }
+        } else {
+          for (const key of selectedKeys) {
+            totalHeadcount += data.headcount[key][i];
+            totalActive += data.activeHeadcount[key][i];
+            totalPremium += data.premium[key][i];
+          }
         }
         if (metric === 'headcount') result.push(totalHeadcount);
         else if (metric === 'activity') result.push(totalHeadcount > 0 ? Math.round(totalActive / totalHeadcount * 1000) / 10 : 0);
@@ -21146,41 +21221,16 @@
       const quarter = selectedTeamQuarter;
       const qMonths = { 'Q1': [0,1,2], 'Q2': [3,4,5], 'Q3': [6,7,8], 'Q4': [9,10,11] }[quarter];
       const qMonthNames = qMonths.map(i => months[i]);
-      const currentData = [];
-      for (const i of qMonths) {
-        if (year === 2026 && i >= 5) { currentData.push(null); continue; }
-        const selectedKeys = Object.keys(selectedTeamSeries).filter(k => selectedTeamSeries[k]);
-        let totalHeadcount = 0, totalActive = 0, totalPremium = 0;
-        for (const key of selectedKeys) {
-          totalHeadcount += teamMock[year].headcount[key][i];
-          totalActive += teamMock[year].activeHeadcount[key][i];
-          totalPremium += teamMock[year].premium[key][i];
-        }
-        if (metric === 'headcount') currentData.push(totalHeadcount);
-        else if (metric === 'activity') currentData.push(totalHeadcount > 0 ? Math.round(totalActive / totalHeadcount * 1000) / 10 : 0);
-        else if (metric === 'perCapitaPremium') currentData.push(totalHeadcount > 0 ? Math.round(totalPremium / totalHeadcount * 10) / 10 : 0);
-        else if (metric === 'perCapitaCapacity') currentData.push(totalActive > 0 ? Math.round(totalPremium / totalActive * 10) / 10 : 0);
-      }
+      const currentFull = getTeamAggregated(year, metric);
+      const currentData = qMonths.map(i => currentFull[i]);
 
       const seriesList = [
         { name: year + '年' + quarter, type: 'line', data: currentData, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
       ];
 
       if (teamMock[prevYear]) {
-        const prevData = [];
-        for (const i of qMonths) {
-          const selectedKeys = Object.keys(selectedTeamSeries).filter(k => selectedTeamSeries[k]);
-          let totalHeadcount = 0, totalActive = 0, totalPremium = 0;
-          for (const key of selectedKeys) {
-            totalHeadcount += teamMock[prevYear].headcount[key][i];
-            totalActive += teamMock[prevYear].activeHeadcount[key][i];
-            totalPremium += teamMock[prevYear].premium[key][i];
-          }
-          if (metric === 'headcount') prevData.push(totalHeadcount);
-          else if (metric === 'activity') prevData.push(totalHeadcount > 0 ? Math.round(totalActive / totalHeadcount * 1000) / 10 : 0);
-          else if (metric === 'perCapitaPremium') prevData.push(totalHeadcount > 0 ? Math.round(totalPremium / totalHeadcount * 10) / 10 : 0);
-          else if (metric === 'perCapitaCapacity') prevData.push(totalActive > 0 ? Math.round(totalPremium / totalActive * 10) / 10 : 0);
-        }
+        const prevFull = getTeamAggregated(prevYear, metric);
+        const prevData = qMonths.map(i => prevFull[i]);
         seriesList.push({ name: prevYear + '年' + quarter, type: 'line', data: prevData, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
       }
 
@@ -21230,6 +21280,22 @@
     }
     function toggleTeamSeries(key, checked) {
       selectedTeamSeries[key] = checked;
+      teamChart.clear();
+      teamChart.setOption(getTeamOption(), true);
+    }
+
+    function toggleTeamOrg(key, checked) {
+      if (key === 'all') {
+        ORG_LIST_TEAM.forEach(o => { selectedTeamOrgs[o] = checked; });
+        document.querySelectorAll('#teamOrgChecks input[type="checkbox"]').forEach(input => {
+          input.checked = checked;
+        });
+      } else {
+        selectedTeamOrgs[key] = checked;
+        const allChecked = ORG_LIST_TEAM.every(o => selectedTeamOrgs[o]);
+        const allInput = document.querySelector('#teamOrgChecks input[onchange*="toggleTeamOrg('all'"]');
+        if (allInput) allInput.checked = allChecked;
+      }
       teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
     }
