@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.84</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.85</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -2540,23 +2540,80 @@
               });
             }
           };
-        case 'activity':
+        case 'activity': {
+          const kpiData = apiData.kpi || {};
+          const hr = kpiData.hr || {};
+          const hrPrev = kpiData.hr_prev || {};
+          const chs = ['OTO', '证保', '蚁桥'];
+
+          function calcActivity(h) {
+            const avg = h?.avg || 0;
+            const active = h?.active || 0;
+            return avg > 0 ? Math.round(active / avg * 1000) / 10 : 0;
+          }
+
+          let totalActive = 0, totalAvg = 0;
+          let tfActive = 0, tfAvg = 0;
+          const chRows = [];
+
+          chs.forEach(ch => {
+            const h = hr[ch];
+            const avg = h?.avg || 0;
+            const active = h?.active || 0;
+            totalActive += active;
+            totalAvg += avg;
+            tfActive += active;
+            tfAvg += avg;
+            const rate = calcActivity(h);
+            const hPrev = hrPrev[ch];
+            const prevRate = calcActivity(hPrev);
+            const yoy = prevRate > 0 ? Math.round((rate - prevRate) * 10) / 10 : 0;
+            const yoyStr = prevRate > 0 ? (yoy >= 0 ? `+${yoy}pp` : `${yoy}pp`) : '--';
+            const yoyCls = yoy >= 0 ? 'up' : 'down';
+            chRows.push(`<tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">${ch}</td><td>${active}</td><td>${avg}</td><td style="color:${rate >= 70 ? 'var(--success)' : rate >= 50 ? 'var(--warning)' : 'var(--danger)'}">${rate}%</td><td class="${yoyCls}">${yoy >= 0 && yoyStr !== '--' ? '▲ ' : yoyStr !== '--' ? '▼ ' : ''}${yoyStr}</td></tr>`);
+          });
+
+          const totalRate = totalAvg > 0 ? Math.round(totalActive / totalAvg * 1000) / 10 : 0;
+          const tfRate = tfAvg > 0 ? Math.round(tfActive / tfAvg * 1000) / 10 : 0;
+
+          // 整体同比
+          let totalActivePrev = 0, totalAvgPrev = 0;
+          Object.values(hrPrev).forEach(h => {
+            totalActivePrev += (h?.active || 0);
+            totalAvgPrev += (h?.avg || 0);
+          });
+          const totalRatePrev = totalAvgPrev > 0 ? Math.round(totalActivePrev / totalAvgPrev * 1000) / 10 : 0;
+          const totalYoy = totalRatePrev > 0 ? Math.round((totalRate - totalRatePrev) * 10) / 10 : 0;
+          const totalYoyStr = totalRatePrev > 0 ? (totalYoy >= 0 ? `+${totalYoy}pp` : `${totalYoy}pp`) : '--';
+          const totalYoyCls = totalYoy >= 0 ? 'up' : 'down';
+
+          // 转型同比
+          let tfActivePrev = 0, tfAvgPrev = 0;
+          chs.forEach(ch => {
+            const h = hrPrev[ch];
+            tfActivePrev += (h?.active || 0);
+            tfAvgPrev += (h?.avg || 0);
+          });
+          const tfRatePrev = tfAvgPrev > 0 ? Math.round(tfActivePrev / tfAvgPrev * 1000) / 10 : 0;
+          const tfYoy = tfRatePrev > 0 ? Math.round((tfRate - tfRatePrev) * 10) / 10 : 0;
+          const tfYoyStr = tfRatePrev > 0 ? (tfYoy >= 0 ? `+${tfYoy}pp` : `${tfYoy}pp`) : '--';
+          const tfYoyCls = tfYoy >= 0 ? 'up' : 'down';
+
           return {
             title: '长险活动率 - 分业务模式',
             body: `
               <table class="modal-table">
                 <thead><tr><th style="text-align:left;">口径</th><th>长险活动人力</th><th>月均在职人力</th><th>长险活动率</th><th>同比</th></tr></thead>
                 <tbody>
-                  <tr style="font-weight:600;"><td style="text-align:left;">整体</td><td>1,318</td><td>1,925</td><td style="color:var(--accent-light);">68.5%</td><td class="up">▲ +2.3pp</td></tr>
-                  <tr><td style="text-align:left;">转型业务</td><td>798</td><td>1,205</td><td style="color:var(--warning);">66.2%</td><td class="up">▲ +2.6pp</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">OTO</td><td>616</td><td>850</td><td style="color:var(--success);">72.5%</td><td class="up">▲ +3.1pp</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">证保</td><td>423</td><td>620</td><td style="color:var(--success);">68.3%</td><td class="up">▲ +2.2pp</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">蚁桥</td><td>279</td><td>480</td><td style="color:var(--warning);">58.2%</td><td class="down">▼ -0.5pp</td></tr>
+                  <tr style="font-weight:600;"><td style="text-align:left;">整体</td><td>${totalActive}</td><td>${totalAvg}</td><td style="color:var(--accent-light);">${totalRate}%</td><td class="${totalYoyCls}">${totalYoy >= 0 && totalYoyStr !== '--' ? '▲ ' : totalYoyStr !== '--' ? '▼ ' : ''}${totalYoyStr}</td></tr>
+                  <tr><td style="text-align:left;">转型业务</td><td>${tfActive}</td><td>${tfAvg}</td><td style="color:var(--warning);">${tfRate}%</td><td class="${tfYoyCls}">${tfYoy >= 0 && tfYoyStr !== '--' ? '▲ ' : tfYoyStr !== '--' ? '▼ ' : ''}${tfYoyStr}</td></tr>
+                  ${chRows.join('')}
                 </tbody>
               </table>
-              <p style="color: var(--text-secondary); font-size: 13px; margin-top: 12px;">注：经代、职域营销暂无活动率指标。同比为与上年同期活动率的百分点差（pp）。</p>
+              <p style="color: var(--text-secondary); font-size: 13px; margin-top: 12px;">注：同比为与上年同期活动率的百分点差（pp）。</p>
             `
           };
+        }
         case 'percapita':
           return {
             title: '人均保费 - 分业务模式（转型业务）',
