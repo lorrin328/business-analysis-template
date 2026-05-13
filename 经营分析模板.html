@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.86</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.87</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -2358,8 +2358,9 @@
       switch(type) {
         case 'overall': {
           loadTargetData();
-          const pm26 = platformMock[2026];
-          const qjData = pm26 ? pm26.year.qj : null;
+          const year = (apiData.kpi && apiData.kpi.year) || 2026;
+          const pm = platformMock[year] || platformMock[2026];
+          const qjData = pm ? pm.year.qj : null;
           const targets = targetData.categories.qjPremium.metrics;
           function fmt(n) { return n ? n.toLocaleString('zh-CN', {maximumFractionDigits:0}) : '0'; }
           function calc(a, t) { return t > 0 ? Math.round(a / t * 1000) / 10 : 0; }
@@ -2369,23 +2370,33 @@
           const zxA = otoA + zbA + yqA, ztA = jdA + zxA;
           const ztT = targets['整体']?.year || 0, jdT = targets['经代']?.year || 0, zxT = targets['转型业务']?.year || 0;
           const otoT = targets['OTO']?.year || 0, zbT = targets['证保']?.year || 0, yqT = targets['蚁桥']?.year || 0;
-          // 季度/月度目标累加（简化：直接取 targetData 中的 quarter/month 数组）
-          const qIdx = 1; // Q2
+          // 动态计算当前月份和季度
+          let maxMonth = 0;
+          if (qjData) {
+            ['OTO','证保','蚁桥','经代'].forEach(ch => {
+              if (!qjData[ch]) return;
+              for (let i = 0; i < 12; i++) {
+                if (qjData[ch][i] != null && qjData[ch][i] > 0) maxMonth = Math.max(maxMonth, i + 1);
+              }
+            });
+          }
+          if (!maxMonth) maxMonth = 4;
+          const qIdx = Math.ceil(maxMonth / 3) - 1;
+          const mIdx = maxMonth - 1;
           const qztT = (targets['整体']?.quarter?.[qIdx]||0), qjdT = (targets['经代']?.quarter?.[qIdx]||0), qzxT = (targets['转型业务']?.quarter?.[qIdx]||0);
           const qotoT = (targets['OTO']?.quarter?.[qIdx]||0), qzbT = (targets['证保']?.quarter?.[qIdx]||0), qyqT = (targets['蚁桥']?.quarter?.[qIdx]||0);
-          const mIdx = 3; // 4月
           const mztT = (targets['整体']?.month?.[mIdx]||0), mjdT = (targets['经代']?.month?.[mIdx]||0), mzxT = (targets['转型业务']?.month?.[mIdx]||0);
           const motoT = (targets['OTO']?.month?.[mIdx]||0), mzbT = (targets['证保']?.month?.[mIdx]||0), myqT = (targets['蚁桥']?.month?.[mIdx]||0);
-          // 季度/月度实际（从 platformMock 的 quarter/month 结构读取，如果没有则按 year 数据拆分）
           function qSum(ch, q) { const qm=[q*3,q*3+1,q*3+2]; if(!qjData||!qjData[ch])return 0; let s=0; for(const i of qm){const v=qjData[ch][i]; if(v!=null) s+=v;} return s; }
           function mVal(ch, m) { if(!qjData||!qjData[ch])return 0; const v=qjData[ch][m]; return v!=null?v:0; }
-          const qotoA=qSum('OTO',1), qzbA=qSum('证保',1), qyqA=qSum('蚁桥',1), qjdA=qSum('经代',1);
+          const qotoA=qSum('OTO',qIdx), qzbA=qSum('证保',qIdx), qyqA=qSum('蚁桥',qIdx), qjdA=qSum('经代',qIdx);
           const qzxA=qotoA+qzbA+qyqA, qztA=qjdA+qzxA;
-          const motoA=mVal('OTO',3), mzbA=mVal('证保',3), myqA=mVal('蚁桥',3), mjdA=mVal('经代',3);
+          const motoA=mVal('OTO',mIdx), mzbA=mVal('证保',mIdx), myqA=mVal('蚁桥',mIdx), mjdA=mVal('经代',mIdx);
           const mzxA=motoA+mzbA+myqA, mztA=mjdA+mzxA;
-          // 图表数据：取 year 数据前4个月
+          const monthLabels = [];
           const chartData = { OTO:[], 证保:[], 蚁桥:[], 经代:[] };
-          ['OTO','证保','蚁桥','经代'].forEach(ch=>{ for(let i=0;i<4;i++){ chartData[ch].push(qjData&&qjData[ch]?qjData[ch][i]||0:0); } });
+          ['OTO','证保','蚁桥','经代'].forEach(ch=>{ for(let i=0;i<maxMonth;i++){ if (i===0) monthLabels.push((i+1)+'月'); chartData[ch].push(qjData&&qjData[ch]?qjData[ch][i]||0:0); } });
+          const qNum = qIdx + 1;
           return {
             title: '期交保费达成率',
             body: `
@@ -2402,7 +2413,7 @@
                 </tbody>
               </table>
 
-              <div class="modal-section-title">季度累计（Q2）</div>
+              <div class="modal-section-title">季度累计（Q${qNum}）</div>
               <table class="modal-table">
                 <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th></tr></thead>
                 <tbody>
@@ -2415,7 +2426,7 @@
                 </tbody>
               </table>
 
-              <div class="modal-section-title">月度累计（4月）</div>
+              <div class="modal-section-title">月度累计（${maxMonth}月）</div>
               <table class="modal-table">
                 <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th></tr></thead>
                 <tbody>
@@ -2436,7 +2447,7 @@
                 tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
                 legend: { data: ['OTO', '证保', '蚁桥', '经代'], textStyle: { color: '#94a3b8' }, bottom: 0 },
                 grid: { left: 50, right: 20, top: 10, bottom: 30 },
-                xAxis: { type: 'category', data: ['1月','2月','3月','4月'], axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: monthLabels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
                 yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
                 series: [
                   { name: 'OTO', type: 'bar', stack: 'total', data: chartData.OTO, itemStyle: { color: '#3b82f6' } },
@@ -2448,7 +2459,7 @@
             }
           };
         }
-        case 'value':
+        case 'value': {
           loadTargetData();
           const valueTargets = targetData.categories.value.metrics;
           const valueApi = apiData.kpi && apiData.kpi.value ? apiData.kpi.value : {};
@@ -2458,6 +2469,18 @@
               if (valueMonthly[r.channel]) valueMonthly[r.channel][(r.month || 1) - 1] = r.value_premium || 0;
             });
           }
+          // 动态计算最大月份
+          let valueMaxMonth = 0;
+          ['OTO','证保','蚁桥','经代'].forEach(ch => {
+            const arr = valueMonthly[ch];
+            if (!arr) return;
+            for (let i = 0; i < arr.length; i++) {
+              if (arr[i] > 0) valueMaxMonth = Math.max(valueMaxMonth, i + 1);
+            }
+          });
+          if (!valueMaxMonth) valueMaxMonth = 4;
+          const valueQIdx = Math.ceil(valueMaxMonth / 3) - 1;
+          const valueMIdx = valueMaxMonth - 1;
           function sumValueMonths(channels, start, end) {
             let sum = 0;
             channels.forEach(ch => {
@@ -2500,6 +2523,8 @@
               </tr>`;
             }).join('');
           }
+          const valueLabels = [];
+          for (let i = 1; i <= valueMaxMonth; i++) valueLabels.push(i + '月');
           return {
             title: '价值达成率',
             body: `
@@ -2509,16 +2534,16 @@
                 <tbody>${renderValueRows('year')}</tbody>
               </table>
 
-              <div class="modal-section-title">季度累计（Q2）</div>
+              <div class="modal-section-title">季度累计（Q${valueQIdx + 1}）</div>
               <table class="modal-table">
                 <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th></tr></thead>
-                <tbody>${renderValueRows('quarter', 1)}</tbody>
+                <tbody>${renderValueRows('quarter', valueQIdx)}</tbody>
               </table>
 
-              <div class="modal-section-title">月度目标（5月）</div>
+              <div class="modal-section-title">月度目标（${valueMaxMonth}月）</div>
               <table class="modal-table">
                 <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th></tr></thead>
-                <tbody>${renderValueRows('month', 4)}</tbody>
+                <tbody>${renderValueRows('month', valueMIdx)}</tbody>
               </table>
 
               <div id="modalChart" class="modal-chart" style="margin-top:16px;"></div>
@@ -2530,16 +2555,17 @@
                 tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
                 legend: { data: ['OTO', '证保', '蚁桥'], textStyle: { color: '#94a3b8' }, bottom: 0 },
                 grid: { left: 50, right: 20, top: 10, bottom: 30 },
-                xAxis: { type: 'category', data: ['1月','2月','3月','4月','5月'], axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: valueLabels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
                 yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
                 series: [
-                  { name: 'OTO', type: 'line', smooth: true, data: months.slice(0,5).map((_,i)=>valueMonthly.OTO[i]||0), itemStyle: { color: '#3b82f6' }, areaStyle: { opacity: 0.1 } },
-                  { name: '证保', type: 'line', smooth: true, data: months.slice(0,5).map((_,i)=>valueMonthly['证保'][i]||0), itemStyle: { color: '#10b981' }, areaStyle: { opacity: 0.1 } },
-                  { name: '蚁桥', type: 'line', smooth: true, data: months.slice(0,5).map((_,i)=>valueMonthly['蚁桥'][i]||0), itemStyle: { color: '#f59e0b' }, areaStyle: { opacity: 0.1 } }
+                  { name: 'OTO', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly.OTO[i]||0), itemStyle: { color: '#3b82f6' }, areaStyle: { opacity: 0.1 } },
+                  { name: '证保', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly['证保'][i]||0), itemStyle: { color: '#10b981' }, areaStyle: { opacity: 0.1 } },
+                  { name: '蚁桥', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly['蚁桥'][i]||0), itemStyle: { color: '#f59e0b' }, areaStyle: { opacity: 0.1 } }
                 ]
               });
             }
           };
+        }
         case 'activity': {
           const kpiData = apiData.kpi || {};
           const hr = kpiData.hr || {};
