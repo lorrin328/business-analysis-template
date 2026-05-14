@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.90</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.91</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -3528,6 +3528,29 @@
         });
       }
 
+      // 构建机构级保费索引
+      platformOrgPerfData[year] = {};
+      if (apiPlatform.org_performance) {
+        apiPlatform.org_performance.forEach(r => {
+          const m = r.month - 1;
+          if (m < 0 || m >= 12) return;
+          const ch = r.channel;
+          if (!ch) return;
+          if (!platformOrgPerfData[year][ch]) {
+            platformOrgPerfData[year][ch] = Array.from({ length: 12 }, () => ({ total: { qj: 0, gm: 0, zs: 0 }, orgs: {} }));
+          }
+          const entry = platformOrgPerfData[year][ch][m];
+          const org = r.org || '未知';
+          if (!entry.orgs[org]) entry.orgs[org] = { qj: 0, gm: 0, zs: 0 };
+          ['qj', 'gm', 'zs'].forEach(t => {
+            const col = t === 'qj' ? 'qj_premium' : t === 'gm' ? 'gm_premium' : 'zs_premium';
+            const v = r[col] || 0;
+            entry.orgs[org][t] += v;
+            entry.total[t] += v;
+          });
+        });
+      }
+
       // 补null表示未到月份：找到第一个全为0的月份之后置null
       const channels = ['OTO', '证保', '蚁桥', '经代'];
       for (let m = 11; m >= 0; m--) {
@@ -3821,6 +3844,8 @@
     const ORG_LIST_PLATFORM = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
     const selectedPlatformOrgs = {};
     ORG_LIST_PLATFORM.forEach(o => selectedPlatformOrgs[o] = true);
+    // 机构级保费索引：platformOrgPerfData[year][premiumType][channel][monthIndex] = { total, orgs: { [org]: value } }
+    const platformOrgPerfData = {};
     const platformTrendDailyCache = {};
 
     function normalizeMonth(value) {
@@ -20309,7 +20334,8 @@
     }
 
     function platformTrendCacheKey(year, premiumType, selectedKeys, periodType, periodValue) {
-      return [year, premiumType, selectedKeys.slice().sort().join('|'), periodType, periodValue || 0].join('::');
+      const orgKey = ORG_LIST_PLATFORM.filter(o => selectedPlatformOrgs[o]).join('|');
+      return [year, premiumType, selectedKeys.slice().sort().join('|'), periodType, periodValue || 0, orgKey].join('::');
     }
 
     function getTrendDataFromCache(year, periodType, periodValue, monthList) {
@@ -20750,30 +20776,35 @@
 
     // 根据机构筛选获取某渠道某月的数值（null 表示无数据；经代无机构维度，始终返回整体数据）
     function getChannelValue(year, premiumType, channel, monthIndex) {
-      const allSelected = ORG_LIST_PLATFORM.every(o => selectedPlatformOrgs[o]);
-      const noneSelected = ORG_LIST_PLATFORM.every(o => !selectedPlatformOrgs[o]);
-      if (channel === '经代' || allSelected || noneSelected) {
+      // 经代没有机构维度，始终返回全国聚合数据
+      if (channel === '经代') {
         const v = platformMock[year]?.year?.[premiumType]?.[channel]?.[monthIndex];
         return v !== null && v !== undefined ? v : null;
       }
-      const orgPerf = apiCache[String(year)]?.platform?.org_performance;
-      if (!orgPerf) {
-        // org筛选激活但无org级数据 → 返回null（无数据），不回退到全机构聚合兜底
-        return null;
+
+      // 从机构级索引查询
+      const orgData = platformOrgPerfData[year]?.[channel]?.[monthIndex];
+      if (!orgData) {
+        // 无机构级数据时回退到 platformMock 聚合数据
+        const v = platformMock[year]?.year?.[premiumType]?.[channel]?.[monthIndex];
+        return v !== null && v !== undefined ? v : null;
       }
-      const selected = ORG_LIST_PLATFORM.filter(o => selectedPlatformOrgs[o]);
+
+      const allSelected = ORG_LIST_PLATFORM.every(o => selectedPlatformOrgs[o]);
+      const noneSelected = ORG_LIST_PLATFORM.every(o => !selectedPlatformOrgs[o]);
+
+      if (allSelected || noneSelected) {
+        return orgData.total[premiumType] || null;
+      }
+
       let sum = 0;
       let hasAny = false;
-      orgPerf.forEach(r => {
-        if (r.channel === channel && selected.includes(r.org) && normalizeMonth(r.month) === monthIndex + 1) {
-          const col = premiumType === 'qj' ? 'qj_premium' : premiumType === 'gm' ? 'gm_premium' : 'zs_premium';
-          const v = r[col];
-          if (v !== null && v !== undefined) {
-            sum += v;
-            hasAny = true;
-          }
+      for (const org of ORG_LIST_PLATFORM) {
+        if (selectedPlatformOrgs[org] && orgData.orgs[org] && orgData.orgs[org][premiumType] !== undefined) {
+          sum += orgData.orgs[org][premiumType];
+          hasAny = true;
         }
-      });
+      }
       return hasAny ? sum : null;
     }
 
