@@ -707,7 +707,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.89</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.90</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -21287,13 +21287,13 @@
     function toggleTeamOrg(key, checked) {
       if (key === 'all') {
         ORG_LIST_TEAM.forEach(o => { selectedTeamOrgs[o] = checked; });
-        document.querySelectorAll('#teamOrgChecks input[type="checkbox"]').forEach(input => {
-          input.checked = checked;
+        document.querySelectorAll('#teamOrgChecks input[type="checkbox"]').forEach((input, idx) => {
+          if (idx > 0) input.checked = checked;
         });
       } else {
         selectedTeamOrgs[key] = checked;
         const allChecked = ORG_LIST_TEAM.every(o => selectedTeamOrgs[o]);
-        const allInput = document.querySelector('#teamOrgChecks input[onchange*="toggleTeamOrg('all'"]');
+        const allInput = document.querySelector('#teamOrgChecks input[type="checkbox"]');
         if (allInput) allInput.checked = allChecked;
       }
       teamChart.clear();

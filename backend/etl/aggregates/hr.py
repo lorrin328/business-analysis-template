@@ -88,7 +88,9 @@ def aggregate_org_hr(df: pd.DataFrame) -> List[Dict]:
     start_col = _pick_col(df, ['月初在职人力'])
     end_col = _pick_col(df, ['月末在职人力'])
 
-    if not all([year_col, month_col, channel_col, org_col, start_col, end_col]):
+    if not org_col:
+        return []
+    if not all([year_col, month_col, channel_col, start_col, end_col]):
         raise ValueError(f"无法识别机构人力必要列。当前列: {list(df.columns)}")
 
     work = _period_year_month(df, year_col, month_col)
@@ -124,7 +126,9 @@ def aggregate_org_active_headcount(df: pd.DataFrame) -> List[Dict]:
     amount_col = _pick_col(df, ['折算保费', '期交保费'])
     term_col = _pick_col(df, ['长短险'])
 
-    if not all([year_col, month_col, channel_col, org_col, staff_col, amount_col]):
+    if not org_col:
+        return []
+    if not all([year_col, month_col, channel_col, staff_col, amount_col]):
         raise ValueError(f"无法识别机构活跃人力必要列。当前列: {list(df.columns)}")
 
     work = _period_year_month(df, year_col, month_col)

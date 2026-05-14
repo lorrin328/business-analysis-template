@@ -31,6 +31,7 @@ from etl import (
     aggregate_daily_performance, aggregate_org_daily_performance,
     aggregate_payment_period, aggregate_jingdai_payment_period,
     aggregate_transform_longterm, aggregate_jingdai_longterm,
+    aggregate_org_hr, aggregate_org_active_headcount,
 )
 
 from validators.data_validator import validate_rows
@@ -122,9 +123,11 @@ async def upload_files(
     jd_rows = []
     jd_daily_rows = []
     hr_rows = []
+    org_hr_rows = []
     value_rows = []
     product_rows = []
     active_rows = []
+    org_active_rows = []
     org_perf_rows = []
     org_value_rows = []
     pay_period_rows = []
@@ -146,6 +149,7 @@ async def upload_files(
             org_daily_rows = aggregate_org_daily_performance(df)
             product_rows = aggregate_product_structure(df)
             active_rows = aggregate_active_headcount(df)
+            org_active_rows = aggregate_org_active_headcount(df)
             org_perf_rows = aggregate_org_performance(df)
             pay_period_rows = aggregate_payment_period(df)
             longterm_rows = aggregate_transform_longterm(df)
@@ -186,6 +190,7 @@ async def upload_files(
             df = parse_hr_excel(hr_bytes)
             raw_tables['hr_data'] = df
             hr_rows = aggregate_hr(df)
+            org_hr_rows = aggregate_org_hr(df)
             results["uploaded"].append(f"人力数据: {len(hr_rows)}条")
         except Exception as e:
             results["errors"].append(f"人力数据: {str(e)}")
@@ -214,8 +219,16 @@ async def upload_files(
         for row in hr_rows:
             row['active_headcount'] = active_index.get((row['year'], row['month'], row['channel']), 0)
 
+    if org_hr_rows and org_active_rows:
+        org_active_index = {
+            (r['year'], r['month'], r['org'], r['channel']): r['active_headcount']
+            for r in org_active_rows
+        }
+        for row in org_hr_rows:
+            row['active_headcount'] = org_active_index.get((row['year'], row['month'], row['org'], row['channel']), 0)
+
     # 收集所有实际年份
-    for rows in [perf_rows, daily_rows, org_daily_rows, jd_rows, jd_daily_rows, hr_rows, value_rows, product_rows, org_perf_rows, org_value_rows]:
+    for rows in [perf_rows, daily_rows, org_daily_rows, jd_rows, jd_daily_rows, hr_rows, value_rows, product_rows, org_perf_rows, org_value_rows, org_hr_rows]:
         for r in rows:
             if 'year' in r and r['year']:
                 results["data_years"].add(int(r['year']))
@@ -236,6 +249,7 @@ async def upload_files(
                 ('agg_jingdai', jd_rows),
                 ('agg_jingdai_daily', jd_daily_rows),
                 ('agg_hr_data', hr_rows),
+                ('agg_org_hr_data', org_hr_rows),
                 ('agg_value_data', value_rows),
                 ('agg_org_performance', org_perf_rows),
                 ('agg_org_value', org_value_rows),

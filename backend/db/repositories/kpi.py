@@ -33,11 +33,14 @@ def get_platform_data(year: int):
         ''', (year,))
         hr_rows = c.fetchall()
 
-        c.execute('''
-            SELECT month, org, channel, start_headcount, end_headcount, active_headcount
-            FROM agg_org_hr_data WHERE year = ? ORDER BY month, org, channel
-        ''', (year,))
-        org_hr_rows = c.fetchall()
+        try:
+            c.execute('''
+                SELECT month, org, channel, start_headcount, end_headcount, active_headcount
+                FROM agg_org_hr_data WHERE year = ? ORDER BY month, org, channel
+            ''', (year,))
+            org_hr_rows = c.fetchall()
+        except sqlite3.OperationalError:
+            org_hr_rows = []
 
         c.execute('''
             SELECT month, channel, value_premium
