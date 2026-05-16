@@ -126,8 +126,7 @@ def main():
         replace_rows(conn, 'agg_payment_period', pay_period_rows + jd_pay_period_rows)
         replace_rows(conn, 'agg_longterm_qj', longterm_rows + jd_longterm_rows)
         for table, df in raw_tables.items():
-            conn.execute(f'DELETE FROM {table}')
-            df.to_sql(table, conn, if_exists='append', index=False)
+            df.to_sql(table, conn, if_exists='replace', index=False)
         conn.commit()
 
     print(f'loaded years: {years}')

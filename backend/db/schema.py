@@ -133,6 +133,17 @@ def init_db():
             error_message TEXT,
             imported_by TEXT DEFAULT 'web')''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS performance (
+            "年月" TEXT, "业务模式" TEXT, "销售机构名称" TEXT, "产品类型" TEXT,
+            "期交保费" REAL DEFAULT 0, "年化规保" REAL DEFAULT 0,
+            "规模保费" REAL DEFAULT 0, "承保件数" INTEGER DEFAULT 0
+        )''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS jingdai (
+            "时间" TEXT, "经代机构" TEXT, "产品名称" TEXT,
+            "期交保费" REAL DEFAULT 0, "承保年化规保" REAL DEFAULT 0
+        )''')
+
         for sql in [
             'CREATE INDEX IF NOT EXISTS ix_perf_year_month_channel ON agg_performance(year, month, channel)',
             'CREATE INDEX IF NOT EXISTS ix_jd_year_month ON agg_jingdai(year, month)',
@@ -145,6 +156,8 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_pay_period_year_month_type ON agg_payment_period(year, month, business_type)',
             'CREATE INDEX IF NOT EXISTS ix_longterm_qj_year_month ON agg_longterm_qj(year, month, business_type)',
             'CREATE INDEX IF NOT EXISTS ix_data_imports_hash ON data_imports(file_hash)',
+            'CREATE INDEX IF NOT EXISTS ix_raw_performance_ym_line ON performance("年月", "业务模式")',
+            'CREATE INDEX IF NOT EXISTS ix_raw_jingdai_time_org ON jingdai("时间", "经代机构")',
         ]:
             c.execute(sql)
 

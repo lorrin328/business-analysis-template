@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
+from auth import require_admin
 from db import get_target_config, get_target_values, save_target_config
 from services.response import success_response
 from validators.target_validator import validate_target_payload
@@ -17,7 +18,12 @@ def targets(year: int = Query(2026, ge=2000, le=2100), mode: str = "config"):
 
 
 @router.post("/targets")
-def save_targets(year: int = Query(2026, ge=2000, le=2100), payload: dict = Body(...), updatedBy: str = "admin"):
+def save_targets(
+    year: int = Query(2026, ge=2000, le=2100),
+    payload: dict = Body(...),
+    updatedBy: str = "admin",
+    _admin=Depends(require_admin),
+):
     validation = validate_target_payload(payload)
     if not validation.valid:
         raise HTTPException(status_code=400, detail=validation.to_dict())

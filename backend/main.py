@@ -2,7 +2,7 @@ import hashlib
 import json
 import os
 import sys
-from fastapi import Body, FastAPI, File, UploadFile, HTTPException
+from fastapi import Body, Depends, FastAPI, File, UploadFile, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -18,6 +18,7 @@ from api.targets import router as targets_router
 from api.payment_period import router as payment_period_router
 from api.team import router as team_router
 from api.trend import router as trend_router
+from auth import require_admin
 from db import (
     init_db, get_db, replace_rows, replace_rows_incremental,
     get_kpi_data, get_product_structure, get_target_config, save_target_config,
@@ -104,6 +105,7 @@ async def upload_files(
     hr: UploadFile = File(None),
     value: UploadFile = File(None),
     year: int = 2026,
+    _admin=Depends(require_admin),
 ):
     """上传Excel文件并聚合到SQLite"""
     # 单文件最大 20MB
@@ -261,8 +263,7 @@ async def upload_files(
                     replace_rows_incremental(conn, table, rows)
                     table_row_counts[table] = len(rows)
             for table, df in raw_tables.items():
-                conn.execute(f'DELETE FROM {table}')
-                df.to_sql(table, conn, if_exists='append', index=False)
+                df.to_sql(table, conn, if_exists='replace', index=False)
                 table_row_counts[table] = len(df)
 
             # 检查各文件哈希是否可跳过
@@ -305,6 +306,7 @@ async def import_files(
     hr: UploadFile = File(None),
     value: UploadFile = File(None),
     year: int = 2026,
+    _admin=Depends(require_admin),
 ):
     return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year)
 
@@ -352,7 +354,7 @@ def get_targets(year: int):
 
 
 @app.put("/api/targets/{year}")
-def put_targets(year: int, payload: dict = Body(...)):
+def put_targets(year: int, payload: dict = Body(...), _admin=Depends(require_admin)):
     """保存服务器端统一目标配置"""
     validation = validate_target_payload(payload)
     if not validation.valid:
