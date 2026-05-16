@@ -9,11 +9,21 @@ N1AI-人力基表*.xlsx
 # 其他业务 Excel
 *-业绩基表*.xlsx
 *-人力基表*.xlsx
+AI-经营分析价值基表*.xlsx
+经代业绩分析*.xlsx
+期交目标*.xlsx
+*.xls
+*.xlsm
+*.xlsx
 
 # 中间产物
 data_agg.json
+data.json
 *.db
 _cleanup_backup_*/
+.pytest_cache/
+.uv-cache/
+.uv-python/
 
 # === Office 临时文件 ===
 ~$*.xlsx
