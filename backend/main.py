@@ -18,6 +18,7 @@ from api.targets import router as targets_router
 from api.payment_period import router as payment_period_router
 from api.team import router as team_router
 from api.trend import router as trend_router
+from api.config import router as config_router
 from auth import require_admin
 from db import (
     init_db, get_db, replace_rows_incremental,
@@ -103,7 +104,7 @@ if _cors_origins:
 # 初始化数据库
 init_db()
 
-for router in [kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, legacy_router]:
+for router in [kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, legacy_router]:
     app.include_router(router)
 
 

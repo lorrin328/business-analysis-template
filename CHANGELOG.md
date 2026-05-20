@@ -1,5 +1,22 @@
 # 经营分析看板 - 需求与开发文档
 
+## v0.9.97 更新说明（2026-05-20）
+
+**类型**：refactor
+
+**变更内容**：
+- **前端模块化**：`经营分析模板.html` 从 21,000+ 行缩减至 ~1,200 行（减重 91%），业务逻辑拆分为 15 个独立 JS 模块（js/constants.js、format-utils.js、cache-manager.js、state-manager.js、config.js、mock-data.js、target-modal.js、kpi-cards.js、platform-trend.js、org-analysis.js、product-analysis.js、payperiod-chart.js、team-analysis.js、upload.js）。
+- **业务线配置统一**：新增 `GET /api/config/business-lines` 端点，前端 `js/config.js` 启动时动态加载，消除前后端双套业务线硬编码。
+- **数据库加固**：`db/connection.py` 补充 `PRAGMA foreign_keys=ON`。
+- **Docker 加固**：Dockerfile 和 docker-compose.yml 添加 healthcheck。
+- **KPI 规范化**：删除 `metrics/` 下 4 个冗余空壳文件（achievement.py、activity.py、productivity.py、yoy.py），统一由 `formulas.py` 提供。
+- **测试扩展**：新增 33 个测试用例（test_kpi_formulas.py、test_org_filter.py、test_config_api.py），总测试从 54 增至 87。
+- **状态管理**：新增 `js/state-manager.js` 统一管理所有页面状态。
+- **缓存管理**：新增 `js/cache-manager.js` 统一缓存入口。
+- 主页面版本号更新为 `v0.9.97`。
+
+---
+
 ## v0.9.96 更新说明（2026-05-20）
 
 **类型**：fix / refactor
