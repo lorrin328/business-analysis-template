@@ -152,6 +152,7 @@
       selectedTeamQuarter = value;
       teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
+    }
 
   window.teamChart = teamChart;
   window.getTeamAggregated = getTeamAggregated;

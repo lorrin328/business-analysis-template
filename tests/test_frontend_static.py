@@ -68,3 +68,35 @@ def test_frontend_centralizes_read_api_fetches():
     assert "/api/product-analysis?" in all_js
     assert "/api/org-analysis?year=" in all_js
     assert "/api/targets?year=" in all_js
+
+
+def test_upload_js_no_duplicate_vars():
+    upload = read_js("upload.js")
+    import re
+    declarations = re.findall(r'(?:const|let|var)\s+_uploading', upload)
+    assert len(declarations) <= 1, f"Duplicate _uploading: {declarations}"
+
+
+def test_all_js_brackets_balanced():
+    for f in sorted(os.listdir(JS_DIR)):
+        if not f.endswith('.js'):
+            continue
+        content = read_js(f)
+        assert content.count('{') == content.count('}'), f"{f}: {{={content.count('{')} }}={content.count('}')}"
+        assert content.count('(') == content.count(')'), f"{f}: (={content.count('(')} )={content.count(')')}"
+
+
+def test_html_js_references_exist():
+    import re
+    html = read_html()
+    refs = re.findall(r'src="(js/[^"]+)"', html)
+    for ref in refs:
+        assert os.path.exists(os.path.join(ROOT, ref)), f"Missing: {ref}"
+
+
+def test_upload_js_exposes_handle_file():
+    upload = read_js("upload.js")
+    assert "window.handleFile = handleFile" in upload
+    assert "try {" in upload
+    assert "} catch" in upload
+    assert "} finally" in upload

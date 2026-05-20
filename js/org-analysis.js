@@ -389,9 +389,7 @@
       wrapper.innerHTML = html;
     }
 
-    function getModalContent(type) {
-      switch(type) {
-        case 'overall': {
+
 
   window.orgKpiData = orgKpiData;
   window.selectedOrgs = selectedOrgs;

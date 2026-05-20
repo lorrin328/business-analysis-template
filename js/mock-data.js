@@ -476,6 +476,7 @@
       ]
     }
   }
+  };
 
   // ===== API Integration =====
     const API_BASE = typeof BACKEND_URL !== 'undefined' ? BACKEND_URL

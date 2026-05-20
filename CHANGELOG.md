@@ -1,5 +1,19 @@
 # 经营分析看板 - 需求与开发文档
 
+## v0.9.98 更新说明（2026-05-20）
+
+**类型**：hotfix
+
+**变更内容**：
+- **紧急修复**：重写 `js/upload.js`，消除 `_uploading` 重复声明导致的 SyntaxError。
+- **修复括号截断**：`mock-data.js`、`org-analysis.js`、`team-analysis.js` 括号不闭合问题。
+- **恢复 getModalContent**：将截断丢失的 `getModalContent` 函数（530 行）从 v0.9.96 恢复至 `js/target-modal.js`。
+- **修复 HTML 加载顺序**：移除重复的 `api-client.js` 引用，确保依赖顺序正确。
+- **新增静态测试**：JS 括号平衡、无重复声明、HTML 引用完整性、upload.js 导出验证。
+- 主页面版本号更新为 `v0.9.98`。
+
+---
+
 ## v0.9.97 更新说明（2026-05-20）
 
 **类型**：refactor
