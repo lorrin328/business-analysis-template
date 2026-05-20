@@ -1,9 +1,18 @@
 from fastapi import APIRouter, Query
 
+from db import get_platform_data
 from services.query_service import get_platform_trend
 from services.response import success_response
 
 router = APIRouter(prefix="/api", tags=["trend"])
+
+
+@router.get("/platform-data")
+def platform_data(year: int = Query(2026, ge=2000, le=2100)):
+    return success_response(
+        get_platform_data(year),
+        meta={"year": year, "metric": "platform-data", "unit": "万元/人", "dataSource": "SQLite aggregate tables"},
+    )
 
 
 @router.get("/platform-trend")

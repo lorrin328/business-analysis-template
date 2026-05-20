@@ -2,16 +2,16 @@ import hashlib
 import json
 import os
 import sys
-from fastapi import Body, Depends, FastAPI, File, UploadFile, HTTPException
+from fastapi import Depends, FastAPI, File, UploadFile, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-import sqlite3
 import logging
 from logging.handlers import RotatingFileHandler
 
 sys.path.insert(0, os.path.dirname(__file__))
 from api.kpi import router as kpi_router
+from api.legacy import router as legacy_router
 from api.org import router as org_router
 from api.product import router as product_router
 from api.targets import router as targets_router
@@ -20,9 +20,7 @@ from api.team import router as team_router
 from api.trend import router as trend_router
 from auth import require_admin
 from db import (
-    init_db, get_db, replace_rows, replace_rows_incremental,
-    get_kpi_data, get_product_structure, get_target_config, save_target_config,
-    get_org_kpi_data,
+    init_db, get_db, replace_rows_incremental,
 )
 from etl import (
     parse_performance_excel, parse_jingdai_excel, parse_hr_excel, parse_value_excel,
@@ -36,7 +34,7 @@ from etl import (
 )
 
 from validators.data_validator import validate_rows
-from validators.target_validator import validate_target_payload
+from services.import_safety import write_raw_table_incremental
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -61,6 +59,20 @@ def _record_import(conn, file_name: str, file_hash: str, file_size: int,
     ''', (file_name, file_hash, file_size, json.dumps(data_years or []),
           json.dumps(table_counts or {}), status, error_message))
     return conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+
+
+def _skip_duplicate_upload(file_name: str, file_hash: str, label: str, results: dict) -> bool:
+    """Return True when the same successful file hash has already been imported."""
+    with get_db() as conn:
+        if not _check_skip(conn, file_name, file_hash):
+            return False
+    results["skipped"].append(f"{label}: duplicate file, skipped")
+    logger.info("import skipped duplicate file=%s hash=%s", file_name, file_hash)
+    return True
+
+
+class _DuplicateUpload(Exception):
+    pass
 
 
 app = FastAPI(title="经营分析看板API")
@@ -89,7 +101,7 @@ if _cors_origins:
 # 初始化数据库
 init_db()
 
-for router in [kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router]:
+for router in [kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, legacy_router]:
     app.include_router(router)
 
 
@@ -142,6 +154,8 @@ async def upload_files(
         try:
             perf_bytes = await performance.read()
             h = _hash_bytes(perf_bytes)
+            if _skip_duplicate_upload(performance.filename, h, "performance", results):
+                raise _DuplicateUpload()
             file_hashes[performance.filename] = h
             file_sizes[performance.filename] = len(perf_bytes)
             df = parse_performance_excel(perf_bytes)
@@ -159,6 +173,8 @@ async def upload_files(
             if not validation.valid:
                 raise ValueError(validation.to_dict())
             results["uploaded"].append(f"转型业务业绩: {len(perf_rows)}条")
+        except _DuplicateUpload:
+            pass
         except Exception as e:
             results["errors"].append(f"转型业务业绩: {str(e)}")
             logger.exception("performance import failed")
@@ -167,6 +183,8 @@ async def upload_files(
         try:
             jd_bytes = await jingdai.read()
             h = _hash_bytes(jd_bytes)
+            if _skip_duplicate_upload(jingdai.filename, h, "jingdai", results):
+                raise _DuplicateUpload()
             file_hashes[jingdai.filename] = h
             file_sizes[jingdai.filename] = len(jd_bytes)
             df = parse_jingdai_excel(jd_bytes)
@@ -179,6 +197,8 @@ async def upload_files(
             if not validation.valid:
                 raise ValueError(validation.to_dict())
             results["uploaded"].append(f"经代业务业绩: {len(jd_rows)}条")
+        except _DuplicateUpload:
+            pass
         except Exception as e:
             results["errors"].append(f"经代业务业绩: {str(e)}")
             logger.exception("jingdai import failed")
@@ -187,6 +207,8 @@ async def upload_files(
         try:
             hr_bytes = await hr.read()
             h = _hash_bytes(hr_bytes)
+            if _skip_duplicate_upload(hr.filename, h, "hr", results):
+                raise _DuplicateUpload()
             file_hashes[hr.filename] = h
             file_sizes[hr.filename] = len(hr_bytes)
             df = parse_hr_excel(hr_bytes)
@@ -194,6 +216,8 @@ async def upload_files(
             hr_rows = aggregate_hr(df)
             org_hr_rows = aggregate_org_hr(df)
             results["uploaded"].append(f"人力数据: {len(hr_rows)}条")
+        except _DuplicateUpload:
+            pass
         except Exception as e:
             results["errors"].append(f"人力数据: {str(e)}")
             logger.exception("hr import failed")
@@ -202,6 +226,8 @@ async def upload_files(
         try:
             val_bytes = await value.read()
             h = _hash_bytes(val_bytes)
+            if _skip_duplicate_upload(value.filename, h, "value", results):
+                raise _DuplicateUpload()
             file_hashes[value.filename] = h
             file_sizes[value.filename] = len(val_bytes)
             df = parse_value_excel(val_bytes)
@@ -209,6 +235,8 @@ async def upload_files(
             value_rows = aggregate_value(df)
             org_value_rows = aggregate_org_value(df)
             results["uploaded"].append(f"价值数据: {len(value_rows)}条")
+        except _DuplicateUpload:
+            pass
         except Exception as e:
             results["errors"].append(f"价值数据: {str(e)}")
             logger.exception("value import failed")
@@ -238,6 +266,11 @@ async def upload_files(
     # 如果没有检测到年份，使用传入的year参数
     results["data_years"] = sorted(list(results["data_years"])) if results["data_years"] else [year]
 
+    if not file_hashes and not results["errors"]:
+        logger.info("import finished with duplicates only skipped=%s years=%s", len(results["skipped"]), results["data_years"])
+        results["import_id"] = None
+        return results
+
     # 写入数据库（增量：按月删除再插入，未涉及月份保持不动）
     import_id = None
     with get_db() as conn:
@@ -263,20 +296,8 @@ async def upload_files(
                     replace_rows_incremental(conn, table, rows)
                     table_row_counts[table] = len(rows)
             for table, df in raw_tables.items():
-                df.to_sql(table, conn, if_exists='replace', index=False)
+                write_raw_table_incremental(conn, table, df)
                 table_row_counts[table] = len(df)
-
-            # 检查各文件哈希是否可跳过
-            for fname, h in file_hashes.items():
-                if _check_skip(conn, fname, h):
-                    if fname == (performance.filename if performance else ''):
-                        results["skipped"].append(f"转型业务业绩: 文件未变化，跳过")
-                    elif fname == (jingdai.filename if jingdai else ''):
-                        results["skipped"].append(f"经代业务业绩: 文件未变化，跳过")
-                    elif fname == (hr.filename if hr else ''):
-                        results["skipped"].append(f"人力数据: 文件未变化，跳过")
-                    elif fname == (value.filename if value else ''):
-                        results["skipped"].append(f"价值数据: 文件未变化，跳过")
 
             # 记录导入历史
             has_errors = len(results["errors"]) > 0
@@ -311,61 +332,13 @@ async def import_files(
     return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year)
 
 
-@app.get("/api/data/{year}")
-def get_data(year: int):
-    """获取指定年份的所有聚合数据"""
-    from db import get_platform_data
-    return get_platform_data(year)
-
-
-@app.get("/api/kpi/{year}")
-def get_kpi(year: int):
-    """获取KPI概览数据"""
-    return get_kpi_data(year)
-
-
-@app.get("/api/product/{year}")
-def get_product(
-    year: int,
-    dimension: str = "product_mix",
-    transformLines: str | None = None,
-    jingdaiOrgs: str | None = None,
-    includeTransform: bool = True,
-    includeJingdai: bool = True,
-    orgs: str | None = None,
-    months: str | None = None,
-    metric: str = "qj",
-):
-    """获取产品结构数据"""
-    return get_product_structure(year, dimension, transformLines, jingdaiOrgs, includeTransform, includeJingdai, orgs, months, metric)
-
-
-@app.get("/api/org-kpi/{year}")
-def get_org_kpi(year: int):
-    """获取机构维度KPI数据"""
-    return get_org_kpi_data(year)
-
-
-@app.get("/api/targets/{year}")
-def get_targets(year: int):
-    """获取服务器端统一目标配置"""
-    saved = get_target_config(year)
-    return saved or {"year": year, "categories": None}
-
-
-@app.put("/api/targets/{year}")
-def put_targets(year: int, payload: dict = Body(...), _admin=Depends(require_admin)):
-    """保存服务器端统一目标配置"""
-    validation = validate_target_payload(payload)
-    if not validation.valid:
-        raise HTTPException(status_code=400, detail=validation.to_dict())
-    return save_target_config(year, payload, updated_by="admin")
-
-
 # 静态文件服务 - 生产HTML
 static_dir = os.path.join(os.path.dirname(__file__), '..')
 if os.path.exists(os.path.join(static_dir, '经营分析模板.html')):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    js_dir = os.path.join(static_dir, 'js')
+    if os.path.isdir(js_dir):
+        app.mount("/js", StaticFiles(directory=js_dir), name="js")
 
     @app.get("/")
     def index():

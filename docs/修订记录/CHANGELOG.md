@@ -10,6 +10,31 @@
 
 ---
 
+## [2026-05-20] fix: v0.9.95 导入安全与接口收敛
+
+**类型**：fix / refactor / docs / safety
+
+**变更内容**：
+
+| 文档 | 变更 |
+|------|------|
+| [主 README](../../README.md) | 当前版本更新为 v0.9.95，补充 `js/api-client.js` 文件边界 |
+| [API说明](../API说明.md) | 新增 `/api/platform-data`，说明统一接口与 legacy 兼容接口边界 |
+| [系统架构说明](../系统架构说明.md) | 同步 API 层、服务层、前端层职责 |
+| [CHANGELOG](../../CHANGELOG.md) | 同步版本发布说明 |
+
+**代码与安全修复**：
+1. 重复 Excel 文件导入判断前置，避免重复文件被标记跳过但实际写库。
+2. 原始明细表写入改为按期间增量覆盖，避免局部上传覆盖未涉及月份。
+3. KPI 统一截止月份纳入业绩、人力、经代和价值数据源，并返回 `data_cutoff`。
+4. Docker 生产环境显式要求 `ADMIN_TOKEN`，数据库挂载路径统一到 `backend/business_data.db`。
+5. 生产页面读取链路切换到 `/api/platform-data`、`/api/kpi`、`/api/product-analysis`、`/api/org-analysis`、`/api/targets` 等统一响应接口。
+6. 旧兼容接口集中迁移到 `backend/api/legacy.py`，并返回 `X-API-Deprecated` 与 `X-API-Replacement`。
+7. 前端 API 客户端拆分为 `js/api-client.js`，主 HTML 保留生产展示和业务交互。
+8. 新增导入安全、API 契约、前端静态约束测试。
+
+---
+
 ## [2026-05-16] d78e6ba+ chore: v0.9.94 项目结构精简
 
 **类型**：chore / docs / safety

@@ -14,8 +14,11 @@ def product_analysis(
     jingdaiOrgs: str | None = None,
     includeTransform: bool = True,
     includeJingdai: bool = True,
+    orgs: str | None = None,
+    months: str | None = None,
+    metric: str = Query("qj", pattern="^(qj|gm)$"),
 ):
     return success_response(
-        get_product_structure(year, dimension, transformLines, jingdaiOrgs, includeTransform, includeJingdai),
+        get_product_structure(year, dimension, transformLines, jingdaiOrgs, includeTransform, includeJingdai, orgs, months, metric),
         meta={"year": year, "metric": "product-analysis", "unit": "万元/件", "dataSource": "performance / jingdai"},
     )

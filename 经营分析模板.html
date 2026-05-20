@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>经营分析看板</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <script src="js/api-client.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -707,7 +708,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.94</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.95</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -1317,9 +1318,7 @@
     async function fetchTargetData(year) {
       const desiredYear = parseInt(year || targetData?.year || selectedYear || 2026);
       try {
-        const resp = await fetch(`${API_BASE}/api/targets/${desiredYear}`, { method: 'GET' });
-        if (!resp.ok) throw new Error('target api unavailable');
-        const data = await resp.json();
+        const data = unwrapApiResponse(await fetchJson(`/api/targets?year=${desiredYear}`, { method: 'GET' }));
         const hasServerTarget = !!(data && data.categories);
         targetData = normalizeTargetData(hasServerTarget ? data : createDefaultTargetData(desiredYear), desiredYear);
         targetDataSource = hasServerTarget ? 'server' : 'default';
@@ -1653,13 +1652,13 @@
       try {
         targetData = normalizeTargetData(targetData, targetData?.year || 2026);
         localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
-        const resp = await adminFetch(`${API_BASE}/api/targets/${targetData.year}`, {
-          method: 'PUT',
+        const resp = await adminFetch(apiUrl(`/api/targets?year=${targetData.year}`), {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(targetData)
         });
         if (!resp.ok) throw new Error('目标保存失败');
-        targetData = normalizeTargetData(await resp.json(), targetData.year);
+        targetData = normalizeTargetData(unwrapApiResponse(await resp.json()), targetData.year);
         localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
         await recalculateDashboard();
         if (btn) {
@@ -1700,11 +1699,12 @@
           if (data.year && data.categories) {
             targetData = normalizeTargetData(data, data.year);
             localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
-            await adminFetch(`${API_BASE}/api/targets/${targetData.year}`, {
-              method: 'PUT',
+            const resp = await adminFetch(apiUrl(`/api/targets?year=${targetData.year}`), {
+              method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(targetData)
             });
+            if (!resp.ok) throw new Error('目标导入保存失败');
             document.getElementById('targetYearSelect').value = targetData.year;
             renderTargetForm();
             await recalculateDashboard();
@@ -1991,9 +1991,7 @@
 
     async function fetchOrgKpiData(year) {
       try {
-        const resp = await fetch(`${API_BASE}/api/org-kpi/${year}`);
-        if (!resp.ok) throw new Error('fetch org-kpi failed');
-        orgKpiData = await resp.json();
+        orgKpiData = unwrapApiResponse(await fetchJson(`/api/org-analysis?year=${year}`));
         renderOrgTable();
       } catch (e) {
         console.error('fetchOrgKpiData error:', e);
@@ -3403,28 +3401,11 @@
     // const BACKEND_URL = 'http://your-server-ip:45679';
     const API_BASE = typeof BACKEND_URL !== 'undefined' ? BACKEND_URL
       : (window.location.protocol === 'file:' ? 'http://localhost:45679' : '');
-    const ADMIN_TOKEN_STORAGE_KEY = 'business_admin_token';
+    window.API_BASE = API_BASE;
 
     let apiData = { kpi: null, platform: null, team: null, product: null };
     const apiCache = {};
     let apiAvailable = false;
-
-    function adminHeaders(headers = {}) {
-      const token = localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
-      return token ? { ...headers, 'X-Admin-Token': token } : headers;
-    }
-
-    async function adminFetch(url, options = {}) {
-      let resp = await fetch(url, { ...options, headers: adminHeaders(options.headers || {}) });
-      if ([401, 403, 503].includes(resp.status)) {
-        const token = prompt('请输入后台管理 Token');
-        if (token) {
-          localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token.trim());
-          resp = await fetch(url, { ...options, headers: adminHeaders(options.headers || {}) });
-        }
-      }
-      return resp;
-    }
 
     function buildProductQuery(year) {
       const params = new URLSearchParams();
@@ -3450,20 +3431,27 @@
         }
       }
       if (productFilters.metric && productFilters.metric !== 'qj') params.set('metric', productFilters.metric);
-      return `${API_BASE}/api/product/${year}?${params.toString()}`;
+      params.set('year', String(year));
+      return `/api/product-analysis?${params.toString()}`;
     }
 
     async function fetchAPIData(year) {
       try {
-        const resp = await fetch(`${API_BASE}/api/data/${year}`, { method: 'GET' });
-        if (!resp.ok) return false;
-        const platform = await resp.json();
+        const platform = unwrapApiResponse(await fetchJson(`/api/platform-data?year=${year}`, { method: 'GET' }));
 
-        const kpiResp = await fetch(`${API_BASE}/api/kpi/${year}`, { method: 'GET' });
-        const kpi = kpiResp.ok ? await kpiResp.json() : null;
+        let kpi = null;
+        try {
+          kpi = unwrapApiResponse(await fetchJson(`/api/kpi?year=${year}`, { method: 'GET' }));
+        } catch (e) {
+          kpi = null;
+        }
 
-        const productResp = await fetch(buildProductQuery(year), { method: 'GET' });
-        const product = productResp.ok ? await productResp.json() : null;
+        let product = null;
+        try {
+          product = unwrapApiResponse(await fetchJson(buildProductQuery(year), { method: 'GET' }));
+        } catch (e) {
+          product = null;
+        }
 
         apiCache[String(year)] = { platform, kpi, product };
         apiData.platform = platform;
@@ -3710,9 +3698,7 @@
 
     async function fetchProductData(year) {
       try {
-        const resp = await fetch(buildProductQuery(year), { method: 'GET' });
-        if (!resp.ok) return false;
-        apiData.product = await resp.json();
+        apiData.product = unwrapApiResponse(await fetchJson(buildProductQuery(year), { method: 'GET' }));
         return updateProductDataFromApi();
       } catch (e) {
         console.error('fetchProductData error:', e);
@@ -20382,10 +20368,8 @@
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const timer = controller ? setTimeout(() => controller.abort(), 2500) : null;
       try {
-        const resp = await fetch(`${API_BASE}/api/platform-trend?${params.toString()}`, controller ? { signal: controller.signal } : undefined);
-        if (!resp.ok) return;
-        const payload = await resp.json();
-        const data = payload && payload.success ? payload.data : payload;
+        const payload = await fetchJson(`/api/platform-trend?${params.toString()}`, controller ? { signal: controller.signal } : undefined);
+        const data = unwrapApiResponse(payload);
         if (data && data.daily && data.daily.hasRealDailyData) {
           platformTrendDailyCache[key] = {
             labels: data.daily.labels || [],
@@ -20721,11 +20705,8 @@
         const prevYearKey = String(prevYearNum);
         if (!apiCache[prevYearKey]) {
           try {
-            const prevResp = await fetch(`${API_BASE}/api/data/${prevYearNum}`, { method: 'GET' });
-            if (prevResp.ok) {
-              const prevPlatform = await prevResp.json();
-              apiCache[prevYearKey] = { platform: prevPlatform };
-            }
+            const prevPlatform = unwrapApiResponse(await fetchJson(`/api/platform-data?year=${prevYearNum}`, { method: 'GET' }));
+            apiCache[prevYearKey] = { platform: prevPlatform };
           } catch(e) {}
         }
         if (apiCache[prevYearKey] && apiCache[prevYearKey].platform && hasValidApiData(apiCache[prevYearKey].platform)) {
@@ -21085,23 +21066,16 @@
       if (months && months.length === 1) params.set('month', months[0]);
       else if (months && months.length > 1) params.set('months', months.join(','));
       if (payPeriodFilters.metric !== 'qj') params.set('metric', payPeriodFilters.metric);
-      return `${API_BASE}/api/payment-period/${year}?${params.toString()}`;
+      return `/api/payment-period/${year}?${params.toString()}`;
     }
 
     async function fetchPayPeriodData(year) {
       try {
-        const url = buildPayPeriodQuery(year);
-        const resp = await fetch(url);
-        if (resp.ok) {
-          const data = await resp.json();
-          const d = data.success !== undefined ? (data.data || data) : data;
-          payPeriodData.premium = d.premium || [];
-          payPeriodData.count = d.count || [];
-          if (d.jingdai_orgs && d.jingdai_orgs.length > 0) {
-            renderPayPeriodJingdaiOrgs(d.jingdai_orgs);
-          }
-        } else {
-          applyPayPeriodFallback(year);
+        const d = unwrapApiResponse(await fetchJson(buildPayPeriodQuery(year)));
+        payPeriodData.premium = d.premium || [];
+        payPeriodData.count = d.count || [];
+        if (d.jingdai_orgs && d.jingdai_orgs.length > 0) {
+          renderPayPeriodJingdaiOrgs(d.jingdai_orgs);
         }
       } catch (e) { applyPayPeriodFallback(year); }
       renderPayPeriodChart();

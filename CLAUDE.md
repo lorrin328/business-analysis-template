@@ -8,6 +8,72 @@ This file provides guidance to Claude Code (claude.ai/code) and OpenClaw for aut
 
 ## 部署流程
 
+### Docker 部署（推荐）
+
+如果服务器已安装 Docker，推荐直接使用 Docker 部署，无需配置 Python 虚拟环境、systemd 或 nginx。
+
+**方式一：自带 nginx（推荐新手，开箱即用）**
+
+已内置 `client_max_body_size 100m` 配置，无需担心上传 413 错误：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d
+```
+
+访问 `http://<服务器IP>` 即可（端口 80）。
+
+**方式二：外部反向代理（如 Nginx Proxy Manager）**
+
+```bash
+docker compose up -d
+```
+
+容器暴露端口 `45679`，在外部反向代理中将域名反向代理到 `http://<宿主机IP>:45679` 即可。
+
+**⚠️ 上传文件大小限制（关键）**：如果外部反向代理是 nginx，务必配置 `client_max_body_size 100m`，否则上传 Excel 会报 413 错误。详见 [docs/Docker部署说明.md](docs/Docker部署说明.md)。
+
+**使用 GitHub 预构建镜像（无需本地构建）：**
+
+```bash
+# 登录 GitHub Container Registry
+echo $CR_PAT | docker login ghcr.io -u <用户名> --password-stdin
+
+# 拉取并运行
+docker pull ghcr.io/<用户名>/<仓库名>:master
+docker run -d -p 45679:45679 ghcr.io/<用户名>/<仓库名>:master
+```
+
+**数据持久化：**
+
+| Volume | 说明 |
+|--------|------|
+| `./backend/business_data.db` → `/app/backend/business_data.db` | SQLite 数据库文件 |
+| `./backend/logs` → `/app/backend/logs` | 应用日志 |
+| `./targets_import.json` → `/app/targets_import.json` | 目标配置（可选，只读） |
+
+**常用运维命令：**
+
+```bash
+# 查看容器状态
+docker compose ps
+
+# 重启服务
+docker compose restart
+
+# 进入容器调试
+docker compose exec app bash
+
+# 停止服务
+docker compose down
+
+# 更新镜像
+docker compose pull && docker compose up -d
+```
+
+---
+
+
+
 ### 一键部署（推荐）
 
 ```bash

@@ -168,5 +168,8 @@ def _migrate(c, sql):
     """执行迁移 SQL。如果列/表已存在则静默跳过。"""
     try:
         c.execute(sql)
-    except Exception:
-        pass
+    except Exception as exc:
+        message = str(exc).lower()
+        if 'duplicate column' in message or 'already exists' in message:
+            return
+        raise

@@ -96,12 +96,20 @@ def get_kpi_data(year: int):
     with get_db() as conn:
         c = conn.cursor()
 
-        # 两表各自最大月，取较小者确保数据齐备
-        c.execute('SELECT MAX(month) FROM agg_performance WHERE year = ?', (year,))
-        perf_max = c.fetchone()[0] or 1
-        c.execute('SELECT MAX(month) FROM agg_hr_data WHERE year = ?', (year,))
-        hr_max = c.fetchone()[0] or 1
-        query_month = min(perf_max, hr_max)
+        # Use the smallest available source cutoff to avoid mixing data through different months.
+        def _max_month(table: str):
+            c.execute(f'SELECT MAX(month) FROM {table} WHERE year = ?', (year,))
+            value = c.fetchone()[0]
+            return int(value) if value else None
+
+        data_cutoff = {
+            'performance': _max_month('agg_performance'),
+            'hr': _max_month('agg_hr_data'),
+            'jingdai': _max_month('agg_jingdai'),
+            'value': _max_month('agg_value_data'),
+        }
+        available_cutoffs = [month for month in data_cutoff.values() if month]
+        query_month = min(available_cutoffs) if available_cutoffs else 1
 
         # YTD 保费
         c.execute('''
@@ -219,6 +227,8 @@ def get_kpi_data(year: int):
         total_transform = perf.get('OTO', 0) + perf.get('证保', 0) + perf.get('蚁桥', 0)
         return {
             'year': year,
+            'month': query_month,
+            'data_cutoff': data_cutoff,
             'qj_premium': {
                 'jingdai': round(jingdai_qj, 2),
                 'oto': round(perf.get('OTO', 0), 2),
