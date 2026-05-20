@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from auth import require_admin
+from config.business_lines import DEFAULT_YEAR
 from db import get_target_config, get_target_values, save_target_config
 from services.response import success_response
 from validators.target_validator import validate_target_payload
@@ -9,7 +10,7 @@ router = APIRouter(prefix="/api", tags=["targets"])
 
 
 @router.get("/targets")
-def targets(year: int = Query(2026, ge=2000, le=2100), mode: str = "config"):
+def targets(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100), mode: str = "config"):
     if mode == "rows":
         data = {"year": year, "targets": get_target_values(year)}
     else:
@@ -19,7 +20,7 @@ def targets(year: int = Query(2026, ge=2000, le=2100), mode: str = "config"):
 
 @router.post("/targets")
 def save_targets(
-    year: int = Query(2026, ge=2000, le=2100),
+    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
     payload: dict = Body(...),
     updatedBy: str = "admin",
     _admin=Depends(require_admin),

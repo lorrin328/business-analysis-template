@@ -75,6 +75,8 @@ class _DuplicateUpload(Exception):
     pass
 
 
+MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
+
 app = FastAPI(title="经营分析看板API")
 
 LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
@@ -121,9 +123,10 @@ async def upload_files(
 ):
     """上传Excel文件并聚合到SQLite"""
     # 单文件最大 20MB
+    max_size = MAX_UPLOAD_SIZE_MB * 1024 * 1024
     for f in [performance, jingdai, hr, value]:
-        if f and f.size and f.size > 20 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail=f"文件 {f.filename} 超过 20MB 限制")
+        if f and f.size and f.size > max_size:
+            raise HTTPException(status_code=413, detail=f"文件 {f.filename} 超过 {MAX_UPLOAD_SIZE_MB}MB 限制")
     results = {"uploaded": [], "errors": [], "skipped": [], "data_years": set()}
     file_hashes = {}  # file_name -> hash
     file_sizes = {}   # file_name -> size
@@ -347,4 +350,4 @@ if os.path.exists(os.path.join(static_dir, '经营分析模板.html')):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=45679)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "45679")))

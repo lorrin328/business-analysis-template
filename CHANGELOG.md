@@ -1,5 +1,21 @@
 # 经营分析看板 - 需求与开发文档
 
+## v0.9.96 更新说明（2026-05-20）
+
+**类型**：fix / refactor
+
+**变更内容**：
+- 修复 `payment.py` 中 `jingdaiOrgs` 过滤条件 SQL 运算符优先级问题（OR 缺少括号）。
+- `etl/aggregates/` 中重复常量（`CHANNEL_MAP`、`TRANSFORM_CHANNELS`、`ORG_SCOPE`）收敛到 `backend/config/`。
+- `db/repository.py` 动态表名增加白名单校验，防御性加固。
+- 默认年份、端口、文件上传大小限制改为读环境变量（`DEFAULT_YEAR`/`PORT`/`MAX_UPLOAD_SIZE_MB`）。
+- `product.py` 原始表查询增加 try/except 和 warning 日志。
+- 移除冗余依赖 `sqlalchemy`。
+- `auth.py` 非生产环境无 token 时打印 warning 日志。
+- 主页面版本号更新为 `v0.9.96`。
+
+---
+
 ## v0.9.95 更新说明（2026-05-20）
 
 **类型**：fix / refactor / docs / safety

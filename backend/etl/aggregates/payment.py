@@ -10,10 +10,7 @@ from etl.normalize import (
 )
 from etl.columns import _pick_col
 from etl.classify import _classify_payment_period, _classify_jingdai_payment_period
-
-CHANNEL_MAP = {'证券': '证保', '网服': '蚁桥'}
-TRANSFORM_CHANNELS = {'OTO', '证保', '蚁桥'}
-ORG_SCOPE = {'上海', '湖北', '四川', '辽宁', '山东', '广东', '福建', '浙江', '河南', '北京'}
+from config.business_lines import TRANSFORM_CHANNELS
 
 def aggregate_payment_period(df: pd.DataFrame) -> List[Dict]:
     """转型业务交期结构聚合：按年月、渠道、机构、交期分类汇总"""

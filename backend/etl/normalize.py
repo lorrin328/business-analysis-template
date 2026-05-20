@@ -8,7 +8,7 @@ def _to_number(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors='coerce').fillna(0)
 
 
-CHANNEL_MAP = {'证券': '证保', '网服': '蚁桥'}
+from config.business_lines import CHANNEL_MAP
 
 
 def _normalize_channel(value) -> str:

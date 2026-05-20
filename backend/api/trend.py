@@ -4,11 +4,13 @@ from db import get_platform_data
 from services.query_service import get_platform_trend
 from services.response import success_response
 
+from config.business_lines import DEFAULT_YEAR
+
 router = APIRouter(prefix="/api", tags=["trend"])
 
 
 @router.get("/platform-data")
-def platform_data(year: int = Query(2026, ge=2000, le=2100)):
+def platform_data(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100)):
     return success_response(
         get_platform_data(year),
         meta={"year": year, "metric": "platform-data", "unit": "万元/人", "dataSource": "SQLite aggregate tables"},
@@ -17,7 +19,7 @@ def platform_data(year: int = Query(2026, ge=2000, le=2100)):
 
 @router.get("/platform-trend")
 def platform_trend(
-    year: int = Query(2026, ge=2000, le=2100),
+    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
     month: int | None = Query(None, ge=1, le=12),
     quarter: int | None = Query(None, ge=1, le=4),
     periodType: str = Query("year", pattern="^(year|quarter|month)$"),

@@ -10,10 +10,6 @@ from etl.normalize import (
 )
 from etl.columns import _pick_col
 
-CHANNEL_MAP = {'证券': '证保', '网服': '蚁桥'}
-TRANSFORM_CHANNELS = {'OTO', '证保', '蚁桥'}
-ORG_SCOPE = {'上海', '湖北', '四川', '辽宁', '山东', '广东', '福建', '浙江', '河南', '北京'}
-
 def aggregate_product_structure(df: pd.DataFrame) -> List[Dict]:
     year_col = _pick_col(df, ['年'])
     month_col = _pick_col(df, ['年月', '月', '月份'])

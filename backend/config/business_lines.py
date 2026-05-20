@@ -80,6 +80,15 @@ BUSINESS_LINE_BY_NAME = {
 }
 
 
+CHANNEL_MAP = {'证券': '证保', '网服': '蚁桥'}
+TRANSFORM_CHANNELS = {'OTO', '证保', '蚁桥'}
+
+import os
+from datetime import datetime
+
+DEFAULT_YEAR = int(os.getenv("DEFAULT_YEAR", str(datetime.now().year)))
+
+
 def normalize_business_line(value: str | None) -> str | None:
     if value is None:
         return None

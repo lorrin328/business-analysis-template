@@ -2,11 +2,19 @@
 from db.connection import get_db
 from db.schema import AGG_TABLES, init_db
 
+_ALLOWED_TABLES = set(AGG_TABLES) | {'performance', 'jingdai', 'hr_data', 'value_data', 'data_imports', 'target_config', 'target_values'}
+
+
+def _check_table(table: str):
+    if table not in _ALLOWED_TABLES:
+        raise ValueError(f"Invalid table name: {table}")
+
 
 def replace_rows(conn, table, rows):
     """INSERT OR REPLACE 批量写入。"""
     if not rows:
         return
+    _check_table(table)
     keys = list(rows[0].keys())
     placeholders = ', '.join(['?'] * len(keys))
     columns = ', '.join(keys)
@@ -21,6 +29,7 @@ def replace_rows_incremental(conn, table, rows):
     """
     if not rows:
         return
+    _check_table(table)
     months = {(int(r['year']), int(r['month'])) for r in rows if 'year' in r and 'month' in r}
     for year, month in months:
         conn.execute(f'DELETE FROM {table} WHERE year = ? AND month = ?', (year, month))
@@ -39,4 +48,5 @@ def clear_year_data(year: int):
 
 def clear_table_year_data(conn, table: str, year: int):
     """删除指定表指定年度的数据（不提交，由调用方管理事务）。"""
+    _check_table(table)
     conn.execute(f'DELETE FROM {table} WHERE year = ?', (year,))

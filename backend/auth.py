@@ -1,8 +1,11 @@
 """Simple admin-token protection for mutating operations."""
+import logging
 import os
 from secrets import compare_digest
 
 from fastapi import Header, HTTPException, status
+
+logger = logging.getLogger("business-analysis")
 
 
 def require_admin(x_admin_token: str | None = Header(default=None)):
@@ -20,6 +23,9 @@ def require_admin(x_admin_token: str | None = Header(default=None)):
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="ADMIN_TOKEN is not configured",
             )
+        if app_env != "production":
+            logger.warning("ADMIN_TOKEN is not set — mutating endpoints are unprotected. "
+                           "Set ADMIN_TOKEN env var and APP_ENV=production for production deployments.")
         return True
     if not x_admin_token or not compare_digest(x_admin_token, expected):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin token")

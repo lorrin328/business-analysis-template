@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Query
 
+from config.business_lines import DEFAULT_YEAR
 from db import get_product_structure
 from services.response import success_response
 
@@ -8,7 +9,7 @@ router = APIRouter(prefix="/api", tags=["product"])
 
 @router.get("/product-analysis")
 def product_analysis(
-    year: int = Query(2026, ge=2000, le=2100),
+    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
     dimension: str = "product_mix",
     transformLines: str | None = None,
     jingdaiOrgs: str | None = None,

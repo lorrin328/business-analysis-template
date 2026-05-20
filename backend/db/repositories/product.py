@@ -1,8 +1,11 @@
 """Repository queries — auto-split from database.py."""
 import json
+import logging
 import sqlite3
 from db.connection import get_db
 from db.schema import init_db
+
+logger = logging.getLogger("business-analysis")
 
 
 def _split_csv(value: str | None) -> list[str]:
@@ -22,6 +25,7 @@ def _query_product_structure_raw(
     months: list[int] | None = None,
     metric_type: str = 'qj',
 ) -> list[dict]:
+    """从原始明细表查询产品结构。依赖原始表列名和数据格式，查询失败时返回空列表并记录原因。"""
     rows: list[dict] = []
     c = conn.cursor()
 
@@ -37,58 +41,64 @@ def _query_product_structure_raw(
 
     raw_transform_line_list = sorted(raw_transform_lines)
     if include_transform and raw_transform_line_list:
-        t_params: list = [year]
-        extra_where = ''
-        if months:
-            m_placeholders = ','.join(['?'] * len(months))
-            extra_where += f' AND CAST(substr("年月", 5, 2) AS INTEGER) IN ({m_placeholders})'
-            t_params.extend(months)
-        if orgs:
-            o_placeholders = ','.join(['?'] * len(orgs))
-            extra_where += f' AND "销售机构名称" IN ({o_placeholders})'
-            t_params.extend(orgs)
-        placeholders = ','.join(['?'] * len(raw_transform_line_list))
-        c.execute(f'''
-            SELECT COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类') AS label,
-                   SUM({perf_premium_col}) / 10000.0 AS premium,
-                   SUM(COALESCE("承保件数", 1)) AS count
-            FROM performance
-            WHERE CAST(substr("年月", 1, 4) AS INTEGER) = ?
-              AND "业务模式" IN ({placeholders})
-              {extra_where}
-            GROUP BY COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类')
-        ''', [*t_params, *raw_transform_line_list])
-        for row in c.fetchall():
-            item = dict(row)
-            item['source'] = '转型'
-            rows.append(item)
+        try:
+            t_params: list = [year]
+            extra_where = ''
+            if months:
+                m_placeholders = ','.join(['?'] * len(months))
+                extra_where += f' AND CAST(substr("年月", 5, 2) AS INTEGER) IN ({m_placeholders})'
+                t_params.extend(months)
+            if orgs:
+                o_placeholders = ','.join(['?'] * len(orgs))
+                extra_where += f' AND "销售机构名称" IN ({o_placeholders})'
+                t_params.extend(orgs)
+            placeholders = ','.join(['?'] * len(raw_transform_line_list))
+            c.execute(f'''
+                SELECT COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类') AS label,
+                       SUM({perf_premium_col}) / 10000.0 AS premium,
+                       SUM(COALESCE("承保件数", 1)) AS count
+                FROM performance
+                WHERE CAST(substr("年月", 1, 4) AS INTEGER) = ?
+                  AND "业务模式" IN ({placeholders})
+                  {extra_where}
+                GROUP BY COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类')
+            ''', [*t_params, *raw_transform_line_list])
+            for row in c.fetchall():
+                item = dict(row)
+                item['source'] = '转型'
+                rows.append(item)
+        except sqlite3.OperationalError as e:
+            logger.warning("转型业务产品结构查询失败 (表不存在或列不匹配): %s", e)
 
     if include_jingdai:
-        jd_params: list = [year]
-        jd_extra_where = ''
-        if months:
-            m_placeholders = ','.join(['?'] * len(months))
-            jd_extra_where += f' AND CAST(substr("时间", 5, 2) AS INTEGER) IN ({m_placeholders})'
-            jd_params.extend(months)
-        org_clause = ''
-        if jingdai_orgs:
-            placeholders = ','.join(['?'] * len(jingdai_orgs))
-            org_clause = f' AND "经代机构" IN ({placeholders})'
-            jd_params.extend(jingdai_orgs)
-        c.execute(f'''
-            SELECT COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类') AS label,
-                   SUM({jd_premium_col}) / 10000.0 AS premium,
-                   COUNT(*) AS count
-            FROM jingdai
-            WHERE CAST(substr("时间", 1, 4) AS INTEGER) = ?
-              {jd_extra_where}
-              {org_clause}
-            GROUP BY COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类')
-        ''', jd_params)
-        for row in c.fetchall():
-            item = dict(row)
-            item['source'] = '经代'
-            rows.append(item)
+        try:
+            jd_params: list = [year]
+            jd_extra_where = ''
+            if months:
+                m_placeholders = ','.join(['?'] * len(months))
+                jd_extra_where += f' AND CAST(substr("时间", 5, 2) AS INTEGER) IN ({m_placeholders})'
+                jd_params.extend(months)
+            org_clause = ''
+            if jingdai_orgs:
+                placeholders = ','.join(['?'] * len(jingdai_orgs))
+                org_clause = f' AND "经代机构" IN ({placeholders})'
+                jd_params.extend(jingdai_orgs)
+            c.execute(f'''
+                SELECT COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类') AS label,
+                       SUM({jd_premium_col}) / 10000.0 AS premium,
+                       COUNT(*) AS count
+                FROM jingdai
+                WHERE CAST(substr("时间", 1, 4) AS INTEGER) = ?
+                  {jd_extra_where}
+                  {org_clause}
+                GROUP BY COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类')
+            ''', jd_params)
+            for row in c.fetchall():
+                item = dict(row)
+                item['source'] = '经代'
+                rows.append(item)
+        except sqlite3.OperationalError as e:
+            logger.warning("经代业务产品结构查询失败 (表不存在或列不匹配): %s", e)
 
     merged: dict[str, dict] = {}
     mixed_sources = include_transform and include_jingdai

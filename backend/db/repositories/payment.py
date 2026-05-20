@@ -50,7 +50,7 @@ def get_payment_period_structure(
 
         if jingdai_orgs and 'all' not in jingdai_orgs:
             placeholders = ','.join(['?'] * len(jingdai_orgs))
-            conditions.append(f'business_type != \'经代\' OR org IN ({placeholders})')
+            conditions.append(f'(business_type != \'经代\' OR org IN ({placeholders}))')
             params.extend(jingdai_orgs)
 
         where = ' AND '.join(conditions) if conditions else '1=1'
