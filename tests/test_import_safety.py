@@ -3,13 +3,14 @@ import sqlite3
 import sys
 
 import pandas as pd
+import pytest
 
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 
-from main import _check_skip
-from services.import_safety import write_raw_table_incremental
+from main import _check_skip, _set_import_status
+from services.import_safety import RawIncrementalWriteError, write_raw_table_incremental
 
 
 def test_check_skip_only_uses_successful_hashes():
@@ -31,6 +32,17 @@ def test_check_skip_only_uses_successful_hashes():
         assert _check_skip(conn, "x.xlsx", "same") is True
     finally:
         conn.close()
+
+
+def test_import_status_marks_partial_data_integrity():
+    result = _set_import_status(
+        {"uploaded": ["performance"], "errors": ["value failed"], "skipped": []},
+        has_written_rows=True,
+    )
+    assert result["status"] == "partial"
+    assert result["data_integrity"]["complete"] is False
+    assert result["data_integrity"]["uploadedCount"] == 1
+    assert result["data_integrity"]["errorCount"] == 1
 
 
 def test_write_raw_table_incremental_preserves_other_months():
@@ -55,5 +67,53 @@ def test_write_raw_table_incremental_preserves_other_months():
             'SELECT "年月", SUM("期交保费") FROM performance GROUP BY "年月" ORDER BY "年月"'
         ).fetchall()
         assert rows == [("202601", 99), ("202602", 20)]
+    finally:
+        conn.close()
+
+
+def test_write_raw_table_incremental_rejects_existing_table_without_periods():
+    conn = sqlite3.connect(":memory:")
+    try:
+        initial = pd.DataFrame(
+            [
+                {"年月": "202601", "业务模式": "OTO", "期交保费": 10},
+            ]
+        )
+        initial.to_sql("performance", conn, if_exists="replace", index=False)
+
+        invalid = pd.DataFrame(
+            [
+                {"业务模式": "OTO", "期交保费": 99},
+            ]
+        )
+        with pytest.raises(RawIncrementalWriteError):
+            write_raw_table_incremental(conn, "performance", invalid)
+
+        rows = conn.execute('SELECT COUNT(*), SUM("期交保费") FROM performance').fetchall()
+        assert rows == [(1, 10)]
+    finally:
+        conn.close()
+
+
+def test_write_raw_table_incremental_rejects_schema_drift_without_rebuild():
+    conn = sqlite3.connect(":memory:")
+    try:
+        initial = pd.DataFrame(
+            [
+                {"年月": "202601", "业务模式": "OTO", "期交保费": 10},
+            ]
+        )
+        initial.to_sql("performance", conn, if_exists="replace", index=False)
+
+        changed = pd.DataFrame(
+            [
+                {"年月": "202601", "业务模式": "OTO", "期交保费": 99, "新增字段": "x"},
+            ]
+        )
+        with pytest.raises(RawIncrementalWriteError):
+            write_raw_table_incremental(conn, "performance", changed)
+
+        rows = conn.execute('SELECT COUNT(*), SUM("期交保费") FROM performance').fetchall()
+        assert rows == [(1, 10)]
     finally:
         conn.close()

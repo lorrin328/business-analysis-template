@@ -3,6 +3,22 @@
     // ---------- Chart 2: Product Structure ----------
     const productChart = echarts.init(document.getElementById('productChart'));
 
+    function createCheckboxLabel(labelText, checked, onChange) {
+      const label = document.createElement('label');
+      label.className = 'check-label';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = checked !== false;
+      input.dataset.org = String(labelText || '');
+      input.addEventListener('change', () => onChange(input.dataset.org, input.checked));
+      const span = document.createElement('span');
+      span.textContent = String(labelText || '');
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(' '));
+      label.appendChild(span);
+      return label;
+    }
+
     function getPieOption(type) {
       const data = productData[type] || [];
       if (data.length === 0) {
@@ -155,18 +171,12 @@
     (function initPayPeriodOrgChecks() {
       const container = document.getElementById('payPeriodTransformOrgChecks');
       ORG_LIST.forEach(org => {
-        const label = document.createElement('label');
-        label.className = 'check-label';
-        label.innerHTML = `<input type="checkbox" checked data-org="${org}" onchange="togglePayPeriodOrg('${org}', this.checked)"> <span>${org}</span>`;
-        container.appendChild(label);
+        container.appendChild(createCheckboxLabel(org, true, togglePayPeriodOrg));
       });
       // Also init product org checks
       const prodContainer = document.getElementById('productOrgChecks');
       ORG_LIST.forEach(org => {
-        const label = document.createElement('label');
-        label.className = 'check-label';
-        label.innerHTML = `<input type="checkbox" checked data-org="${org}" onchange="toggleProductOrg('${org}', this.checked)"> <span>${org}</span>`;
-        prodContainer.appendChild(label);
+        prodContainer.appendChild(createCheckboxLabel(org, true, toggleProductOrg));
       });
     })();
 

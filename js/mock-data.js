@@ -785,6 +785,22 @@
       }
     }
 
+    function createCheckboxLabel(labelText, checked, onChange) {
+      const label = document.createElement('label');
+      label.className = 'check-label';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = checked !== false;
+      input.dataset.org = String(labelText || '');
+      input.addEventListener('change', () => onChange(input.dataset.org, input.checked));
+      const span = document.createElement('span');
+      span.textContent = String(labelText || '');
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(' '));
+      label.appendChild(span);
+      return label;
+    }
+
     function renderProductJingdaiOrgs(orgs) {
       const wrapper = document.getElementById('productJingdaiOrgChecks');
       if (!wrapper || !Array.isArray(orgs)) return;
@@ -792,9 +808,9 @@
         orgs.forEach(org => { productFilters.jingdaiOrgs[org] = true; });
         productFilters.orgsInitialized = true;
       }
-      wrapper.innerHTML = orgs.map(org => `
-        <label class="check-label"><input type="checkbox" data-org="${org}" ${productFilters.jingdaiOrgs[org] !== false ? 'checked' : ''} onchange="toggleProductJingdaiOrg(this.dataset.org, this.checked)"> <span>${org}</span></label>
-      `).join('');
+      wrapper.replaceChildren(...orgs.map(org => (
+        createCheckboxLabel(org, productFilters.jingdaiOrgs[org] !== false, toggleProductJingdaiOrg)
+      )));
     }
 
     async function refreshProductChart() {
@@ -925,5 +941,4 @@
   window.apiData = apiData;
   window.apiCache = apiCache;
 })(window);
-
 

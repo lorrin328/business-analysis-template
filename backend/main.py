@@ -20,6 +20,7 @@ from api.team import router as team_router
 from api.trend import router as trend_router
 from api.config import router as config_router
 from auth import require_admin
+from config.business_lines import DEFAULT_YEAR
 from db import (
     init_db, get_db, replace_rows_incremental,
 )
@@ -35,7 +36,7 @@ from etl import (
 )
 
 from validators.data_validator import validate_rows
-from services.import_safety import write_raw_table_incremental
+from services.import_safety import RawIncrementalWriteError, write_raw_table_incremental
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -78,6 +79,32 @@ class _DuplicateUpload(Exception):
 
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
 
+
+def _set_import_status(results: dict, *, has_written_rows: bool):
+    has_errors = len(results.get("errors", [])) > 0
+    if has_errors and has_written_rows:
+        status = "partial"
+        message = "Partial import completed; some files failed and current dashboard data may be incomplete."
+    elif has_errors:
+        status = "failed"
+        message = "Import failed; no file was written."
+    elif results.get("skipped") and not has_written_rows:
+        status = "skipped"
+        message = "All selected files were duplicates and no data was written."
+    else:
+        status = "success"
+        message = "Import completed."
+    results["status"] = status
+    results["data_integrity"] = {
+        "complete": status in {"success", "skipped"},
+        "status": status,
+        "message": message,
+        "uploadedCount": len(results.get("uploaded", [])),
+        "errorCount": len(results.get("errors", [])),
+        "skippedCount": len(results.get("skipped", [])),
+    }
+    return results
+
 app = FastAPI(title="经营分析看板API")
 
 LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
@@ -119,7 +146,7 @@ async def upload_files(
     jingdai: UploadFile = File(None),
     hr: UploadFile = File(None),
     value: UploadFile = File(None),
-    year: int = 2026,
+    year: int = DEFAULT_YEAR,
     _admin=Depends(require_admin),
 ):
     """上传Excel文件并聚合到SQLite"""
@@ -273,7 +300,11 @@ async def upload_files(
     if not file_hashes and not results["errors"]:
         logger.info("import finished with duplicates only skipped=%s years=%s", len(results["skipped"]), results["data_years"])
         results["import_id"] = None
-        return results
+        return _set_import_status(results, has_written_rows=False)
+
+    if results["errors"] and not file_hashes:
+        _set_import_status(results, has_written_rows=False)
+        raise HTTPException(status_code=400, detail=results)
 
     # 写入数据库（增量：按月删除再插入，未涉及月份保持不动）
     import_id = None
@@ -312,6 +343,11 @@ async def upload_files(
             import_id = conn.execute('SELECT MAX(id) FROM data_imports').fetchone()[0]
 
             conn.commit()
+        except RawIncrementalWriteError as e:
+            conn.rollback()
+            results["errors"].append(str(e))
+            _set_import_status(results, has_written_rows=False)
+            raise HTTPException(status_code=400, detail=results) from e
         except Exception:
             conn.rollback()
             raise
@@ -321,7 +357,7 @@ async def upload_files(
                 results["data_years"], import_id)
     results["import_id"] = import_id
     results["data_years"] = sorted(list(results["data_years"])) if results["data_years"] else [year]
-    return results
+    return _set_import_status(results, has_written_rows=bool(file_hashes))
 
 
 @app.post("/api/import")
@@ -330,7 +366,7 @@ async def import_files(
     jingdai: UploadFile = File(None),
     hr: UploadFile = File(None),
     value: UploadFile = File(None),
-    year: int = 2026,
+    year: int = DEFAULT_YEAR,
     _admin=Depends(require_admin),
 ):
     return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year)

@@ -4,6 +4,12 @@ from __future__ import annotations
 from etl.columns import _pick_col
 from etl.normalize import _period_year_month
 
+KNOWN_RAW_TABLES = {'performance', 'jingdai', 'hr_data', 'value_data'}
+
+
+class RawIncrementalWriteError(ValueError):
+    """Raised when a raw table cannot be updated safely by period."""
+
 
 def quote_identifier(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
@@ -94,9 +100,22 @@ def write_raw_table_incremental(conn, table: str, df):
     existing_cols = table_columns(conn, table)
     df_cols = set(map(str, df.columns))
     periods, period_cols = extract_raw_periods(table, df)
-    if not existing_cols or not df_cols.issubset(existing_cols) or not periods:
+    if not existing_cols:
         df.to_sql(table, conn, if_exists='replace', index=False)
         return
+    if not df_cols.issubset(existing_cols):
+        missing = sorted(df_cols - existing_cols)
+        raise RawIncrementalWriteError(
+            f"raw table {table} schema mismatch; new columns require an explicit full rebuild: {missing}"
+        )
+    if table in KNOWN_RAW_TABLES and not periods:
+        raise RawIncrementalWriteError(
+            f"raw table {table} has no recognizable year/month period; import aborted to avoid replacing history"
+        )
+    if not periods:
+        raise RawIncrementalWriteError(
+            f"raw table {table} has no recognizable year/month period"
+        )
     for year, month in periods:
         delete_raw_period(conn, table, year, month, period_cols)
     df.to_sql(table, conn, if_exists='append', index=False)

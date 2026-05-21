@@ -1,5 +1,7 @@
 import os
+import sqlite3
 import sys
+from contextlib import contextmanager
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))
@@ -16,6 +18,7 @@ from db import get_platform_data
 from db import get_product_structure, get_jingdai_orgs
 from db.repositories.payment import get_payment_period_structure
 from etl.aggregates.payment import aggregate_payment_period, aggregate_jingdai_payment_period
+from db.repositories import product as product_repo
 
 
 JINGDAI = JINGDAI_LINE
@@ -530,6 +533,58 @@ def test_product_structure_uses_transform_product_type_and_jingdai_product_name(
     )
     assert jd_result["premium"]
     assert jd_orgs[0] in jd_result["jingdaiOrgs"]
+
+
+def test_product_structure_accepts_separated_period_text(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        '''
+        CREATE TABLE performance (
+            "年月" TEXT,
+            "业务模式" TEXT,
+            "产品类型" TEXT,
+            "期交保费" REAL,
+            "承保件数" INTEGER,
+            "销售机构名称" TEXT
+        )
+        '''
+    )
+    conn.execute(
+        '''
+        CREATE TABLE jingdai (
+            "时间" TEXT,
+            "经代机构" TEXT,
+            "产品名称" TEXT,
+            "期交保费" REAL
+        )
+        '''
+    )
+    conn.execute(
+        'INSERT INTO performance VALUES (?, ?, ?, ?, ?, ?)',
+        ("2026-05-01", "OTO", "测试产品", 10000, 1, "上海"),
+    )
+    conn.execute(
+        'INSERT INTO jingdai VALUES (?, ?, ?, ?)',
+        ("2026/05/02", "测试经代", "经代产品", 20000),
+    )
+
+    @contextmanager
+    def fake_get_db():
+        yield conn
+
+    monkeypatch.setattr(product_repo, "get_db", fake_get_db)
+    result = product_repo.get_product_structure(
+        2026,
+        dimension="product_mix",
+        transform_lines=["OTO"],
+        jingdai_orgs=[],
+        include_transform=True,
+        include_jingdai=False,
+        months=[5],
+    )
+    assert result["premium"] == [{"name": "测试产品", "value": 1.0}]
+    assert "测试经代" in result["jingdaiOrgs"]
 
 
 def test_product_structure_normalizes_transform_channel_aliases():

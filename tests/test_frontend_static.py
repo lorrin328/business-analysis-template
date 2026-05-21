@@ -94,6 +94,25 @@ def test_html_js_references_exist():
         assert os.path.exists(os.path.join(ROOT, ref)), f"Missing: {ref}"
 
 
+def test_runtime_js_boundary_is_explicit():
+    import re
+    html = read_html()
+    refs = re.findall(r'src="(js/[^"]+)"', html)
+    assert refs == ["js/api-client.js"]
+    with open(os.path.join(JS_DIR, "README.md"), "r", encoding="utf-8") as f:
+        note = f.read()
+    assert "not active runtime code" in note
+
+
+def test_dynamic_org_controls_do_not_inline_unescaped_orgs():
+    html = read_html()
+    combined = html + "\n" + read_js("mock-data.js") + "\n" + read_js("product-analysis.js") + "\n" + read_js("payperiod-chart.js")
+    assert "onchange=\"togglePayPeriodOrg('${org}'" not in combined
+    assert "onchange=\"toggleProductOrg('${org}'" not in combined
+    assert "wrapper.innerHTML = orgs.map" not in combined
+    assert "container.innerHTML = orgs.map" not in combined
+
+
 def test_upload_js_exposes_handle_file():
     upload = read_js("upload.js")
     assert "window.handleFile = handleFile" in upload

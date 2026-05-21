@@ -2,6 +2,22 @@
 (function (window) {
     const payPeriodChart = echarts.init(document.getElementById('payPeriodChart'));
 
+    function createCheckboxLabel(labelText, checked, onChange) {
+      const label = document.createElement('label');
+      label.className = 'check-label';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = checked !== false;
+      input.dataset.org = String(labelText || '');
+      input.addEventListener('change', () => onChange(input.dataset.org, input.checked));
+      const span = document.createElement('span');
+      span.textContent = String(labelText || '');
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(' '));
+      label.appendChild(span);
+      return label;
+    }
+
     function getPayPeriodPieOption(type) {
       const data = type === 'count' ? payPeriodData.count : payPeriodData.premium;
       if (!data || data.length === 0) {
@@ -163,11 +179,12 @@
     function renderPayPeriodJingdaiOrgs(orgs) {
       const container = document.getElementById('payPeriodJingdaiOrgChecks');
       if (!orgs || orgs.length === 0) { container.innerHTML = ''; return; }
-      container.innerHTML = orgs.map(org => {
+      const labels = orgs.map(org => {
         const checked = payPeriodFilters.orgsInitialized ? (payPeriodFilters.jingdaiOrgs[org] !== false) : true;
         if (!payPeriodFilters.orgsInitialized) payPeriodFilters.jingdaiOrgs[org] = true;
-        return `<label class="check-label"><input type="checkbox" ${checked ? 'checked' : ''} data-org="${org}" onchange="togglePayPeriodJingdaiOrg(this.dataset.org, this.checked)"> <span>${org}</span></label>`;
-      }).join('');
+        return createCheckboxLabel(org, checked, togglePayPeriodJingdaiOrg);
+      });
+      container.replaceChildren(...labels);
       payPeriodFilters.orgsInitialized = true;
     }
 

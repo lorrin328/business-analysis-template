@@ -10,6 +10,10 @@ def _check_table(table: str):
         raise ValueError(f"Invalid table name: {table}")
 
 
+def _quote_identifier(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
+
+
 def replace_rows(conn, table, rows):
     """INSERT OR REPLACE 批量写入。"""
     if not rows:
@@ -17,8 +21,8 @@ def replace_rows(conn, table, rows):
     _check_table(table)
     keys = list(rows[0].keys())
     placeholders = ', '.join(['?'] * len(keys))
-    columns = ', '.join(keys)
-    sql = f'INSERT OR REPLACE INTO {table} ({columns}) VALUES ({placeholders})'
+    columns = ', '.join(_quote_identifier(k) for k in keys)
+    sql = f'INSERT OR REPLACE INTO {_quote_identifier(table)} ({columns}) VALUES ({placeholders})'
     conn.executemany(sql, [[row.get(k) for k in keys] for row in rows])
 
 
@@ -32,7 +36,7 @@ def replace_rows_incremental(conn, table, rows):
     _check_table(table)
     months = {(int(r['year']), int(r['month'])) for r in rows if 'year' in r and 'month' in r}
     for year, month in months:
-        conn.execute(f'DELETE FROM {table} WHERE year = ? AND month = ?', (year, month))
+        conn.execute(f'DELETE FROM {_quote_identifier(table)} WHERE year = ? AND month = ?', (year, month))
     replace_rows(conn, table, rows)
 
 
@@ -49,4 +53,4 @@ def clear_year_data(year: int):
 def clear_table_year_data(conn, table: str, year: int):
     """删除指定表指定年度的数据（不提交，由调用方管理事务）。"""
     _check_table(table)
-    conn.execute(f'DELETE FROM {table} WHERE year = ?', (year,))
+    conn.execute(f'DELETE FROM {_quote_identifier(table)} WHERE year = ?', (year,))

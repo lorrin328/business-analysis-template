@@ -14,6 +14,25 @@ def _split_csv(value: str | None) -> list[str]:
     return [item.strip() for item in str(value).split(',') if item and item.strip()]
 
 
+def _compact_period_expr(column: str) -> str:
+    quoted = '"' + column.replace('"', '""') + '"'
+    expr = f'CAST({quoted} AS TEXT)'
+    for token in ['-', '/', '.', '年', '月', '日', ' ']:
+        expr = f"replace({expr}, '{token}', '')"
+    return expr
+
+
+def _append_period_filter(column: str, year: int, months: list[int] | None, params: list) -> str:
+    expr = _compact_period_expr(column)
+    clause = f' AND CAST(substr({expr}, 1, 4) AS INTEGER) = ?'
+    params.append(year)
+    if months:
+        m_placeholders = ','.join(['?'] * len(months))
+        clause += f' AND CAST(substr({expr}, 5, 2) AS INTEGER) IN ({m_placeholders})'
+        params.extend(months)
+    return clause
+
+
 def _query_product_structure_raw(
     conn: sqlite3.Connection,
     year: int,
@@ -42,12 +61,8 @@ def _query_product_structure_raw(
     raw_transform_line_list = sorted(raw_transform_lines)
     if include_transform and raw_transform_line_list:
         try:
-            t_params: list = [year]
-            extra_where = ''
-            if months:
-                m_placeholders = ','.join(['?'] * len(months))
-                extra_where += f' AND CAST(substr("年月", 5, 2) AS INTEGER) IN ({m_placeholders})'
-                t_params.extend(months)
+            t_params: list = []
+            extra_where = _append_period_filter('年月', year, months, t_params)
             if orgs:
                 o_placeholders = ','.join(['?'] * len(orgs))
                 extra_where += f' AND "销售机构名称" IN ({o_placeholders})'
@@ -58,9 +73,9 @@ def _query_product_structure_raw(
                        SUM({perf_premium_col}) / 10000.0 AS premium,
                        SUM(COALESCE("承保件数", 1)) AS count
                 FROM performance
-                WHERE CAST(substr("年月", 1, 4) AS INTEGER) = ?
-                  AND "业务模式" IN ({placeholders})
+                WHERE 1=1
                   {extra_where}
+                  AND "业务模式" IN ({placeholders})
                 GROUP BY COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类')
             ''', [*t_params, *raw_transform_line_list])
             for row in c.fetchall():
@@ -72,12 +87,8 @@ def _query_product_structure_raw(
 
     if include_jingdai:
         try:
-            jd_params: list = [year]
-            jd_extra_where = ''
-            if months:
-                m_placeholders = ','.join(['?'] * len(months))
-                jd_extra_where += f' AND CAST(substr("时间", 5, 2) AS INTEGER) IN ({m_placeholders})'
-                jd_params.extend(months)
+            jd_params: list = []
+            jd_extra_where = _append_period_filter('时间', year, months, jd_params)
             org_clause = ''
             if jingdai_orgs:
                 placeholders = ','.join(['?'] * len(jingdai_orgs))
@@ -88,7 +99,7 @@ def _query_product_structure_raw(
                        SUM({jd_premium_col}) / 10000.0 AS premium,
                        COUNT(*) AS count
                 FROM jingdai
-                WHERE CAST(substr("时间", 1, 4) AS INTEGER) = ?
+                WHERE 1=1
                   {jd_extra_where}
                   {org_clause}
                 GROUP BY COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类')
@@ -117,8 +128,7 @@ def get_jingdai_orgs(year: int | None = None) -> list[str]:
         params: list = []
         where = ''
         if year:
-            where = 'WHERE CAST(substr("时间", 1, 4) AS INTEGER) = ?'
-            params.append(year)
+            where = 'WHERE 1=1' + _append_period_filter('时间', year, None, params)
         rows = conn.execute(f'''
             SELECT DISTINCT TRIM("经代机构") AS org
             FROM jingdai

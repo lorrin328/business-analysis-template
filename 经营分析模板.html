@@ -708,7 +708,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.99</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.991</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
@@ -3706,6 +3706,22 @@
       }
     }
 
+    function createCheckboxLabel(labelText, checked, onChange) {
+      const label = document.createElement('label');
+      label.className = 'check-label';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = checked !== false;
+      input.dataset.org = String(labelText || '');
+      input.addEventListener('change', () => onChange(input.dataset.org, input.checked));
+      const span = document.createElement('span');
+      span.textContent = String(labelText || '');
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(' '));
+      label.appendChild(span);
+      return label;
+    }
+
     function renderProductJingdaiOrgs(orgs) {
       const wrapper = document.getElementById('productJingdaiOrgChecks');
       if (!wrapper || !Array.isArray(orgs)) return;
@@ -3713,9 +3729,9 @@
         orgs.forEach(org => { productFilters.jingdaiOrgs[org] = true; });
         productFilters.orgsInitialized = true;
       }
-      wrapper.innerHTML = orgs.map(org => `
-        <label class="check-label"><input type="checkbox" data-org="${org}" ${productFilters.jingdaiOrgs[org] !== false ? 'checked' : ''} onchange="toggleProductJingdaiOrg(this.dataset.org, this.checked)"> <span>${org}</span></label>
-      `).join('');
+      wrapper.replaceChildren(...orgs.map(org => (
+        createCheckboxLabel(org, productFilters.jingdaiOrgs[org] !== false, toggleProductJingdaiOrg)
+      )));
     }
 
     async function refreshProductChart() {
@@ -20967,18 +20983,12 @@
     (function initPayPeriodOrgChecks() {
       const container = document.getElementById('payPeriodTransformOrgChecks');
       ORG_LIST.forEach(org => {
-        const label = document.createElement('label');
-        label.className = 'check-label';
-        label.innerHTML = `<input type="checkbox" checked data-org="${org}" onchange="togglePayPeriodOrg('${org}', this.checked)"> <span>${org}</span>`;
-        container.appendChild(label);
+        container.appendChild(createCheckboxLabel(org, true, togglePayPeriodOrg));
       });
       // Also init product org checks
       const prodContainer = document.getElementById('productOrgChecks');
       ORG_LIST.forEach(org => {
-        const label = document.createElement('label');
-        label.className = 'check-label';
-        label.innerHTML = `<input type="checkbox" checked data-org="${org}" onchange="toggleProductOrg('${org}', this.checked)"> <span>${org}</span>`;
-        prodContainer.appendChild(label);
+        prodContainer.appendChild(createCheckboxLabel(org, true, toggleProductOrg));
       });
     })();
 
@@ -21145,11 +21155,12 @@
     function renderPayPeriodJingdaiOrgs(orgs) {
       const container = document.getElementById('payPeriodJingdaiOrgChecks');
       if (!orgs || orgs.length === 0) { container.innerHTML = ''; return; }
-      container.innerHTML = orgs.map(org => {
+      const labels = orgs.map(org => {
         const checked = payPeriodFilters.orgsInitialized ? (payPeriodFilters.jingdaiOrgs[org] !== false) : true;
         if (!payPeriodFilters.orgsInitialized) payPeriodFilters.jingdaiOrgs[org] = true;
-        return `<label class="check-label"><input type="checkbox" ${checked ? 'checked' : ''} data-org="${org}" onchange="togglePayPeriodJingdaiOrg(this.dataset.org, this.checked)"> <span>${org}</span></label>`;
-      }).join('');
+        return createCheckboxLabel(org, checked, togglePayPeriodJingdaiOrg);
+      });
+      container.replaceChildren(...labels);
       payPeriodFilters.orgsInitialized = true;
     }
 
@@ -21401,7 +21412,8 @@
           return;
         }
         const result = await resp.json();
-        if (result.errors && result.errors.length > 0) {
+        const isPartialImport = result.status === 'partial' || (result.data_integrity && result.data_integrity.complete === false);
+        if (result.errors && result.errors.length > 0 && !isPartialImport) {
           _setAllInfos(`✗ 错误: ${result.errors.join('; ')}`);
           _resetAllCards();
         } else {
@@ -21420,9 +21432,15 @@
             teamChart.setOption(getTeamOption(), true);
             updateCutoffLabel(String(queryYear));
             updateKPICards();
-            _setAllInfos(`✓ 已上传: ${result.uploaded.join(', ')} · ${queryYear}年数据已刷新`);
+            const uploadList = (result.uploaded || []).join(', ');
+            const statusPrefix = isPartialImport ? '部分导入成功，数据口径不完整' : '已上传';
+            const errorNote = isPartialImport && result.errors ? ` · 未更新: ${result.errors.join('; ')}` : '';
+            _setAllInfos(`${statusPrefix}: ${uploadList} · ${queryYear}年数据已刷新${errorNote}`);
           } else {
-            _setAllInfos(`✓ 已上传: ${result.uploaded.join(', ')} · 后端${queryYear}年数据为空，使用本地数据`);
+            const uploadList = (result.uploaded || []).join(', ');
+            const statusPrefix = isPartialImport ? '部分导入成功，数据口径不完整' : '已上传';
+            const errorNote = isPartialImport && result.errors ? ` · 未更新: ${result.errors.join('; ')}` : '';
+            _setAllInfos(`${statusPrefix}: ${uploadList} · 后端${queryYear}年数据为空，使用本地数据${errorNote}`);
             await fetchTargetData(queryYear);
             updateKPICards();
           }

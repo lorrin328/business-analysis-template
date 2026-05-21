@@ -104,7 +104,8 @@
       }
 
       var result = await resp.json();
-      if (result.errors && result.errors.length > 0) {
+      var isPartialImport = result.status === 'partial' || (result.data_integrity && result.data_integrity.complete === false);
+      if (result.errors && result.errors.length > 0 && !isPartialImport) {
         _setAllInfos('导入错误: ' + result.errors.join('; '));
         _resetAllCards();
         return;
@@ -115,8 +116,10 @@
       var years = result.data_years || [];
       var uploadYear = years.length > 0 ? years[0] : 2026;
 
-      _setAllInfos('导入成功: ' + uploadedCount + ' 个文件' +
-        (skippedCount > 0 ? ' (' + skippedCount + ' 个已跳过)' : ''));
+      var integrityPrefix = isPartialImport ? '部分导入成功，数据口径不完整: ' : '导入成功: ';
+      var errorNote = isPartialImport && result.errors ? ' 未更新: ' + result.errors.join('; ') : '';
+      _setAllInfos(integrityPrefix + uploadedCount + ' 个文件' +
+        (skippedCount > 0 ? ' (' + skippedCount + ' 个已跳过)' : '') + errorNote);
       _refreshAfterUpload(uploadYear);
 
     } catch (e) {
