@@ -2032,15 +2032,23 @@
           : '<span style="color:var(--text-secondary)">未配置保障类目标</span>';
       }
 
-      // 6. 10年期产品（经代暂缺）
+      // 6. 10年期产品（转型 + 经代）
       if (hasApiKpi && kpi.tenyear_total !== undefined) {
         const actual = kpi.tenyear_total || 0;
+        const jdActual = kpi.tenyear_jd || 0;
+        const tfActual = kpi.tenyear_tf || 0;
+        const totalTarget = targetData?.categories?.tenYear?.metrics?.['整体']?.year || 0;
+        const jdTarget = targetData?.categories?.tenYear?.metrics?.['经代']?.year || 0;
         const tfTarget = targetData?.categories?.tenYear?.metrics?.['转型业务']?.year || 0;
-        const tfRate = tfTarget > 0 ? Math.round(actual / tfTarget * 1000) / 10 : 0;
+        const totalRate = totalTarget > 0 ? Math.round(actual / totalTarget * 1000) / 10 : 0;
+        const jdRate = jdTarget > 0 ? Math.round(jdActual / jdTarget * 1000) / 10 : 0;
+        const tfRate = tfTarget > 0 ? Math.round(tfActual / tfTarget * 1000) / 10 : 0;
         const el = document.getElementById('kpi-10year-rate');
-        if (el) el.textContent = tfRate + '%';
+        if (el) el.textContent = totalTarget > 0 ? totalRate + '%' : '--';
         const sub = document.getElementById('kpi-10year-sub');
-        if (sub) sub.innerHTML = `<span>经代 -- · 转型 ${tfRate}%</span>`;
+        if (sub) sub.innerHTML = totalTarget > 0
+          ? `<span>经代 ${jdTarget > 0 ? jdRate + '%' : '--'} · 转型 ${tfTarget > 0 ? tfRate + '%' : '--'}</span>`
+          : '<span style="color:var(--text-secondary)">未配置10年期产品目标</span>';
       }
 
       // 7. 长险期交达成率
@@ -3048,11 +3056,12 @@
             };
           }
           const tfActual = is10y
-            ? Math.round(Object.values(chVals).reduce((s, v) => s + v, 0))
+            ? Math.round(kpiData.tenyear_tf ?? Object.values(chVals).reduce((s, v) => s + v, 0))
             : Math.round(kpiData.longterm_qj_tf || 0);
-          const jdActual = is10y ? 0 : Math.round(kpiData.longterm_qj_jd || 0);
-          const targetTf = Math.round(targetData?.categories?.qjPremium?.metrics?.['转型业务']?.year || 0);
-          const targetJd = Math.round(targetData?.categories?.qjPremium?.metrics?.['经代']?.year || 0);
+          const jdActual = is10y ? Math.round(kpiData.tenyear_jd || 0) : Math.round(kpiData.longterm_qj_jd || 0);
+          const targetCategory = is10y ? 'tenYear' : 'qjPremium';
+          const targetTf = Math.round(targetData?.categories?.[targetCategory]?.metrics?.['转型业务']?.year || 0);
+          const targetJd = Math.round(targetData?.categories?.[targetCategory]?.metrics?.['经代']?.year || 0);
           const tfRate = targetTf > 0 ? Math.round(tfActual / targetTf * 1000) / 10 : 0;
           const jdRate = targetJd > 0 ? Math.round(jdActual / targetJd * 1000) / 10 : 0;
           // 同比
@@ -3070,7 +3079,7 @@
             let ct = 0;
             if (targetData?.orgTargets) {
               Object.entries(targetData.orgTargets).forEach(([k, v]) => {
-                if (k.endsWith('|' + ch)) ct += (v?.qjPremium?.year || 0);
+                if (k.endsWith('|' + ch)) ct += (v?.[targetCategory]?.year || 0);
               });
             }
             const r = ct > 0 ? Math.round(a / ct * 1000) / 10 : 0;

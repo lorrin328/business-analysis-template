@@ -287,6 +287,15 @@ def get_kpi_data(year: int):
         ''', (year, query_month))
         row = c.fetchone()
         tenyear_tf = (row['t'] or 0) if row else 0.0
+        c.execute('''
+            SELECT SUM(qj_premium) AS t
+            FROM agg_payment_period
+            WHERE year = ? AND month <= ?
+              AND business_type = '经代'
+              AND category = '10年及以上'
+        ''', (year, query_month))
+        row = c.fetchone()
+        tenyear_jd = (row['t'] or 0) if row else 0.0
 
         total_transform = perf.get('OTO', 0) + perf.get('证保', 0) + perf.get('蚁桥', 0)
 
@@ -329,7 +338,9 @@ def get_kpi_data(year: int):
             'protection_total': round(protection_tf + protection_jd, 2),
             'protection_tf': round(protection_tf, 2),
             'protection_jd': round(protection_jd, 2),
-            'tenyear_total': round(tenyear_tf, 2),
+            'tenyear_total': round(tenyear_tf + tenyear_jd, 2),
+            'tenyear_tf': round(tenyear_tf, 2),
+            'tenyear_jd': round(tenyear_jd, 2),
             'hr': hr,
             'hr_prev': hr_prev,
             'value': value,

@@ -63,6 +63,15 @@ def test_protection_modal_shows_jingdai_transform_and_sub_modes():
     assert "item.year?.product_protection" in html
 
 
+def test_tenyear_kpi_includes_jingdai_in_card_and_modal():
+    html = read_html()
+    assert "kpi.tenyear_jd" in html
+    assert "kpi.tenyear_tf" in html
+    assert "未配置10年期产品目标" in html
+    assert "Math.round(kpiData.tenyear_jd || 0)" in html
+    assert "targetCategory = is10y ? 'tenYear' : 'qjPremium'" in html
+
+
 def test_frontend_centralizes_read_api_fetches():
     html = read_html()
     api_client = read_js("api-client.js")

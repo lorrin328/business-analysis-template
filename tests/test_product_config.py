@@ -279,7 +279,7 @@ class TestProductConfig:
         conn = sqlite3.connect(DB_PATH)
         try:
             c = conn.cursor()
-            for table in ["agg_org_performance", "agg_performance", "agg_jingdai", "agg_hr_data", "agg_value_data"]:
+            for table in ["agg_org_performance", "agg_performance", "agg_jingdai", "agg_hr_data", "agg_value_data", "agg_payment_period"]:
                 c.execute(f"DELETE FROM {table} WHERE year = 2097")
             c.execute(
                 """
@@ -312,17 +312,28 @@ class TestProductConfig:
                 VALUES (2097, 1, '上海', 'OTO', 10, 10, 10, 2, 3, 4)
                 """
             )
+            c.execute(
+                """
+                INSERT INTO agg_payment_period
+                (year, month, business_type, channel, org, category, qj_premium, gm_premium, count)
+                VALUES (2097, 1, '经代', '', '支付宝', '10年及以上', 5, 5, 0)
+                """
+            )
             conn.commit()
 
             data = get_kpi_data(2097)
             assert data["annuity_total"] == 3
             assert data["protection_total"] == 4
+            assert data["tenyear_tf"] == 2
+            assert data["tenyear_jd"] == 5
+            assert data["tenyear_total"] == 7
         finally:
             conn.execute("DELETE FROM agg_org_performance WHERE year = 2097")
             conn.execute("DELETE FROM agg_performance WHERE year = 2097")
             conn.execute("DELETE FROM agg_jingdai WHERE year = 2097")
             conn.execute("DELETE FROM agg_hr_data WHERE year = 2097")
             conn.execute("DELETE FROM agg_value_data WHERE year = 2097")
+            conn.execute("DELETE FROM agg_payment_period WHERE year = 2097")
             conn.commit()
             conn.close()
 
