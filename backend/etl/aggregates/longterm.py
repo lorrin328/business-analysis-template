@@ -30,8 +30,9 @@ def aggregate_transform_longterm(df: pd.DataFrame) -> List[Dict]:
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
     work['_qj'] = _to_number(work[qj_col])
 
-    # 长险条件：长短险匹配常见变体 OR 产品代码='4281'
-    LONG_TERM_VARIANTS = {'长期', '长险', '长期险', '长'}
+    # 长险条件：长短险匹配常见变体 OR 产品代码='4281'。
+    # 部分业绩基表用“一年期以上”表示长险，不能只识别“长期”。
+    LONG_TERM_VARIANTS = {'长期', '长险', '长期险', '长', '一年期以上', '一年以上', '1年期以上'}
     is_longterm = False
     if term_col:
         term_vals = work[term_col].fillna('').astype(str).str.strip()
