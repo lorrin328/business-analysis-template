@@ -717,7 +717,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.31</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.32</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openProductConfigModal()" style="margin-right:8px;">参数设置</button>
@@ -860,9 +860,6 @@
             <div class="control-row">
               <span class="control-label">年份</span>
               <select class="period-select" id="yearSelect" onchange="switchYear(this.value)">
-                <option value="2026">2026年</option>
-                <option value="2025">2025年</option>
-                <option value="2024">2024年</option>
               </select>
               <span class="control-label" style="margin-left:12px;">时间维度</span>
               <div class="control-btns">
@@ -982,9 +979,6 @@
             <div class="control-row">
               <span class="control-label">年份</span>
               <select class="period-select" id="payPeriodYearSelect" onchange="switchPayPeriodYear(this.value)">
-                <option value="2026">2026年</option>
-                <option value="2025">2025年</option>
-                <option value="2024">2024年</option>
               </select>
               <span class="control-label" style="margin-left:12px;">时间维度</span>
               <div class="control-btns">
@@ -1044,9 +1038,6 @@
             <div class="control-row">
               <span class="control-label">年份</span>
               <select class="period-select" id="teamYearSelect" onchange="switchTeamYear(this.value)">
-                <option value="2026">2026年</option>
-                <option value="2025">2025年</option>
-                <option value="2024">2024年</option>
               </select>
               <span class="control-label" style="margin-left:12px;">指标类型</span>
               <div class="control-btns">
@@ -1203,7 +1194,7 @@
         const resp = await fetchJson('/api/product-config');
         const products = unwrapApiResponse(resp) || [];
         const rows = products.map(p => `
-          <tr data-code="${escapeHtml(p.product_code)}">
+          <tr data-code="${escapeHtml(p.product_code)}" data-business-type="${escapeHtml(p.business_type || '')}">
             <td>${escapeHtml(p.product_code)}</td>
             <td>${escapeHtml(p.product_name || '-')}</td>
             <td>${escapeHtml(p.business_type || '-')}</td>
@@ -1258,9 +1249,10 @@
       const products = [];
       rows.forEach(row => {
         const code = row.getAttribute('data-code');
+        const businessType = row.getAttribute('data-business-type') || '';
         const annuity = row.querySelector('[data-field="is_annuity"]').value;
         const protection = row.querySelector('[data-field="is_protection"]').value;
-        products.push({ product_code: code, is_annuity: annuity, is_protection: protection });
+        products.push({ product_code: code, business_type: businessType, is_annuity: annuity, is_protection: protection });
       });
       try {
         const resp = await adminFetch(apiUrl('/api/product-config'), {
@@ -1286,8 +1278,25 @@
 
     // ---------- Target Setting System ----------
     const TARGET_STORAGE_KEY = 'business_targets_v1';
+    const DEFAULT_DASHBOARD_YEAR_NUM = new Date().getFullYear();
+    const DEFAULT_DASHBOARD_YEAR = String(DEFAULT_DASHBOARD_YEAR_NUM);
     let targetData = null;
     let targetDataSource = 'default';
+
+    function buildRecentYearOptions(selectedYear) {
+      return [0, 1, 2].map(offset => {
+        const year = DEFAULT_DASHBOARD_YEAR_NUM - offset;
+        return `<option value="${year}" ${String(selectedYear) === String(year) ? 'selected' : ''}>${year}年</option>`;
+      }).join('');
+    }
+
+    function populateDashboardYearSelects() {
+      [['yearSelect', selectedYear], ['payPeriodYearSelect', payPeriodFilters?.year], ['teamYearSelect', selectedTeamYear]]
+        .forEach(([id, selected]) => {
+          const el = document.getElementById(id);
+          if (el) el.innerHTML = buildRecentYearOptions(selected || DEFAULT_DASHBOARD_YEAR);
+        });
+    }
 
     function createDefaultTargetData(year) {
       const metrics = ['整体', '经代', '转型业务', 'OTO', '证保', '蚁桥'];
@@ -1334,7 +1343,7 @@
     }
 
     function normalizeTargetData(data, year) {
-      const base = createDefaultTargetData(year || data?.year || 2026);
+      const base = createDefaultTargetData(year || data?.year || DEFAULT_DASHBOARD_YEAR_NUM);
       if (!data || !data.categories) return base;
       data.year = parseInt(year || data.year || base.year);
       Object.entries(base.categories).forEach(([catKey, baseCat]) => {
@@ -1387,11 +1396,11 @@
     }
 
     function targetStorageKey(year) {
-      return `${TARGET_STORAGE_KEY}_${year || targetData?.year || 2026}`;
+      return `${TARGET_STORAGE_KEY}_${year || targetData?.year || DEFAULT_DASHBOARD_YEAR_NUM}`;
     }
 
     function loadTargetData(year) {
-      const desiredYear = parseInt(year || targetData?.year || 2026);
+      const desiredYear = parseInt(year || targetData?.year || DEFAULT_DASHBOARD_YEAR_NUM);
       if (targetData && targetData.year === desiredYear) {
         targetData = normalizeTargetData(targetData, desiredYear);
         return;
@@ -1420,7 +1429,7 @@
     }
 
     async function fetchTargetData(year) {
-      const desiredYear = parseInt(year || targetData?.year || selectedYear || 2026);
+      const desiredYear = parseInt(year || targetData?.year || selectedYear || DEFAULT_DASHBOARD_YEAR_NUM);
       try {
         const data = unwrapApiResponse(await fetchJson(`/api/targets?year=${desiredYear}`, { method: 'GET' }));
         const hasServerTarget = !!(data && data.categories);
@@ -1435,16 +1444,14 @@
     }
 
     async function openTargetModal() {
-      loadTargetData(targetData?.year || selectedYear || 2026);
+      loadTargetData(targetData?.year || selectedYear || DEFAULT_DASHBOARD_YEAR_NUM);
       modalTitle.textContent = '经营目标设置';
       modalOverlay.classList.add('modal-target');
       modalBody.innerHTML = `
         <div class="target-toolbar">
           <label>目标年份</label>
           <select id="targetYearSelect" onchange="changeTargetYear(this.value)">
-            <option value="2026" ${targetData.year === 2026 ? 'selected' : ''}>2026</option>
-            <option value="2025" ${targetData.year === 2025 ? 'selected' : ''}>2025</option>
-            <option value="2024" ${targetData.year === 2024 ? 'selected' : ''}>2024</option>
+            ${buildRecentYearOptions(targetData.year)}
           </select>
           <span id="targetSourceNote" style="color:var(--text-secondary);font-size:12px;">单位：万 · ${targetSourceLabel()}</span>
           <div style="flex:1;"></div>
@@ -1754,7 +1761,7 @@
         btn.disabled = true;
       }
       try {
-        targetData = normalizeTargetData(targetData, targetData?.year || 2026);
+        targetData = normalizeTargetData(targetData, targetData?.year || DEFAULT_DASHBOARD_YEAR_NUM);
         localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
         const resp = await adminFetch(apiUrl(`/api/targets?year=${targetData.year}`), {
           method: 'POST',
@@ -1823,7 +1830,7 @@
     function updateKPICards() {
       try {
         loadTargetData();
-        const year = 2026;
+        const year = String((apiData.kpi && apiData.kpi.year) || selectedYear || DEFAULT_DASHBOARD_YEAR);
         const pm = platformMock[year];
         const tm = teamMock[year];
         if (!pm) return;
@@ -2506,8 +2513,8 @@
       switch(type) {
         case 'overall': {
           loadTargetData();
-          const year = (apiData.kpi && apiData.kpi.year) || 2026;
-          const pm = platformMock[year] || platformMock[2026];
+          const year = String((apiData.kpi && apiData.kpi.year) || selectedYear || DEFAULT_DASHBOARD_YEAR);
+          const pm = platformMock[year];
           const qjData = pm ? pm.year.qj : null;
           const targets = targetData.categories.qjPremium.metrics;
           function fmt(n) { return n ? n.toLocaleString('zh-CN', {maximumFractionDigits:0}) : '0'; }
@@ -2917,8 +2924,10 @@
           };
         }
         case 'annuity': {
-          // 商保年金：只有转型数据，经代暂缺
+          loadTargetData();
+          const kpiData = apiData.kpi || {};
           const chs = ['OTO','证保','蚁桥'];
+          const metrics = targetData?.categories?.shangbao?.metrics || {};
           let chVals = {}; chs.forEach(c => chVals[c] = 0);
           if (orgKpiData?.perf) {
             Object.entries(orgKpiData.perf).forEach(([key, item]) => {
@@ -2926,33 +2935,65 @@
               if (ch) chVals[ch] = (chVals[ch] || 0) + (item.year?.product_annuity || 0);
             });
           }
-          const tfActual = Math.round(Object.values(chVals).reduce((s, v) => s + v, 0));
-          const targetTf = Math.round(targetData?.categories?.shangbao?.metrics?.['转型业务']?.year || 0);
-          const tfRate = targetTf > 0 ? Math.round(tfActual / targetTf * 1000) / 10 : 0;
-          const chRows = chs.map(ch => {
-            const a = Math.round(chVals[ch] || 0);
-            let ct = 0;
+
+          const tfActual = Math.round((kpiData.annuity_tf ?? Object.values(chVals).reduce((s, v) => s + v, 0)) || 0);
+          const jdActual = Math.round(kpiData.annuity_jd || 0);
+          const targetJd = Math.round(metrics['经代']?.year || 0);
+          const targetTf = Math.round(metrics['转型业务']?.year || 0);
+
+          function fmtWan(n) {
+            return Math.round(n || 0).toLocaleString('zh-CN');
+          }
+          function calcRate(actual, target) {
+            return target > 0 ? Math.round(actual / target * 1000) / 10 : null;
+          }
+          function rateText(rate) {
+            return rate === null ? '--' : `${rate}%`;
+          }
+          function rateColor(rate) {
+            if (rate === null) return 'var(--text-secondary)';
+            return rate >= 100 ? 'var(--success)' : rate >= 80 ? 'var(--warning)' : 'var(--danger)';
+          }
+          function targetForChannel(ch) {
+            let total = 0;
             if (targetData?.orgTargets) {
-              Object.entries(targetData.orgTargets).forEach(([k, v]) => {
-                if (k.endsWith('|' + ch)) ct += (v?.shangbao?.year || 0);
+              Object.entries(targetData.orgTargets).forEach(([key, value]) => {
+                if (key.endsWith('|' + ch)) total += (value?.shangbao?.year || 0);
               });
             }
-            const r = ct > 0 ? Math.round(a / ct * 1000) / 10 : 0;
-            return `<tr><td>${ch}</td><td>${a}万</td><td>${r}%</td></tr>`;
+            return total || metrics[ch]?.year || 0;
+          }
+          function mainRow(label, actual, target) {
+            const rate = calcRate(actual, target);
+            return `<tr>
+              <td style="text-align:left;">${label}</td>
+              <td>${fmtWan(actual)}万</td>
+              <td style="color:${rateColor(rate)}">${rateText(rate)}</td>
+            </tr>`;
+          }
+          const chRows = chs.map(ch => {
+            const actual = Math.round(chVals[ch] || 0);
+            const target = targetForChannel(ch);
+            const rate = calcRate(actual, target);
+            return `<tr>
+              <td style="text-align:left;padding-left:20px;color:var(--text-secondary);">${ch}</td>
+              <td>${fmtWan(actual)}万</td>
+              <td style="color:${rateColor(rate)}">${rateText(rate)}</td>
+            </tr>`;
           }).join('');
           return {
             title: '商保年金达成率',
             body: `
               <table class="modal-table">
-                <thead><tr><th>业务系列</th><th>年度累计</th><th>达成率</th><th>同比</th></tr></thead>
+                <thead><tr><th style="text-align:left;">业务系列</th><th>年度累计达成</th><th>达成率</th></tr></thead>
                 <tbody>
-                  <tr><td>经代业务</td><td>--</td><td>--</td><td>--</td></tr>
-                  <tr><td>转型业务</td><td>${tfActual}万</td><td style="color:${tfRate>=80?'var(--success)':'var(--warning)'}">${tfRate}%</td><td>--</td></tr>
+                  ${mainRow('经代', jdActual, targetJd)}
+                  ${mainRow('转型', tfActual, targetTf)}
                 </tbody>
               </table>
-              <div class="modal-section-title">转型业务分渠道</div>
+              <div class="modal-section-title">转型业务分模式</div>
               <table class="modal-table">
-                <thead><tr><th>渠道</th><th>年度累计</th><th>达成率</th></tr></thead>
+                <thead><tr><th style="text-align:left;">业务模式</th><th>年度累计达成</th><th>达成率</th></tr></thead>
                 <tbody>${chRows}</tbody>
               </table>
             `
@@ -3618,6 +3659,13 @@
     let apiData = { kpi: null, platform: null, team: null, product: null };
     const apiCache = {};
     let apiAvailable = false;
+    const ALLOW_LOCAL_FALLBACK = ['localhost', '127.0.0.1', ''].includes(window.location.hostname) || window.location.protocol === 'file:';
+
+    function clearRuntimeFallbackYear(year) {
+      if (ALLOW_LOCAL_FALLBACK) return;
+      delete platformMock[String(year)];
+      delete teamMock[String(year)];
+    }
 
     function buildProductQuery(year) {
       const params = new URLSearchParams();
@@ -3898,10 +3946,19 @@
 
     function updateProductDataFromApi() {
       const product = apiData.product;
-      if (!product || !Array.isArray(product.premium)) return applyProductFallback(selectedYear || '2026');
+      if (!product || !Array.isArray(product.premium)) {
+        if (ALLOW_LOCAL_FALLBACK) return applyProductFallback(selectedYear || DEFAULT_DASHBOARD_YEAR);
+        productData.premium = [];
+        productData.count = [];
+        renderProductJingdaiOrgs([]);
+        return false;
+      }
       renderProductJingdaiOrgs(product.jingdaiOrgs || []);
       if (product.premium.length === 0) {
-        return applyProductFallback(selectedYear || '2026');
+        if (ALLOW_LOCAL_FALLBACK) return applyProductFallback(selectedYear || DEFAULT_DASHBOARD_YEAR);
+        productData.premium = [];
+        productData.count = [];
+        return false;
       }
       productData.premium = product.premium;
       productData.count = Array.isArray(product.count) && product.count.length > 0 ? product.count : product.premium;
@@ -3914,7 +3971,11 @@
         return updateProductDataFromApi();
       } catch (e) {
         console.error('fetchProductData error:', e);
-        return applyProductFallback(year);
+        if (ALLOW_LOCAL_FALLBACK) return applyProductFallback(year);
+        productData.premium = [];
+        productData.count = [];
+        renderProductJingdaiOrgs([]);
+        return false;
       }
     }
 
@@ -3947,7 +4008,7 @@
     }
 
     async function refreshProductChart() {
-      await fetchProductData(selectedYear || '2026');
+      await fetchProductData(selectedYear || DEFAULT_DASHBOARD_YEAR);
       productChart.setOption(getPieOption(currentPieType), true);
     }
 
@@ -3959,7 +4020,7 @@
         btn.disabled = true;
       }
       try {
-        const platformYear = selectedYear || '2026';
+        const platformYear = selectedYear || DEFAULT_DASHBOARD_YEAR;
         await fetchTargetData(platformYear);
         if (selectedTeamYear && selectedTeamYear !== platformYear) {
           await loadYearFromApi(selectedTeamYear, { updateKpi: false, updateProduct: false });
@@ -4068,7 +4129,7 @@
     const platformChart = echarts.init(document.getElementById('platformChart'));
     let currentTimeDim = 'year';
     let currentPremiumType = 'qj';
-    let selectedYear = '2026';
+    let selectedYear = DEFAULT_DASHBOARD_YEAR;
     let selectedQuarter = 'Q2';
     let selectedMonth = '4';
     const selectedSeries = { '经代': true, 'OTO': true, '证保': true, '蚁桥': true };
@@ -20904,6 +20965,7 @@
       };
     }
 
+    if (!ALLOW_LOCAL_FALLBACK) clearRuntimeFallbackYear(selectedYear);
     updatePlatformScopeNote();
     platformChart.setOption(getPlatformOption());
 
@@ -20913,7 +20975,10 @@
       const yearKey = String(year);
       if (!apiCache[yearKey]) {
         const ok = await fetchAPIData(parseInt(year));
-        if (!ok) return false;
+        if (!ok) {
+          clearRuntimeFallbackYear(year);
+          return false;
+        }
       }
       const cached = apiCache[yearKey];
       if (cached && cached.platform && hasValidApiData(cached.platform)) {
@@ -20945,6 +21010,7 @@
         }
         return true;
       }
+      clearRuntimeFallbackYear(year);
       return false;
     }
 
@@ -21185,7 +21251,7 @@
       orgsInitialized: false,
       metric: 'qj',
       timeDim: 'year',
-      year: '2026',
+      year: DEFAULT_DASHBOARD_YEAR,
       subPeriod: 'all',
       currentPieType: 'premium'
     };
@@ -21379,7 +21445,7 @@
     // ---------- Chart 3: Team Trend ----------
     let currentTeamMetric = 'headcount';
     let currentTeamDim = 'year';
-    let selectedTeamYear = '2026';
+    let selectedTeamYear = DEFAULT_DASHBOARD_YEAR;
     let selectedTeamQuarter = 'Q2';
     const selectedTeamSeries = { 'OTO': true, '证保': true, '蚁桥': true };
     const ORG_LIST_TEAM = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
@@ -21409,7 +21475,7 @@
       const data = teamMock[year];
       const result = [];
       for (let i = 0; i < 12; i++) {
-        if (year === 2026 && i >= 5) { result.push(null); continue; }
+        if (Number(year) === DEFAULT_DASHBOARD_YEAR_NUM && i >= getLatestMonthForYear(String(year))) { result.push(null); continue; }
         let totalHeadcount = 0, totalActive = 0, totalPremium = 0;
         if (useOrgData) {
           for (const org of selectedOrgs) {
@@ -21629,8 +21695,8 @@
           _setAllInfos(`✗ 错误: ${result.errors.join('; ')}`);
           _resetAllCards();
         } else {
-          const dataYears = result.data_years || [2026];
-          const queryYear = dataYears[0] || 2026;
+          const dataYears = result.data_years || [DEFAULT_DASHBOARD_YEAR_NUM];
+          const queryYear = dataYears[0] || DEFAULT_DASHBOARD_YEAR_NUM;
           await fetchAPIData(queryYear);
           await fetchTargetData(queryYear);
           if (apiData.platform && hasValidApiData(apiData.platform)) {
@@ -21652,7 +21718,7 @@
             const uploadList = (result.uploaded || []).join(', ');
             const statusPrefix = isPartialImport ? '部分导入成功，数据口径不完整' : '已上传';
             const errorNote = isPartialImport && result.errors ? ` · 未更新: ${result.errors.join('; ')}` : '';
-            _setAllInfos(`${statusPrefix}: ${uploadList} · 后端${queryYear}年数据为空，使用本地数据${errorNote}`);
+            _setAllInfos(`${statusPrefix}: ${uploadList} · 后端${queryYear}年数据为空，未使用本地兜底数据${errorNote}`);
             await fetchTargetData(queryYear);
             updateKPICards();
           }
@@ -21675,17 +21741,18 @@
 
     // 初始化：尝试从API加载数据，成功后覆盖本地mock
     (async function init() {
-      await fetchTargetData(2026);
-      const ok = await loadYearFromApi('2026', { updateKpi: true, updateProduct: true });
+      populateDashboardYearSelects();
+      await fetchTargetData(DEFAULT_DASHBOARD_YEAR_NUM);
+      const ok = await loadYearFromApi(DEFAULT_DASHBOARD_YEAR, { updateKpi: true, updateProduct: true });
       if (ok) {
         await refreshPlatformChart();
         productChart.setOption(getPieOption(currentPieType), true);
         teamChart.setOption(getTeamOption(), true);
       }
-      fetchPayPeriodData('2026');
-      updateCutoffLabel('2026');
+      fetchPayPeriodData(DEFAULT_DASHBOARD_YEAR);
+      updateCutoffLabel(DEFAULT_DASHBOARD_YEAR);
       updateKPICards();
-      fetchOrgKpiData(2026);
+      fetchOrgKpiData(DEFAULT_DASHBOARD_YEAR_NUM);
     })();
   </script>
 </body>

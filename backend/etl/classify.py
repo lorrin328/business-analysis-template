@@ -3,10 +3,12 @@ from typing import Dict, List
 
 import pandas as pd
 
+from metrics.business_rules import is_shortterm_term
+
 def _classify_payment_period(pay_years_val, term_type_val):
     """将缴费年限 + 长短险映射为交期分类（转型业务）。"""
     term_str = str(term_type_val).strip() if pd.notna(term_type_val) else ''
-    if term_str in ('短期', '极短期'):
+    if is_shortterm_term(term_str):
         return '短期险'
     try:
         y = int(float(pay_years_val))

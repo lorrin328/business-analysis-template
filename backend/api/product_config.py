@@ -5,7 +5,7 @@ import pandas as pd
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from auth import require_admin
-from config.business_lines import CHANNEL_MAP
+from config.business_lines import CHANNEL_MAP, DEFAULT_YEAR
 from db import get_db
 from db.repository import replace_rows_incremental
 from etl.aggregates.org import aggregate_org_performance
@@ -25,7 +25,7 @@ def _compact_period_expr(column: str) -> str:
 
 
 def _auto_extract_from_performance(conn) -> int:
-    """当 product_config 为空时，从 performance 原始表自动提取年份≥2026的产品列表。"""
+    """当 product_config 为空时，从 performance 原始表自动提取当前数据年及以后产品列表。"""
     c = conn.cursor()
 
     # 检查 performance 表是否存在
@@ -35,8 +35,7 @@ def _auto_extract_from_performance(conn) -> int:
 
     period_expr = _compact_period_expr('年月')
 
-    # 检查是否有 2026 年及以后的数据，兼容 202605、2026-05、2026/05/01 等格式。
-    c.execute(f"SELECT COUNT(*) FROM performance WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= 2026 LIMIT 1")
+    c.execute(f"SELECT COUNT(*) FROM performance WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= ? LIMIT 1", (DEFAULT_YEAR,))
     if c.fetchone()[0] == 0:
         return 0
 
@@ -46,11 +45,11 @@ def _auto_extract_from_performance(conn) -> int:
             COALESCE(NULLIF(TRIM("产品名称"), ''), '') as product_name,
             COALESCE(NULLIF(TRIM("业务模式"), ''), '') as business_type
         FROM performance
-        WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= 2026
+        WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= ?
           AND "产品代码" IS NOT NULL
           AND CAST("产品代码" AS TEXT) != ''
         ORDER BY "年月" DESC
-    ''')
+    ''', (DEFAULT_YEAR,))
 
     inserted = 0
     for row in c.fetchall():
@@ -75,18 +74,18 @@ def _auto_extract_from_jingdai(conn) -> int:
         return 0
 
     period_expr = _compact_period_expr('时间')
-    c.execute(f"SELECT COUNT(*) FROM jingdai WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= 2026 LIMIT 1")
+    c.execute(f"SELECT COUNT(*) FROM jingdai WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= ? LIMIT 1", (DEFAULT_YEAR,))
     if c.fetchone()[0] == 0:
         return 0
 
     c.execute(f'''
         SELECT DISTINCT COALESCE(NULLIF(TRIM("产品名称"), ''), '') AS product_name
         FROM jingdai
-        WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= 2026
+        WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= ?
           AND "产品名称" IS NOT NULL
           AND TRIM("产品名称") != ''
         ORDER BY product_name
-    ''')
+    ''', (DEFAULT_YEAR,))
 
     inserted = 0
     for row in c.fetchall():
@@ -167,7 +166,7 @@ def get_product_config():
         c.execute('''
             SELECT product_code, product_name, business_type, is_annuity, is_protection
             FROM product_config
-            ORDER BY product_code
+            ORDER BY COALESCE(business_type, ''), product_code
         ''')
         rows = [
             {
@@ -207,26 +206,45 @@ def save_product_config(
             code = item.get("product_code")
             if not code:
                 continue
+            code = str(code).strip()
+            item_business_type = item.get("business_type")
             annuity = str(item.get("is_annuity", "N")).upper()
             protection = str(item.get("is_protection", "N")).upper()
             if annuity not in valid_values:
                 annuity = "N"
             if protection not in valid_values:
                 protection = "N"
-            c.execute('''
-                INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection, updated_at)
-                VALUES (?, COALESCE(?, ''), COALESCE(?, ''), ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(product_code) DO UPDATE SET
-                    is_annuity = excluded.is_annuity,
-                    is_protection = excluded.is_protection,
-                    updated_at = CURRENT_TIMESTAMP
-            ''', (
-                str(code).strip(),
-                item.get("product_name"),
-                item.get("business_type"),
-                annuity,
-                protection,
-            ))
+            if item_business_type is None:
+                c.execute(
+                    '''
+                    UPDATE product_config
+                    SET is_annuity = ?, is_protection = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE product_code = ?
+                    ''',
+                    (annuity, protection, code),
+                )
+                if c.rowcount == 0:
+                    c.execute('''
+                        INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection, updated_at)
+                        VALUES (?, COALESCE(?, ''), '', ?, ?, CURRENT_TIMESTAMP)
+                    ''', (code, item.get("product_name"), annuity, protection))
+            else:
+                business_type = CHANNEL_MAP.get(str(item_business_type).strip(), str(item_business_type).strip())
+                c.execute('''
+                    INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection, updated_at)
+                    VALUES (?, COALESCE(?, ''), ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(business_type, product_code) DO UPDATE SET
+                        product_name = COALESCE(NULLIF(excluded.product_name, ''), product_config.product_name),
+                        is_annuity = excluded.is_annuity,
+                        is_protection = excluded.is_protection,
+                        updated_at = CURRENT_TIMESTAMP
+                ''', (
+                    code,
+                    item.get("product_name"),
+                    business_type,
+                    annuity,
+                    protection,
+                ))
             updated += 1
         conn.commit()
 

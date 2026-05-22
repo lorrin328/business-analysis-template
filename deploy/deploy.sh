@@ -89,7 +89,14 @@ else
   echo "  请上传 Excel 后通过 Web 界面导入，或手动运行 rebuild_from_excels.py"
 fi
 
-ADMIN_TOKEN='Aaaaa8888%'
+if [ -z "${ADMIN_TOKEN:-}" ] && [ -f "$APP_DIR/deploy/.admin_env" ]; then
+  # shellcheck disable=SC1091
+  . "$APP_DIR/deploy/.admin_env"
+fi
+if [ -z "${ADMIN_TOKEN:-}" ]; then
+  echo "ERROR: ADMIN_TOKEN is required. Export ADMIN_TOKEN before running deploy.sh."
+  exit 1
+fi
 printf 'ADMIN_TOKEN=%s\n' "$ADMIN_TOKEN" > "$APP_DIR/deploy/.admin_env"
 chmod 640 "$APP_DIR/deploy/.admin_env"
 chown "$RUN_USER:$RUN_USER" "$APP_DIR/deploy/.admin_env"

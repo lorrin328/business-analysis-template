@@ -10,6 +10,7 @@ from etl.normalize import (
 )
 from etl.columns import _pick_col
 from config.business_lines import TRANSFORM_CHANNELS
+from metrics.business_rules import LONGTERM_PRODUCT_CODES, LONGTERM_TERMS, normalize_product_code
 from config.orgs import ORG_SCOPE
 
 def aggregate_hr(df: pd.DataFrame) -> List[Dict]:
@@ -50,6 +51,8 @@ def aggregate_active_headcount(df: pd.DataFrame) -> List[Dict]:
     staff_col = _pick_col(df, ['人员工号', '人员代码'])
     amount_col = _pick_col(df, ['折算保费', '期交保费'])
     term_col = _pick_col(df, ['长短险'])
+    code_col = _pick_col(df, ['产品代码'])
+    pay_years_col = _pick_col(df, ['缴费年限'])
 
     if not all([year_col, month_col, channel_col, staff_col, amount_col]):
         raise ValueError(f"无法识别活跃人力必要列。当前列: {list(df.columns)}")
@@ -59,10 +62,16 @@ def aggregate_active_headcount(df: pd.DataFrame) -> List[Dict]:
     work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
     work['_staff'] = work[staff_col].fillna('').astype(str).str.strip()
     work['_amount'] = _to_number(work[amount_col])
-    # 长险过滤：长短险 = '长期'，排除短期/极短期
     if term_col:
         term_str = work[term_col].fillna('').astype(str).str.strip()
-        work = work[~term_str.isin(['短期', '极短期'])]
+        is_longterm = term_str.isin(LONGTERM_TERMS)
+        if code_col:
+            code_vals = work[code_col].map(normalize_product_code)
+            is_longterm = is_longterm | code_vals.isin(LONGTERM_PRODUCT_CODES)
+        if pay_years_col:
+            pay_num = pd.to_numeric(work[pay_years_col], errors='coerce')
+            is_longterm = is_longterm | ((term_str == '') & (pay_num >= 2))
+        work = work[is_longterm]
     work = work[(work['_staff'] != '') & (work['_amount'] > 0)]
 
     grouped = work.groupby(['_year', '_month', '_channel'], dropna=False)
@@ -123,6 +132,8 @@ def aggregate_org_active_headcount(df: pd.DataFrame) -> List[Dict]:
     staff_col = _pick_col(df, ['人员工号', '人员代码'])
     amount_col = _pick_col(df, ['折算保费', '期交保费'])
     term_col = _pick_col(df, ['长短险'])
+    code_col = _pick_col(df, ['产品代码'])
+    pay_years_col = _pick_col(df, ['缴费年限'])
 
     if not org_col:
         return []
@@ -138,7 +149,14 @@ def aggregate_org_active_headcount(df: pd.DataFrame) -> List[Dict]:
     work['_amount'] = _to_number(work[amount_col])
     if term_col:
         term_str = work[term_col].fillna('').astype(str).str.strip()
-        work = work[~term_str.isin(['短期', '极短期'])]
+        is_longterm = term_str.isin(LONGTERM_TERMS)
+        if code_col:
+            code_vals = work[code_col].map(normalize_product_code)
+            is_longterm = is_longterm | code_vals.isin(LONGTERM_PRODUCT_CODES)
+        if pay_years_col:
+            pay_num = pd.to_numeric(work[pay_years_col], errors='coerce')
+            is_longterm = is_longterm | ((term_str == '') & (pay_num >= 2))
+        work = work[is_longterm]
     work = work[(work['_staff'] != '') & (work['_amount'] > 0)]
 
     grouped = work.groupby(['_year', '_month', '_org', '_channel'], dropna=False)

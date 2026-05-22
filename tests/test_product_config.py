@@ -268,6 +268,43 @@ class TestProductConfig:
         assert test002["is_annuity"] == "N"
         assert test002["is_protection"] == "N"
 
+    def test_same_product_code_can_have_different_business_type_config(self, monkeypatch):
+        monkeypatch.setenv("ADMIN_TOKEN", "test-token")
+
+        from db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("DELETE FROM product_config")
+        c.execute("""
+            INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
+            VALUES (?, ?, ?, ?, ?)
+        """, ("SAME001", "同码OTO产品", "OTO", "N", "N"))
+        c.execute("""
+            INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
+            VALUES (?, ?, ?, ?, ?)
+        """, ("SAME001", "同码经代产品", "经代", "N", "N"))
+        conn.commit()
+        conn.close()
+
+        resp = client.post(
+            "/api/product-config",
+            json={"products": [
+                {"product_code": "SAME001", "business_type": "OTO", "is_annuity": "Y", "is_protection": "N"},
+                {"product_code": "SAME001", "business_type": "经代", "is_annuity": "N", "is_protection": "Y"},
+            ]},
+            headers={"X-Admin-Token": "test-token"},
+        )
+        assert resp.status_code == 200
+
+        resp = client.get("/api/product-config")
+        rows = [p for p in resp.json()["data"] if p["product_code"] == "SAME001"]
+        assert len(rows) == 2
+        by_type = {p["business_type"]: p for p in rows}
+        assert by_type["OTO"]["is_annuity"] == "Y"
+        assert by_type["OTO"]["is_protection"] == "N"
+        assert by_type["经代"]["is_annuity"] == "N"
+        assert by_type["经代"]["is_protection"] == "Y"
+
     def test_meta_includes_definitions(self):
         resp = client.get("/api/product-config")
         data = resp.json()

@@ -12,6 +12,7 @@ from etl.columns import _pick_col
 from config.business_lines import TRANSFORM_CHANNELS
 from config.orgs import ORG_SCOPE
 from db import get_db
+from metrics.business_rules import normalize_product_code
 
 def aggregate_org_daily_performance(df: pd.DataFrame) -> List[Dict]:
     """按日、机构、业务模式聚合保费，用于机构筛选后的同口径日累计趋势。"""
@@ -91,24 +92,40 @@ def aggregate_org_performance(df: pd.DataFrame) -> List[Dict]:
     work['_is_annuity'] = False
     work['_is_protection'] = False
     if product_code_col:
-        work['_product_code'] = work[product_code_col].astype(str).str.strip()
+        work['_product_code'] = work[product_code_col].map(normalize_product_code)
         try:
             with get_db() as conn:
                 c = conn.cursor()
-                c.execute('SELECT product_code, is_annuity, is_protection FROM product_config')
+                c.execute('SELECT product_code, business_type, is_annuity, is_protection FROM product_config')
                 config_map = {
-                    str(r['product_code']): {
+                    (str(r['business_type'] or '').strip(), str(r['product_code']).strip()): {
                         'is_annuity': str(r['is_annuity']).upper() == 'Y',
                         'is_protection': str(r['is_protection']).upper() == 'Y',
                     }
                     for r in c.fetchall()
                 }
             work['_is_annuity'] = work['_product_code'].map(
-                lambda x: config_map.get(x, {}).get('is_annuity', False)
+                lambda x: False
             ).fillna(False)
             work['_is_protection'] = work['_product_code'].map(
-                lambda x: config_map.get(x, {}).get('is_protection', False)
+                lambda x: False
             ).fillna(False)
+            work['_is_annuity'] = work.apply(
+                lambda r: (
+                    config_map.get((r['_channel'], r['_product_code']))
+                    or config_map.get(('', r['_product_code']))
+                    or {}
+                ).get('is_annuity', False),
+                axis=1,
+            )
+            work['_is_protection'] = work.apply(
+                lambda r: (
+                    config_map.get((r['_channel'], r['_product_code']))
+                    or config_map.get(('', r['_product_code']))
+                    or {}
+                ).get('is_protection', False),
+                axis=1,
+            )
         except Exception:
             # product_config 表不存在或查询失败时，默认不计入
             pass

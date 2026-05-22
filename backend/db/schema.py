@@ -132,7 +132,8 @@ def init_db():
             is_protection TEXT NOT NULL DEFAULT 'N',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(product_code))''')
+            UNIQUE(business_type, product_code))''')
+        _migrate_product_config_unique(c)
 
         c.execute('''CREATE TABLE IF NOT EXISTS data_imports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,3 +187,39 @@ def _migrate(c, sql):
         if 'duplicate column' in message or 'already exists' in message:
             return
         raise
+
+
+def _migrate_product_config_unique(c):
+    indexes = c.execute("PRAGMA index_list(product_config)").fetchall()
+    has_pair_unique = False
+    has_code_only_unique = False
+    for idx in indexes:
+        if not idx[2]:
+            continue
+        cols = [row[2] for row in c.execute(f"PRAGMA index_info({idx[1]})").fetchall()]
+        if cols == ["business_type", "product_code"]:
+            has_pair_unique = True
+        if cols == ["product_code"]:
+            has_code_only_unique = True
+    if has_pair_unique or not has_code_only_unique:
+        return
+
+    c.execute("ALTER TABLE product_config RENAME TO product_config_old")
+    c.execute('''CREATE TABLE product_config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_code TEXT NOT NULL,
+        product_name TEXT,
+        business_type TEXT,
+        is_annuity TEXT NOT NULL DEFAULT 'N',
+        is_protection TEXT NOT NULL DEFAULT 'N',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(business_type, product_code))''')
+    c.execute('''
+        INSERT OR IGNORE INTO product_config
+            (id, product_code, product_name, business_type, is_annuity, is_protection, created_at, updated_at)
+        SELECT id, product_code, product_name, COALESCE(business_type, ''),
+               is_annuity, is_protection, created_at, updated_at
+        FROM product_config_old
+    ''')
+    c.execute("DROP TABLE product_config_old")

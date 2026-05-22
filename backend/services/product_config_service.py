@@ -6,12 +6,13 @@ import pandas as pd
 from db import get_db
 from etl.columns import _pick_col
 from etl.normalize import _period_year_month, _normalize_channel
+from config.business_lines import DEFAULT_YEAR
 
 logger = logging.getLogger("business-analysis")
 
 
 def extract_products_to_config(df):
-    """从 performance DataFrame 中提取年份≥2026的产品列表到 product_config 表（INSERT OR IGNORE）。"""
+    """从 performance DataFrame 中提取当前数据年及以后产品列表到 product_config 表。"""
     year_col = _pick_col(df, ['年'])
     month_col = _pick_col(df, ['年月', '月', '月份'])
     code_col = _pick_col(df, ['产品代码'])
@@ -24,7 +25,7 @@ def extract_products_to_config(df):
     work = _period_year_month(df, year_col, month_col)
     work['_product_code'] = work[code_col].astype(str).str.strip()
     work = work[work['_product_code'].replace('', pd.NA).notna()]
-    work = work[work['_year'] >= 2026]
+    work = work[work['_year'] >= DEFAULT_YEAR]
     if work.empty:
         return
 
@@ -38,7 +39,7 @@ def extract_products_to_config(df):
         work['_business_type'] = ''
 
     products = work[['_product_code', '_product_name', '_business_type']].drop_duplicates(
-        subset=['_product_code']
+        subset=['_business_type', '_product_code']
     )
 
     with get_db() as conn:
@@ -48,7 +49,7 @@ def extract_products_to_config(df):
                 VALUES (?, ?, ?)
             ''', (row['_product_code'], row['_product_name'], row['_business_type']))
         conn.commit()
-    logger.info("extracted %s products to product_config (year>=2026)", len(products))
+    logger.info("extracted %s products to product_config (year>=%s)", len(products), DEFAULT_YEAR)
 
 
 def extract_jingdai_products_to_config(df):
@@ -61,7 +62,7 @@ def extract_jingdai_products_to_config(df):
     work = _period_year_month(df, None, time_col)
     work['_product_name'] = work[name_col].astype(str).str.strip()
     work = work[work['_product_name'].replace('', pd.NA).notna()]
-    work = work[work['_year'] >= 2026]
+    work = work[work['_year'] >= DEFAULT_YEAR]
     if work.empty:
         return
 
@@ -74,4 +75,4 @@ def extract_jingdai_products_to_config(df):
                 VALUES (?, ?, '经代')
             ''', (name, name))
         conn.commit()
-    logger.info("extracted %s jingdai products to product_config (year>=2026)", len(products))
+    logger.info("extracted %s jingdai products to product_config (year>=%s)", len(products), DEFAULT_YEAR)

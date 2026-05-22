@@ -43,11 +43,11 @@ def test_default_target_source_is_explicit():
     assert "targetSourceLabel" in target
 
 
-def test_product_config_uses_default_admin_token_and_protection_kpi():
+def test_product_config_does_not_embed_admin_token_and_uses_protection_kpi():
     html = read_html()
     api_client = read_js("api-client.js")
-    assert "Aaaaa8888%" in api_client
-    assert "DEFAULT_ADMIN_TOKEN" in api_client
+    assert "Aaaaa8888%" not in api_client
+    assert "DEFAULT_ADMIN_TOKEN" not in api_client
     assert "kpi.protection_total" in html
     assert "未配置保障类目标" in html
 
@@ -61,6 +61,17 @@ def test_protection_modal_shows_jingdai_transform_and_sub_modes():
     assert "mainRow('转型', tfActual, targetTf)" in html
     assert "转型业务分模式" in html
     assert "item.year?.product_protection" in html
+
+
+def test_annuity_modal_shows_jingdai_transform_and_sub_modes():
+    html = read_html()
+    assert "case 'annuity'" in html
+    assert "商保年金达成率" in html
+    assert "mainRow('经代', jdActual, targetJd)" in html
+    assert "mainRow('转型', tfActual, targetTf)" in html
+    assert "转型业务分模式" in html
+    assert "item.year?.product_annuity" in html
+    assert "经代业务</td><td>--" not in html
 
 
 def test_tenyear_kpi_includes_jingdai_in_card_and_modal():
@@ -97,6 +108,13 @@ def test_frontend_centralizes_read_api_fetches():
     assert "/api/product-analysis?" in all_js
     assert "/api/org-analysis?year=" in all_js
     assert "/api/targets?year=" in all_js
+
+
+def test_production_does_not_silently_use_local_mock_fallback():
+    html = read_html()
+    assert "ALLOW_LOCAL_FALLBACK" in html
+    assert "clearRuntimeFallbackYear" in html
+    assert "未使用本地兜底数据" in html
 
 
 def test_upload_js_no_duplicate_vars():

@@ -1,10 +1,5 @@
 (function (window) {
   const ADMIN_TOKEN_STORAGE_KEY = 'business_admin_token';
-  const DEFAULT_ADMIN_TOKEN = 'Aaaaa8888%';
-
-  if (!localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY)) {
-    localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, DEFAULT_ADMIN_TOKEN);
-  }
 
   function apiUrl(path) {
     const base = window.API_BASE || '';
@@ -24,14 +19,14 @@
   }
 
   function adminHeaders(headers = {}) {
-    const token = localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || DEFAULT_ADMIN_TOKEN;
+    const token = localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '';
     return token ? { ...headers, 'X-Admin-Token': token } : headers;
   }
 
   async function adminFetch(url, options = {}) {
     let resp = await fetch(url, { ...options, headers: adminHeaders(options.headers || {}) });
     if ([401, 403, 503].includes(resp.status)) {
-      const token = prompt('请输入后台管理 Token', DEFAULT_ADMIN_TOKEN);
+      const token = prompt('请输入后台管理 Token', localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '');
       if (token) {
         localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token.trim());
         resp = await fetch(url, { ...options, headers: adminHeaders(options.headers || {}) });

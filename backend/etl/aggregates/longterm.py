@@ -6,6 +6,7 @@ import pandas as pd
 from etl.normalize import _normalize_channel, _to_number, _amount_to_wan, _period_year_month
 from etl.columns import _pick_col
 from config.business_lines import TRANSFORM_CHANNELS
+from metrics.business_rules import LONGTERM_PRODUCT_CODES, LONGTERM_TERMS, normalize_product_code
 
 
 def aggregate_transform_longterm(df: pd.DataFrame) -> List[Dict]:
@@ -30,18 +31,13 @@ def aggregate_transform_longterm(df: pd.DataFrame) -> List[Dict]:
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
     work['_qj'] = _to_number(work[qj_col])
 
-    # 长险条件：长短险匹配常见变体 OR 产品代码='4281'。
-    # 部分业绩基表用“一年期以上”表示长险，不能只识别“长期”。
-    LONG_TERM_VARIANTS = {'长期', '长险', '长期险', '长', '一年期以上', '一年以上', '1年期以上'}
     is_longterm = False
     if term_col:
         term_vals = work[term_col].fillna('').astype(str).str.strip()
-        is_longterm = term_vals.isin(LONG_TERM_VARIANTS)
+        is_longterm = term_vals.isin(LONGTERM_TERMS)
     if code_col:
-        code_vals = work[code_col].fillna('').astype(str).str.strip()
-        # 去掉数值类型可能产生的 .0 后缀
-        code_vals = code_vals.str.replace(r'\.0$', '', regex=True)
-        is_code4281 = code_vals == '4281'
+        code_vals = work[code_col].map(normalize_product_code)
+        is_code4281 = code_vals.isin(LONGTERM_PRODUCT_CODES)
         is_longterm = is_longterm | is_code4281 if term_col else is_code4281
     # 长短险为空时，尝试用缴费年限推断：>=2 视为长期（排除1年期短期险）
     if term_col and pay_years_col:

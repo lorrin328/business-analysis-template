@@ -195,7 +195,7 @@ async def upload_files(
             file_sizes[performance.filename] = len(perf_bytes)
             df = parse_performance_excel(perf_bytes)
             raw_tables['performance'] = df
-            _extract_products_to_config(df)
+            extract_products_to_config(df)
             perf_rows = aggregate_performance(df)
             daily_rows = aggregate_daily_performance(df)
             org_daily_rows = aggregate_org_daily_performance(df)

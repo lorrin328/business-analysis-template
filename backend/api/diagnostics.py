@@ -1,12 +1,15 @@
 """诊断端点 — 对比期交保费与长险期交差异，辅助排查数据口径问题。"""
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from auth import require_admin
+from config.business_lines import DEFAULT_YEAR
 from db import get_db
 
 router = APIRouter(prefix="/api", tags=["diagnostics"])
 
 
 @router.get("/diagnostics")
-def get_diagnostics():
+def get_diagnostics(_admin=Depends(require_admin)):
     """对比 agg_performance 与 agg_longterm_qj 的总保费。"""
     with get_db() as conn:
         c = conn.cursor()
@@ -14,9 +17,9 @@ def get_diagnostics():
         # agg_performance 按 channel 汇总
         c.execute('''
             SELECT channel, SUM(qj_premium) AS total, MAX(year*100+month) AS latest
-            FROM agg_performance WHERE year >= 2026
+            FROM agg_performance WHERE year >= ?
             GROUP BY channel ORDER BY total DESC
-        ''')
+        ''', (DEFAULT_YEAR,))
         perf_channels = [
             {"channel": r["channel"], "total_qj": round(r["total"] or 0, 2),
              "latest_period": r["latest"]}
@@ -29,9 +32,9 @@ def get_diagnostics():
         # agg_longterm_qj 按 channel 汇总（转型）
         c.execute('''
             SELECT channel, SUM(qj_premium) AS total, MAX(year*100+month) AS latest
-            FROM agg_longterm_qj WHERE year >= 2026 AND business_type = '转型'
+            FROM agg_longterm_qj WHERE year >= ? AND business_type = '转型'
             GROUP BY channel ORDER BY total DESC
-        ''')
+        ''', (DEFAULT_YEAR,))
         lt_channels = [
             {"channel": r["channel"], "total_qj": round(r["total"] or 0, 2),
              "latest_period": r["latest"]}
@@ -43,16 +46,16 @@ def get_diagnostics():
         # 经代对比
         c.execute('''
             SELECT SUM(qj_premium) AS total, MAX(year*100+month) AS latest
-            FROM agg_jingdai WHERE year >= 2026
-        ''')
+            FROM agg_jingdai WHERE year >= ?
+        ''', (DEFAULT_YEAR,))
         jd_row = c.fetchone()
         jd_perf_total = round(jd_row["total"] or 0, 2) if jd_row else 0
         jd_perf_latest = jd_row["latest"] if jd_row else None
 
         c.execute('''
             SELECT SUM(qj_premium) AS total, MAX(year*100+month) AS latest
-            FROM agg_longterm_qj WHERE year >= 2026 AND business_type = '经代'
-        ''')
+            FROM agg_longterm_qj WHERE year >= ? AND business_type = '经代'
+        ''', (DEFAULT_YEAR,))
         jd_lt_row = c.fetchone()
         jd_lt_total = round(jd_lt_row["total"] or 0, 2) if jd_lt_row else 0
         jd_lt_latest = jd_lt_row["latest"] if jd_lt_row else None
@@ -60,9 +63,9 @@ def get_diagnostics():
         # 日级 cutoff（期交保费实际使用的口径）
         c.execute('''
             SELECT month, MAX(day) AS max_day
-            FROM agg_daily_performance WHERE year >= 2026
+            FROM agg_daily_performance WHERE year >= ?
             GROUP BY month ORDER BY month DESC LIMIT 1
-        ''')
+        ''', (DEFAULT_YEAR,))
         daily_cutoff = c.fetchone()
         daily_info = {
             "month": daily_cutoff["month"],
