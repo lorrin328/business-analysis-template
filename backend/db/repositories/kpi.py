@@ -237,7 +237,7 @@ def get_kpi_data(year: int):
         c.execute('''
             SELECT business_type, channel, SUM(qj_premium) AS total
             FROM agg_longterm_qj WHERE year = ? AND month <= ? GROUP BY business_type, channel
-        ''', (year, query_month))
+        ''', (year, ytd_end_month))
         lt_qj = {}; lt_tf = 0.0; lt_jd = 0.0
         for r in c.fetchall():
             v = round(r['total'] or 0, 2)
@@ -250,7 +250,7 @@ def get_kpi_data(year: int):
         c.execute('''
             SELECT business_type, channel, SUM(qj_premium) AS total
             FROM agg_longterm_qj WHERE year = ? AND month <= ? GROUP BY business_type, channel
-        ''', (year - 1, query_month))
+        ''', (year - 1, ytd_end_month))
         lt_qj_prev = {}; lt_tf_prev = 0.0; lt_jd_prev = 0.0
         for r in c.fetchall():
             v = round(r['total'] or 0, 2)
