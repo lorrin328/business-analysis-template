@@ -10,8 +10,46 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
+from db import get_kpi_data
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def isolated_product_config_db(tmp_path, monkeypatch):
+    db_path = tmp_path / "product_config_test.db"
+
+    import db as db_module
+    import db.connection as connection
+    from db import init_db
+
+    monkeypatch.setattr(connection, "DB_PATH", str(db_path))
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    init_db()
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("DROP TABLE IF EXISTS performance")
+    conn.execute(
+        """
+        CREATE TABLE performance (
+            "年月" TEXT,
+            "业务模式" TEXT,
+            "销售机构名称" TEXT,
+            "产品类型" TEXT,
+            "产品代码" TEXT,
+            "产品名称" TEXT,
+            "期交保费" REAL DEFAULT 0,
+            "年化规保" REAL DEFAULT 0,
+            "规模保费" REAL DEFAULT 0,
+            "承保件数" INTEGER DEFAULT 0,
+            "缴费年限" TEXT
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    yield
 
 
 class TestProductConfig:
@@ -66,6 +104,37 @@ class TestProductConfig:
         c = conn.cursor()
         c.execute('DELETE FROM performance WHERE CAST("产品代码" AS TEXT) = ?', ("AUTO999",))
         c.execute('DELETE FROM product_config WHERE product_code = ?', ("AUTO999",))
+        conn.commit()
+        conn.close()
+
+    def test_auto_extract_accepts_compact_yyyymm_period(self, monkeypatch):
+        """年月为 202605 这类紧凑文本时，也应能自动提取产品配置。"""
+        monkeypatch.setenv("ADMIN_TOKEN", "test-token")
+
+        from db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("DELETE FROM product_config")
+        c.execute('''
+            INSERT OR IGNORE INTO performance
+            ("年月", "业务模式", "产品代码", "产品名称", "期交保费")
+            VALUES (?, ?, ?, ?, ?)
+        ''', ("202605", "OTO", "AUTO998", "紧凑年月产品", 1000))
+        conn.commit()
+        conn.close()
+
+        resp = client.get("/api/product-config")
+        assert resp.status_code == 200
+        products = resp.json()["data"]
+        auto_product = next((p for p in products if p["product_code"] == "AUTO998"), None)
+        assert auto_product is not None
+        assert auto_product["product_name"] == "紧凑年月产品"
+
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('DELETE FROM performance WHERE CAST("产品代码" AS TEXT) = ?', ("AUTO998",))
+        c.execute('DELETE FROM product_config WHERE product_code = ?', ("AUTO998",))
         conn.commit()
         conn.close()
 
@@ -163,3 +232,55 @@ class TestProductConfig:
         data = resp.json()
         assert "meta" in data
         assert data["meta"]["metric"] == "product-config"
+
+    def test_kpi_returns_configured_protection_total(self):
+        from db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            c = conn.cursor()
+            for table in ["agg_org_performance", "agg_performance", "agg_jingdai", "agg_hr_data", "agg_value_data"]:
+                c.execute(f"DELETE FROM {table} WHERE year = 2097")
+            c.execute(
+                """
+                INSERT INTO agg_performance (year, month, channel, qj_premium, gm_premium, zs_premium)
+                VALUES (2097, 1, 'OTO', 10, 10, 10)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_jingdai (year, month, qj_premium, gm_premium, zs_premium)
+                VALUES (2097, 1, 0, 0, 0)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_hr_data (year, month, channel, start_headcount, end_headcount, active_headcount)
+                VALUES (2097, 1, 'OTO', 1, 1, 1)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_value_data (year, month, channel, value_premium)
+                VALUES (2097, 1, 'OTO', 1)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_org_performance
+                (year, month, org, channel, qj_premium, gm_premium, zs_premium, product_10year, product_annuity, product_protection)
+                VALUES (2097, 1, '上海', 'OTO', 10, 10, 10, 2, 3, 4)
+                """
+            )
+            conn.commit()
+
+            data = get_kpi_data(2097)
+            assert data["annuity_total"] == 3
+            assert data["protection_total"] == 4
+        finally:
+            conn.execute("DELETE FROM agg_org_performance WHERE year = 2097")
+            conn.execute("DELETE FROM agg_performance WHERE year = 2097")
+            conn.execute("DELETE FROM agg_jingdai WHERE year = 2097")
+            conn.execute("DELETE FROM agg_hr_data WHERE year = 2097")
+            conn.execute("DELETE FROM agg_value_data WHERE year = 2097")
+            conn.commit()
+            conn.close()

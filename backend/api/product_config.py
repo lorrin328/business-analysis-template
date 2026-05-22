@@ -16,6 +16,14 @@ router = APIRouter(prefix="/api", tags=["product-config"])
 logger = logging.getLogger("business-analysis")
 
 
+def _compact_period_expr(column: str) -> str:
+    quoted = '"' + column.replace('"', '""') + '"'
+    expr = f'CAST({quoted} AS TEXT)'
+    for token in ['-', '/', '.', '\u5e74', '\u6708', '\u65e5', ' ', ':']:
+        expr = f"replace({expr}, '{token}', '')"
+    return expr
+
+
 def _auto_extract_from_performance(conn) -> int:
     """当 product_config 为空时，从 performance 原始表自动提取年份≥2026的产品列表。"""
     c = conn.cursor()
@@ -25,18 +33,20 @@ def _auto_extract_from_performance(conn) -> int:
     if not c.fetchone():
         return 0
 
-    # 检查是否有 2026 年及以后的数据
-    c.execute("SELECT COUNT(*) FROM performance WHERE strftime('%Y', \"年月\") >= '2026' LIMIT 1")
+    period_expr = _compact_period_expr('年月')
+
+    # 检查是否有 2026 年及以后的数据，兼容 202605、2026-05、2026/05/01 等格式。
+    c.execute(f"SELECT COUNT(*) FROM performance WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= 2026 LIMIT 1")
     if c.fetchone()[0] == 0:
         return 0
 
-    c.execute('''
+    c.execute(f'''
         SELECT DISTINCT
             CAST("产品代码" AS TEXT) as product_code,
             COALESCE(NULLIF(TRIM("产品名称"), ''), '') as product_name,
             COALESCE(NULLIF(TRIM("业务模式"), ''), '') as business_type
         FROM performance
-        WHERE strftime('%Y', "年月") >= '2026'
+        WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= 2026
           AND "产品代码" IS NOT NULL
           AND CAST("产品代码" AS TEXT) != ''
         ORDER BY "年月" DESC
@@ -138,6 +148,7 @@ def save_product_config(
         raise HTTPException(status_code=400, detail="products must be a list")
 
     valid_values = {"Y", "N"}
+    updated = 0
     with get_db() as conn:
         c = conn.cursor()
         for item in products:
@@ -151,10 +162,20 @@ def save_product_config(
             if protection not in valid_values:
                 protection = "N"
             c.execute('''
-                UPDATE product_config
-                SET is_annuity = ?, is_protection = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE product_code = ?
-            ''', (annuity, protection, code))
+                INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection, updated_at)
+                VALUES (?, COALESCE(?, ''), COALESCE(?, ''), ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(product_code) DO UPDATE SET
+                    is_annuity = excluded.is_annuity,
+                    is_protection = excluded.is_protection,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (
+                str(code).strip(),
+                item.get("product_name"),
+                item.get("business_type"),
+                annuity,
+                protection,
+            ))
+            updated += 1
         conn.commit()
 
     # 重新计算机构业绩聚合表
@@ -163,7 +184,7 @@ def save_product_config(
         logger.info("recalculated %s agg_org_performance rows after product-config update", recalc_count)
 
     return success_response(
-        {"updated": len(products), "recalculated": recalc_count},
+        {"updated": updated, "recalculated": recalc_count},
         message="产品配置已保存" + (f"，已重新计算 {recalc_count} 条机构业绩数据" if recalc_count else ""),
         meta={"metric": "product-config", "unit": "-"},
     )

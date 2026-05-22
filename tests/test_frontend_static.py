@@ -43,6 +43,15 @@ def test_default_target_source_is_explicit():
     assert "targetSourceLabel" in target
 
 
+def test_product_config_uses_default_admin_token_and_protection_kpi():
+    html = read_html()
+    api_client = read_js("api-client.js")
+    assert "Aaaaa8888%" in api_client
+    assert "DEFAULT_ADMIN_TOKEN" in api_client
+    assert "kpi.protection_total" in html
+    assert "未配置保障类目标" in html
+
+
 def test_frontend_centralizes_read_api_fetches():
     html = read_html()
     api_client = read_js("api-client.js")

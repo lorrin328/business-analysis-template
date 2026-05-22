@@ -717,7 +717,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.995</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.997</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openProductConfigModal()" style="margin-right:8px;">参数设置</button>
@@ -1192,15 +1192,21 @@
     }
 
     // ---------- Product Config System ----------
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[ch]));
+    }
+
     async function openProductConfigModal() {
       try {
         const resp = await fetchJson('/api/product-config');
         const products = unwrapApiResponse(resp) || [];
         const rows = products.map(p => `
-          <tr data-code="${p.product_code}">
-            <td>${p.product_code}</td>
-            <td>${p.product_name || '-'}</td>
-            <td>${p.business_type || '-'}</td>
+          <tr data-code="${escapeHtml(p.product_code)}">
+            <td>${escapeHtml(p.product_code)}</td>
+            <td>${escapeHtml(p.product_name || '-')}</td>
+            <td>${escapeHtml(p.business_type || '-')}</td>
             <td>
               <select data-field="is_annuity">
                 <option value="N" ${p.is_annuity === 'N' ? 'selected' : ''}>N</option>
@@ -1219,7 +1225,7 @@
         modalTitle.textContent = '参数设置 — 产品分类';
         modalBody.innerHTML = `
           <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
-            设置 Y 表示该产品计入对应分类统计，N 表示不计入。保存后需重新导入数据方可生效。
+            设置 Y 表示该产品计入对应分类统计，N 表示不计入。保存后系统会自动重算机构业绩并刷新看板。
           </p>
           <div style="overflow-y: auto; max-height: 55vh;">
             <table class="product-config-table">
@@ -1985,6 +1991,7 @@
       // 商保年金 / 保障类 / 10年期 / 长险期交 — 目标值
       const targetOverall = targetData?.categories?.qjPremium?.metrics?.['整体']?.year || 0;
       const targetShanbao = targetData?.categories?.shangbao?.metrics?.['整体']?.year || 0;
+      const targetBaozhang = targetData?.categories?.baozhang?.metrics?.['整体']?.year || 0;
       const targetTenYear = targetData?.categories?.tenYear?.metrics?.['整体']?.year || 0;
 
       // 4. 商保年金（仅转型，经代暂缺→不显示整体达成率）
@@ -1998,11 +2005,18 @@
         if (sub) sub.innerHTML = `<span>经代 -- · 转型 ${tfRate}%</span>`;
       }
 
-      // 5. 保障类产品 — 暂不统计
-      { const el = document.getElementById('kpi-protection-rate');
-        if (el) el.textContent = '--';
+      // 5. 保障类产品（按参数设置中的保障类产品标识统计）
+      if (hasApiKpi && kpi.protection_total !== undefined) {
+        const actual = kpi.protection_total || 0;
+        const tfTarget = targetData?.categories?.baozhang?.metrics?.['转型业务']?.year || targetBaozhang || 0;
+        const tfRate = tfTarget > 0 ? Math.round(actual / tfTarget * 1000) / 10 : 0;
+        const el = document.getElementById('kpi-protection-rate');
+        if (el) el.textContent = tfTarget > 0 ? tfRate + '%' : '--';
         const sub = document.getElementById('kpi-protection-sub');
-        if (sub) sub.innerHTML = '<span style="color:var(--text-secondary)">口径待完善</span>'; }
+        if (sub) sub.innerHTML = tfTarget > 0
+          ? `<span>经代 -- · 转型 ${tfRate}%</span>`
+          : '<span style="color:var(--text-secondary)">未配置保障类目标</span>';
+      }
 
       // 6. 10年期产品（经代暂缺）
       if (hasApiKpi && kpi.tenyear_total !== undefined) {

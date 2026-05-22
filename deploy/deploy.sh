@@ -89,13 +89,11 @@ else
   echo "  请上传 Excel 后通过 Web 界面导入，或手动运行 rebuild_from_excels.py"
 fi
 
-if [ ! -f "$APP_DIR/deploy/.admin_env" ]; then
-  ADMIN_TOKEN=$("$APP_DIR/backend/venv/bin/python" -c "import secrets; print(secrets.token_urlsafe(24))")
-  printf 'ADMIN_TOKEN=%s\n' "$ADMIN_TOKEN" > "$APP_DIR/deploy/.admin_env"
-  chmod 640 "$APP_DIR/deploy/.admin_env"
-  chown "$RUN_USER:$RUN_USER" "$APP_DIR/deploy/.admin_env"
-  echo "已生成后台管理 Token: $APP_DIR/deploy/.admin_env"
-fi
+ADMIN_TOKEN='Aaaaa8888%'
+printf 'ADMIN_TOKEN=%s\n' "$ADMIN_TOKEN" > "$APP_DIR/deploy/.admin_env"
+chmod 640 "$APP_DIR/deploy/.admin_env"
+chown "$RUN_USER:$RUN_USER" "$APP_DIR/deploy/.admin_env"
+echo "后台管理 Token 已统一写入: $APP_DIR/deploy/.admin_env"
 
 cp "$APP_DIR/deploy/systemd.service" "/etc/systemd/system/${SERVICE_NAME}.service"
 cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/business-analysis
