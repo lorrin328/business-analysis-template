@@ -60,7 +60,7 @@ def validate_rows(
                 result.add_error(f"row {idx} invalid amount: {key}={value}")
                 continue
             if amount < 0:
-                result.add_error(f"row {idx} negative amount: {key}={value}")
+                result.add_warning(f"row {idx} negative amount: {key}={value}")
 
         if unique_keys and enforce_unique:
             key_tuple = tuple(row.get(k) for k in unique_keys)
