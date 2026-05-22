@@ -2950,6 +2950,83 @@
             `
           };
         }
+        case 'protection': {
+          loadTargetData();
+          const kpiData = apiData.kpi || {};
+          const chs = ['OTO','证保','蚁桥'];
+          const metrics = targetData?.categories?.baozhang?.metrics || {};
+          let chVals = {}; chs.forEach(c => chVals[c] = 0);
+          if (orgKpiData?.perf) {
+            Object.entries(orgKpiData.perf).forEach(([key, item]) => {
+              const ch = chs.find(c => key.endsWith('|' + c));
+              if (ch) chVals[ch] = (chVals[ch] || 0) + (item.year?.product_protection || 0);
+            });
+          }
+
+          const tfActual = Math.round((kpiData.protection_tf ?? Object.values(chVals).reduce((s, v) => s + v, 0)) || 0);
+          const jdActual = Math.round(kpiData.protection_jd || 0);
+          const targetJd = Math.round(metrics['经代']?.year || 0);
+          const targetTf = Math.round(metrics['转型业务']?.year || 0);
+
+          function fmtWan(n) {
+            return Math.round(n || 0).toLocaleString('zh-CN');
+          }
+          function calcRate(actual, target) {
+            return target > 0 ? Math.round(actual / target * 1000) / 10 : null;
+          }
+          function rateText(rate) {
+            return rate === null ? '--' : `${rate}%`;
+          }
+          function rateColor(rate) {
+            if (rate === null) return 'var(--text-secondary)';
+            return rate >= 100 ? 'var(--success)' : rate >= 80 ? 'var(--warning)' : 'var(--danger)';
+          }
+          function targetForChannel(ch) {
+            let total = 0;
+            if (targetData?.orgTargets) {
+              Object.entries(targetData.orgTargets).forEach(([key, value]) => {
+                if (key.endsWith('|' + ch)) total += (value?.baozhang?.year || 0);
+              });
+            }
+            return total || metrics[ch]?.year || 0;
+          }
+          function mainRow(label, actual, target) {
+            const rate = calcRate(actual, target);
+            return `<tr>
+              <td style="text-align:left;">${label}</td>
+              <td>${fmtWan(actual)}万</td>
+              <td style="color:${rateColor(rate)}">${rateText(rate)}</td>
+            </tr>`;
+          }
+          const chRows = chs.map(ch => {
+            const actual = Math.round(chVals[ch] || 0);
+            const target = targetForChannel(ch);
+            const rate = calcRate(actual, target);
+            return `<tr>
+              <td style="text-align:left;padding-left:20px;color:var(--text-secondary);">${ch}</td>
+              <td>${fmtWan(actual)}万</td>
+              <td style="color:${rateColor(rate)}">${rateText(rate)}</td>
+            </tr>`;
+          }).join('');
+
+          return {
+            title: '保障类产品达成率',
+            body: `
+              <table class="modal-table">
+                <thead><tr><th style="text-align:left;">业务系列</th><th>年度累计达成</th><th>达成率</th></tr></thead>
+                <tbody>
+                  ${mainRow('经代', jdActual, targetJd)}
+                  ${mainRow('转型', tfActual, targetTf)}
+                </tbody>
+              </table>
+              <div class="modal-section-title">转型业务分模式</div>
+              <table class="modal-table">
+                <thead><tr><th style="text-align:left;">业务模式</th><th>年度累计达成</th><th>达成率</th></tr></thead>
+                <tbody>${chRows}</tbody>
+              </table>
+            `
+          };
+        }
         case '10year':
         case 'longterm': {
           const is10y = type === '10year';

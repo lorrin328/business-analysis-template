@@ -52,6 +52,17 @@ def test_product_config_uses_default_admin_token_and_protection_kpi():
     assert "未配置保障类目标" in html
 
 
+def test_protection_modal_shows_jingdai_transform_and_sub_modes():
+    html = read_html()
+    assert "case 'protection'" in html
+    assert "保障类产品达成率" in html
+    assert "年度累计达成" in html
+    assert "mainRow('经代', jdActual, targetJd)" in html
+    assert "mainRow('转型', tfActual, targetTf)" in html
+    assert "转型业务分模式" in html
+    assert "item.year?.product_protection" in html
+
+
 def test_frontend_centralizes_read_api_fetches():
     html = read_html()
     api_client = read_js("api-client.js")
