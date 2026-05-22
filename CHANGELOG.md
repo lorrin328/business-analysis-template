@@ -1,4 +1,12 @@
 # 经营分析看板 - 需求与开发文档
+## v0.9.995 更新说明（2026-05-22）
+**类型**：fix
+
+**变更内容**：
+- **修复产品配置保存响应解析**：`saveProductConfig()` 改用 `apiUrl('/api/product-config')` 拼接完整 URL，增加 `resp.ok` 检查，并先 `await resp.json()` 再传给 `unwrapApiResponse`。之前直接把 `Response` 对象传给 `unwrapApiResponse`，导致保存失败后仍提示"已保存"，且无法读取 `recalculated` 字段。
+- 主页面版本号更新为 `v0.9.995`。
+---
+
 ## v0.9.994 更新说明（2026-05-22）
 **类型**：fix
 
