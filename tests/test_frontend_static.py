@@ -74,6 +74,12 @@ def test_annuity_modal_shows_jingdai_transform_and_sub_modes():
     assert "经代业务</td><td>--" not in html
 
 
+def test_kpi_year_comparison_accepts_numeric_api_year():
+    html = read_html()
+    assert "String(kpi.year) === year" in html
+    assert "kpi.year === year" not in html
+
+
 def test_tenyear_kpi_includes_jingdai_in_card_and_modal():
     html = read_html()
     assert "kpi.tenyear_jd" in html

@@ -1879,7 +1879,7 @@
 
         // 如果API数据可用且包含有效保费，优先使用
         const kpi = apiData.kpi;
-        const hasApiKpi = kpi && kpi.year === year && kpi.qj_premium && (kpi.qj_premium.total > 0 || kpi.qj_premium.jingdai > 0);
+        const hasApiKpi = kpi && String(kpi.year) === year && kpi.qj_premium && (kpi.qj_premium.total > 0 || kpi.qj_premium.jingdai > 0);
 
       // 1. 期交保费达成率
       let 经代实际, OTO实际, 证保实际, 蚁桥实际, 转型实际, 整体实际;
