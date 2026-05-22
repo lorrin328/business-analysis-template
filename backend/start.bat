@@ -37,6 +37,9 @@ echo 浏览器将自动打开 http://localhost:45679
 echo 按 Ctrl+C 停止服务
 echo.
 
+:: 设置管理 Token
+set "ADMIN_TOKEN=Aaaaa8888%"
+
 :: 启动浏览器（延迟2秒确保服务启动）
 start "" /b cmd /c "timeout /t 2 >nul && start http://localhost:45679"
 
