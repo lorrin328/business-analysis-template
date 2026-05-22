@@ -38,7 +38,7 @@ from etl import (
 
 from validators.data_validator import validate_rows
 from services.import_safety import RawIncrementalWriteError, write_raw_table_incremental
-from services.product_config_service import extract_products_to_config
+from services.product_config_service import extract_jingdai_products_to_config, extract_products_to_config
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -224,6 +224,7 @@ async def upload_files(
             file_sizes[jingdai.filename] = len(jd_bytes)
             df = parse_jingdai_excel(jd_bytes)
             raw_tables['jingdai'] = df
+            extract_jingdai_products_to_config(df)
             jd_rows = aggregate_jingdai(df)
             jd_daily_rows = aggregate_jingdai_daily(df)
             jd_pay_period_rows = aggregate_jingdai_payment_period(df)

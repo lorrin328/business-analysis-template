@@ -68,6 +68,40 @@ def _auto_extract_from_performance(conn) -> int:
     return inserted
 
 
+def _auto_extract_from_jingdai(conn) -> int:
+    c = conn.cursor()
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jingdai'")
+    if not c.fetchone():
+        return 0
+
+    period_expr = _compact_period_expr('时间')
+    c.execute(f"SELECT COUNT(*) FROM jingdai WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= 2026 LIMIT 1")
+    if c.fetchone()[0] == 0:
+        return 0
+
+    c.execute(f'''
+        SELECT DISTINCT COALESCE(NULLIF(TRIM("产品名称"), ''), '') AS product_name
+        FROM jingdai
+        WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= 2026
+          AND "产品名称" IS NOT NULL
+          AND TRIM("产品名称") != ''
+        ORDER BY product_name
+    ''')
+
+    inserted = 0
+    for row in c.fetchall():
+        name = row["product_name"].strip()
+        c.execute('''
+            INSERT OR IGNORE INTO product_config (product_code, product_name, business_type)
+            VALUES (?, ?, '经代')
+        ''', (name, name))
+        if c.rowcount > 0:
+            inserted += 1
+
+    conn.commit()
+    return inserted
+
+
 def _recalc_org_performance_from_raw() -> int:
     """从 performance 原始表重新计算 agg_org_performance。
 
@@ -96,6 +130,28 @@ def _recalc_org_performance_from_raw() -> int:
     return len(rows)
 
 
+def _recalc_jingdai_from_raw() -> int:
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jingdai'")
+        if not c.fetchone():
+            return 0
+        c.execute("SELECT COUNT(*) FROM jingdai LIMIT 1")
+        if c.fetchone()[0] == 0:
+            return 0
+        df = pd.read_sql_query('SELECT * FROM jingdai', conn)
+
+    if df.empty:
+        return 0
+
+    from etl.aggregates.jingdai import aggregate_jingdai
+    rows = aggregate_jingdai(df)
+    with get_db() as conn:
+        replace_rows_incremental(conn, 'agg_jingdai', rows)
+        conn.commit()
+    return len(rows)
+
+
 @router.get("/product-config")
 def get_product_config():
     """返回所有产品配置列表（按产品代码排序）。
@@ -104,13 +160,9 @@ def get_product_config():
     """
     with get_db() as conn:
         c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM product_config")
-        count = c.fetchone()[0]
-
-        if count == 0:
-            inserted = _auto_extract_from_performance(conn)
-            if inserted > 0:
-                logger.info("auto-extracted %s products from performance to product_config", inserted)
+        inserted = _auto_extract_from_performance(conn) + _auto_extract_from_jingdai(conn)
+        if inserted > 0:
+            logger.info("auto-extracted %s products from raw tables to product_config", inserted)
 
         c.execute('''
             SELECT product_code, product_name, business_type, is_annuity, is_protection
@@ -179,7 +231,7 @@ def save_product_config(
         conn.commit()
 
     # 重新计算机构业绩聚合表
-    recalc_count = _recalc_org_performance_from_raw()
+    recalc_count = _recalc_org_performance_from_raw() + _recalc_jingdai_from_raw()
     if recalc_count > 0:
         logger.info("recalculated %s agg_org_performance rows after product-config update", recalc_count)
 

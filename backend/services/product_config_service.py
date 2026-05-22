@@ -49,3 +49,29 @@ def extract_products_to_config(df):
             ''', (row['_product_code'], row['_product_name'], row['_business_type']))
         conn.commit()
     logger.info("extracted %s products to product_config (year>=2026)", len(products))
+
+
+def extract_jingdai_products_to_config(df):
+    """从经代 DataFrame 中提取年份>=2026的产品名称到 product_config 表。"""
+    time_col = _pick_col(df, ['时间', '年月'])
+    name_col = _pick_col(df, ['产品名称'])
+    if not (time_col and name_col):
+        return
+
+    work = _period_year_month(df, None, time_col)
+    work['_product_name'] = work[name_col].astype(str).str.strip()
+    work = work[work['_product_name'].replace('', pd.NA).notna()]
+    work = work[work['_year'] >= 2026]
+    if work.empty:
+        return
+
+    products = work[['_product_name']].drop_duplicates()
+    with get_db() as conn:
+        for _, row in products.iterrows():
+            name = row['_product_name']
+            conn.execute('''
+                INSERT OR IGNORE INTO product_config (product_code, product_name, business_type)
+                VALUES (?, ?, '经代')
+            ''', (name, name))
+        conn.commit()
+    logger.info("extracted %s jingdai products to product_config (year>=2026)", len(products))

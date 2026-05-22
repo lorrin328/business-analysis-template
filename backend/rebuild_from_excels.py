@@ -11,7 +11,7 @@ from etl import (
     aggregate_org_hr, aggregate_org_active_headcount,
 )
 from db import clear_year_data, get_db, init_db, replace_rows
-from services.product_config_service import extract_products_to_config
+from services.product_config_service import extract_jingdai_products_to_config, extract_products_to_config
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -60,6 +60,7 @@ def main():
     if jingdai_file:
         df = parse_jingdai_excel(jingdai_file.read_bytes())
         raw_tables['jingdai'] = df
+        extract_jingdai_products_to_config(df)
         jd_rows = aggregate_jingdai(df)
         jd_daily_rows = aggregate_jingdai_daily(df)
         jd_pay_period_rows = aggregate_jingdai_payment_period(df)

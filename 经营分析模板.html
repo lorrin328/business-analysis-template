@@ -1994,27 +1994,41 @@
       const targetBaozhang = targetData?.categories?.baozhang?.metrics?.['整体']?.year || 0;
       const targetTenYear = targetData?.categories?.tenYear?.metrics?.['整体']?.year || 0;
 
-      // 4. 商保年金（仅转型，经代暂缺→不显示整体达成率）
+      // 4. 商保年金（参数设置覆盖转型 + 经代产品）
       if (hasApiKpi && kpi.annuity_total !== undefined) {
         const actual = kpi.annuity_total || 0;
+        const jdActual = kpi.annuity_jd || 0;
+        const tfActual = kpi.annuity_tf || 0;
+        const totalTarget = targetData?.categories?.shangbao?.metrics?.['整体']?.year || 0;
+        const jdTarget = targetData?.categories?.shangbao?.metrics?.['经代']?.year || 0;
         const tfTarget = targetData?.categories?.shangbao?.metrics?.['转型业务']?.year || 0;
-        const tfRate = tfTarget > 0 ? Math.round(actual / tfTarget * 1000) / 10 : 0;
+        const totalRate = totalTarget > 0 ? Math.round(actual / totalTarget * 1000) / 10 : 0;
+        const jdRate = jdTarget > 0 ? Math.round(jdActual / jdTarget * 1000) / 10 : 0;
+        const tfRate = tfTarget > 0 ? Math.round(tfActual / tfTarget * 1000) / 10 : 0;
         const el = document.getElementById('kpi-annuity-rate');
-        if (el) el.textContent = tfRate + '%';
+        if (el) el.textContent = totalTarget > 0 ? totalRate + '%' : '--';
         const sub = document.getElementById('kpi-annuity-sub');
-        if (sub) sub.innerHTML = `<span>经代 -- · 转型 ${tfRate}%</span>`;
+        if (sub) sub.innerHTML = totalTarget > 0
+          ? `<span>经代 ${jdTarget > 0 ? jdRate + '%' : '--'} · 转型 ${tfTarget > 0 ? tfRate + '%' : '--'}</span>`
+          : '<span style="color:var(--text-secondary)">未配置商保年金目标</span>';
       }
 
-      // 5. 保障类产品（按参数设置中的保障类产品标识统计）
+      // 5. 保障类产品（参数设置覆盖转型 + 经代产品）
       if (hasApiKpi && kpi.protection_total !== undefined) {
         const actual = kpi.protection_total || 0;
-        const tfTarget = targetData?.categories?.baozhang?.metrics?.['转型业务']?.year || targetBaozhang || 0;
-        const tfRate = tfTarget > 0 ? Math.round(actual / tfTarget * 1000) / 10 : 0;
+        const jdActual = kpi.protection_jd || 0;
+        const tfActual = kpi.protection_tf || 0;
+        const totalTarget = targetData?.categories?.baozhang?.metrics?.['整体']?.year || 0;
+        const jdTarget = targetData?.categories?.baozhang?.metrics?.['经代']?.year || 0;
+        const tfTarget = targetData?.categories?.baozhang?.metrics?.['转型业务']?.year || 0;
+        const totalRate = totalTarget > 0 ? Math.round(actual / totalTarget * 1000) / 10 : 0;
+        const jdRate = jdTarget > 0 ? Math.round(jdActual / jdTarget * 1000) / 10 : 0;
+        const tfRate = tfTarget > 0 ? Math.round(tfActual / tfTarget * 1000) / 10 : 0;
         const el = document.getElementById('kpi-protection-rate');
-        if (el) el.textContent = tfTarget > 0 ? tfRate + '%' : '--';
+        if (el) el.textContent = totalTarget > 0 ? totalRate + '%' : '--';
         const sub = document.getElementById('kpi-protection-sub');
-        if (sub) sub.innerHTML = tfTarget > 0
-          ? `<span>经代 -- · 转型 ${tfRate}%</span>`
+        if (sub) sub.innerHTML = totalTarget > 0
+          ? `<span>经代 ${jdTarget > 0 ? jdRate + '%' : '--'} · 转型 ${tfTarget > 0 ? tfRate + '%' : '--'}</span>`
           : '<span style="color:var(--text-secondary)">未配置保障类目标</span>';
       }
 

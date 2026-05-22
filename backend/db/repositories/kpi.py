@@ -266,7 +266,7 @@ def get_kpi_data(year: int):
         ''', (year, query_month))
         value = {r['channel']: r['total'] or 0 for r in c.fetchall()}
 
-        # 商保年金 / 保障类 / 10年期 — 转型部分（月级精度）
+        # 商保年金 / 保障类 / 10年期（月级精度）
         c.execute('''
             SELECT channel, SUM(product_annuity) AS a, SUM(product_protection) AS p, SUM(product_10year) AS t
             FROM agg_org_performance WHERE year = ? AND month <= ? GROUP BY channel
@@ -274,6 +274,13 @@ def get_kpi_data(year: int):
         org_product_rows = c.fetchall()
         annuity_tf = sum((r['a'] or 0) for r in org_product_rows)
         protection_tf = sum((r['p'] or 0) for r in org_product_rows)
+        c.execute('''
+            SELECT SUM(product_annuity) AS a, SUM(product_protection) AS p
+            FROM agg_jingdai WHERE year = ? AND month <= ?
+        ''', (year, query_month))
+        jd_product_row = c.fetchone()
+        annuity_jd = (jd_product_row['a'] or 0) if jd_product_row else 0.0
+        protection_jd = (jd_product_row['p'] or 0) if jd_product_row else 0.0
         c.execute('''
             SELECT SUM(product_10year) AS t
             FROM agg_org_performance WHERE year = ? AND month <= ?
@@ -316,8 +323,12 @@ def get_kpi_data(year: int):
             'longterm_qj_prev': lt_total_prev,
             'longterm_qj_tf_prev': lt_tf_prev,
             'longterm_qj_jd_prev': lt_jd_prev,
-            'annuity_total': round(annuity_tf, 2),
-            'protection_total': round(protection_tf, 2),
+            'annuity_total': round(annuity_tf + annuity_jd, 2),
+            'annuity_tf': round(annuity_tf, 2),
+            'annuity_jd': round(annuity_jd, 2),
+            'protection_total': round(protection_tf + protection_jd, 2),
+            'protection_tf': round(protection_tf, 2),
+            'protection_jd': round(protection_jd, 2),
             'tenyear_total': round(tenyear_tf, 2),
             'hr': hr,
             'hr_prev': hr_prev,

@@ -46,6 +46,21 @@ def isolated_product_config_db(tmp_path, monkeypatch):
         )
         """
     )
+    conn.execute("DROP TABLE IF EXISTS jingdai")
+    conn.execute(
+        """
+        CREATE TABLE jingdai (
+            "时间" TEXT,
+            "当前缴别大类" TEXT,
+            "缴费年限范围" TEXT,
+            "缴费年限" REAL,
+            "产品名称" TEXT,
+            "经代机构" TEXT,
+            "承保年化规保" REAL,
+            "期交保费" REAL
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -137,6 +152,32 @@ class TestProductConfig:
         c.execute('DELETE FROM product_config WHERE product_code = ?', ("AUTO998",))
         conn.commit()
         conn.close()
+
+    def test_auto_extract_includes_jingdai_products(self, monkeypatch):
+        """经代产品没有产品代码时，使用产品名称作为配置键列示出来。"""
+        monkeypatch.setenv("ADMIN_TOKEN", "test-token")
+
+        from db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("DELETE FROM product_config")
+        c.execute('''
+            INSERT INTO jingdai
+            ("时间", "产品名称", "经代机构", "承保年化规保", "期交保费")
+            VALUES (?, ?, ?, ?, ?)
+        ''', ("202605", "经代年金产品A", "支付宝", 10000, 10000))
+        conn.commit()
+        conn.close()
+
+        resp = client.get("/api/product-config")
+        assert resp.status_code == 200
+        products = resp.json()["data"]
+        jd_product = next((p for p in products if p["product_code"] == "经代年金产品A"), None)
+        assert jd_product is not None
+        assert jd_product["product_name"] == "经代年金产品A"
+        assert jd_product["business_type"] == "经代"
+        assert jd_product["is_annuity"] == "N"
+        assert jd_product["is_protection"] == "N"
 
     def test_post_triggers_recalc_when_performance_empty(self, monkeypatch):
         """保存配置时若 performance 表为空，recalculated 为 0。"""
@@ -282,5 +323,51 @@ class TestProductConfig:
             conn.execute("DELETE FROM agg_jingdai WHERE year = 2097")
             conn.execute("DELETE FROM agg_hr_data WHERE year = 2097")
             conn.execute("DELETE FROM agg_value_data WHERE year = 2097")
+            conn.commit()
+            conn.close()
+
+    def test_kpi_includes_configured_jingdai_product_categories(self, monkeypatch):
+        monkeypatch.setenv("ADMIN_TOKEN", "test-token")
+
+        from db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            c = conn.cursor()
+            c.execute("DELETE FROM product_config")
+            for table in ["agg_jingdai", "agg_performance", "agg_hr_data", "agg_value_data", "jingdai"]:
+                c.execute(f"DELETE FROM {table} WHERE year = 2096" if table.startswith("agg_") else f"DELETE FROM {table}")
+            c.execute(
+                """
+                INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
+                VALUES (?, ?, '经代', 'Y', 'Y')
+                """,
+                ("经代保障年金", "经代保障年金"),
+            )
+            c.execute(
+                """
+                INSERT INTO jingdai ("时间", "产品名称", "经代机构", "承保年化规保", "期交保费")
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("209601", "经代保障年金", "支付宝", 10000, 10000),
+            )
+            conn.commit()
+
+            resp = client.post(
+                "/api/product-config",
+                json={"products": [{"product_code": "经代保障年金", "is_annuity": "Y", "is_protection": "Y"}]},
+                headers={"X-Admin-Token": "test-token"},
+            )
+            assert resp.status_code == 200
+
+            data = get_kpi_data(2096)
+            assert data["annuity_jd"] == 1
+            assert data["protection_jd"] == 1
+            assert data["annuity_total"] == 1
+            assert data["protection_total"] == 1
+        finally:
+            for table in ["agg_jingdai", "agg_performance", "agg_hr_data", "agg_value_data"]:
+                conn.execute(f"DELETE FROM {table} WHERE year = 2096")
+            conn.execute("DELETE FROM jingdai")
+            conn.execute("DELETE FROM product_config")
             conn.commit()
             conn.close()

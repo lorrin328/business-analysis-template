@@ -37,6 +37,8 @@ def init_db():
             qj_premium REAL NOT NULL DEFAULT 0, gm_premium REAL NOT NULL DEFAULT 0,
             zs_premium REAL NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(year, month))''')
+        _migrate(c, "ALTER TABLE agg_jingdai ADD COLUMN product_annuity REAL NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE agg_jingdai ADD COLUMN product_protection REAL NOT NULL DEFAULT 0")
 
         c.execute('''CREATE TABLE IF NOT EXISTS agg_jingdai_daily (
             id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
