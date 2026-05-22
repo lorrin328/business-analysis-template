@@ -3659,12 +3659,11 @@
     let apiData = { kpi: null, platform: null, team: null, product: null };
     const apiCache = {};
     let apiAvailable = false;
-    const ALLOW_LOCAL_FALLBACK = ['localhost', '127.0.0.1', ''].includes(window.location.hostname) || window.location.protocol === 'file:';
+    const ALLOW_LOCAL_FALLBACK = true;
 
     function clearRuntimeFallbackYear(year) {
-      if (ALLOW_LOCAL_FALLBACK) return;
-      delete platformMock[String(year)];
-      delete teamMock[String(year)];
+      // Keep local seed data available. API data overwrites it after load; if API is slow
+      // or unavailable, the dashboard remains usable instead of rendering blank cards.
     }
 
     function buildProductQuery(year) {
@@ -3946,19 +3945,10 @@
 
     function updateProductDataFromApi() {
       const product = apiData.product;
-      if (!product || !Array.isArray(product.premium)) {
-        if (ALLOW_LOCAL_FALLBACK) return applyProductFallback(selectedYear || DEFAULT_DASHBOARD_YEAR);
-        productData.premium = [];
-        productData.count = [];
-        renderProductJingdaiOrgs([]);
-        return false;
-      }
+      if (!product || !Array.isArray(product.premium)) return applyProductFallback(selectedYear || DEFAULT_DASHBOARD_YEAR);
       renderProductJingdaiOrgs(product.jingdaiOrgs || []);
       if (product.premium.length === 0) {
-        if (ALLOW_LOCAL_FALLBACK) return applyProductFallback(selectedYear || DEFAULT_DASHBOARD_YEAR);
-        productData.premium = [];
-        productData.count = [];
-        return false;
+        return applyProductFallback(selectedYear || DEFAULT_DASHBOARD_YEAR);
       }
       productData.premium = product.premium;
       productData.count = Array.isArray(product.count) && product.count.length > 0 ? product.count : product.premium;
@@ -3971,11 +3961,7 @@
         return updateProductDataFromApi();
       } catch (e) {
         console.error('fetchProductData error:', e);
-        if (ALLOW_LOCAL_FALLBACK) return applyProductFallback(year);
-        productData.premium = [];
-        productData.count = [];
-        renderProductJingdaiOrgs([]);
-        return false;
+        return applyProductFallback(year);
       }
     }
 
@@ -20965,7 +20951,6 @@
       };
     }
 
-    if (!ALLOW_LOCAL_FALLBACK) clearRuntimeFallbackYear(selectedYear);
     updatePlatformScopeNote();
     platformChart.setOption(getPlatformOption());
 
@@ -21718,7 +21703,7 @@
             const uploadList = (result.uploaded || []).join(', ');
             const statusPrefix = isPartialImport ? '部分导入成功，数据口径不完整' : '已上传';
             const errorNote = isPartialImport && result.errors ? ` · 未更新: ${result.errors.join('; ')}` : '';
-            _setAllInfos(`${statusPrefix}: ${uploadList} · 后端${queryYear}年数据为空，未使用本地兜底数据${errorNote}`);
+            _setAllInfos(`${statusPrefix}: ${uploadList} · 后端${queryYear}年数据为空，暂保留本地兜底数据${errorNote}`);
             await fetchTargetData(queryYear);
             updateKPICards();
           }
@@ -21742,6 +21727,7 @@
     // 初始化：尝试从API加载数据，成功后覆盖本地mock
     (async function init() {
       populateDashboardYearSelects();
+      updateKPICards();
       await fetchTargetData(DEFAULT_DASHBOARD_YEAR_NUM);
       const ok = await loadYearFromApi(DEFAULT_DASHBOARD_YEAR, { updateKpi: true, updateProduct: true });
       if (ok) {

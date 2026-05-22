@@ -110,11 +110,12 @@ def test_frontend_centralizes_read_api_fetches():
     assert "/api/targets?year=" in all_js
 
 
-def test_production_does_not_silently_use_local_mock_fallback():
+def test_local_seed_data_remains_available_when_api_is_slow_or_unavailable():
     html = read_html()
     assert "ALLOW_LOCAL_FALLBACK" in html
     assert "clearRuntimeFallbackYear" in html
-    assert "未使用本地兜底数据" in html
+    assert "暂保留本地兜底数据" in html
+    assert "updateKPICards();\n      await fetchTargetData" in html
 
 
 def test_upload_js_no_duplicate_vars():
