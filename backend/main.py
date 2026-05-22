@@ -20,6 +20,7 @@ from api.team import router as team_router
 from api.trend import router as trend_router
 from api.config import router as config_router
 from api.product_config import router as product_config_router
+from api.diagnostics import router as diagnostics_router
 from auth import require_admin
 from config.business_lines import DEFAULT_YEAR
 from db import (
@@ -134,7 +135,7 @@ if _cors_origins:
 # 初始化数据库
 init_db()
 
-for router in [kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, legacy_router]:
+for router in [kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, legacy_router]:
     app.include_router(router)
 
 

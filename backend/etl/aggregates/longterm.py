@@ -6,7 +6,6 @@ import pandas as pd
 from etl.normalize import _normalize_channel, _to_number, _amount_to_wan, _period_year_month
 from etl.columns import _pick_col
 from config.business_lines import TRANSFORM_CHANNELS
-from config.orgs import ORG_SCOPE
 
 
 def aggregate_transform_longterm(df: pd.DataFrame) -> List[Dict]:
@@ -29,7 +28,6 @@ def aggregate_transform_longterm(df: pd.DataFrame) -> List[Dict]:
     work['_channel'] = work[channel_col].map(_normalize_channel)
     work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
-    work = work[work['_org'].isin(ORG_SCOPE)]
     work['_qj'] = _to_number(work[qj_col])
 
     # 长险条件：长短险='长期' OR 产品代码='4281'
@@ -51,12 +49,16 @@ def aggregate_transform_longterm(df: pd.DataFrame) -> List[Dict]:
         is_empty_term = term_vals == ''
         is_long_by_years = pay_years >= 2
         is_longterm = is_longterm | (is_empty_term & is_long_by_years)
-    if term_col or code_col:
+    # 只有长短险列存在时才过滤；不存在则保留全部避免数据丢失
+    if term_col:
         before = len(work)
         work = work[is_longterm]
         logger = __import__('logging').getLogger('business-analysis')
-        logger.info("aggregate_transform_longterm: %s/%s rows kept (term_col=%s, code_col=%s)",
-                    len(work), before, bool(term_col), bool(code_col))
+        logger.info("aggregate_transform_longterm: %s/%s rows kept (term_col=%s, code_col=%s, pay_years_col=%s)",
+                    len(work), before, bool(term_col), bool(code_col), bool(pay_years_col))
+    else:
+        logger = __import__('logging').getLogger('business-analysis')
+        logger.warning("aggregate_transform_longterm: 长短险 column not found, keeping all %s rows", len(work))
 
     grouped = work.groupby(['_year', '_month', '_channel', '_org'], dropna=False)
     rows = []
@@ -80,14 +82,14 @@ def aggregate_jingdai_longterm(df: pd.DataFrame) -> List[Dict]:
     org_col = _pick_col(df, ['经代机构'])
     term_cat_col = _pick_col(df, ['当前缴别大类'])
 
-    if not all([time_col, qj_col, pay_col]):
+    if not all([time_col, qj_col]):
         return []
 
     work = _period_year_month(df, None, time_col)
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
     work['_qj'] = _to_number(work[qj_col])
-    # 长险：排除 (期交 且 缴费年限=1)
-    if term_cat_col:
+    # 长险：排除 (期交 且 缴费年限=1)；若无缴费年限列则不过滤
+    if term_cat_col and pay_col:
         is_term = work[term_cat_col].fillna('').astype(str).str.strip() == '期交'
         pay_num = pd.to_numeric(work[pay_col], errors='coerce').fillna(0)
         is_short = is_term & (pay_num == 1)
