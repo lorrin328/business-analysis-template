@@ -1,11 +1,14 @@
 """产品分类配置 API — 商保年金 / 保障类产品可配置化。"""
 import logging
 
+import pandas as pd
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from auth import require_admin
 from config.business_lines import CHANNEL_MAP
 from db import get_db
+from db.repository import replace_rows_incremental
+from etl.aggregates.org import aggregate_org_performance
 from services.response import success_response
 
 router = APIRouter(prefix="/api", tags=["product-config"])
@@ -55,6 +58,34 @@ def _auto_extract_from_performance(conn) -> int:
     return inserted
 
 
+def _recalc_org_performance_from_raw() -> int:
+    """从 performance 原始表重新计算 agg_org_performance。
+
+    保存 product_config 后调用，使商保年金 / 保障类产品指标立即生效。
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='performance'")
+        if not c.fetchone():
+            return 0
+        c.execute("SELECT COUNT(*) FROM performance LIMIT 1")
+        if c.fetchone()[0] == 0:
+            return 0
+
+        df = pd.read_sql_query('SELECT * FROM performance', conn)
+
+    if df.empty:
+        return 0
+
+    rows = aggregate_org_performance(df)
+
+    with get_db() as conn:
+        replace_rows_incremental(conn, 'agg_org_performance', rows)
+        conn.commit()
+
+    return len(rows)
+
+
 @router.get("/product-config")
 def get_product_config():
     """返回所有产品配置列表（按产品代码排序）。
@@ -99,6 +130,7 @@ def save_product_config(
 ):
     """批量保存产品分类配置。
 
+    保存后自动从 performance 原始表重新计算 agg_org_performance，使配置立即生效。
     Payload: {"products": [{"product_code": "...", "is_annuity": "Y/N", "is_protection": "Y/N"}]}
     """
     products = payload.get("products", [])
@@ -125,8 +157,13 @@ def save_product_config(
             ''', (annuity, protection, code))
         conn.commit()
 
+    # 重新计算机构业绩聚合表
+    recalc_count = _recalc_org_performance_from_raw()
+    if recalc_count > 0:
+        logger.info("recalculated %s agg_org_performance rows after product-config update", recalc_count)
+
     return success_response(
-        {"updated": len(products)},
-        message="产品配置已保存",
+        {"updated": len(products), "recalculated": recalc_count},
+        message="产品配置已保存" + (f"，已重新计算 {recalc_count} 条机构业绩数据" if recalc_count else ""),
         meta={"metric": "product-config", "unit": "-"},
     )

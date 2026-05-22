@@ -15,9 +15,8 @@ client = TestClient(app)
 
 
 class TestProductConfig:
-    def test_get_product_config_empty(self):
+    def test_get_product_config_empty_when_both_empty(self):
         """product_config 和 performance 均为空时返回空列表。"""
-        import sqlite3
         from db import DB_PATH
         conn = sqlite3.connect(DB_PATH)
         conn.execute("DELETE FROM product_config")
@@ -67,6 +66,42 @@ class TestProductConfig:
         c = conn.cursor()
         c.execute('DELETE FROM performance WHERE CAST("产品代码" AS TEXT) = ?', ("AUTO999",))
         c.execute('DELETE FROM product_config WHERE product_code = ?', ("AUTO999",))
+        conn.commit()
+        conn.close()
+
+    def test_post_triggers_recalc_when_performance_empty(self, monkeypatch):
+        """保存配置时若 performance 表为空，recalculated 为 0。"""
+        monkeypatch.setenv("ADMIN_TOKEN", "test-token")
+
+        from db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("DELETE FROM product_config")
+        c.execute("DELETE FROM performance")
+        c.execute("""
+            INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
+            VALUES (?, ?, ?, ?, ?)
+        """, ("RECALC01", "测试产品", "OTO", "N", "N"))
+        conn.commit()
+        conn.close()
+
+        resp = client.post(
+            "/api/product-config",
+            json={"products": [{"product_code": "RECALC01", "is_annuity": "Y", "is_protection": "Y"}]},
+            headers={"X-Admin-Token": "test-token"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["data"]["updated"] == 1
+        # performance 表为空，无法重新聚合
+        assert data["data"]["recalculated"] == 0
+
+        # 清理
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('DELETE FROM product_config WHERE product_code = ?', ("RECALC01",))
         conn.commit()
         conn.close()
 
