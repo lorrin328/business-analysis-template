@@ -121,6 +121,17 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_by TEXT DEFAULT 'system',
             role_scope TEXT DEFAULT 'admin')''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS product_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_code TEXT NOT NULL,
+            product_name TEXT,
+            business_type TEXT,
+            is_annuity TEXT NOT NULL DEFAULT 'N',
+            is_protection TEXT NOT NULL DEFAULT 'N',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(product_code))''')
+
         c.execute('''CREATE TABLE IF NOT EXISTS data_imports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

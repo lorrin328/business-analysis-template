@@ -20,3 +20,12 @@ def kpi(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100)):
             "definitions": METRICS,
         },
     )
+
+
+@router.get("/kpi-definitions")
+def kpi_definitions():
+    """返回 KPI 模块涉及的所有指标定义与口径。"""
+    return success_response(
+        METRICS,
+        meta={"metric": "kpi-definitions", "unit": "-", "dataSource": "config/metrics.py"},
+    )

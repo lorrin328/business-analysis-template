@@ -3,6 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Query
 
+from config.metrics import METRICS
 from db import get_payment_period_structure
 
 router = APIRouter(tags=["payment-period"])
@@ -48,4 +49,17 @@ def payment_period_analysis(
         jingdai_orgs=_split_csv(jingdaiOrgs) if jingdaiOrgs else None,
         metric=metric or "qj",
     )
-    return success_response(data, meta={"year": str(year), "metric": metric or "qj", "unit": "万元/件", "dataSource": "agg_payment_period"})
+    return success_response(
+        data,
+        meta={
+            "year": str(year),
+            "metric": metric or "qj",
+            "unit": "万元/件",
+            "dataSource": "agg_payment_period",
+            "definitions": {
+                k: METRICS[k]
+                for k in ["achievement_rate", "yoy"]
+                if k in METRICS
+            },
+        },
+    )

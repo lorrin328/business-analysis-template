@@ -11,6 +11,7 @@ from etl import (
     aggregate_org_hr, aggregate_org_active_headcount,
 )
 from db import clear_year_data, get_db, init_db, replace_rows
+from services.product_config_service import extract_products_to_config
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -39,6 +40,7 @@ def main():
     if performance_file:
         df = parse_performance_excel(performance_file.read_bytes())
         raw_tables['performance'] = df
+        extract_products_to_config(df)
         perf_rows = aggregate_performance(df)
         daily_rows = aggregate_daily_performance(df)
         org_daily_rows = aggregate_org_daily_performance(df)

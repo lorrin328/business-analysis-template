@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query
 
 from config.business_lines import DEFAULT_YEAR
+from config.metrics import METRICS
 from db import get_product_structure
 from services.response import success_response
 
@@ -21,5 +22,15 @@ def product_analysis(
 ):
     return success_response(
         get_product_structure(year, dimension, transformLines, jingdaiOrgs, includeTransform, includeJingdai, orgs, months, metric),
-        meta={"year": year, "metric": "product-analysis", "unit": "万元/件", "dataSource": "performance / jingdai"},
+        meta={
+            "year": year,
+            "metric": "product-analysis",
+            "unit": "万元/件",
+            "dataSource": "performance / jingdai",
+            "definitions": {
+                k: METRICS[k]
+                for k in ["achievement_rate", "yoy"]
+                if k in METRICS
+            },
+        },
     )

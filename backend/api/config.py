@@ -2,6 +2,7 @@
 from fastapi import APIRouter
 
 from config.business_lines import BUSINESS_LINES
+from config.metrics import METRICS, DISPLAY_CONSTRAINTS
 from services.response import success_response
 
 router = APIRouter(prefix="/api/config", tags=["config"])
@@ -29,3 +30,24 @@ def get_business_lines():
             "aliases": item.get("aliases", []),
         })
     return success_response(safe_lines)
+
+
+@router.get("/metrics")
+def get_metrics():
+    """返回所有指标定义与口径。
+
+    前端启动时调用，获取统一的指标公式、单位和不可计算规则。
+    复杂指标在 meta.definitions 中返回口径说明。
+    """
+    return success_response(
+        {
+            "metrics": METRICS,
+            "displayConstraints": DISPLAY_CONSTRAINTS,
+        },
+        meta={
+            "metric": "config-metrics",
+            "unit": "-",
+            "dataSource": "config/metrics.py",
+            "definitions": METRICS,
+        },
+    )

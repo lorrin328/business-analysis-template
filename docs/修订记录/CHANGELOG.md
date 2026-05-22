@@ -10,6 +10,28 @@
 
 ---
 
+## [2026-05-22] feat: v0.9.992 产品分类参数设置 + 去年同期定义明确化
+**类型**：feat / fix / docs
+
+**变更内容**：
+| 文档/文件 | 变更 |
+|------|------|
+| [主 README](../../README.md) | 当前版本更新为 v0.9.992 |
+| [CHANGELOG](../../CHANGELOG.md) | 同步 v0.9.992 发布说明 |
+| `经营分析模板.html` | 右上角新增「参数设置」按钮；新增产品配置弹窗交互逻辑 |
+| `backend/db/schema.py` | 新建 `product_config` 表 |
+| `backend/api/product_config.py` | 新建 `/api/product-config` GET/POST 端点 |
+| `backend/services/product_config_service.py` | 共享服务：从 DataFrame 提取 ≥2026 年产品到配置表 |
+| `backend/etl/aggregates/org.py` | `aggregate_org_performance` 改用 `product_config` 表判断产品分类 |
+| `backend/main.py` | 注册 product_config 路由；导入时自动提取产品列表 |
+| `backend/rebuild_from_excels.py` | 重建时自动提取产品列表 |
+| `backend/config/metrics.py` | 补充同比指标「去年同期定义」与数据精度说明 |
+| `backend/metrics/formulas.py` | `yoy_rate` docstring 补充去年同期定义 |
+| `backend/db/repositories/kpi.py` | 期交保费 YTD 优先使用日累计表按统计日截取 |
+| `docs/指标口径说明.md` | 新增「去年同期定义」专节与数据精度说明表 |
+
+---
+
 ## [2026-05-21] fix: v0.9.991 写入安全、展示安全与维护边界
 **类型**：fix / safety / docs / tests
 

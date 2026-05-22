@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Query
 
+from config.business_lines import DEFAULT_YEAR
+from config.metrics import METRICS
 from db import get_platform_data
 from services.query_service import get_platform_trend
 from services.response import success_response
-
-from config.business_lines import DEFAULT_YEAR
 
 router = APIRouter(prefix="/api", tags=["trend"])
 
@@ -13,7 +13,17 @@ router = APIRouter(prefix="/api", tags=["trend"])
 def platform_data(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100)):
     return success_response(
         get_platform_data(year),
-        meta={"year": year, "metric": "platform-data", "unit": "万元/人", "dataSource": "SQLite aggregate tables"},
+        meta={
+            "year": year,
+            "metric": "platform-data",
+            "unit": "万元/人",
+            "dataSource": "SQLite aggregate tables",
+            "definitions": {
+                k: METRICS[k]
+                for k in ["achievement_rate", "yoy", "time_progress", "progress_gap"]
+                if k in METRICS
+            },
+        },
     )
 
 
@@ -53,5 +63,10 @@ def platform_trend(
             "metric": metric,
             "unit": "万元",
             "dataSource": "agg_performance / agg_jingdai / agg_daily_performance / agg_jingdai_daily",
+            "definitions": {
+                k: METRICS[k]
+                for k in ["yoy", "achievement_rate", "time_progress"]
+                if k in METRICS
+            },
         },
     )

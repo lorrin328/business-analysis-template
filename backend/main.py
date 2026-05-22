@@ -19,6 +19,7 @@ from api.payment_period import router as payment_period_router
 from api.team import router as team_router
 from api.trend import router as trend_router
 from api.config import router as config_router
+from api.product_config import router as product_config_router
 from auth import require_admin
 from config.business_lines import DEFAULT_YEAR
 from db import (
@@ -37,6 +38,7 @@ from etl import (
 
 from validators.data_validator import validate_rows
 from services.import_safety import RawIncrementalWriteError, write_raw_table_incremental
+from services.product_config_service import extract_products_to_config
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -75,6 +77,7 @@ def _skip_duplicate_upload(file_name: str, file_hash: str, label: str, results: 
 
 class _DuplicateUpload(Exception):
     pass
+
 
 
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
@@ -131,7 +134,7 @@ if _cors_origins:
 # 初始化数据库
 init_db()
 
-for router in [kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, legacy_router]:
+for router in [kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, legacy_router]:
     app.include_router(router)
 
 
@@ -191,6 +194,7 @@ async def upload_files(
             file_sizes[performance.filename] = len(perf_bytes)
             df = parse_performance_excel(perf_bytes)
             raw_tables['performance'] = df
+            _extract_products_to_config(df)
             perf_rows = aggregate_performance(df)
             daily_rows = aggregate_daily_performance(df)
             org_daily_rows = aggregate_org_daily_performance(df)

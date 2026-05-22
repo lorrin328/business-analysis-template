@@ -240,6 +240,15 @@
     /* Target Setting Modal */
     .modal-target .modal { max-width: 1000px; }
     .modal-target .modal-body { max-height: 75vh; padding: 20px 24px; }
+    .modal-product-config .modal { max-width: 900px; }
+    .modal-product-config .modal-body { max-height: 70vh; padding: 16px 24px; }
+    .product-config-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .product-config-table th, .product-config-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    .product-config-table th { background: rgba(30,41,59,0.5); font-weight: 600; position: sticky; top: 0; }
+    .product-config-table tr:hover td { background: rgba(59,130,246,0.05); }
+    .product-config-table select { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 13px; cursor: pointer; }
+    .product-config-table select:focus { border-color: var(--accent); outline: none; }
+    .product-config-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
     .target-toolbar {
       display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
       padding: 10px 14px; background: var(--bg); border-radius: 8px;
@@ -708,9 +717,10 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.991</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v0.9.992</span>
     </div>
     <div class="header-right">
+      <button class="chart-btn" onclick="openProductConfigModal()" style="margin-right:8px;">参数设置</button>
       <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
       <button class="chart-btn" id="recalcBtn" onclick="recalculateDashboard()" style="margin-right:8px;">重新计算</button>
       <span class="date-display" id="dataCutoff">数据截止：2026年5月</span>
@@ -1177,6 +1187,90 @@
       if (!e || e.target === modalOverlay) {
         modalOverlay.classList.remove('active');
         modalOverlay.classList.remove('modal-target');
+        modalOverlay.classList.remove('modal-product-config');
+      }
+    }
+
+    // ---------- Product Config System ----------
+    async function openProductConfigModal() {
+      try {
+        const resp = await fetchJson('/api/product-config');
+        const products = unwrapApiResponse(resp) || [];
+        if (!products.length) {
+          alert('暂无产品数据，请先导入 Excel 文件。');
+          return;
+        }
+        const rows = products.map(p => `
+          <tr data-code="${p.product_code}">
+            <td>${p.product_code}</td>
+            <td>${p.product_name || '-'}</td>
+            <td>${p.business_type || '-'}</td>
+            <td>
+              <select data-field="is_annuity">
+                <option value="N" ${p.is_annuity === 'N' ? 'selected' : ''}>N</option>
+                <option value="Y" ${p.is_annuity === 'Y' ? 'selected' : ''}>Y</option>
+              </select>
+            </td>
+            <td>
+              <select data-field="is_protection">
+                <option value="N" ${p.is_protection === 'N' ? 'selected' : ''}>N</option>
+                <option value="Y" ${p.is_protection === 'Y' ? 'selected' : ''}>Y</option>
+              </select>
+            </td>
+          </tr>
+        `).join('');
+
+        modalTitle.textContent = '参数设置 — 产品分类';
+        modalBody.innerHTML = `
+          <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+            设置 Y 表示该产品计入对应分类统计，N 表示不计入。保存后需重新导入数据方可生效。
+          </p>
+          <div style="overflow-y: auto; max-height: 55vh;">
+            <table class="product-config-table">
+              <thead>
+                <tr>
+                  <th>产品代码</th>
+                  <th>产品名称</th>
+                  <th>业务模式</th>
+                  <th>商保年金</th>
+                  <th>保障类产品</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+          <div class="product-config-actions">
+            <button class="chart-btn" onclick="closeModal()">取消</button>
+            <button class="chart-btn" style="background: var(--accent); color: #fff;" onclick="saveProductConfig()">保存</button>
+          </div>
+        `;
+        modalOverlay.classList.add('active', 'modal-product-config');
+      } catch (e) {
+        console.error('加载产品配置失败', e);
+        alert('加载产品配置失败：' + e.message);
+      }
+    }
+
+    async function saveProductConfig() {
+      const rows = modalBody.querySelectorAll('.product-config-table tbody tr');
+      const products = [];
+      rows.forEach(row => {
+        const code = row.getAttribute('data-code');
+        const annuity = row.querySelector('[data-field="is_annuity"]').value;
+        const protection = row.querySelector('[data-field="is_protection"]').value;
+        products.push({ product_code: code, is_annuity: annuity, is_protection: protection });
+      });
+      try {
+        await adminFetch('/api/product-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ products }),
+        });
+        alert('产品配置已保存。请重新导入数据或点击「重新计算」使配置生效。');
+        closeModal();
+      } catch (e) {
+        console.error('保存产品配置失败', e);
+        alert('保存失败：' + e.message);
       }
     }
 

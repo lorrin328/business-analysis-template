@@ -6,7 +6,13 @@ from db.schema import init_db
 
 
 def get_org_kpi_data(year: int):
-    """获取机构维度KPI数据，年度同比使用日累计至统计日截止"""
+    """获取机构维度KPI数据。
+
+    年度同比使用日累计至统计日截止：
+    - 从 agg_org_daily_performance 取当前年度最新月份和日期作为 cutoff
+    - 去年同期数据按同一月/日截取（非整月累计）
+    - 无日数据时回退到月表最新月份截断
+    """
     with get_db() as conn:
         c = conn.cursor()
 
