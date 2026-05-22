@@ -30,13 +30,26 @@ def replace_rows_incremental(conn, table, rows):
     """按月增量写入：先删除本次涉及 (year, month) 的数据，再 INSERT OR REPLACE。
 
     与 replace_rows 的区别：只删除本次数据覆盖的月份，其他月份不动。
+    对同时承载转型/经代的聚合表，按 business_type 缩小删除范围，避免单独重建经代时误删同月转型数据。
     """
     if not rows:
         return
     _check_table(table)
-    months = {(int(r['year']), int(r['month'])) for r in rows if 'year' in r and 'month' in r}
-    for year, month in months:
-        conn.execute(f'DELETE FROM {_quote_identifier(table)} WHERE year = ? AND month = ?', (year, month))
+    scoped_tables = {'agg_payment_period', 'agg_longterm_qj'}
+    if table in scoped_tables and all('business_type' in r for r in rows):
+        scopes = {
+            (int(r['year']), int(r['month']), str(r.get('business_type') or ''))
+            for r in rows if 'year' in r and 'month' in r
+        }
+        for year, month, business_type in scopes:
+            conn.execute(
+                f'DELETE FROM {_quote_identifier(table)} WHERE year = ? AND month = ? AND business_type = ?',
+                (year, month, business_type),
+            )
+    else:
+        months = {(int(r['year']), int(r['month'])) for r in rows if 'year' in r and 'month' in r}
+        for year, month in months:
+            conn.execute(f'DELETE FROM {_quote_identifier(table)} WHERE year = ? AND month = ?', (year, month))
     replace_rows(conn, table, rows)
 
 
