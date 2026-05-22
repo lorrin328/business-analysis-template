@@ -30,12 +30,12 @@ def aggregate_transform_longterm(df: pd.DataFrame) -> List[Dict]:
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
     work['_qj'] = _to_number(work[qj_col])
 
-    # 长险条件：长短险='长期' OR 产品代码='4281'
-    # 处理产品代码数值类型（避免 4281.0 不匹配）
+    # 长险条件：长短险匹配常见变体 OR 产品代码='4281'
+    LONG_TERM_VARIANTS = {'长期', '长险', '长期险', '长'}
     is_longterm = False
     if term_col:
         term_vals = work[term_col].fillna('').astype(str).str.strip()
-        is_longterm = term_vals == '长期'
+        is_longterm = term_vals.isin(LONG_TERM_VARIANTS)
     if code_col:
         code_vals = work[code_col].fillna('').astype(str).str.strip()
         # 去掉数值类型可能产生的 .0 后缀
@@ -45,9 +45,15 @@ def aggregate_transform_longterm(df: pd.DataFrame) -> List[Dict]:
     # 长短险为空时，尝试用缴费年限推断：>=2 视为长期（排除1年期短期险）
     if term_col and pay_years_col:
         term_vals = work[term_col].fillna('').astype(str).str.strip()
-        pay_years = pd.to_numeric(work[pay_years_col], errors='coerce').fillna(0)
+        # 从缴费年限文本中提取数字：'5年'→5, '终身'→99, '趸交'→1
+        pay_raw = work[pay_years_col].fillna('').astype(str).str.strip()
+        pay_extracted = pay_raw.str.extract(r'(\d+)', expand=False)
+        pay_num = pd.to_numeric(pay_extracted, errors='coerce').fillna(0)
+        # 终身、长期等关键词 → 视为长期
+        is_lifelong = pay_raw.str.contains('终身|长期|永久', na=False)
+        pay_num = pay_num.where(~is_lifelong, 99)
         is_empty_term = term_vals == ''
-        is_long_by_years = pay_years >= 2
+        is_long_by_years = pay_num >= 2
         is_longterm = is_longterm | (is_empty_term & is_long_by_years)
     # 只有长短险列存在时才过滤；不存在则保留全部避免数据丢失
     if term_col:

@@ -1,4 +1,17 @@
 # 经营分析看板 - 需求与开发文档
+
+## v1.0.31 更新说明（2026-05-22）
+**类型**：fix
+
+**变更内容**：
+- 修复长险期交转型业务数据错误：去掉 aggregate_transform_longterm 中的 ORG_SCOPE 过滤
+- 放宽长短险匹配条件：支持常见变体（长险、长期险）
+- 修复缴费年限解析：处理文本格式（如 '终身'、'5年'）
+- 修复 term_col 为 None 时的灾难性过滤（只保留产品 4281）
+- 修复 aggregate_jingdai_longterm 的 pay_col 容错
+- 新增 GET /api/diagnostics 诊断端点
+- 统一版本号到 v1.0.31
+
 ## v0.9.997 更新说明（2026-05-22）
 **类型**：fix / safety / deployment
 
