@@ -19,6 +19,7 @@ def aggregate_transform_longterm(df: pd.DataFrame) -> List[Dict]:
     qj_col = _pick_col(df, ['期交保费'])
     term_col = _pick_col(df, ['长短险'])
     code_col = _pick_col(df, ['产品代码'])
+    pay_years_col = _pick_col(df, ['缴费年限'])
 
     if not all([channel_col, qj_col]):
         return []
@@ -30,15 +31,32 @@ def aggregate_transform_longterm(df: pd.DataFrame) -> List[Dict]:
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
     work = work[work['_org'].isin(ORG_SCOPE)]
     work['_qj'] = _to_number(work[qj_col])
-    # 长险条件
+
+    # 长险条件：长短险='长期' OR 产品代码='4281'
+    # 处理产品代码数值类型（避免 4281.0 不匹配）
     is_longterm = False
     if term_col:
-        is_longterm = work[term_col].fillna('').astype(str).str.strip() == '长期'
+        term_vals = work[term_col].fillna('').astype(str).str.strip()
+        is_longterm = term_vals == '长期'
     if code_col:
-        is_code4281 = work[code_col].fillna('').astype(str).str.strip() == '4281'
+        code_vals = work[code_col].fillna('').astype(str).str.strip()
+        # 去掉数值类型可能产生的 .0 后缀
+        code_vals = code_vals.str.replace(r'\.0$', '', regex=True)
+        is_code4281 = code_vals == '4281'
         is_longterm = is_longterm | is_code4281 if term_col else is_code4281
+    # 长短险为空时，尝试用缴费年限推断：>=2 视为长期（排除1年期短期险）
+    if term_col and pay_years_col:
+        term_vals = work[term_col].fillna('').astype(str).str.strip()
+        pay_years = pd.to_numeric(work[pay_years_col], errors='coerce').fillna(0)
+        is_empty_term = term_vals == ''
+        is_long_by_years = pay_years >= 2
+        is_longterm = is_longterm | (is_empty_term & is_long_by_years)
     if term_col or code_col:
+        before = len(work)
         work = work[is_longterm]
+        logger = __import__('logging').getLogger('business-analysis')
+        logger.info("aggregate_transform_longterm: %s/%s rows kept (term_col=%s, code_col=%s)",
+                    len(work), before, bool(term_col), bool(code_col))
 
     grouped = work.groupby(['_year', '_month', '_channel', '_org'], dropna=False)
     rows = []
