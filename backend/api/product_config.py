@@ -1,18 +1,76 @@
 """产品分类配置 API — 商保年金 / 保障类产品可配置化。"""
+import logging
+
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from auth import require_admin
+from config.business_lines import CHANNEL_MAP
 from db import get_db
 from services.response import success_response
 
 router = APIRouter(prefix="/api", tags=["product-config"])
 
+logger = logging.getLogger("business-analysis")
+
+
+def _auto_extract_from_performance(conn) -> int:
+    """当 product_config 为空时，从 performance 原始表自动提取年份≥2026的产品列表。"""
+    c = conn.cursor()
+
+    # 检查 performance 表是否存在
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='performance'")
+    if not c.fetchone():
+        return 0
+
+    # 检查是否有 2026 年及以后的数据
+    c.execute("SELECT COUNT(*) FROM performance WHERE strftime('%Y', \"年月\") >= '2026' LIMIT 1")
+    if c.fetchone()[0] == 0:
+        return 0
+
+    c.execute('''
+        SELECT DISTINCT
+            CAST("产品代码" AS TEXT) as product_code,
+            COALESCE(NULLIF(TRIM("产品名称"), ''), '') as product_name,
+            COALESCE(NULLIF(TRIM("业务模式"), ''), '') as business_type
+        FROM performance
+        WHERE strftime('%Y', "年月") >= '2026'
+          AND "产品代码" IS NOT NULL
+          AND CAST("产品代码" AS TEXT) != ''
+        ORDER BY "年月" DESC
+    ''')
+
+    inserted = 0
+    for row in c.fetchall():
+        code = row["product_code"].strip()
+        name = row["product_name"].strip()
+        channel = CHANNEL_MAP.get(row["business_type"], row["business_type"])
+        c.execute('''
+            INSERT OR IGNORE INTO product_config (product_code, product_name, business_type)
+            VALUES (?, ?, ?)
+        ''', (code, name, channel))
+        if c.rowcount > 0:
+            inserted += 1
+
+    conn.commit()
+    return inserted
+
 
 @router.get("/product-config")
 def get_product_config():
-    """返回所有产品配置列表（按产品代码排序）。"""
+    """返回所有产品配置列表（按产品代码排序）。
+
+    若 product_config 表为空，自动从 performance 原始表提取年份≥2026的产品列表。
+    """
     with get_db() as conn:
         c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM product_config")
+        count = c.fetchone()[0]
+
+        if count == 0:
+            inserted = _auto_extract_from_performance(conn)
+            if inserted > 0:
+                logger.info("auto-extracted %s products from performance to product_config", inserted)
+
         c.execute('''
             SELECT product_code, product_name, business_type, is_annuity, is_protection
             FROM product_config

@@ -16,11 +16,12 @@ client = TestClient(app)
 
 class TestProductConfig:
     def test_get_product_config_empty(self):
-        """product_config 表为空时返回空列表。"""
+        """product_config 和 performance 均为空时返回空列表。"""
         import sqlite3
         from db import DB_PATH
         conn = sqlite3.connect(DB_PATH)
         conn.execute("DELETE FROM product_config")
+        conn.execute("DELETE FROM performance")
         conn.commit()
         conn.close()
         resp = client.get("/api/product-config")
@@ -28,6 +29,46 @@ class TestProductConfig:
         data = resp.json()
         assert data["success"] is True
         assert data["data"] == []
+
+    def test_auto_extract_from_performance(self, monkeypatch):
+        """product_config 为空时自动从 performance 表提取年份≥2026的产品。"""
+        monkeypatch.setenv("ADMIN_TOKEN", "test-token")
+
+        from db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("DELETE FROM product_config")
+        # 确保 performance 表有 2026 年数据
+        c.execute('''
+            INSERT OR IGNORE INTO performance
+            ("年月", "业务模式", "产品代码", "产品名称", "期交保费")
+            VALUES (?, ?, ?, ?, ?)
+        ''', ("2026-01-01 00:00:00", "OTO", "AUTO999", "自动提取产品", 1000))
+        conn.commit()
+        conn.close()
+
+        # GET 应自动提取
+        resp = client.get("/api/product-config")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        products = data["data"]
+        assert len(products) >= 1
+        auto_product = next((p for p in products if p["product_code"] == "AUTO999"), None)
+        assert auto_product is not None
+        assert auto_product["product_name"] == "自动提取产品"
+        assert auto_product["business_type"] == "OTO"
+        assert auto_product["is_annuity"] == "N"
+        assert auto_product["is_protection"] == "N"
+
+        # 清理
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('DELETE FROM performance WHERE CAST("产品代码" AS TEXT) = ?', ("AUTO999",))
+        c.execute('DELETE FROM product_config WHERE product_code = ?', ("AUTO999",))
+        conn.commit()
+        conn.close()
 
     def test_post_and_get_product_config(self, monkeypatch):
         """保存配置后能正确读取。"""
