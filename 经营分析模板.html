@@ -717,7 +717,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.34</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.35</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openProductConfigModal()" style="margin-right:8px;">参数设置</button>
@@ -3848,7 +3848,6 @@
       });
 
       // month 数据：使用真实日数据生成日累计序列（如果日数据不存在则退化为单点）
-      const daysInMonthArr = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
       const dailyIndex = {};
       if (apiPlatform.daily_performance) {
         apiPlatform.daily_performance.forEach(r => {
@@ -3883,7 +3882,7 @@
             }
             const key = `${mon}|${ch}`;
             const dailyData = dailyIndex[key];
-            const dim = daysInMonthArr[mon - 1];
+            const dim = dailyDisplayEndDay(year, mon);
             if (dailyData) {
               const cum = [];
               let sum = 0;
@@ -4142,6 +4141,22 @@
         return m >= 1 && m <= 12 ? m : null;
       }
       return null;
+    }
+
+    function daysInMonth(year, month) {
+      return new Date(Number(year), Number(month), 0).getDate();
+    }
+
+    function dailyDisplayEndDay(year, month) {
+      const y = Number(year);
+      const m = Number(month);
+      const dim = daysInMonth(y, m);
+      const now = new Date();
+      if (y === now.getFullYear() && m > now.getMonth() + 1) return 0;
+      if (y === now.getFullYear() && m === now.getMonth() + 1) {
+        return Math.min(now.getDate(), dim);
+      }
+      return dim;
     }
 
     function dailyRowsContainJingdai(rows, month) {
@@ -20460,16 +20475,18 @@
       return !allSelected && !noneSelected;
     }
 
-    function trimDailySeries(values) {
-      let lastValid = -1;
-      for (let i = values.length - 1; i >= 0; i--) {
-        if (values[i] !== null && values[i] !== undefined && values[i] > 0) {
-          lastValid = i;
-          break;
-        }
+    function completeDailySeries(values, year, month) {
+      if (!Array.isArray(values) || values.length === 0) return [];
+      const dim = dailyDisplayEndDay(year, month);
+      if (dim <= 0) return [];
+      const completed = [];
+      let running = 0;
+      for (let i = 0; i < dim; i++) {
+        const v = values[i];
+        if (v !== null && v !== undefined) running = Number(v) || 0;
+        completed.push(Math.round(running * 10) / 10);
       }
-      if (lastValid < 0) return [];
-      return values.slice(0, lastValid + 1).map(v => Math.round((v || 0) * 10) / 10);
+      return completed;
     }
 
     function findJingdaiChannelKey(channelMap) {
@@ -20482,7 +20499,7 @@
       const monthData = platformMock[year]?.month?.[String(month)]?.[premiumType];
       const key = findJingdaiChannelKey(monthData);
       if (!key || !Array.isArray(monthData[key]) || monthData[key].length === 0) return [];
-      return trimDailySeries(monthData[key]);
+      return completeDailySeries(monthData[key], year, month);
     }
 
     function getMonthDailyCumulative(year, premiumType, selectedKeys, month) {
@@ -20529,7 +20546,7 @@
             running += daily[i] || 0;
             cumulative[i] = running;
           }
-          const result = trimDailySeries(cumulative);
+          const result = completeDailySeries(cumulative, year, month);
           return result;
         }
         // org筛选激活但无org_daily数据 → 返回空，不回退到全机构聚合
@@ -20564,7 +20581,7 @@
           running += daily[i] || 0;
           cumulative[i] = running;
         }
-        const result = trimDailySeries(cumulative);
+        const result = completeDailySeries(cumulative, year, month);
         return result;
       }
 
@@ -20587,7 +20604,7 @@
           }
         }
         if (combined) {
-          const result = trimDailySeries(combined);
+          const result = completeDailySeries(combined, year, month);
           return result;
         }
       }
@@ -20605,13 +20622,24 @@
     function getPeriodDailyCumulative(year, premiumType, selectedKeys, monthList) {
       const labels = [];
       const values = [];
+      const monthSeriesMap = {};
+      let hasAnySeries = false;
+      monthList.forEach(month => {
+        const series = getMonthDailyCumulative(year, premiumType, selectedKeys, month);
+        monthSeriesMap[month] = series;
+        if (series.length > 0) hasAnySeries = true;
+      });
+      if (!hasAnySeries) return { labels: [], values: [] };
       let offset = 0;
       monthList.forEach(month => {
-        const monthSeries = getMonthDailyCumulative(year, premiumType, selectedKeys, month);
-        monthSeries.forEach((v, idx) => {
+        const monthSeries = monthSeriesMap[month] || [];
+        const dim = dailyDisplayEndDay(year, month);
+        if (dim <= 0) return;
+        for (let idx = 0; idx < dim; idx++) {
+          const v = monthSeries[idx] !== undefined ? monthSeries[idx] : (idx > 0 ? monthSeries[idx - 1] || 0 : 0);
           labels.push(`${month}月${idx + 1}日`);
           values.push(Math.round((offset + v) * 10) / 10);
-        });
+        }
         if (monthSeries.length > 0) offset += monthSeries[monthSeries.length - 1] || 0;
       });
       return { labels, values };

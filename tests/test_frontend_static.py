@@ -173,3 +173,14 @@ def test_upload_js_exposes_handle_file():
     assert "try {" in upload
     assert "} catch" in upload
     assert "} finally" in upload
+
+
+def test_platform_trend_uses_calendar_days_for_daily_series():
+    html = read_html()
+    assert "function daysInMonth(year, month)" in html
+    assert "function dailyDisplayEndDay(year, month)" in html
+    assert "new Date(Number(year), Number(month), 0).getDate()" in html
+    assert "m === now.getMonth() + 1" in html
+    assert "daysInMonthArr" not in html
+    assert "function trimDailySeries" not in html
+    assert "function completeDailySeries" in html

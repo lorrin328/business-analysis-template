@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import sys
+from datetime import date
 from contextlib import contextmanager
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -51,8 +52,10 @@ def test_jingdai_daily_not_double_counted_when_daily_contains_jingdai():
             {"month": 5, "day": 1, "qj_premium": 999},
         ],
     }
-    result = build_month_daily_cumulative(data, 2026, 5, [JINGDAI, "OTO"], "qj")
-    assert result["values"] == [30]
+    result = build_month_daily_cumulative(data, 2026, 5, [JINGDAI, "OTO"], "qj", as_of_date=date(2026, 6, 1))
+    assert len(result["values"]) == 31
+    assert result["values"][0] == 30
+    assert result["values"][-1] == 30
     assert result["jingdaiDeduped"] is True
 
 
@@ -88,7 +91,9 @@ def test_platform_trend_supports_year_quarter_and_month(monkeypatch):
 
     assert yearly["trend"]["values"][:4] == [15, 15, 15, 55]
     assert quarterly["trend"]["values"] == [15, 55, 55, 55]
-    assert monthly["daily"]["values"] == [15]
+    assert len(monthly["daily"]["values"]) == 31
+    assert monthly["daily"]["values"][0] == 15
+    assert monthly["daily"]["values"][-1] == 15
 
 
 def test_jingdai_org_filter_note():
@@ -136,7 +141,9 @@ def test_jingdai_daily_generated_when_date_fields_present():
         ],
     }
     result = build_month_daily_cumulative(data, 2026, 4, [JINGDAI], "qj")
-    assert result["values"] == [100, 150]
+    assert len(result["values"]) == 30
+    assert result["values"][:2] == [100, 150]
+    assert result["values"][-1] == 150
     assert result["hasRealDailyData"] is True
 
 
@@ -156,7 +163,9 @@ def test_monthly_daily_generated_without_explicit_month_param(monkeypatch):
     assert result["periodType"] == "month"
     assert result["periodValue"] == 4
     assert result.get("daily") is not None
-    assert result["daily"]["values"] == [30]
+    assert len(result["daily"]["values"]) == 30
+    assert result["daily"]["values"][0] == 30
+    assert result["daily"]["values"][-1] == 30
 
 
 def test_jingdai_daily_used_when_daily_performance_lacks_jingdai():
@@ -170,7 +179,9 @@ def test_jingdai_daily_used_when_daily_performance_lacks_jingdai():
         ],
     }
     result = build_month_daily_cumulative(data, 2026, 4, [JINGDAI, "OTO"], "qj")
-    assert result["values"] == [30]  # 10 (OTO) + 20 (jingdai)
+    assert len(result["values"]) == 30
+    assert result["values"][0] == 30  # 10 (OTO) + 20 (jingdai)
+    assert result["values"][-1] == 30
     assert result["jingdaiDeduped"] is False
 
 
@@ -186,7 +197,77 @@ def test_month_daily_cumulative_uses_common_cutoff_for_transform_and_jingdai():
     }
     result = build_month_daily_cumulative(data, 2026, 4, [JINGDAI, "OTO"], "qj")
     assert result["commonCutoffDay"] == 13
-    assert result["values"] == [30]
+    assert len(result["values"]) == 30
+    assert result["values"][11] == 0
+    assert result["values"][12] == 30
+    assert result["values"][-1] == 30
+
+
+def test_current_month_daily_cumulative_stops_at_as_of_day():
+    data = {
+        "daily_performance": [
+            {"month": 5, "day": 12, "channel": "OTO", "qj_premium": 100},
+            {"month": 5, "day": 24, "channel": "OTO", "qj_premium": 999},
+        ],
+        "jingdai_daily": [],
+    }
+
+    result = build_month_daily_cumulative(data, 2026, 5, ["OTO"], "qj", as_of_date=date(2026, 5, 23))
+
+    assert len(result["values"]) == 23
+    assert result["values"][10] == 0
+    assert result["values"][11] == 100
+    assert result["values"][-1] == 100
+
+
+def test_completed_comparison_month_daily_cumulative_extends_to_natural_month_end():
+    data = {
+        "daily_performance": [
+            {"month": 5, "day": 28, "channel": "证保", "qj_premium": 80},
+        ],
+        "jingdai_daily": [],
+    }
+
+    result = build_month_daily_cumulative(data, 2025, 5, ["证保"], "qj", as_of_date=date(2026, 5, 23))
+
+    assert len(result["values"]) == 31
+    assert result["values"][27] == 80
+    assert result["values"][-1] == 80
+
+
+def test_month_daily_cumulative_handles_february_leap_year():
+    leap = build_month_daily_cumulative(
+        {"daily_performance": [{"month": 2, "day": 1, "channel": "OTO", "qj_premium": 10}]},
+        2024,
+        2,
+        ["OTO"],
+        "qj",
+    )
+    normal = build_month_daily_cumulative(
+        {"daily_performance": [{"month": 2, "day": 1, "channel": "OTO", "qj_premium": 10}]},
+        2025,
+        2,
+        ["OTO"],
+        "qj",
+    )
+
+    assert len(leap["values"]) == 29
+    assert len(normal["values"]) == 28
+
+
+def test_previous_month_daily_cumulative_extends_to_natural_month_end():
+    data = {
+        "daily_performance": [
+            {"month": 4, "day": 23, "channel": "OTO", "qj_premium": 60},
+        ],
+        "jingdai_daily": [],
+    }
+
+    result = build_month_daily_cumulative(data, 2026, 4, ["OTO"], "qj", as_of_date=date(2026, 5, 23))
+
+    assert len(result["values"]) == 30
+    assert result["values"][22] == 60
+    assert result["values"][-1] == 60
 
 
 def test_period_cumulative_uses_common_cutoff_for_mixed_sources():
@@ -225,7 +306,9 @@ def test_jingdai_daily_not_doubled_when_daily_contains_jingdai():
         ],
     }
     result = build_month_daily_cumulative(data, 2026, 4, [JINGDAI, "OTO"], "qj")
-    assert result["values"] == [30]  # 20 (jingdai from daily) + 10 (OTO), NOT 20+10+999
+    assert len(result["values"]) == 30
+    assert result["values"][0] == 30  # 20 (jingdai from daily) + 10 (OTO), NOT 20+10+999
+    assert result["values"][-1] == 30
     assert result["jingdaiDeduped"] is True
 
 
@@ -263,8 +346,9 @@ def test_platform_trend_jingdai_month_with_daily():
     }
     result = build_month_daily_cumulative(data, 2026, 4, [JINGDAI], "qj")
     assert result["hasRealDailyData"] is True
-    assert len(result["values"]) == 2
-    assert result["values"] == [30, 50]
+    assert len(result["values"]) == 30
+    assert result["values"][:2] == [30, 50]
+    assert result["values"][-1] == 50
 
 
 def test_team_data_prev_year_loaded_for_2026():
@@ -314,8 +398,9 @@ def test_period_type_month_with_period_value_generates_daily(monkeypatch):
         month=None, period_type="month", period_value=4,
     )
     assert result.get("daily") is not None
-    assert len(result["daily"]["values"]) == 2
-    assert result["daily"]["values"] == [50, 75]
+    assert len(result["daily"]["values"]) == 30
+    assert result["daily"]["values"][:2] == [50, 75]
+    assert result["daily"]["values"][-1] == 75
 
 
 # --- New tests for Phase 2: quarter daily, ymd, date field candidates ---
@@ -331,13 +416,36 @@ def test_build_quarter_daily_cumulative_q2_jingdai():
             {"month": 6, "day": 1, "qj_premium": 40},
         ],
     }
-    result = build_quarter_daily_cumulative(data, 2026, 2, [JINGDAI], "qj")
+    result = build_quarter_daily_cumulative(data, 2026, 2, [JINGDAI], "qj", as_of_date=date(2026, 7, 1))
     assert result["hasRealDailyData"] is True
     assert result["quarterMonths"] == [4, 5, 6]
     # Day 4-1: 30, 4-2: 50, 5-1: 60, 6-1: 100
-    assert result["values"] == [30, 50, 60, 100]
+    assert len(result["values"]) == 91
+    assert result["values"][0] == 30
+    assert result["values"][1] == 50
+    assert result["values"][30] == 60
+    assert result["values"][61] == 100
+    assert result["values"][-1] == 100
     assert result["labels"][0] == "4-1"
-    assert result["labels"][3] == "6-1"
+    assert result["labels"][61] == "6-1"
+
+
+def test_current_quarter_daily_cumulative_stops_at_as_of_day():
+    data = {
+        "daily_performance": [
+            {"month": 4, "day": 1, "channel": "OTO", "qj_premium": 10},
+            {"month": 5, "day": 23, "channel": "OTO", "qj_premium": 20},
+            {"month": 6, "day": 1, "channel": "OTO", "qj_premium": 999},
+        ],
+        "jingdai_daily": [],
+    }
+
+    result = build_quarter_daily_cumulative(data, 2026, 2, ["OTO"], "qj", as_of_date=date(2026, 5, 23))
+
+    assert len(result["values"]) == 53
+    assert result["labels"][0] == "4-1"
+    assert result["labels"][-1] == "5-23"
+    assert result["values"][-1] == 30
 
 
 def test_build_quarter_daily_cumulative_q3_oto():
@@ -350,10 +458,14 @@ def test_build_quarter_daily_cumulative_q3_oto():
         ],
         "jingdai_daily": [],
     }
-    result = build_quarter_daily_cumulative(data, 2026, 3, ["OTO"], "qj")
+    result = build_quarter_daily_cumulative(data, 2026, 3, ["OTO"], "qj", as_of_date=date(2026, 10, 1))
     assert result["hasRealDailyData"] is True
     assert result["quarterMonths"] == [7, 8, 9]
-    assert result["values"] == [10, 25, 30]
+    assert len(result["values"]) == 92
+    assert result["values"][0] == 10
+    assert result["values"][1] == 25
+    assert result["values"][33] == 30
+    assert result["values"][-1] == 30
 
 
 def test_build_quarter_daily_cumulative_mixed_jingdai_and_transform():
@@ -368,10 +480,13 @@ def test_build_quarter_daily_cumulative_mixed_jingdai_and_transform():
             {"month": 4, "day": 2, "qj_premium": 10},
         ],
     }
-    result = build_quarter_daily_cumulative(data, 2026, 2, [JINGDAI, "OTO"], "qj")
+    result = build_quarter_daily_cumulative(data, 2026, 2, [JINGDAI, "OTO"], "qj", as_of_date=date(2026, 7, 1))
     assert result["hasRealDailyData"] is True
     # Day 4-1: 10(OTO) + 20(jd) = 30, Day 4-2: 50
-    assert result["values"] == [30, 50]
+    assert len(result["values"]) == 91
+    assert result["values"][0] == 30
+    assert result["values"][1] == 50
+    assert result["values"][-1] == 50
 
 
 def test_build_quarter_daily_cumulative_empty_returns_message():
@@ -396,14 +511,16 @@ def test_get_platform_trend_quarter_returns_daily(monkeypatch):
     }
     monkeypatch.setattr("services.query_service.get_platform_data", lambda year: data)
     result = get_platform_trend(
-        2026, channels=[JINGDAI], metric="qj",
+        2025, channels=[JINGDAI], metric="qj",
         period_type="quarter", period_value=2,
     )
     assert result["periodType"] == "quarter"
     assert result["periodValue"] == 2
     assert result.get("daily") is not None
     assert result["daily"]["hasRealDailyData"] is True
-    assert len(result["daily"]["values"]) == 2
+    assert len(result["daily"]["values"]) == 91
+    assert result["daily"]["values"][:2] == [50, 80]
+    assert result["daily"]["values"][-1] == 80
     assert result["daily"]["quarterMonths"] == [4, 5, 6]
 
 
