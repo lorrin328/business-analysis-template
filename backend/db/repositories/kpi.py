@@ -118,20 +118,31 @@ def get_kpi_data(year: int):
         query_month = min(available_cutoffs) if available_cutoffs else 1
 
         # ── 日级统计截止日（用于期交保费同比同口径截取） ──
-        c.execute('''
-            SELECT month, MAX(day) as max_day
-            FROM agg_daily_performance
-            WHERE year = ?
-            GROUP BY month
-            ORDER BY month DESC
-            LIMIT 1
-        ''', (year,))
-        daily_cutoff = c.fetchone()
-        if daily_cutoff and daily_cutoff['month']:
-            ytd_end_month = daily_cutoff['month']
-            ytd_end_day = daily_cutoff['max_day'] or 31
+        # 转型与经代必须按同一截止日计算。若两张日表截止日不同，统一取较早日期；
+        # 若任一日表缺失，则回退到共同月份的月级聚合，避免混用不同精度。
+        def _latest_daily_cutoff(table: str):
+            c.execute(f'''
+                SELECT month, MAX(day) as max_day
+                FROM {table}
+                WHERE year = ?
+                GROUP BY month
+                ORDER BY month DESC
+                LIMIT 1
+            ''', (year,))
+            row = c.fetchone()
+            if not row or not row['month']:
+                return None
+            return {'month': int(row['month']), 'day': int(row['max_day'] or 31)}
+
+        transform_daily_cutoff = _latest_daily_cutoff('agg_daily_performance')
+        jingdai_daily_cutoff = _latest_daily_cutoff('agg_jingdai_daily')
+        if transform_daily_cutoff and jingdai_daily_cutoff:
+            common_daily_cutoff = min(transform_daily_cutoff, jingdai_daily_cutoff, key=lambda x: (x['month'], x['day']))
+            ytd_end_month = common_daily_cutoff['month']
+            ytd_end_day = common_daily_cutoff['day']
             use_daily = True
         else:
+            common_daily_cutoff = None
             ytd_end_month = query_month
             ytd_end_day = 31
             use_daily = False
@@ -307,7 +318,14 @@ def get_kpi_data(year: int):
             'year': year,
             'month': query_month,
             'data_cutoff': data_cutoff,
-            'daily_cutoff': {'month': ytd_end_month, 'day': ytd_end_day, 'use_daily': use_daily},
+            'daily_cutoff': {
+                'month': ytd_end_month,
+                'day': ytd_end_day,
+                'use_daily': use_daily,
+                'common': common_daily_cutoff,
+                'transform': transform_daily_cutoff,
+                'jingdai': jingdai_daily_cutoff,
+            },
             'qj_premium': {
                 'jingdai': round(jingdai_qj, 2),
                 'oto': round(perf.get('OTO', 0), 2),

@@ -374,6 +374,77 @@ class TestProductConfig:
             conn.commit()
             conn.close()
 
+    def test_kpi_uses_common_daily_cutoff_for_transform_and_jingdai(self):
+        from db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            c = conn.cursor()
+            for table in [
+                "agg_daily_performance", "agg_jingdai_daily", "agg_performance",
+                "agg_jingdai", "agg_hr_data", "agg_value_data",
+            ]:
+                c.execute(f"DELETE FROM {table} WHERE year = 2095")
+            c.execute(
+                """
+                INSERT INTO agg_performance (year, month, channel, qj_premium, gm_premium, zs_premium)
+                VALUES (2095, 5, 'OTO', 999, 0, 0)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_jingdai (year, month, qj_premium, gm_premium, zs_premium)
+                VALUES (2095, 5, 999, 0, 0)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_hr_data (year, month, channel, start_headcount, end_headcount, active_headcount)
+                VALUES (2095, 5, 'OTO', 1, 1, 1)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_value_data (year, month, channel, value_premium)
+                VALUES (2095, 5, 'OTO', 1)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_daily_performance
+                    (year, month, day, channel, qj_premium, gm_premium, zs_premium)
+                VALUES
+                    (2095, 5, 13, 'OTO', 10, 0, 0)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_jingdai_daily
+                    (year, month, day, qj_premium, gm_premium, zs_premium)
+                VALUES
+                    (2095, 5, 13, 20, 0, 0),
+                    (2095, 5, 20, 30, 0, 0)
+                """
+            )
+            conn.commit()
+
+            data = get_kpi_data(2095)
+            assert data["daily_cutoff"]["month"] == 5
+            assert data["daily_cutoff"]["day"] == 13
+            assert data["daily_cutoff"]["common"] == {"month": 5, "day": 13}
+            assert data["daily_cutoff"]["transform"] == {"month": 5, "day": 13}
+            assert data["daily_cutoff"]["jingdai"] == {"month": 5, "day": 20}
+            assert data["qj_premium"]["oto"] == 10
+            assert data["qj_premium"]["jingdai"] == 20
+            assert data["qj_premium"]["total"] == 30
+        finally:
+            for table in [
+                "agg_daily_performance", "agg_jingdai_daily", "agg_performance",
+                "agg_jingdai", "agg_hr_data", "agg_value_data",
+            ]:
+                conn.execute(f"DELETE FROM {table} WHERE year = 2095")
+            conn.commit()
+            conn.close()
+
     def test_kpi_includes_configured_jingdai_product_categories(self, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "test-token")
 

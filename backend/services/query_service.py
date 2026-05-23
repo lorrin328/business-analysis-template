@@ -104,15 +104,35 @@ def build_month_daily_cumulative(
     raw_daily = platform_data.get("daily_performance") or []
     jd_daily = platform_data.get("jingdai_daily") or []
     daily_has_jingdai = _daily_contains_jingdai(raw_daily, month)
+    selected_transform_channels = [ch for ch in channels if ch != JINGDAI_LINE]
+
+    common_cutoff_day = None
+    if JINGDAI_LINE in channels and selected_transform_channels and not daily_has_jingdai:
+        transform_days = [
+            int(row.get("day") or 1)
+            for row in raw_daily
+            if normalize_month(row.get("month")) == month and row.get("channel") in selected_transform_channels
+        ]
+        jingdai_days = [
+            int(row.get("day") or 1)
+            for row in jd_daily
+            if normalize_month(row.get("month")) == month
+        ]
+        if transform_days and jingdai_days:
+            common_cutoff_day = min(max(transform_days), max(jingdai_days))
 
     for row in raw_daily:
+        day = int(row.get("day") or 1)
         if normalize_month(row.get("month")) == month and row.get("channel") in channels:
-            daily[int(row.get("day") or 1)] += float(row.get(col) or 0)
+            if common_cutoff_day is None or day <= common_cutoff_day:
+                daily[day] += float(row.get(col) or 0)
 
     if JINGDAI_LINE in channels and not daily_has_jingdai:
         for row in jd_daily:
+            day = int(row.get("day") or 1)
             if normalize_month(row.get("month")) == month:
-                daily[int(row.get("day") or 1)] += float(row.get(col) or 0)
+                if common_cutoff_day is None or day <= common_cutoff_day:
+                    daily[day] += float(row.get(col) or 0)
 
     labels, values = [], []
     running = 0.0
@@ -127,6 +147,7 @@ def build_month_daily_cumulative(
         "values": values,
         "hasRealDailyData": bool(values),
         "jingdaiDeduped": JINGDAI_LINE in channels and daily_has_jingdai,
+        "commonCutoffDay": common_cutoff_day,
         "message": "" if values else "No daily cumulative data",
     }
 
@@ -146,18 +167,41 @@ def build_quarter_daily_cumulative(
     all_daily = defaultdict(float)
     raw_daily = platform_data.get("daily_performance") or []
     jd_daily = platform_data.get("jingdai_daily") or []
+    selected_transform_channels = [ch for ch in channels if ch != JINGDAI_LINE]
+
+    common_cutoff = None
+    if JINGDAI_LINE in channels and selected_transform_channels:
+        transform_dates = [
+            (normalize_month(row.get("month")), int(row.get("day") or 1))
+            for row in raw_daily
+            if normalize_month(row.get("month")) in range(start_month, end_month + 1)
+            and row.get("channel") in selected_transform_channels
+        ]
+        jingdai_dates = [
+            (normalize_month(row.get("month")), int(row.get("day") or 1))
+            for row in jd_daily
+            if normalize_month(row.get("month")) in range(start_month, end_month + 1)
+        ]
+        transform_dates = [d for d in transform_dates if d[0]]
+        jingdai_dates = [d for d in jingdai_dates if d[0]]
+        if transform_dates and jingdai_dates:
+            common_cutoff = min(max(transform_dates), max(jingdai_dates))
 
     for month in range(start_month, end_month + 1):
         daily_has_jingdai = _daily_contains_jingdai(raw_daily, month)
 
         for row in raw_daily:
+            day = int(row.get("day") or 1)
             if normalize_month(row.get("month")) == month and row.get("channel") in channels:
-                all_daily[(month, int(row.get("day") or 1))] += float(row.get(col) or 0)
+                if common_cutoff is None or (month, day) <= common_cutoff:
+                    all_daily[(month, day)] += float(row.get(col) or 0)
 
         if JINGDAI_LINE in channels and not daily_has_jingdai:
             for row in jd_daily:
+                day = int(row.get("day") or 1)
                 if normalize_month(row.get("month")) == month:
-                    all_daily[(month, int(row.get("day") or 1))] += float(row.get(col) or 0)
+                    if common_cutoff is None or (month, day) <= common_cutoff:
+                        all_daily[(month, day)] += float(row.get(col) or 0)
 
     labels, values = [], []
     running = 0.0
@@ -172,6 +216,7 @@ def build_quarter_daily_cumulative(
         "values": values,
         "hasRealDailyData": bool(values),
         "quarterMonths": list(range(start_month, end_month + 1)),
+        "commonCutoff": {"month": common_cutoff[0], "day": common_cutoff[1]} if common_cutoff else None,
         "message": "" if values else "No quarter daily cumulative data",
     }
 

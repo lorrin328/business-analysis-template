@@ -80,6 +80,37 @@ class _DuplicateUpload(Exception):
     pass
 
 
+def _daily_cutoffs_by_year(rows: list[dict]) -> dict[int, tuple[int, int]]:
+    cutoffs: dict[int, tuple[int, int]] = {}
+    for row in rows or []:
+        year = row.get("year")
+        month = row.get("month")
+        day = row.get("day")
+        if not year or not month or not day:
+            continue
+        key = int(year)
+        value = (int(month), int(day))
+        if key not in cutoffs or value > cutoffs[key]:
+            cutoffs[key] = value
+    return cutoffs
+
+
+def _validate_daily_cutoff_alignment(performance_daily_rows: list[dict], jingdai_daily_rows: list[dict]) -> list[str]:
+    """Return fatal import errors when transform and jingdai daily cutoffs differ."""
+    perf_cutoffs = _daily_cutoffs_by_year(performance_daily_rows)
+    jd_cutoffs = _daily_cutoffs_by_year(jingdai_daily_rows)
+    errors = []
+    for year in sorted(set(perf_cutoffs) & set(jd_cutoffs)):
+        if perf_cutoffs[year] != jd_cutoffs[year]:
+            pm, pd = perf_cutoffs[year]
+            jm, jd = jd_cutoffs[year]
+            errors.append(
+                f"{year}年转型与经代日级数据截止日不一致：转型{pm}月{pd}日，经代{jm}月{jd}日；"
+                "请使用同一截止日的数据文件后重新导入。"
+            )
+    return errors
+
+
 
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
 
@@ -293,6 +324,12 @@ async def upload_files(
         }
         for row in org_hr_rows:
             row['active_headcount'] = org_active_index.get((row['year'], row['month'], row['org'], row['channel']), 0)
+
+    cutoff_errors = _validate_daily_cutoff_alignment(daily_rows, jd_daily_rows)
+    if cutoff_errors:
+        results["errors"].extend(cutoff_errors)
+        _set_import_status(results, has_written_rows=False)
+        raise HTTPException(status_code=400, detail=results)
 
     # 收集所有实际年份
     for rows in [perf_rows, daily_rows, org_daily_rows, jd_rows, jd_daily_rows, hr_rows, value_rows, product_rows, org_perf_rows, org_value_rows, org_hr_rows]:

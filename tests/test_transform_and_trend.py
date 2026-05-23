@@ -168,6 +168,21 @@ def test_jingdai_daily_used_when_daily_performance_lacks_jingdai():
     assert result["jingdaiDeduped"] is False
 
 
+def test_month_daily_cumulative_uses_common_cutoff_for_transform_and_jingdai():
+    data = {
+        "daily_performance": [
+            {"month": 4, "day": 13, "channel": "OTO", "qj_premium": 10},
+        ],
+        "jingdai_daily": [
+            {"month": 4, "day": 13, "qj_premium": 20},
+            {"month": 4, "day": 20, "qj_premium": 30},
+        ],
+    }
+    result = build_month_daily_cumulative(data, 2026, 4, [JINGDAI, "OTO"], "qj")
+    assert result["commonCutoffDay"] == 13
+    assert result["values"] == [30]
+
+
 def test_jingdai_daily_not_doubled_when_daily_contains_jingdai():
     """daily_performance 已含经代时，不重复叠加"""
     data = {
