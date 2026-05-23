@@ -96,19 +96,24 @@ def _daily_cutoffs_by_year(rows: list[dict]) -> dict[int, tuple[int, int]]:
 
 
 def _validate_daily_cutoff_alignment(performance_daily_rows: list[dict], jingdai_daily_rows: list[dict]) -> list[str]:
-    """Return fatal import errors when transform and jingdai daily cutoffs differ."""
+    """Return warnings when transform and jingdai daily cutoffs differ.
+
+    转型数据通常截至拉取当天，经代数据通常截至拉取日前一日。导入层保留真实
+    截止日，查询层在混合统计时自动按共同截止日截断，因此这里不再阻断导入。
+    """
     perf_cutoffs = _daily_cutoffs_by_year(performance_daily_rows)
     jd_cutoffs = _daily_cutoffs_by_year(jingdai_daily_rows)
-    errors = []
+    warnings = []
     for year in sorted(set(perf_cutoffs) & set(jd_cutoffs)):
         if perf_cutoffs[year] != jd_cutoffs[year]:
             pm, pd = perf_cutoffs[year]
             jm, jd = jd_cutoffs[year]
-            errors.append(
-                f"{year}年转型与经代日级数据截止日不一致：转型{pm}月{pd}日，经代{jm}月{jd}日；"
-                "请使用同一截止日的数据文件后重新导入。"
+            cm, cd = min(perf_cutoffs[year], jd_cutoffs[year])
+            warnings.append(
+                f"{year}年转型与经代日级数据截止日不同：转型{pm}月{pd}日，经代{jm}月{jd}日；"
+                f"混合统计将按共同截止日{cm}月{cd}日计算。"
             )
-    return errors
+    return warnings
 
 
 
@@ -325,11 +330,10 @@ async def upload_files(
         for row in org_hr_rows:
             row['active_headcount'] = org_active_index.get((row['year'], row['month'], row['org'], row['channel']), 0)
 
-    cutoff_errors = _validate_daily_cutoff_alignment(daily_rows, jd_daily_rows)
-    if cutoff_errors:
-        results["errors"].extend(cutoff_errors)
-        _set_import_status(results, has_written_rows=False)
-        raise HTTPException(status_code=400, detail=results)
+    cutoff_warnings = _validate_daily_cutoff_alignment(daily_rows, jd_daily_rows)
+    if cutoff_warnings:
+        results["cutoff_warnings"] = cutoff_warnings
+        logger.info("daily cutoff alignment warnings: %s", cutoff_warnings)
 
     # 收集所有实际年份
     for rows in [perf_rows, daily_rows, org_daily_rows, jd_rows, jd_daily_rows, hr_rows, value_rows, product_rows, org_perf_rows, org_value_rows, org_hr_rows]:

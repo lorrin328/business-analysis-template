@@ -10,7 +10,7 @@ from services.data_transform import FIELD_MAPPINGS, map_record_fields, normalize
 from config.orgs import ORG_LIST
 from services.query_service import (
     JINGDAI_LINE, build_month_daily_cumulative, build_quarter_daily_cumulative,
-    get_platform_trend, DEFAULT_TREND_LINES,
+    get_platform_trend, DEFAULT_TREND_LINES, build_period_cumulative,
 )
 from validators.data_validator import validate_rows
 from validators.org_validator import org_scope_note
@@ -70,9 +70,15 @@ def test_platform_trend_supports_year_quarter_and_month(monkeypatch):
             {"month": 1, "channel": "OTO", "qj_premium": 10},
             {"month": 4, "channel": "OTO", "qj_premium": 20},
         ],
-        "jingdai": [{"month": 1, "qj_premium": 5}],
-        "daily_performance": [{"month": 1, "day": 1, "channel": "OTO", "qj_premium": 10}],
-        "jingdai_daily": [{"month": 1, "day": 1, "qj_premium": 5}],
+        "jingdai": [{"month": 1, "qj_premium": 5}, {"month": 4, "qj_premium": 20}],
+        "daily_performance": [
+            {"month": 1, "day": 1, "channel": "OTO", "qj_premium": 10},
+            {"month": 4, "day": 1, "channel": "OTO", "qj_premium": 20},
+        ],
+        "jingdai_daily": [
+            {"month": 1, "day": 1, "qj_premium": 5},
+            {"month": 4, "day": 1, "qj_premium": 20},
+        ],
     }
     monkeypatch.setattr("services.query_service.get_platform_data", lambda year: data)
 
@@ -80,8 +86,8 @@ def test_platform_trend_supports_year_quarter_and_month(monkeypatch):
     quarterly = get_platform_trend(2026, channels=[JINGDAI, "OTO"], period_type="quarter")
     monthly = get_platform_trend(2026, month=1, channels=[JINGDAI, "OTO"], period_type="month")
 
-    assert yearly["trend"]["values"][:4] == [15, 15, 15, 35]
-    assert quarterly["trend"]["values"] == [15, 35, 35, 35]
+    assert yearly["trend"]["values"][:4] == [15, 15, 15, 55]
+    assert quarterly["trend"]["values"] == [15, 55, 55, 55]
     assert monthly["daily"]["values"] == [15]
 
 
@@ -172,15 +178,39 @@ def test_month_daily_cumulative_uses_common_cutoff_for_transform_and_jingdai():
     data = {
         "daily_performance": [
             {"month": 4, "day": 13, "channel": "OTO", "qj_premium": 10},
+            {"month": 4, "day": 14, "channel": "OTO", "qj_premium": 999},
         ],
         "jingdai_daily": [
             {"month": 4, "day": 13, "qj_premium": 20},
-            {"month": 4, "day": 20, "qj_premium": 30},
         ],
     }
     result = build_month_daily_cumulative(data, 2026, 4, [JINGDAI, "OTO"], "qj")
     assert result["commonCutoffDay"] == 13
     assert result["values"] == [30]
+
+
+def test_period_cumulative_uses_common_cutoff_for_mixed_sources():
+    data = {
+        "performance": [
+            {"month": 4, "channel": "OTO", "qj_premium": 1009},
+        ],
+        "jingdai": [
+            {"month": 4, "qj_premium": 20},
+        ],
+        "daily_performance": [
+            {"month": 4, "day": 13, "channel": "OTO", "qj_premium": 10},
+            {"month": 4, "day": 14, "channel": "OTO", "qj_premium": 999},
+        ],
+        "jingdai_daily": [
+            {"month": 4, "day": 13, "qj_premium": 20},
+        ],
+    }
+
+    result = build_period_cumulative(data, [JINGDAI, "OTO"], "qj", "year")
+
+    assert result["commonCutoff"] == {"month": 4, "day": 13}
+    assert result["values"][3] == 30
+    assert result["values"][4] == 30
 
 
 def test_jingdai_daily_not_doubled_when_daily_contains_jingdai():
@@ -600,6 +630,85 @@ def test_product_structure_accepts_separated_period_text(monkeypatch):
     )
     assert result["premium"] == [{"name": "测试产品", "value": 1.0}]
     assert "测试经代" in result["jingdaiOrgs"]
+
+
+def test_product_structure_mixed_sources_uses_common_daily_cutoff(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        '''
+        CREATE TABLE performance (
+            "日期" TEXT,
+            "业务模式" TEXT,
+            "产品类型" TEXT,
+            "期交保费" REAL,
+            "承保件数" INTEGER,
+            "销售机构名称" TEXT
+        )
+        '''
+    )
+    conn.execute(
+        '''
+        CREATE TABLE jingdai (
+            "时间" TEXT,
+            "经代机构" TEXT,
+            "产品名称" TEXT,
+            "期交保费" REAL
+        )
+        '''
+    )
+    conn.execute(
+        '''
+        CREATE TABLE agg_daily_performance (
+            year INTEGER, month INTEGER, day INTEGER, channel TEXT, qj_premium REAL
+        )
+        '''
+    )
+    conn.execute(
+        '''
+        CREATE TABLE agg_jingdai_daily (
+            year INTEGER, month INTEGER, day INTEGER, qj_premium REAL
+        )
+        '''
+    )
+    conn.executemany(
+        'INSERT INTO performance VALUES (?, ?, ?, ?, ?, ?)',
+        [
+            ("2026-05-22", "OTO", "转型产品", 10000, 1, "上海"),
+            ("2026-05-23", "OTO", "转型产品", 90000, 9, "上海"),
+        ],
+    )
+    conn.execute(
+        'INSERT INTO jingdai VALUES (?, ?, ?, ?)',
+        ("2026-05-22", "测试经代", "经代产品", 20000),
+    )
+    conn.executemany(
+        'INSERT INTO agg_daily_performance VALUES (?, ?, ?, ?, ?)',
+        [(2026, 5, 22, "OTO", 1), (2026, 5, 23, "OTO", 9)],
+    )
+    conn.execute(
+        'INSERT INTO agg_jingdai_daily VALUES (?, ?, ?, ?)',
+        (2026, 5, 22, 2),
+    )
+
+    @contextmanager
+    def fake_get_db():
+        yield conn
+
+    monkeypatch.setattr(product_repo, "get_db", fake_get_db)
+    result = product_repo.get_product_structure(
+        2026,
+        dimension="product_mix",
+        transform_lines=["OTO"],
+        jingdai_orgs=[],
+        include_transform=True,
+        include_jingdai=True,
+        months=[5],
+    )
+    premium = {row["name"]: row["value"] for row in result["premium"]}
+
+    assert premium["转型-转型产品"] == 1.0
+    assert premium["经代-经代产品"] == 2.0
 
 
 def test_product_structure_normalizes_transform_channel_aliases():

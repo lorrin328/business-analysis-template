@@ -9,6 +9,7 @@ import pytest
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 
+pytest.importorskip("fastapi")
 from main import _check_skip, _set_import_status, _validate_daily_cutoff_alignment
 from services.import_safety import RawIncrementalWriteError, write_raw_table_incremental
 
@@ -45,13 +46,13 @@ def test_import_status_marks_partial_data_integrity():
     assert result["data_integrity"]["errorCount"] == 1
 
 
-def test_import_rejects_mismatched_transform_and_jingdai_daily_cutoffs():
-    errors = _validate_daily_cutoff_alignment(
+def test_import_warns_for_mismatched_transform_and_jingdai_daily_cutoffs():
+    warnings = _validate_daily_cutoff_alignment(
         [{"year": 2026, "month": 5, "day": 13}],
         [{"year": 2026, "month": 5, "day": 20}],
     )
-    assert len(errors) == 1
-    assert "截止日不一致" in errors[0]
+    assert len(warnings) == 1
+    assert "混合统计将按共同截止日5月13日计算" in warnings[0]
 
 
 def test_import_accepts_aligned_transform_and_jingdai_daily_cutoffs():

@@ -48,6 +48,45 @@ def _period_labels(period_type: str) -> list[str]:
     return [str(i) for i in range(1, 13)]
 
 
+def _max_daily_date(rows: list[dict], months: set[int] | None = None, channels: list[str] | None = None):
+    dates = []
+    for row in rows:
+        month = normalize_month(row.get("month"))
+        if not month or (months and month not in months):
+            continue
+        if channels is not None and row.get("channel") not in channels:
+            continue
+        day = int(row.get("day") or 1)
+        dates.append((month, day))
+    return max(dates) if dates else None
+
+
+def _common_mixed_cutoff(
+    platform_data: dict,
+    channels: list[str],
+    months: set[int] | None = None,
+):
+    """Return the shared source cutoff when transform and jingdai are both selected."""
+    selected_transform_channels = [ch for ch in channels if ch != JINGDAI_LINE]
+    if JINGDAI_LINE not in channels or not selected_transform_channels:
+        return None
+
+    raw_daily = platform_data.get("daily_performance") or []
+    jd_daily = platform_data.get("jingdai_daily") or []
+    transform_cutoff = _max_daily_date(raw_daily, months, selected_transform_channels)
+    if _daily_contains_jingdai(raw_daily):
+        jingdai_cutoff = _max_daily_date(raw_daily, months, [JINGDAI_LINE])
+    else:
+        jingdai_cutoff = _max_daily_date(jd_daily, months)
+    if transform_cutoff and jingdai_cutoff:
+        return min(transform_cutoff, jingdai_cutoff)
+    return None
+
+
+def _date_lte(month: int, day: int, cutoff: tuple[int, int]) -> bool:
+    return (month, day) <= cutoff
+
+
 def build_period_cumulative(
     platform_data: dict,
     channels: list[str],
@@ -59,20 +98,38 @@ def build_period_cumulative(
     period_amounts = defaultdict(float)
     raw_performance = platform_data.get("performance") or []
     jingdai_rows = platform_data.get("jingdai") or []
+    raw_daily = platform_data.get("daily_performance") or []
+    jd_daily = platform_data.get("jingdai_daily") or []
     performance_has_jingdai = _daily_contains_jingdai(raw_performance)
+    common_cutoff = _common_mixed_cutoff(platform_data, channels, set(range(1, 13)))
 
-    for row in raw_performance:
-        month = normalize_month(row.get("month"))
-        if not month or row.get("channel") not in channels:
-            continue
-        period_amounts[_period_index(month, period_type)] += float(row.get(col) or 0)
-
-    if JINGDAI_LINE in channels and not performance_has_jingdai:
-        for row in jingdai_rows:
+    if common_cutoff:
+        daily_has_jingdai = _daily_contains_jingdai(raw_daily)
+        for row in raw_daily:
             month = normalize_month(row.get("month"))
-            if not month:
+            day = int(row.get("day") or 1)
+            if not month or row.get("channel") not in channels or not _date_lte(month, day, common_cutoff):
                 continue
             period_amounts[_period_index(month, period_type)] += float(row.get(col) or 0)
+        if JINGDAI_LINE in channels and not daily_has_jingdai:
+            for row in jd_daily:
+                month = normalize_month(row.get("month"))
+                day = int(row.get("day") or 1)
+                if month and _date_lte(month, day, common_cutoff):
+                    period_amounts[_period_index(month, period_type)] += float(row.get(col) or 0)
+    else:
+        for row in raw_performance:
+            month = normalize_month(row.get("month"))
+            if not month or row.get("channel") not in channels:
+                continue
+            period_amounts[_period_index(month, period_type)] += float(row.get(col) or 0)
+
+        if JINGDAI_LINE in channels and not performance_has_jingdai:
+            for row in jingdai_rows:
+                month = normalize_month(row.get("month"))
+                if not month:
+                    continue
+                period_amounts[_period_index(month, period_type)] += float(row.get(col) or 0)
 
     values = []
     running = 0.0
@@ -88,6 +145,7 @@ def build_period_cumulative(
         "hasData": has_data,
         "message": "" if has_data else "No period trend data",
         "jingdaiDeduped": JINGDAI_LINE in channels and performance_has_jingdai,
+        "commonCutoff": {"month": common_cutoff[0], "day": common_cutoff[1]} if common_cutoff else None,
     }
 
 
@@ -106,20 +164,8 @@ def build_month_daily_cumulative(
     daily_has_jingdai = _daily_contains_jingdai(raw_daily, month)
     selected_transform_channels = [ch for ch in channels if ch != JINGDAI_LINE]
 
-    common_cutoff_day = None
-    if JINGDAI_LINE in channels and selected_transform_channels and not daily_has_jingdai:
-        transform_days = [
-            int(row.get("day") or 1)
-            for row in raw_daily
-            if normalize_month(row.get("month")) == month and row.get("channel") in selected_transform_channels
-        ]
-        jingdai_days = [
-            int(row.get("day") or 1)
-            for row in jd_daily
-            if normalize_month(row.get("month")) == month
-        ]
-        if transform_days and jingdai_days:
-            common_cutoff_day = min(max(transform_days), max(jingdai_days))
+    common_cutoff = _common_mixed_cutoff(platform_data, channels, {month})
+    common_cutoff_day = common_cutoff[1] if common_cutoff else None
 
     for row in raw_daily:
         day = int(row.get("day") or 1)
@@ -169,23 +215,11 @@ def build_quarter_daily_cumulative(
     jd_daily = platform_data.get("jingdai_daily") or []
     selected_transform_channels = [ch for ch in channels if ch != JINGDAI_LINE]
 
-    common_cutoff = None
-    if JINGDAI_LINE in channels and selected_transform_channels:
-        transform_dates = [
-            (normalize_month(row.get("month")), int(row.get("day") or 1))
-            for row in raw_daily
-            if normalize_month(row.get("month")) in range(start_month, end_month + 1)
-            and row.get("channel") in selected_transform_channels
-        ]
-        jingdai_dates = [
-            (normalize_month(row.get("month")), int(row.get("day") or 1))
-            for row in jd_daily
-            if normalize_month(row.get("month")) in range(start_month, end_month + 1)
-        ]
-        transform_dates = [d for d in transform_dates if d[0]]
-        jingdai_dates = [d for d in jingdai_dates if d[0]]
-        if transform_dates and jingdai_dates:
-            common_cutoff = min(max(transform_dates), max(jingdai_dates))
+    common_cutoff = _common_mixed_cutoff(
+        platform_data,
+        channels,
+        set(range(start_month, end_month + 1)),
+    )
 
     for month in range(start_month, end_month + 1):
         daily_has_jingdai = _daily_contains_jingdai(raw_daily, month)

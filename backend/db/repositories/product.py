@@ -33,6 +33,80 @@ def _append_period_filter(column: str, year: int, months: list[int] | None, para
     return clause
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    try:
+        return {row[1] for row in conn.execute(f'PRAGMA table_info("{table}")').fetchall()}
+    except sqlite3.OperationalError:
+        return set()
+
+
+def _pick_existing_column(conn: sqlite3.Connection, table: str, candidates: list[str]) -> str | None:
+    columns = _table_columns(conn, table)
+    for col in candidates:
+        if col in columns:
+            return col
+    return None
+
+
+def _max_daily_cutoff(conn: sqlite3.Connection, table: str, year: int, months: list[int] | None, channels: list[str] | None = None):
+    params: list = [year]
+    where = 'year = ?'
+    if months:
+        placeholders = ','.join(['?'] * len(months))
+        where += f' AND month IN ({placeholders})'
+        params.extend(months)
+    if channels:
+        placeholders = ','.join(['?'] * len(channels))
+        where += f' AND channel IN ({placeholders})'
+        params.extend(channels)
+    try:
+        row = conn.execute(f'''
+            SELECT month, day
+            FROM {table}
+            WHERE {where}
+            ORDER BY month DESC, day DESC
+            LIMIT 1
+        ''', params).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row:
+        return None
+    return (int(row['month']), int(row['day']))
+
+
+def _common_mixed_cutoff(
+    conn: sqlite3.Connection,
+    year: int,
+    months: list[int] | None,
+    transform_lines: list[str],
+    include_transform: bool,
+    include_jingdai: bool,
+):
+    if not (include_transform and include_jingdai and transform_lines):
+        return None
+    transform_cutoff = _max_daily_cutoff(conn, 'agg_daily_performance', year, months, transform_lines)
+    jingdai_cutoff = _max_daily_cutoff(conn, 'agg_jingdai_daily', year, months)
+    if transform_cutoff and jingdai_cutoff:
+        return min(transform_cutoff, jingdai_cutoff)
+    return None
+
+
+def _append_cutoff_filter(column: str, cutoff: tuple[int, int] | None, params: list) -> str:
+    if not cutoff:
+        return ''
+    expr = _compact_period_expr(column)
+    params.extend([cutoff[0], cutoff[0], cutoff[1]])
+    return f'''
+      AND (
+        CAST(substr({expr}, 5, 2) AS INTEGER) < ?
+        OR (
+          CAST(substr({expr}, 5, 2) AS INTEGER) = ?
+          AND COALESCE(NULLIF(CAST(substr({expr}, 7, 2) AS INTEGER), 0), 31) <= ?
+        )
+      )
+    '''
+
+
 def _query_product_structure_raw(
     conn: sqlite3.Connection,
     year: int,
@@ -62,7 +136,16 @@ def _query_product_structure_raw(
     if include_transform and raw_transform_line_list:
         try:
             t_params: list = []
-            extra_where = _append_period_filter('年月', year, months, t_params)
+            transform_time_col = _pick_existing_column(
+                conn,
+                'performance',
+                ['年月日', '入账时间', '日期', '出单日期', '投保日期', '承保日期', '年月'],
+            ) or '年月'
+            cutoff = _common_mixed_cutoff(
+                conn, year, months, sorted(normalized_transform_lines), include_transform, include_jingdai
+            )
+            extra_where = _append_period_filter(transform_time_col, year, months, t_params)
+            extra_where += _append_cutoff_filter(transform_time_col, cutoff, t_params)
             if orgs:
                 o_placeholders = ','.join(['?'] * len(orgs))
                 extra_where += f' AND "销售机构名称" IN ({o_placeholders})'
@@ -88,7 +171,16 @@ def _query_product_structure_raw(
     if include_jingdai:
         try:
             jd_params: list = []
-            jd_extra_where = _append_period_filter('时间', year, months, jd_params)
+            jingdai_time_col = _pick_existing_column(
+                conn,
+                'jingdai',
+                ['年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期', '时间', '年月'],
+            ) or '时间'
+            cutoff = _common_mixed_cutoff(
+                conn, year, months, sorted(normalized_transform_lines), include_transform, include_jingdai
+            )
+            jd_extra_where = _append_period_filter(jingdai_time_col, year, months, jd_params)
+            jd_extra_where += _append_cutoff_filter(jingdai_time_col, cutoff, jd_params)
             org_clause = ''
             if jingdai_orgs:
                 placeholders = ','.join(['?'] * len(jingdai_orgs))
