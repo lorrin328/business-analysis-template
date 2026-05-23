@@ -435,23 +435,23 @@ class TestProductConfig:
                     (2095, 5, 13, '转型', 'OTO', '上海', 8),
                     (2095, 5, 14, '转型', 'OTO', '上海', 999),
                     (2095, 5, 13, '经代', '', '支付宝', 18),
-                    (2095, 5, 20, '经代', '', '支付宝', 999)
+                    (2095, 5, 20, '经代', '', '支付宝', 28)
                 """
             )
             conn.commit()
 
             data = get_kpi_data(2095)
             assert data["daily_cutoff"]["month"] == 5
-            assert data["daily_cutoff"]["day"] == 13
+            assert data["daily_cutoff"]["day"] == 20
             assert data["daily_cutoff"]["common"] == {"month": 5, "day": 13}
             assert data["daily_cutoff"]["transform"] == {"month": 5, "day": 13}
             assert data["daily_cutoff"]["jingdai"] == {"month": 5, "day": 20}
             assert data["qj_premium"]["oto"] == 10
-            assert data["qj_premium"]["jingdai"] == 20
-            assert data["qj_premium"]["total"] == 30
+            assert data["qj_premium"]["jingdai"] == 50
+            assert data["qj_premium"]["total"] == 60
             assert data["longterm_qj_tf"] == 8
-            assert data["longterm_qj_jd"] == 18
-            assert data["longterm_qj"] == 26
+            assert data["longterm_qj_jd"] == 46
+            assert data["longterm_qj"] == 54
             assert data["longterm_qj"] < data["qj_premium"]["total"]
         finally:
             for table in [

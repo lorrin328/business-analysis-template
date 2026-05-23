@@ -118,8 +118,8 @@ def get_kpi_data(year: int):
         query_month = min(available_cutoffs) if available_cutoffs else 1
 
         # ── 日级统计截止日（用于期交保费同比同口径截取） ──
-        # 转型与经代必须按同一截止日计算。若两张日表截止日不同，统一取较早日期；
-        # 若任一日表缺失，则回退到共同月份的月级聚合，避免混用不同精度。
+        # 转型业务与经代业务来自不同报表：转型更新到拉取当天，经代截至前一日。
+        # KPI 按各自真实截止日取数，不再用共同较早日期截断转型。
         def _latest_daily_cutoff(table: str):
             c.execute(f'''
                 SELECT month, MAX(day) as max_day
@@ -138,8 +138,11 @@ def get_kpi_data(year: int):
         jingdai_daily_cutoff = _latest_daily_cutoff('agg_jingdai_daily')
         if transform_daily_cutoff and jingdai_daily_cutoff:
             common_daily_cutoff = min(transform_daily_cutoff, jingdai_daily_cutoff, key=lambda x: (x['month'], x['day']))
-            ytd_end_month = common_daily_cutoff['month']
-            ytd_end_day = common_daily_cutoff['day']
+            ytd_end_month = max(transform_daily_cutoff['month'], jingdai_daily_cutoff['month'])
+            ytd_end_day = max(
+                transform_daily_cutoff['day'] if transform_daily_cutoff['month'] == ytd_end_month else 0,
+                jingdai_daily_cutoff['day'] if jingdai_daily_cutoff['month'] == ytd_end_month else 0,
+            ) or 31
             use_daily = True
         else:
             common_daily_cutoff = None
@@ -147,32 +150,39 @@ def get_kpi_data(year: int):
             ytd_end_day = 31
             use_daily = False
 
+        def _date_filter_sql(cutoff: dict) -> tuple[str, list[int]]:
+            return '(month < ? OR (month = ? AND day <= ?))', [
+                cutoff['month'], cutoff['month'], cutoff['day']
+            ]
+
         def _ytd_premiums_daily(query_year: int) -> dict:
             """从日累计表取截至统计日的期交保费，按 channel 汇总。"""
             result = {}
-            if not use_daily:
+            if not use_daily or not transform_daily_cutoff:
                 return result
+            date_sql, date_params = _date_filter_sql(transform_daily_cutoff)
             c.execute('''
                 SELECT channel, SUM(qj_premium) AS total
                 FROM agg_daily_performance
                 WHERE year = ?
-                  AND (month < ? OR (month = ? AND day <= ?))
+                  AND ''' + date_sql + '''
                 GROUP BY channel
-            ''', (query_year, ytd_end_month, ytd_end_month, ytd_end_day))
+            ''', [query_year, *date_params])
             for r in c.fetchall():
                 result[r['channel']] = round(r['total'] or 0, 2)
             return result
 
         def _ytd_jingdai_daily(query_year: int) -> float:
             """从经代日累计表取截至统计日的期交保费。"""
-            if not use_daily:
+            if not use_daily or not jingdai_daily_cutoff:
                 return 0.0
+            date_sql, date_params = _date_filter_sql(jingdai_daily_cutoff)
             c.execute('''
                 SELECT SUM(qj_premium) AS total
                 FROM agg_jingdai_daily
                 WHERE year = ?
-                  AND (month < ? OR (month = ? AND day <= ?))
-            ''', (query_year, ytd_end_month, ytd_end_month, ytd_end_day))
+                  AND ''' + date_sql + '''
+            ''', [query_year, *date_params])
             row = c.fetchone()
             return round(row['total'] or 0, 2) if row else 0.0
 
@@ -244,12 +254,21 @@ def get_kpi_data(year: int):
             info.update(hr_prev_latest.get(ch, {}))
             if not info.get('avg'): info['avg'] = 0
 
-        # 长险期交（YTD）。有日级共同截止日时，与期交保费使用同一统计日。
-        longterm_where = 'year = ? AND month <= ?'
-        longterm_params = [year, ytd_end_month]
-        if use_daily:
-            longterm_where = 'year = ? AND (month < ? OR (month = ? AND day <= ?))'
-            longterm_params = [year, ytd_end_month, ytd_end_month, ytd_end_day]
+        def _longterm_where_params(query_year: int) -> tuple[str, list[int]]:
+            where = 'year = ? AND month <= ?'
+            params: list[int] = [query_year, ytd_end_month]
+            if use_daily and transform_daily_cutoff and jingdai_daily_cutoff:
+                transform_sql, transform_params = _date_filter_sql(transform_daily_cutoff)
+                jingdai_sql, jingdai_params = _date_filter_sql(jingdai_daily_cutoff)
+                where = f'''year = ? AND (
+                    (business_type = '转型' AND {transform_sql})
+                    OR (business_type = '经代' AND {jingdai_sql})
+                )'''
+                params = [query_year, *transform_params, *jingdai_params]
+            return where, params
+
+        # 长险期交（YTD）。按业务线各自日级截止日，与期交保费保持同源同口径。
+        longterm_where, longterm_params = _longterm_where_params(year)
         c.execute(f'''
             SELECT business_type, channel, SUM(qj_premium) AS total
             FROM agg_longterm_qj WHERE {longterm_where} GROUP BY business_type, channel
@@ -263,11 +282,7 @@ def get_kpi_data(year: int):
             else: lt_jd += v
         lt_total = lt_tf + lt_jd
 
-        prev_longterm_where = 'year = ? AND month <= ?'
-        prev_longterm_params = [year - 1, ytd_end_month]
-        if use_daily:
-            prev_longterm_where = 'year = ? AND (month < ? OR (month = ? AND day <= ?))'
-            prev_longterm_params = [year - 1, ytd_end_month, ytd_end_month, ytd_end_day]
+        prev_longterm_where, prev_longterm_params = _longterm_where_params(year - 1)
         c.execute(f'''
             SELECT business_type, channel, SUM(qj_premium) AS total
             FROM agg_longterm_qj WHERE {prev_longterm_where} GROUP BY business_type, channel
