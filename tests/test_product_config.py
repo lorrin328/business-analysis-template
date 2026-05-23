@@ -383,7 +383,7 @@ class TestProductConfig:
             c = conn.cursor()
             for table in [
                 "agg_daily_performance", "agg_jingdai_daily", "agg_performance",
-                "agg_jingdai", "agg_hr_data", "agg_value_data",
+                "agg_jingdai", "agg_hr_data", "agg_value_data", "agg_longterm_qj",
             ]:
                 c.execute(f"DELETE FROM {table} WHERE year = 2095")
             c.execute(
@@ -427,6 +427,17 @@ class TestProductConfig:
                     (2095, 5, 20, 30, 0, 0)
                 """
             )
+            c.execute(
+                """
+                INSERT INTO agg_longterm_qj
+                    (year, month, day, business_type, channel, org, qj_premium)
+                VALUES
+                    (2095, 5, 13, '转型', 'OTO', '上海', 8),
+                    (2095, 5, 14, '转型', 'OTO', '上海', 999),
+                    (2095, 5, 13, '经代', '', '支付宝', 18),
+                    (2095, 5, 20, '经代', '', '支付宝', 999)
+                """
+            )
             conn.commit()
 
             data = get_kpi_data(2095)
@@ -438,10 +449,14 @@ class TestProductConfig:
             assert data["qj_premium"]["oto"] == 10
             assert data["qj_premium"]["jingdai"] == 20
             assert data["qj_premium"]["total"] == 30
+            assert data["longterm_qj_tf"] == 8
+            assert data["longterm_qj_jd"] == 18
+            assert data["longterm_qj"] == 26
+            assert data["longterm_qj"] < data["qj_premium"]["total"]
         finally:
             for table in [
                 "agg_daily_performance", "agg_jingdai_daily", "agg_performance",
-                "agg_jingdai", "agg_hr_data", "agg_value_data",
+                "agg_jingdai", "agg_hr_data", "agg_value_data", "agg_longterm_qj",
             ]:
                 conn.execute(f"DELETE FROM {table} WHERE year = 2095")
             conn.commit()

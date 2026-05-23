@@ -97,7 +97,7 @@ def get_kpi_data(year: int):
 
     期交保费 YTD 优先使用日累计表（agg_daily_performance / agg_jingdai_daily），
     按「统计日」口径截取去年同期，即截至上一年的同一日。
-    人力、价值、长险期交等无日维度的指标仍按月级精度计算。
+    人力、价值等无日维度的指标仍按月级精度计算。
     """
     with get_db() as conn:
         c = conn.cursor()
@@ -244,11 +244,16 @@ def get_kpi_data(year: int):
             info.update(hr_prev_latest.get(ch, {}))
             if not info.get('avg'): info['avg'] = 0
 
-        # 长险期交（YTD，月级精度，无日维度表）
-        c.execute('''
+        # 长险期交（YTD）。有日级共同截止日时，与期交保费使用同一统计日。
+        longterm_where = 'year = ? AND month <= ?'
+        longterm_params = [year, ytd_end_month]
+        if use_daily:
+            longterm_where = 'year = ? AND (month < ? OR (month = ? AND day <= ?))'
+            longterm_params = [year, ytd_end_month, ytd_end_month, ytd_end_day]
+        c.execute(f'''
             SELECT business_type, channel, SUM(qj_premium) AS total
-            FROM agg_longterm_qj WHERE year = ? AND month <= ? GROUP BY business_type, channel
-        ''', (year, ytd_end_month))
+            FROM agg_longterm_qj WHERE {longterm_where} GROUP BY business_type, channel
+        ''', longterm_params)
         lt_qj = {}; lt_tf = 0.0; lt_jd = 0.0
         for r in c.fetchall():
             v = round(r['total'] or 0, 2)
@@ -258,10 +263,15 @@ def get_kpi_data(year: int):
             else: lt_jd += v
         lt_total = lt_tf + lt_jd
 
-        c.execute('''
+        prev_longterm_where = 'year = ? AND month <= ?'
+        prev_longterm_params = [year - 1, ytd_end_month]
+        if use_daily:
+            prev_longterm_where = 'year = ? AND (month < ? OR (month = ? AND day <= ?))'
+            prev_longterm_params = [year - 1, ytd_end_month, ytd_end_month, ytd_end_day]
+        c.execute(f'''
             SELECT business_type, channel, SUM(qj_premium) AS total
-            FROM agg_longterm_qj WHERE year = ? AND month <= ? GROUP BY business_type, channel
-        ''', (year - 1, ytd_end_month))
+            FROM agg_longterm_qj WHERE {prev_longterm_where} GROUP BY business_type, channel
+        ''', prev_longterm_params)
         lt_qj_prev = {}; lt_tf_prev = 0.0; lt_jd_prev = 0.0
         for r in c.fetchall():
             v = round(r['total'] or 0, 2)

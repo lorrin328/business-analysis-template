@@ -92,9 +92,11 @@ def init_db():
 
         c.execute('''CREATE TABLE IF NOT EXISTS agg_longterm_qj (
             id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
+            day INTEGER NOT NULL DEFAULT 1,
             business_type TEXT NOT NULL, channel TEXT NOT NULL DEFAULT '', org TEXT NOT NULL DEFAULT '',
             qj_premium REAL NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(year, month, business_type, channel, org))''')
+            UNIQUE(year, month, day, business_type, channel, org))''')
+        _migrate_longterm_qj_daily(c)
 
         c.execute('''CREATE TABLE IF NOT EXISTS agg_daily_performance (
             id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
@@ -223,3 +225,42 @@ def _migrate_product_config_unique(c):
         FROM product_config_old
     ''')
     c.execute("DROP TABLE product_config_old")
+
+
+def _migrate_longterm_qj_daily(c):
+    columns = [row[1] for row in c.execute("PRAGMA table_info(agg_longterm_qj)").fetchall()]
+    indexes = c.execute("PRAGMA index_list(agg_longterm_qj)").fetchall()
+    has_daily_unique = False
+    has_monthly_unique = False
+    for idx in indexes:
+        if not idx[2]:
+            continue
+        idx_cols = [row[2] for row in c.execute(f"PRAGMA index_info({idx[1]})").fetchall()]
+        if idx_cols == ["year", "month", "day", "business_type", "channel", "org"]:
+            has_daily_unique = True
+        if idx_cols == ["year", "month", "business_type", "channel", "org"]:
+            has_monthly_unique = True
+    if "day" in columns and has_daily_unique:
+        return
+
+    c.execute("ALTER TABLE agg_longterm_qj RENAME TO agg_longterm_qj_old")
+    c.execute('''CREATE TABLE agg_longterm_qj (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        year INTEGER NOT NULL,
+        month INTEGER NOT NULL,
+        day INTEGER NOT NULL DEFAULT 1,
+        business_type TEXT NOT NULL,
+        channel TEXT NOT NULL DEFAULT '',
+        org TEXT NOT NULL DEFAULT '',
+        qj_premium REAL NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(year, month, day, business_type, channel, org))''')
+    old_day_expr = "day" if "day" in columns else "1"
+    c.execute(f'''
+        INSERT OR IGNORE INTO agg_longterm_qj
+            (id, year, month, day, business_type, channel, org, qj_premium, created_at)
+        SELECT id, year, month, COALESCE({old_day_expr}, 1), business_type,
+               COALESCE(channel, ''), COALESCE(org, ''), qj_premium, created_at
+        FROM agg_longterm_qj_old
+    ''')
+    c.execute("DROP TABLE agg_longterm_qj_old")

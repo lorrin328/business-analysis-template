@@ -63,12 +63,13 @@ def aggregate_transform_longterm(df: pd.DataFrame) -> List[Dict]:
         logger = __import__('logging').getLogger('business-analysis')
         logger.warning("aggregate_transform_longterm: 长短险 column not found, keeping all %s rows", len(work))
 
-    grouped = work.groupby(['_year', '_month', '_channel', '_org'], dropna=False)
+    grouped = work.groupby(['_year', '_month', '_day', '_channel', '_org'], dropna=False)
     rows = []
-    for (year, month, channel, org), group in grouped:
+    for (year, month, day, channel, org), group in grouped:
         rows.append({
             'year': int(year),
             'month': int(month),
+            'day': int(day),
             'business_type': '转型',
             'channel': str(channel),
             'org': str(org),
@@ -98,12 +99,13 @@ def aggregate_jingdai_longterm(df: pd.DataFrame) -> List[Dict]:
         is_short = is_term & (pay_num == 1)
         work = work[~is_short]
 
-    grouped = work.groupby(['_year', '_month', '_org'], dropna=False)
+    grouped = work.groupby(['_year', '_month', '_day', '_org'], dropna=False)
     rows = []
-    for (year, month, org), group in grouped:
+    for (year, month, day, org), group in grouped:
         rows.append({
             'year': int(year),
             'month': int(month),
+            'day': int(day),
             'business_type': '经代',
             'channel': '',
             'org': str(org),
