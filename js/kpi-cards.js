@@ -228,16 +228,19 @@
         if (sub) sub.innerHTML = '<span style="color:var(--text-secondary)">暂无长险期交数据</span>';
       }
 
-      // 8. 人均保费（YTD累计期交保费 / 月均在职人力）
+      // 8. 人均保费（月均新单保费 / 月均在职人力）
       if (hasApiKpi && kpi.qj_premium && kpi.hr && Object.keys(kpi.hr).length > 0) {
         let 总保费 = kpi.qj_premium.total_transform || 0;
         let 总在职 = 0;
+        let 统计月数 = 0;
         Object.values(kpi.hr).forEach(h => {
           const months = Number(h.months || 0);
           const avgSum = Number(h.avg_sum || 0);
+          统计月数 = Math.max(统计月数, months);
           总在职 += months > 0 && avgSum > 0 ? avgSum / months : Number(h.avg || 0);
         });
-        const 人均保费 = 总在职 > 0 ? Math.round(总保费 / 总在职 * 10) / 10 : 0;
+        const 月均保费 = 统计月数 > 0 ? 总保费 / 统计月数 : 总保费;
+        const 人均保费 = 总在职 > 0 ? Math.round(月均保费 / 总在职 * 10) / 10 : 0;
         const perCapitaEl = document.getElementById('kpi-percapita');
         if (perCapitaEl) perCapitaEl.innerHTML = 人均保费 + '<span style="font-size:18px">万</span>';
         const perCapitaSubEl = document.getElementById('kpi-percapita-sub');
@@ -253,14 +256,21 @@
         const hcZb = avgArr(tm.headcount['证保']);
         const hcYq = avgArr(tm.headcount['蚁桥']);
         const 总在职 = hcOto + hcZb + hcYq;
-        const 人均保费 = 总在职 > 0 ? Math.round(总保费 / 总在职 * 10) / 10 : 0;
+        const 统计月数 = Math.max(
+          tm.premium['OTO']?.filter(v => v !== null && v !== undefined).length || 0,
+          tm.premium['证保']?.filter(v => v !== null && v !== undefined).length || 0,
+          tm.premium['蚁桥']?.filter(v => v !== null && v !== undefined).length || 0,
+          1
+        );
+        const 月均保费 = 总保费 / 统计月数;
+        const 人均保费 = 总在职 > 0 ? Math.round(月均保费 / 总在职 * 10) / 10 : 0;
         const perCapitaEl = document.getElementById('kpi-percapita');
         if (perCapitaEl) perCapitaEl.innerHTML = 人均保费 + '<span style="font-size:18px">万</span>';
         const perCapitaSubEl = document.getElementById('kpi-percapita-sub');
         if (perCapitaSubEl) {
-          const otoPc = hcOto > 0 ? Math.round(保费OTO / hcOto * 10) / 10 : 0;
-          const zbPc = hcZb > 0 ? Math.round(保费证保 / hcZb * 10) / 10 : 0;
-          const yqPc = hcYq > 0 ? Math.round(保费蚁桥 / hcYq * 10) / 10 : 0;
+          const otoPc = hcOto > 0 ? Math.round((保费OTO / 统计月数) / hcOto * 10) / 10 : 0;
+          const zbPc = hcZb > 0 ? Math.round((保费证保 / 统计月数) / hcZb * 10) / 10 : 0;
+          const yqPc = hcYq > 0 ? Math.round((保费蚁桥 / 统计月数) / hcYq * 10) / 10 : 0;
           perCapitaSubEl.innerHTML = `
             <span>OTO <span class="${otoPc >= 3 ? 'up' : 'down'}">${otoPc}万</span></span>
             <span>证保 <span class="${zbPc >= 3 ? 'up' : 'down'}">${zbPc}万</span></span>

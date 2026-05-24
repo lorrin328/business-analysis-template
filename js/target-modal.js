@@ -882,9 +882,12 @@
           let maxMonth = Math.max(0, ...Object.keys(premMap).map(Number));
           if (!maxMonth) maxMonth = Math.max(0, ...Object.keys(avgMap).map(Number));
           if (!maxMonth) maxMonth = kpiData.hr?.OTO?.month || 1;
-          function calcPC(p, a) { return a > 0 ? Math.round(p / a * 100) / 100 : 0; }
+          function calcPC(p, a, monthCount = 1) {
+            return a > 0 && monthCount > 0 ? Math.round((p / monthCount) / a * 100) / 100 : 0;
+          }
           function calcRange(s, e) {
-            const res = { ch: {}, totalPrem: 0, totalAvg: 0 };
+            const periodMonths = e - s + 1;
+            const res = { ch: {}, totalPrem: 0, totalAvg: 0, months: periodMonths };
             chs.forEach(ch => {
               let p = 0, aSum = 0, monthCount = 0;
               for (let m = s; m <= e; m++) {
@@ -896,11 +899,11 @@
                 }
               }
               const a = monthCount > 0 ? Math.round(aSum / monthCount * 10) / 10 : 0;
-              res.ch[ch] = { prem: p, avg: a, pc: calcPC(p, a) };
+              res.ch[ch] = { prem: p, avg: a, pc: calcPC(p, a, periodMonths) };
               res.totalPrem += p; res.totalAvg += a;
             });
             res.totalAvg = Math.round(res.totalAvg * 10) / 10;
-            res.totalPc = calcPC(res.totalPrem, res.totalAvg);
+            res.totalPc = calcPC(res.totalPrem, res.totalAvg, periodMonths);
             return res;
           }
           const ytd = calcRange(1, maxMonth);
@@ -925,9 +928,9 @@
                 }
               }
               const a = monthCount > 0 ? aSum / monthCount : 0;
-              res.ch[ch] = calcPC(p, a); tp += p; ta += a;
+              res.ch[ch] = calcPC(p, a, endM); tp += p; ta += a;
             });
-            res.totalPc = calcPC(tp, ta); return res;
+            res.totalPc = calcPC(tp, ta, endM); return res;
           }
           const prevYtd = calcPrev(maxMonth), prevQ = calcPrev(Math.min(qIdx * 3, maxMonth)), prevCurr = calcPrev(maxMonth);
           function yoyStr(c, p) {
@@ -949,7 +952,7 @@
           const chartLabels = [], chartSeries = { OTO: [], 证保: [], 蚁桥: [] };
           for (let m = 1; m <= maxMonth; m++) {
             chartLabels.push(monthNames[m - 1]);
-            chs.forEach(ch => { chartSeries[ch].push(calcPC(premMap[m]?.[ch] || 0, avgMap[m]?.[ch] || 0)); });
+            chs.forEach(ch => { chartSeries[ch].push(calcPC(premMap[m]?.[ch] || 0, avgMap[m]?.[ch] || 0, 1)); });
           }
           return {
             title: '人均保费 - 分业务模式（转型业务）',
@@ -978,7 +981,7 @@
                   ${buildRows(curr, prevCurr, true)}
                 </tbody>
               </table>
-              <p style="color: var(--text-secondary); font-size: 13px; margin-top: 12px;">注：人均保费 = 新单保费 ÷ 月均在职人力，仅计算转型业务。同比为与上年同期人均保费的绝对差值（万元）。</p>
+              <p style="color: var(--text-secondary); font-size: 13px; margin-top: 12px;">注：人均保费 = 月均新单保费 ÷ 月均在职人力，仅计算转型业务。同比为与上年同期人均保费的绝对差值（万元）。</p>
               <div id="modalChart" class="modal-chart" style="margin-top:16px;"></div>
             `,
             initChart: () => {

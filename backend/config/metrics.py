@@ -51,7 +51,7 @@ METRICS = {
     "avg_premium": {
         "name": "人均保费",
         "unit": "万元/人",
-        "definition": "新单保费 / 月均在职人力",
+        "definition": "月均新单保费 / 月均在职人力",
         "uncalculable_rule": "月均在职人力为 0 或缺失",
     },
     "avg_productivity": {

@@ -108,7 +108,7 @@ def activity_rate(active_headcount: Any, employed_headcount: Any) -> float | Non
 
 
 def avg_premium(premium: Any, avg_headcount: Any) -> float | None:
-    """人均保费 = 新单保费 / 月均在职人力。
+    """人均保费 = 月均新单保费 / 月均在职人力。
 
     不可计算规则：月均在职人力为 0 或缺失时返回 None。单位：万元/人。
     """

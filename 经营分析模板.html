@@ -717,7 +717,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.41</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.42</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" onclick="openProductConfigModal()" style="margin-right:8px;">参数设置</button>
@@ -784,7 +784,7 @@
 
         <!-- 8. 人均保费（转型业务） -->
         <div class="kpi-card" onclick="openModal('percapita')">
-          <div class="kpi-top-label">人均保费 <span style="font-size:10px;color:var(--text-secondary);">(年累计)</span></div>
+          <div class="kpi-top-label">人均保费 <span style="font-size:10px;color:var(--text-secondary);">(月均)</span></div>
           <div class="kpi-big-value" id="kpi-percapita" style="color: #f97316;">--</div>
           <div class="kpi-bottom-meta" id="kpi-percapita-sub"></div>
         </div>
@@ -2085,16 +2085,19 @@
         if (sub) sub.innerHTML = '<span style="color:var(--text-secondary)">暂无长险期交数据</span>';
       }
 
-      // 8. 人均保费（YTD累计期交保费 / 月均在职人力）
+      // 8. 人均保费（月均新单保费 / 月均在职人力）
       if (hasApiKpi && kpi.qj_premium && kpi.hr && Object.keys(kpi.hr).length > 0) {
         let 总保费 = kpi.qj_premium.total_transform || 0;
         let 总在职 = 0;
+        let 统计月数 = 0;
         Object.values(kpi.hr).forEach(h => {
           const months = Number(h.months || 0);
           const avgSum = Number(h.avg_sum || 0);
+          统计月数 = Math.max(统计月数, months);
           总在职 += months > 0 && avgSum > 0 ? avgSum / months : Number(h.avg || 0);
         });
-        const 人均保费 = 总在职 > 0 ? Math.round(总保费 / 总在职 * 10) / 10 : 0;
+        const 月均保费 = 统计月数 > 0 ? 总保费 / 统计月数 : 总保费;
+        const 人均保费 = 总在职 > 0 ? Math.round(月均保费 / 总在职 * 10) / 10 : 0;
         const perCapitaEl = document.getElementById('kpi-percapita');
         if (perCapitaEl) perCapitaEl.innerHTML = 人均保费 + '<span style="font-size:18px">万</span>';
         const perCapitaSubEl = document.getElementById('kpi-percapita-sub');
@@ -2110,14 +2113,21 @@
         const hcZb = avgArr(tm.headcount['证保']);
         const hcYq = avgArr(tm.headcount['蚁桥']);
         const 总在职 = hcOto + hcZb + hcYq;
-        const 人均保费 = 总在职 > 0 ? Math.round(总保费 / 总在职 * 10) / 10 : 0;
+        const 统计月数 = Math.max(
+          tm.premium['OTO']?.filter(v => v !== null && v !== undefined).length || 0,
+          tm.premium['证保']?.filter(v => v !== null && v !== undefined).length || 0,
+          tm.premium['蚁桥']?.filter(v => v !== null && v !== undefined).length || 0,
+          1
+        );
+        const 月均保费 = 总保费 / 统计月数;
+        const 人均保费 = 总在职 > 0 ? Math.round(月均保费 / 总在职 * 10) / 10 : 0;
         const perCapitaEl = document.getElementById('kpi-percapita');
         if (perCapitaEl) perCapitaEl.innerHTML = 人均保费 + '<span style="font-size:18px">万</span>';
         const perCapitaSubEl = document.getElementById('kpi-percapita-sub');
         if (perCapitaSubEl) {
-          const otoPc = hcOto > 0 ? Math.round(保费OTO / hcOto * 10) / 10 : 0;
-          const zbPc = hcZb > 0 ? Math.round(保费证保 / hcZb * 10) / 10 : 0;
-          const yqPc = hcYq > 0 ? Math.round(保费蚁桥 / hcYq * 10) / 10 : 0;
+          const otoPc = hcOto > 0 ? Math.round((保费OTO / 统计月数) / hcOto * 10) / 10 : 0;
+          const zbPc = hcZb > 0 ? Math.round((保费证保 / 统计月数) / hcZb * 10) / 10 : 0;
+          const yqPc = hcYq > 0 ? Math.round((保费蚁桥 / 统计月数) / hcYq * 10) / 10 : 0;
           perCapitaSubEl.innerHTML = `
             <span>OTO <span class="${otoPc >= 3 ? 'up' : 'down'}">${otoPc}万</span></span>
             <span>证保 <span class="${zbPc >= 3 ? 'up' : 'down'}">${zbPc}万</span></span>
@@ -2831,9 +2841,12 @@
           let maxMonth = Math.max(0, ...Object.keys(premMap).map(Number));
           if (!maxMonth) maxMonth = Math.max(0, ...Object.keys(avgMap).map(Number));
           if (!maxMonth) maxMonth = kpiData.hr?.OTO?.month || 1;
-          function calcPC(p, a) { return a > 0 ? Math.round(p / a * 100) / 100 : 0; }
+          function calcPC(p, a, monthCount = 1) {
+            return a > 0 && monthCount > 0 ? Math.round((p / monthCount) / a * 100) / 100 : 0;
+          }
           function calcRange(s, e) {
-            const res = { ch: {}, totalPrem: 0, totalAvg: 0 };
+            const periodMonths = e - s + 1;
+            const res = { ch: {}, totalPrem: 0, totalAvg: 0, months: periodMonths };
             chs.forEach(ch => {
               let p = 0, aSum = 0, monthCount = 0;
               for (let m = s; m <= e; m++) {
@@ -2845,11 +2858,11 @@
                 }
               }
               const a = monthCount > 0 ? Math.round(aSum / monthCount * 10) / 10 : 0;
-              res.ch[ch] = { prem: p, avg: a, pc: calcPC(p, a) };
+              res.ch[ch] = { prem: p, avg: a, pc: calcPC(p, a, periodMonths) };
               res.totalPrem += p; res.totalAvg += a;
             });
             res.totalAvg = Math.round(res.totalAvg * 10) / 10;
-            res.totalPc = calcPC(res.totalPrem, res.totalAvg);
+            res.totalPc = calcPC(res.totalPrem, res.totalAvg, periodMonths);
             return res;
           }
           const ytd = calcRange(1, maxMonth);
@@ -2874,9 +2887,9 @@
                 }
               }
               const a = monthCount > 0 ? aSum / monthCount : 0;
-              res.ch[ch] = calcPC(p, a); tp += p; ta += a;
+              res.ch[ch] = calcPC(p, a, endM); tp += p; ta += a;
             });
-            res.totalPc = calcPC(tp, ta); return res;
+            res.totalPc = calcPC(tp, ta, endM); return res;
           }
           const prevYtd = calcPrev(maxMonth), prevQ = calcPrev(Math.min(qIdx * 3, maxMonth)), prevCurr = calcPrev(maxMonth);
           function yoyStr(c, p) {
@@ -2898,7 +2911,7 @@
           const chartLabels = [], chartSeries = { OTO: [], 证保: [], 蚁桥: [] };
           for (let m = 1; m <= maxMonth; m++) {
             chartLabels.push(monthNames[m - 1]);
-            chs.forEach(ch => { chartSeries[ch].push(calcPC(premMap[m]?.[ch] || 0, avgMap[m]?.[ch] || 0)); });
+            chs.forEach(ch => { chartSeries[ch].push(calcPC(premMap[m]?.[ch] || 0, avgMap[m]?.[ch] || 0, 1)); });
           }
           return {
             title: '人均保费 - 分业务模式（转型业务）',
@@ -2927,7 +2940,7 @@
                   ${buildRows(curr, prevCurr, true)}
                 </tbody>
               </table>
-              <p style="color: var(--text-secondary); font-size: 13px; margin-top: 12px;">注：人均保费 = 新单保费 ÷ 月均在职人力，仅计算转型业务。同比为与上年同期人均保费的绝对差值（万元）。</p>
+              <p style="color: var(--text-secondary); font-size: 13px; margin-top: 12px;">注：人均保费 = 月均新单保费 ÷ 月均在职人力，仅计算转型业务。同比为与上年同期人均保费的绝对差值（万元）。</p>
               <div id="modalChart" class="modal-chart" style="margin-top:16px;"></div>
             `,
             initChart: () => {

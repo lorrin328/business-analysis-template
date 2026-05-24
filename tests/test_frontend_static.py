@@ -192,10 +192,13 @@ def test_per_capita_metrics_use_average_headcount_denominators():
     target_modal = read_js("target-modal.js")
     combined = html + "\n" + kpi + "\n" + target_modal
 
+    assert "月均新单保费 / 月均在职人力" in combined
+    assert "const 月均保费 = 统计月数 > 0 ? 总保费 / 统计月数 : 总保费;" in combined
     assert "avgSum / months" in combined
     assert "avgArr(tm.headcount['OTO'])" in combined
     assert "sumArr(tm.headcount['OTO']) + sumArr(tm.headcount['证保'])" not in combined
     assert "res.totalPrem += p; res.totalAvg += a;" in combined
     assert "res.totalAvg = Math.round(res.totalAvg * 10) / 10;" in combined
-    assert "res.ch[ch] = { prem: p, avg: a, pc: calcPC(p, a) }" in combined
+    assert "res.ch[ch] = { prem: p, avg: a, pc: calcPC(p, a, periodMonths) }" in combined
+    assert "res.totalPc = calcPC(res.totalPrem, res.totalAvg, periodMonths);" in combined
     assert "res.ch[ch] = { prem: p, avg: aSum, pc: calcPC(p, aSum) }" not in combined
