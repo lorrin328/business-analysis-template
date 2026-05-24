@@ -149,6 +149,17 @@ def init_db():
             error_message TEXT,
             imported_by TEXT DEFAULT 'web')''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS schema_migrations (
+            version TEXT PRIMARY KEY,
+            applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            requires_aggregate_rebuild INTEGER NOT NULL DEFAULT 0,
+            note TEXT DEFAULT ''
+        )''')
+        c.execute('''
+            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+            VALUES ('20260524_aggregate_rebuild_from_raw', 1, 'Adds raw SQLite aggregate rebuild path')
+        ''')
+
         c.execute('''CREATE TABLE IF NOT EXISTS performance (
             "年月" TEXT, "业务模式" TEXT, "销售机构名称" TEXT, "产品类型" TEXT,
             "期交保费" REAL DEFAULT 0, "年化规保" REAL DEFAULT 0,

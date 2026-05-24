@@ -19,16 +19,16 @@
   }
 
   function adminHeaders(headers = {}) {
-    const token = localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '';
+    const token = sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '';
     return token ? { ...headers, 'X-Admin-Token': token } : headers;
   }
 
   async function adminFetch(url, options = {}) {
     let resp = await fetch(url, { ...options, headers: adminHeaders(options.headers || {}) });
     if ([401, 403, 503].includes(resp.status)) {
-      const token = prompt('请输入后台管理 Token', localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '');
+      const token = prompt('请输入后台管理 Token', sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '');
       if (token) {
-        localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token.trim());
+        sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token.trim());
         resp = await fetch(url, { ...options, headers: adminHeaders(options.headers || {}) });
       }
     }
@@ -39,4 +39,5 @@
   window.fetchJson = fetchJson;
   window.unwrapApiResponse = unwrapApiResponse;
   window.adminFetch = adminFetch;
+  window.clearAdminToken = () => sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
 })(window);

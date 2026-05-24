@@ -3,6 +3,7 @@ import json
 import sqlite3
 from db.connection import get_db
 from db.schema import init_db
+from services.cutoff_policy import build_source_cutoff_policy, date_filter_sql, latest_daily_cutoff
 
 
 def get_platform_data(year: int):
@@ -119,48 +120,22 @@ def get_kpi_data(year: int):
 
         # ── 日级统计截止日（用于期交保费同比同口径截取） ──
         # 转型业务与经代业务来自不同报表：转型更新到拉取当天，经代截至前一日。
-        # KPI 按各自真实截止日取数，不再用共同较早日期截断转型。
-        def _latest_daily_cutoff(table: str):
-            c.execute(f'''
-                SELECT month, MAX(day) as max_day
-                FROM {table}
-                WHERE year = ?
-                GROUP BY month
-                ORDER BY month DESC
-                LIMIT 1
-            ''', (year,))
-            row = c.fetchone()
-            if not row or not row['month']:
-                return None
-            return {'month': int(row['month']), 'day': int(row['max_day'] or 31)}
-
-        transform_daily_cutoff = _latest_daily_cutoff('agg_daily_performance')
-        jingdai_daily_cutoff = _latest_daily_cutoff('agg_jingdai_daily')
-        if transform_daily_cutoff and jingdai_daily_cutoff:
-            common_daily_cutoff = min(transform_daily_cutoff, jingdai_daily_cutoff, key=lambda x: (x['month'], x['day']))
-            ytd_end_month = max(transform_daily_cutoff['month'], jingdai_daily_cutoff['month'])
-            ytd_end_day = max(
-                transform_daily_cutoff['day'] if transform_daily_cutoff['month'] == ytd_end_month else 0,
-                jingdai_daily_cutoff['day'] if jingdai_daily_cutoff['month'] == ytd_end_month else 0,
-            ) or 31
-            use_daily = True
-        else:
-            common_daily_cutoff = None
-            ytd_end_month = query_month
-            ytd_end_day = 31
-            use_daily = False
-
-        def _date_filter_sql(cutoff: dict) -> tuple[str, list[int]]:
-            return '(month < ? OR (month = ? AND day <= ?))', [
-                cutoff['month'], cutoff['month'], cutoff['day']
-            ]
+        # KPI 按各自真实截止日取数；共同截止日仅暴露给需要同日对比的展示。
+        transform_daily_cutoff = latest_daily_cutoff(conn, 'agg_daily_performance', year)
+        jingdai_daily_cutoff = latest_daily_cutoff(conn, 'agg_jingdai_daily', year)
+        daily_policy = build_source_cutoff_policy(transform_daily_cutoff, jingdai_daily_cutoff)
+        use_daily = daily_policy['use_daily']
+        common_daily_cutoff = daily_policy['common']
+        latest_cutoff = daily_policy['latest']
+        ytd_end_month = latest_cutoff['month'] if latest_cutoff else query_month
+        ytd_end_day = latest_cutoff['day'] if latest_cutoff else 31
 
         def _ytd_premiums_daily(query_year: int) -> dict:
             """从日累计表取截至统计日的期交保费，按 channel 汇总。"""
             result = {}
             if not use_daily or not transform_daily_cutoff:
                 return result
-            date_sql, date_params = _date_filter_sql(transform_daily_cutoff)
+            date_sql, date_params = date_filter_sql(transform_daily_cutoff)
             c.execute('''
                 SELECT channel, SUM(qj_premium) AS total
                 FROM agg_daily_performance
@@ -176,7 +151,7 @@ def get_kpi_data(year: int):
             """从经代日累计表取截至统计日的期交保费。"""
             if not use_daily or not jingdai_daily_cutoff:
                 return 0.0
-            date_sql, date_params = _date_filter_sql(jingdai_daily_cutoff)
+            date_sql, date_params = date_filter_sql(jingdai_daily_cutoff)
             c.execute('''
                 SELECT SUM(qj_premium) AS total
                 FROM agg_jingdai_daily
@@ -258,8 +233,8 @@ def get_kpi_data(year: int):
             where = 'year = ? AND month <= ?'
             params: list[int] = [query_year, ytd_end_month]
             if use_daily and transform_daily_cutoff and jingdai_daily_cutoff:
-                transform_sql, transform_params = _date_filter_sql(transform_daily_cutoff)
-                jingdai_sql, jingdai_params = _date_filter_sql(jingdai_daily_cutoff)
+                transform_sql, transform_params = date_filter_sql(transform_daily_cutoff)
+                jingdai_sql, jingdai_params = date_filter_sql(jingdai_daily_cutoff)
                 where = f'''year = ? AND (
                     (business_type = '转型' AND {transform_sql})
                     OR (business_type = '经代' AND {jingdai_sql})
@@ -350,6 +325,7 @@ def get_kpi_data(year: int):
                 'common': common_daily_cutoff,
                 'transform': transform_daily_cutoff,
                 'jingdai': jingdai_daily_cutoff,
+                'policy': daily_policy,
             },
             'qj_premium': {
                 'jingdai': round(jingdai_qj, 2),

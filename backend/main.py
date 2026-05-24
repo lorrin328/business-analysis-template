@@ -2,7 +2,7 @@ import hashlib
 import json
 import os
 import sys
-from fastapi import Depends, FastAPI, File, UploadFile, HTTPException
+from fastapi import Depends, FastAPI, File, Query, UploadFile, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -187,6 +187,7 @@ async def upload_files(
     hr: UploadFile = File(None),
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
+    allow_partial: bool = Query(False),
     _admin=Depends(require_admin),
 ):
     """上传Excel文件并聚合到SQLite"""
@@ -351,6 +352,12 @@ async def upload_files(
 
     if results["errors"] and not file_hashes:
         _set_import_status(results, has_written_rows=False)
+        raise HTTPException(status_code=400, detail=results)
+
+    if results["errors"] and file_hashes and not allow_partial:
+        results["message"] = "导入已取消：部分文件解析失败。请修正失败文件后重新上传，或显式设置 allow_partial=true。"
+        _set_import_status(results, has_written_rows=False)
+        logger.warning("import aborted because partial import is disabled errors=%s", results["errors"])
         raise HTTPException(status_code=400, detail=results)
 
     # 写入数据库（增量：按月删除再插入，未涉及月份保持不动）

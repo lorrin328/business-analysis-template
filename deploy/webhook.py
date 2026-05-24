@@ -98,7 +98,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     if not WEBHOOK_SECRET:
-        print("[webhook] WARNING: WEBHOOK_SECRET not set — webhook accepts all requests!", flush=True)
+        print("[webhook] ERROR: WEBHOOK_SECRET is required; refusing to start", flush=True)
+        sys.exit(1)
     server = HTTPServer((LISTEN_HOST, LISTEN_PORT), WebhookHandler)
     print(f"[webhook] listening on {LISTEN_HOST}:{LISTEN_PORT}", flush=True)
     try:

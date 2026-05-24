@@ -1,5 +1,17 @@
 # 经营分析看板 - 需求与开发文档
 
+## v1.0.38 更新说明（2026-05-24）
+**类型**：architecture / data-quality / deploy
+
+**变更内容**：
+- 新增从 SQLite 原始明细表重建所有聚合表的能力，生产环境没有 Excel 文件时也可以在口径修复后重算聚合数据。
+- 新增共享日级截止日策略模块，KPI 继续按转型、经代各自真实截止日计算，并显式保留共同截止日供同日对比场景使用。
+- Excel 上传导入默认改为严格模式：部分文件解析失败时不再写入成功部分，避免形成半新半旧数据；确需部分导入时需显式设置 `allow_partial=true`。
+- 部署脚本在无 Excel 时自动尝试从 SQLite 原始表重建聚合；Webhook 缺少密钥时拒绝启动，避免无签名自动部署入口。
+- 管理员 Token 前端缓存从 `localStorage` 改为 `sessionStorage`，并补充清理方法，降低共享浏览器残留风险。
+- 文档移除默认明文 Token 示例，统一要求生产环境显式配置 `ADMIN_TOKEN`。
+- 统一版本号到 v1.0.38
+
 ## v1.0.37 更新说明（2026-05-23）
 **类型**：fix / data-quality
 
@@ -86,7 +98,7 @@
 **类型**：fix / safety / deployment
 
 **变更内容**：
-- **统一后台管理 Token**：前端默认管理 Token、Docker Compose 默认环境变量、部署脚本生成的 `.admin_env` 统一为 `Aaaaa8888%`。
+- **统一后台管理 Token**：前端、Docker Compose 和部署脚本统一改为显式配置管理 Token，不再提供默认明文值。
 - **修复参数设置产品提取口径**：`GET /api/product-config` 从原始 `performance` 表自动提取产品时，兼容 `202605`、`2026-05`、`2026/05/01` 等年月格式。
 - **强化产品配置保存逻辑**：`POST /api/product-config` 改为 upsert，未知产品代码也可写入配置，并返回真实更新数量。
 - **修复保障类 KPI 展示**：后端 `/api/kpi` 返回 `protection_total`，前端保障类产品卡片按参数设置与目标值展示，不再停留在“口径待完善”。

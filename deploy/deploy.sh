@@ -86,7 +86,9 @@ if [ "$EXCEL_COUNT" -ge 3 ]; then
   "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_from_excels.py" || echo "⚠ 数据库重建失败，请手动运行 rebuild_from_excels.py"
 else
   echo "⚠ 未检测到足够 Excel 文件（需 ≥3），跳过数据库重建"
-  echo "  请上传 Excel 后通过 Web 界面导入，或手动运行 rebuild_from_excels.py"
+  echo "  尝试从 SQLite 原始明细表重建聚合..."
+  "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_aggregates_from_raw_tables.py" \
+    || echo "⚠ SQLite 原始表重建失败；请上传 Excel 后通过 Web 界面导入，或手动运行 rebuild_from_excels.py"
 fi
 
 if [ -z "${ADMIN_TOKEN:-}" ] && [ -f "$APP_DIR/deploy/.admin_env" ]; then
@@ -126,8 +128,9 @@ fi
 if [ ! -f "$APP_DIR/deploy/.webhook_env" ]; then
   echo "⚠ 未配置 webhook 密钥，自动部署功能不可用"
   echo "  请执行: echo 'WEBHOOK_SECRET=你的密钥' > $APP_DIR/deploy/.webhook_env"
+else
+  systemctl restart webhook-deploy 2>/dev/null || echo "⚠ webhook-deploy 服务未启动，请检查 webhook 密钥和服务日志"
 fi
-systemctl restart webhook-deploy 2>/dev/null || echo "⚠ webhook-deploy 服务未启动，请手动配置 webhook 密钥后启动"
 
 mkdir -p "$APP_DIR/backend/logs"
 chown -R "$RUN_USER:$RUN_USER" "$APP_DIR"

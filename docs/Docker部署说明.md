@@ -90,7 +90,7 @@ services:
       - ./backend/logs:/app/backend/logs
     environment:
       - APP_ENV=production
-      - ADMIN_TOKEN=${ADMIN_TOKEN:-Aaaaa8888%}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN is required}
     restart: unless-stopped
 ```
 
