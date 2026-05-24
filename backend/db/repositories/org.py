@@ -38,17 +38,45 @@ def get_org_kpi_data(year: int):
             ytd_end_day = 31
             use_daily = False
 
+        channel_cutoffs = {}
+        if use_daily:
+            c.execute('''
+                SELECT d.channel, d.month, MAX(d.day) AS max_day
+                FROM agg_org_daily_performance d
+                JOIN (
+                    SELECT channel, MAX(month) AS month
+                    FROM agg_org_daily_performance
+                    WHERE year = ?
+                    GROUP BY channel
+                ) latest
+                  ON latest.channel = d.channel
+                 AND latest.month = d.month
+                WHERE d.year = ?
+                GROUP BY d.channel, d.month
+            ''', (year, year))
+            channel_cutoffs = {
+                r['channel']: (int(r['month']), int(r['max_day'] or 31))
+                for r in c.fetchall()
+            }
+
         def _ytd_premiums(query_year: int):
             """从日表取截至统计日的期交保费累计，无数据则回退None"""
             if not use_daily:
                 return {}
-            c.execute('''
+            if not channel_cutoffs:
+                return {}
+            clauses = []
+            params = [query_year]
+            for channel, (month, day) in channel_cutoffs.items():
+                clauses.append('(channel = ? AND (month < ? OR (month = ? AND day <= ?)))')
+                params.extend([channel, month, month, day])
+            c.execute(f'''
                 SELECT org, channel, SUM(qj_premium) AS qj_total
                 FROM agg_org_daily_performance
                 WHERE year = ?
-                  AND (month < ? OR (month = ? AND day <= ?))
+                  AND ({' OR '.join(clauses)})
                 GROUP BY org, channel
-            ''', (query_year, ytd_end_month, ytd_end_month, ytd_end_day))
+            ''', params)
             return {f"{r['org']}|{r['channel']}": round(r['qj_total'] or 0, 2)
                     for r in c.fetchall()}
 

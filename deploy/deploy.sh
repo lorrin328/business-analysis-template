@@ -16,6 +16,17 @@ fi
 apt-get update
 apt-get install -y python3 python3-venv python3-pip nginx rsync
 
+PYTHON_VERSION_OK=$(python3 - <<'PY'
+import sys
+print("1" if sys.version_info >= (3, 10) else "0")
+PY
+)
+if [ "$PYTHON_VERSION_OK" != "1" ]; then
+  echo "ERROR: Python 3.10+ is required. Current version: $(python3 --version 2>&1)"
+  echo "Please install Python 3.10 or newer, or deploy with Docker."
+  exit 1
+fi
+
 mkdir -p "$APP_DIR" "$BACKUP_DIR"
 # 仅当数据库有目标数据时才备份（避免空库覆盖有效备份）
 if [ -f "$DB_PATH" ]; then
@@ -139,12 +150,13 @@ systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
 nginx -t && systemctl restart nginx
+APP_VERSION=$(grep -oP 'v\d+\.\d+\.\d+' "$APP_DIR/经营分析模板.html" | head -1 || true)
 
 echo ""
 echo "============================================"
 echo "  部署完成"
 echo "  访问地址: http://<服务器IP>/"
-echo "  版本: $(grep -oP 'v\d+\.\d+\.\d+' "$APP_DIR/经营分析模板.html" | head -1)"
+echo "  版本: ${APP_VERSION:-unknown}"
 echo ""
 echo "  自动部署:"
 echo "    1. 在 GitHub Settings → Webhooks 添加:"

@@ -48,6 +48,24 @@ def _pick_existing_column(conn: sqlite3.Connection, table: str, candidates: list
     return None
 
 
+def _quote_identifier(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _existing_numeric_expr(
+    conn: sqlite3.Connection,
+    table: str,
+    candidates: list[str],
+    *,
+    default: str = '0',
+) -> str:
+    col = _pick_existing_column(conn, table, candidates)
+    if not col:
+        logger.warning("%s missing expected numeric columns: %s", table, candidates)
+        return default
+    return f'COALESCE({_quote_identifier(col)}, {default})'
+
+
 def _max_daily_cutoff(conn: sqlite3.Connection, table: str, year: int, months: list[int] | None, channels: list[str] | None = None):
     params: list = [year]
     where = 'year = ?'
@@ -122,8 +140,17 @@ def _query_product_structure_raw(
     rows: list[dict] = []
     c = conn.cursor()
 
-    perf_premium_col = 'COALESCE("年化规保", COALESCE("规模保费", 0))' if metric_type == 'gm' else 'COALESCE("期交保费", 0)'
-    jd_premium_col = 'COALESCE("承保年化规保", 0)' if metric_type == 'gm' else 'COALESCE("期交保费", 0)'
+    perf_premium_col = _existing_numeric_expr(
+        conn,
+        'performance',
+        ['年化规保', '规模保费'] if metric_type == 'gm' else ['期交保费'],
+    )
+    perf_count_col = _existing_numeric_expr(conn, 'performance', ['承保件数'], default='1')
+    jd_premium_col = _existing_numeric_expr(
+        conn,
+        'jingdai',
+        ['承保年化规保', '年化规保', '规模保费'] if metric_type == 'gm' else ['期交保费'],
+    )
 
     normalized_transform_lines = set(transform_lines or [])
     raw_transform_lines = set(normalized_transform_lines)
@@ -154,7 +181,7 @@ def _query_product_structure_raw(
             c.execute(f'''
                 SELECT COALESCE(NULLIF(TRIM("产品类型"), ''), '未分类') AS label,
                        SUM({perf_premium_col}) / 10000.0 AS premium,
-                       SUM(COALESCE("承保件数", 1)) AS count
+                       SUM({perf_count_col}) AS count
                 FROM performance
                 WHERE 1=1
                   {extra_where}

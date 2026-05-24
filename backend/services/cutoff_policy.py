@@ -72,9 +72,19 @@ def build_source_cutoff_policy(
     for comparison views that intentionally require same-day mixed-source lines.
     """
     latest = max_cutoff(transform_cutoff, jingdai_cutoff)
-    common = min_cutoff(transform_cutoff, jingdai_cutoff)
+    use_daily = bool(transform_cutoff and jingdai_cutoff)
+    common = min_cutoff(transform_cutoff, jingdai_cutoff) if use_daily else None
+    partial_daily = bool(latest and not use_daily)
+    if use_daily:
+        mode = "daily_by_source"
+    elif partial_daily:
+        mode = "monthly_complete_fallback"
+    else:
+        mode = "monthly"
     return {
-        "use_daily": bool(transform_cutoff and jingdai_cutoff),
+        "use_daily": use_daily,
+        "partial_daily": partial_daily,
+        "mode": mode,
         "latest": latest,
         "common": common,
         "transform": transform_cutoff,

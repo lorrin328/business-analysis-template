@@ -26,7 +26,20 @@ def test_cutoff_policy_keeps_source_cutoffs_and_exposes_common_cutoff():
     assert policy["jingdai"] == {"month": 5, "day": 22}
     assert policy["latest"] == {"month": 5, "day": 23}
     assert policy["common"] == {"month": 5, "day": 22}
+    assert policy["use_daily"] is True
+    assert policy["partial_daily"] is False
+    assert policy["mode"] == "daily_by_source"
     assert date_filter_sql(policy["common"]) == (
         "(month < ? OR (month = ? AND day <= ?))",
         [5, 5, 22],
     )
+
+
+def test_cutoff_policy_marks_partial_daily_without_enabling_daily_reads():
+    policy = build_source_cutoff_policy({"month": 5, "day": 23}, None)
+
+    assert policy["use_daily"] is False
+    assert policy["partial_daily"] is True
+    assert policy["mode"] == "monthly_complete_fallback"
+    assert policy["latest"] == {"month": 5, "day": 23}
+    assert policy["common"] is None

@@ -127,8 +127,18 @@ def get_kpi_data(year: int):
         use_daily = daily_policy['use_daily']
         common_daily_cutoff = daily_policy['common']
         latest_cutoff = daily_policy['latest']
-        ytd_end_month = latest_cutoff['month'] if latest_cutoff else query_month
-        ytd_end_day = latest_cutoff['day'] if latest_cutoff else 31
+        if use_daily and latest_cutoff:
+            ytd_end_month = latest_cutoff['month']
+            ytd_end_day = latest_cutoff['day']
+        elif daily_policy.get('partial_daily') and latest_cutoff:
+            # Avoid mixing a partial daily source with another source's full-month table.
+            query_month = min(query_month, max(int(latest_cutoff['month']) - 1, 0))
+            daily_policy['fallback_month'] = query_month
+            ytd_end_month = query_month
+            ytd_end_day = 31
+        else:
+            ytd_end_month = query_month
+            ytd_end_day = 31
 
         def _ytd_premiums_daily(query_year: int) -> dict:
             """从日累计表取截至统计日的期交保费，按 channel 汇总。"""

@@ -15,6 +15,15 @@ def quote_identifier(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+def compact_period_expr(column: str) -> str:
+    """SQLite expression that normalizes supported date text to YYYYMMDD digits."""
+    quoted = quote_identifier(column)
+    expr = f'CAST({quoted} AS TEXT)'
+    for token in ['-', '/', '.', '年', '月', '日', ' ']:
+        expr = f"replace({expr}, '{token}', '')"
+    return expr
+
+
 def raw_period_config(table: str, df):
     if table == 'performance':
         return (
@@ -60,23 +69,24 @@ def delete_raw_period(conn, table: str, year: int, month: int, cols: tuple[str |
     year_col, month_col, date_col = cols
     if date_col:
         compact = f"{year:04d}{month:02d}"
-        col = quote_identifier(date_col)
+        expr = compact_period_expr(date_col)
         conn.execute(
             f'''
             DELETE FROM {quote_identifier(table)}
-            WHERE substr(replace(replace(CAST({col} AS TEXT), '-', ''), '/', ''), 1, 6) = ?
+            WHERE substr({expr}, 1, 6) = ?
             ''',
             (compact,),
         )
         return
     if year_col and month_col:
+        month_expr = compact_period_expr(month_col)
         conn.execute(
             f'''
             DELETE FROM {quote_identifier(table)}
             WHERE CAST({quote_identifier(year_col)} AS INTEGER) = ?
               AND (
                 CAST({quote_identifier(month_col)} AS INTEGER) = ?
-                OR substr(replace(replace(CAST({quote_identifier(month_col)} AS TEXT), '-', ''), '/', ''), 1, 6) = ?
+                OR substr({month_expr}, 1, 6) = ?
               )
             ''',
             (year, month, f"{year:04d}{month:02d}"),
@@ -84,10 +94,11 @@ def delete_raw_period(conn, table: str, year: int, month: int, cols: tuple[str |
         return
     if month_col:
         compact = f"{year:04d}{month:02d}"
+        expr = compact_period_expr(month_col)
         conn.execute(
             f'''
             DELETE FROM {quote_identifier(table)}
-            WHERE substr(replace(replace(CAST({quote_identifier(month_col)} AS TEXT), '-', ''), '/', ''), 1, 6) = ?
+            WHERE substr({expr}, 1, 6) = ?
             ''',
             (compact,),
         )

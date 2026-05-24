@@ -173,3 +173,39 @@ def test_write_raw_table_incremental_deletes_date_like_month_column():
         assert rows == [(12, 13)]
     finally:
         conn.close()
+
+
+def test_write_raw_table_incremental_deletes_dot_and_chinese_date_text():
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute(
+            """
+            CREATE TABLE performance (
+                "年月日" TEXT,
+                "业务模式" TEXT,
+                "期交保费" REAL
+            )
+            """
+        )
+        conn.executemany(
+            'INSERT INTO performance VALUES (?, ?, ?)',
+            [
+                ("2026.05.01", "OTO", 10),
+                ("2026年05月02日", "OTO", 20),
+                ("2026-06-01", "OTO", 30),
+            ],
+        )
+        replacement = pd.DataFrame(
+            [
+                {"年月日": "2026/05/03", "业务模式": "OTO", "期交保费": 99},
+            ]
+        )
+
+        write_raw_table_incremental(conn, "performance", replacement)
+
+        rows = conn.execute(
+            'SELECT "年月日", "期交保费" FROM performance ORDER BY "年月日"'
+        ).fetchall()
+        assert rows == [("2026-06-01", 30), ("2026/05/03", 99)]
+    finally:
+        conn.close()

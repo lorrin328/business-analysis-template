@@ -749,6 +749,54 @@ def test_product_structure_accepts_separated_period_text(monkeypatch):
     assert "测试经代" in result["jingdaiOrgs"]
 
 
+def test_product_structure_gm_uses_existing_scale_premium_column(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        '''
+        CREATE TABLE performance (
+            "年月" TEXT,
+            "业务模式" TEXT,
+            "产品类型" TEXT,
+            "期交保费" REAL,
+            "规模保费" REAL,
+            "承保件数" INTEGER
+        )
+        '''
+    )
+    conn.execute(
+        '''
+        CREATE TABLE jingdai (
+            "时间" TEXT,
+            "经代机构" TEXT,
+            "产品名称" TEXT,
+            "期交保费" REAL
+        )
+        '''
+    )
+    conn.execute(
+        'INSERT INTO performance VALUES (?, ?, ?, ?, ?, ?)',
+        ("202605", "OTO", "规模产品", 10000, 30000, 1),
+    )
+
+    @contextmanager
+    def fake_get_db():
+        yield conn
+
+    monkeypatch.setattr(product_repo, "get_db", fake_get_db)
+    result = product_repo.get_product_structure(
+        2026,
+        dimension="product_mix",
+        transform_lines=["OTO"],
+        jingdai_orgs=[],
+        include_transform=True,
+        include_jingdai=False,
+        months=[5],
+        metric_type="gm",
+    )
+    assert result["premium"] == [{"name": "规模产品", "value": 3.0}]
+
+
 def test_product_structure_mixed_sources_uses_common_daily_cutoff(monkeypatch):
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
