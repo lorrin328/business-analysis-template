@@ -184,3 +184,18 @@ def test_platform_trend_uses_calendar_days_for_daily_series():
     assert "daysInMonthArr" not in html
     assert "function trimDailySeries" not in html
     assert "function completeDailySeries" in html
+
+
+def test_per_capita_metrics_use_average_headcount_denominators():
+    html = read_html()
+    kpi = read_js("kpi-cards.js")
+    target_modal = read_js("target-modal.js")
+    combined = html + "\n" + kpi + "\n" + target_modal
+
+    assert "avgSum / months" in combined
+    assert "avgArr(tm.headcount['OTO'])" in combined
+    assert "sumArr(tm.headcount['OTO']) + sumArr(tm.headcount['证保'])" not in combined
+    assert "res.totalPrem += p; res.totalAvg += a;" in combined
+    assert "res.totalAvg = Math.round(res.totalAvg * 10) / 10;" in combined
+    assert "res.ch[ch] = { prem: p, avg: a, pc: calcPC(p, a) }" in combined
+    assert "res.ch[ch] = { prem: p, avg: aSum, pc: calcPC(p, aSum) }" not in combined

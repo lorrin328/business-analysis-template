@@ -886,11 +886,20 @@
           function calcRange(s, e) {
             const res = { ch: {}, totalPrem: 0, totalAvg: 0 };
             chs.forEach(ch => {
-              let p = 0, a = 0;
-              for (let m = s; m <= e; m++) { p += premMap[m]?.[ch] || 0; a += avgMap[m]?.[ch] || 0; }
+              let p = 0, aSum = 0, monthCount = 0;
+              for (let m = s; m <= e; m++) {
+                p += premMap[m]?.[ch] || 0;
+                const avg = avgMap[m]?.[ch];
+                if (avg !== undefined && avg !== null) {
+                  aSum += avg || 0;
+                  monthCount += 1;
+                }
+              }
+              const a = monthCount > 0 ? Math.round(aSum / monthCount * 10) / 10 : 0;
               res.ch[ch] = { prem: p, avg: a, pc: calcPC(p, a) };
               res.totalPrem += p; res.totalAvg += a;
             });
+            res.totalAvg = Math.round(res.totalAvg * 10) / 10;
             res.totalPc = calcPC(res.totalPrem, res.totalAvg);
             return res;
           }
@@ -906,8 +915,16 @@
             if (!Object.keys(prevPrem).length) return null;
             let tp = 0, ta = 0;
             chs.forEach(ch => {
-              let p = 0, a = 0;
-              for (let m = 1; m <= endM; m++) { p += prevPrem[m]?.[ch] || 0; a += prevAvg[m]?.[ch] || 0; }
+              let p = 0, aSum = 0, monthCount = 0;
+              for (let m = 1; m <= endM; m++) {
+                p += prevPrem[m]?.[ch] || 0;
+                const avg = prevAvg[m]?.[ch];
+                if (avg !== undefined && avg !== null) {
+                  aSum += avg || 0;
+                  monthCount += 1;
+                }
+              }
+              const a = monthCount > 0 ? aSum / monthCount : 0;
               res.ch[ch] = calcPC(p, a); tp += p; ta += a;
             });
             res.totalPc = calcPC(tp, ta); return res;
