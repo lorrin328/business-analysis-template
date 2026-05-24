@@ -49,7 +49,7 @@ def _table_exists(conn, table: str) -> bool:
 def _read_raw_table(conn, table: str) -> pd.DataFrame | None:
     if not _table_exists(conn, table):
         return None
-    return pd.read_sql_query(f'SELECT * FROM "{table}"', conn)
+    return pd.read_sql_query(f'SELECT * FROM "{table}"', conn).drop_duplicates()
 
 
 def _merge_active_headcount(hr_rows: list[dict], active_rows: list[dict]) -> None:

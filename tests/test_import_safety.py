@@ -135,3 +135,41 @@ def test_write_raw_table_incremental_rejects_schema_drift_without_rebuild():
         assert rows == [(1, 10)]
     finally:
         conn.close()
+
+
+def test_write_raw_table_incremental_deletes_date_like_month_column():
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute(
+            """
+            CREATE TABLE hr_data (
+                "统计年" INTEGER,
+                "统计日期" TEXT,
+                "业务模式名称" TEXT,
+                "月初在职人力" INTEGER,
+                "月末在职人力" INTEGER
+            )
+            """
+        )
+        conn.execute(
+            'INSERT INTO hr_data VALUES (?, ?, ?, ?, ?)',
+            (2026, "2026-05-01", "OTO", 10, 11),
+        )
+        replacement = pd.DataFrame(
+            [
+                {
+                    "统计年": 2026,
+                    "统计日期": "2026-05-01",
+                    "业务模式名称": "OTO",
+                    "月初在职人力": 12,
+                    "月末在职人力": 13,
+                }
+            ]
+        )
+
+        write_raw_table_incremental(conn, "hr_data", replacement)
+
+        rows = conn.execute('SELECT "月初在职人力", "月末在职人力" FROM hr_data').fetchall()
+        assert rows == [(12, 13)]
+    finally:
+        conn.close()

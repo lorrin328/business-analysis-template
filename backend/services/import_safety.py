@@ -76,7 +76,7 @@ def delete_raw_period(conn, table: str, year: int, month: int, cols: tuple[str |
             WHERE CAST({quote_identifier(year_col)} AS INTEGER) = ?
               AND (
                 CAST({quote_identifier(month_col)} AS INTEGER) = ?
-                OR substr(CAST({quote_identifier(month_col)} AS TEXT), 1, 6) = ?
+                OR substr(replace(replace(CAST({quote_identifier(month_col)} AS TEXT), '-', ''), '/', ''), 1, 6) = ?
               )
             ''',
             (year, month, f"{year:04d}{month:02d}"),

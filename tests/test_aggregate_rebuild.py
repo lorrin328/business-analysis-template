@@ -92,7 +92,12 @@ def test_rebuild_aggregates_from_raw_tables_recreates_sqlite_aggregates(tmp_path
     )
 
     with sqlite3.connect(db_path) as conn:
-        performance.to_sql("performance", conn, if_exists="replace", index=False)
+        pd.concat([performance, performance.iloc[[0]]], ignore_index=True).to_sql(
+            "performance",
+            conn,
+            if_exists="replace",
+            index=False,
+        )
         jingdai.to_sql("jingdai", conn, if_exists="replace", index=False)
         hr_data.to_sql("hr_data", conn, if_exists="replace", index=False)
         value_data.to_sql("value_data", conn, if_exists="replace", index=False)
