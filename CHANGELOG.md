@@ -1,5 +1,13 @@
 # 经营分析看板 - 需求与开发文档
 
+## v1.0.46 更新说明（2026-05-24）
+**类型**：fix / deploy
+
+**变更内容**：
+- 部署同步时排除 `backend/venv`，避免源码仓库虚拟环境被复制到 `/opt/business-analysis`。
+- 部署时删除并重建生产虚拟环境，确保 `uvicorn` 启动脚本指向 `/opt/business-analysis/backend/venv`。
+- 统一版本号到 v1.0.46
+
 ## v1.0.45 更新说明（2026-05-24）
 **类型**：fix / deploy
 

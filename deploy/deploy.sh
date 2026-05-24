@@ -48,11 +48,13 @@ rsync -a --delete \
   --exclude='.git' \
   --exclude='node_modules' \
   --exclude='backend/__pycache__' \
+  --exclude='backend/venv' \
   --exclude='backend/logs/*.log' \
   --exclude='*.xlsx' \
   --exclude='*.db' \
   "$SRC_DIR/" "$APP_DIR/"
 
+rm -rf "$APP_DIR/backend/venv"
 python3 -m venv "$APP_DIR/backend/venv"
 "$APP_DIR/backend/venv/bin/pip" install --upgrade pip
 "$APP_DIR/backend/venv/bin/pip" install -r "$APP_DIR/backend/requirements.txt"
