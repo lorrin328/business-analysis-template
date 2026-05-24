@@ -32,8 +32,8 @@ def test_unsupported_metrics_render_empty_state():
     kpi = read_js("kpi-cards.js")
     target = read_js("target-modal.js")
     combined = kpi + target
-    assert "口径待完善" in combined
     assert "暂无长险期交数据" in combined
+    assert "未配置保障类目标" in combined
     assert "kpi-protection-rate');\n        if (el) el.textContent = '0%'" not in combined
 
 
@@ -45,55 +45,66 @@ def test_default_target_source_is_explicit():
 
 def test_product_config_does_not_embed_admin_token_and_uses_protection_kpi():
     html = read_html()
+    kpi = read_js("kpi-cards.js")
+    combined = html + "\n" + kpi
     api_client = read_js("api-client.js")
     assert "Aaaaa8888%" not in api_client
     assert "DEFAULT_ADMIN_TOKEN" not in api_client
-    assert "kpi.protection_total" in html
-    assert "未配置保障类目标" in html
+    assert "kpi.protection_total" in combined
+    assert "未配置保障类目标" in combined
 
 
 def test_protection_modal_shows_jingdai_transform_and_sub_modes():
-    html = read_html()
-    assert "case 'protection'" in html
-    assert "保障类产品达成率" in html
-    assert "年度累计达成" in html
-    assert "mainRow('经代', jdActual, targetJd)" in html
-    assert "mainRow('转型', tfActual, targetTf)" in html
-    assert "转型业务分模式" in html
-    assert "item.year?.product_protection" in html
+    modal_content = read_js("kpi-modal-content.js")
+    assert "case 'protection'" in modal_content
+    assert "保障类产品达成率" in modal_content
+    assert "年度累计达成" in modal_content
+    assert "mainRow('经代', jdActual, targetJd)" in modal_content
+    assert "mainRow('转型', tfActual, targetTf)" in modal_content
+    assert "转型业务分模式" in modal_content
+    assert "item.year?.product_protection" in modal_content
 
 
 def test_annuity_modal_shows_jingdai_transform_and_sub_modes():
-    html = read_html()
-    assert "case 'annuity'" in html
-    assert "商保年金达成率" in html
-    assert "mainRow('经代', jdActual, targetJd)" in html
-    assert "mainRow('转型', tfActual, targetTf)" in html
-    assert "转型业务分模式" in html
-    assert "item.year?.product_annuity" in html
-    assert "经代业务</td><td>--" not in html
+    modal_content = read_js("kpi-modal-content.js")
+    assert "case 'annuity'" in modal_content
+    assert "商保年金达成率" in modal_content
+    assert "mainRow('经代', jdActual, targetJd)" in modal_content
+    assert "mainRow('转型', tfActual, targetTf)" in modal_content
+    assert "转型业务分模式" in modal_content
+    assert "item.year?.product_annuity" in modal_content
+    assert "经代业务</td><td>--" not in modal_content
 
 
 def test_kpi_year_comparison_accepts_numeric_api_year():
-    html = read_html()
-    assert "String(kpi.year) === year" in html
-    assert "kpi.year === year" not in html
+    kpi = read_js("kpi-cards.js")
+    assert "String(kpi.year) === year" in kpi
+    assert "kpi.year === year" not in kpi
 
 
 def test_tenyear_kpi_includes_jingdai_in_card_and_modal():
     html = read_html()
-    assert "kpi.tenyear_jd" in html
-    assert "kpi.tenyear_tf" in html
-    assert "未配置10年期产品目标" in html
-    assert "Math.round(kpiData.tenyear_jd || 0)" in html
-    assert "targetCategory = is10y ? 'tenYear' : 'qjPremium'" in html
+    kpi = read_js("kpi-cards.js")
+    modal_content = read_js("kpi-modal-content.js")
+    combined = html + "\n" + kpi + "\n" + modal_content
+    assert "kpi.tenyear_jd" in combined
+    assert "kpi.tenyear_tf" in combined
+    assert "未配置10年期产品目标" in combined
+    assert "Math.round(kpiData.tenyear_jd || 0)" in combined
+    assert "targetCategory = is10y ? 'tenYear' : 'qjPremium'" in combined
 
 
 def test_frontend_centralizes_read_api_fetches():
     html = read_html()
     api_client = read_js("api-client.js")
-    # api-client.js loaded in HTML head
+    # Shared runtime modules are loaded in HTML head
+    assert '<script src="js/constants.js"></script>' in html
+    assert '<script src="js/format-utils.js"></script>' in html
     assert '<script src="js/api-client.js"></script>' in html
+    assert '<script src="js/upload.js"></script>' in html
+    assert '<script src="js/target-modal.js"></script>' in html
+    assert '<script src="js/kpi-cards.js"></script>' in html
+    assert '<script src="js/platform-trend.js"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -105,10 +116,11 @@ def test_frontend_centralizes_read_api_fetches():
     assert "fetch(`${API_BASE}/api/kpi/" not in html
     assert "fetch(`${API_BASE}/api/product/" not in html
     assert "fetch(`${API_BASE}/api/org-kpi/" not in html
-    # API URLs are in JS modules (mock-data.js, platform-trend.js, org-analysis.js, etc.)
-    js_files = ["mock-data.js", "platform-trend.js", "org-analysis.js", "kpi-cards.js",
-                 "product-analysis.js", "payperiod-chart.js", "team-analysis.js", "target-modal.js"]
-    all_js = " ".join(read_js(f) for f in js_files if os.path.exists(os.path.join(JS_DIR, f)))
+    # API URLs are only expected in the active runtime boundary plus the current HTML shell.
+    js_files = ["platform-trend.js", "kpi-cards.js", "dashboard-config.js", "product-config-modal.js",
+                "kpi-modal-content.js", "org-analysis.js", "seed-data.js", "data-integration.js",
+                "product-analysis.js", "payperiod-chart.js", "team-analysis.js", "target-modal.js"]
+    all_js = read_html() + " ".join(read_js(f) for f in js_files if os.path.exists(os.path.join(JS_DIR, f)))
     assert "/api/platform-data?year=" in all_js
     assert "/api/kpi?year=" in all_js
     assert "/api/product-analysis?" in all_js
@@ -118,9 +130,17 @@ def test_frontend_centralizes_read_api_fetches():
 
 def test_local_seed_data_remains_available_when_api_is_slow_or_unavailable():
     html = read_html()
-    assert "ALLOW_LOCAL_FALLBACK" in html
-    assert "clearRuntimeFallbackYear" in html
-    assert "暂保留本地兜底数据" in html
+    upload = read_js("upload.js")
+    seed = read_js("seed-data.js")
+    data_integration = read_js("data-integration.js")
+    combined = html + "\n" + upload + "\n" + seed + "\n" + data_integration
+    assert "const productData =" not in html
+    assert "const teamMock =" not in html
+    assert "const productData =" in seed
+    assert "const teamMock =" in seed
+    assert "ALLOW_LOCAL_FALLBACK" in data_integration
+    assert "clearRuntimeFallbackYear" in data_integration
+    assert "暂保留本地兜底数据" in combined
     assert "updateKPICards();\n      await fetchTargetData" in html
 
 
@@ -152,15 +172,65 @@ def test_runtime_js_boundary_is_explicit():
     import re
     html = read_html()
     refs = re.findall(r'src="(js/[^"]+)"', html)
-    assert refs == ["js/api-client.js"]
+    assert refs == [
+        "js/constants.js",
+        "js/format-utils.js",
+        "js/api-client.js",
+        "js/dashboard-config.js",
+        "js/upload.js",
+        "js/target-modal.js",
+        "js/kpi-cards.js",
+        "js/platform-trend.js",
+        "js/product-config-modal.js",
+        "js/kpi-modal-content.js",
+        "js/org-analysis.js",
+        "js/seed-data.js",
+        "js/data-integration.js",
+        "js/platform-trend-main.js",
+        "js/product-analysis.js",
+        "js/payperiod-chart.js",
+        "js/team-analysis.js",
+    ]
     with open(os.path.join(JS_DIR, "README.md"), "r", encoding="utf-8") as f:
         note = f.read()
-    assert "not active runtime code" in note
+    assert "Current production runtime" in note
+    assert "archived under `bak/20260524_stability_archive/js_unused/`" in note
+
+
+def test_dashboard_config_is_loaded_before_kpi_cards():
+    html = read_html()
+    config = read_js("dashboard-config.js")
+
+    assert '<script src="js/dashboard-config.js"></script>' in html
+    assert html.index('js/dashboard-config.js') < html.index('js/kpi-cards.js')
+    assert "await loadDashboardConfig();" in html
+    assert "/api/config/metrics" in config
+    assert "dashboardKpiCards" in config
+
+
+def test_product_config_modal_is_outside_html_shell():
+    html = read_html()
+    modal = read_js("product-config-modal.js")
+
+    assert '<script src="js/product-config-modal.js"></script>' in html
+    assert "async function openProductConfigModal()" not in html
+    assert "async function saveProductConfig()" not in html
+    assert "async function openProductConfigModal()" in modal
+    assert "async function saveProductConfig()" in modal
+
+
+def test_kpi_modal_content_is_outside_html_shell():
+    html = read_html()
+    modal_content = read_js("kpi-modal-content.js")
+
+    assert '<script src="js/kpi-modal-content.js"></script>' in html
+    assert "function getModalContent(type)" not in html
+    assert "function getModalContent(type)" in modal_content
 
 
 def test_dynamic_org_controls_do_not_inline_unescaped_orgs():
     html = read_html()
-    combined = html + "\n" + read_js("mock-data.js") + "\n" + read_js("product-analysis.js") + "\n" + read_js("payperiod-chart.js")
+    combined = html + "\n" + read_js("org-analysis.js") + "\n" + read_js("product-analysis.js") + "\n" + read_js("payperiod-chart.js")
     assert "onchange=\"togglePayPeriodOrg('${org}'" not in combined
     assert "onchange=\"toggleProductOrg('${org}'" not in combined
     assert "wrapper.innerHTML = orgs.map" not in combined
@@ -168,29 +238,72 @@ def test_dynamic_org_controls_do_not_inline_unescaped_orgs():
 
 
 def test_upload_js_exposes_handle_file():
+    html = read_html()
     upload = read_js("upload.js")
+    assert "async function handleFile(input, infoId)" not in html
     assert "window.handleFile = handleFile" in upload
     assert "try {" in upload
     assert "} catch" in upload
     assert "} finally" in upload
 
 
+def test_target_modal_js_is_runtime_owner_for_target_settings():
+    html = read_html()
+    target = read_js("target-modal.js")
+
+    assert "async function openTargetModal()" not in html
+    assert "async function openTargetModal()" in target
+    assert "function createDefaultTargetData(year)" in target
+    assert "function saveTargetData(evt)" in target
+    assert "function updateKPICards()" not in target
+
+
+def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
+    html = read_html()
+    kpi = read_js("kpi-cards.js")
+
+    assert "function updateKPICards()" not in html
+    assert "function updateKPICards()" in kpi
+    assert "window.updateKPICards = updateKPICards" in kpi
+    assert "KPI card rendering lives in js/kpi-cards.js" in html
+
+
 def test_platform_trend_uses_calendar_days_for_daily_series():
     html = read_html()
-    assert "function daysInMonth(year, month)" in html
-    assert "function dailyDisplayEndDay(year, month)" in html
-    assert "new Date(Number(year), Number(month), 0).getDate()" in html
-    assert "m === now.getMonth() + 1" in html
+    platform = read_js("platform-trend.js")
+    platform_main = read_js("platform-trend-main.js")
+    combined = html + "\n" + platform + "\n" + platform_main
+    assert "function daysInMonth(year, month)" not in html
+    assert "function dailyDisplayEndDay(year, month)" not in html
+    assert "function completeDailySeries(values, year, month)" not in html
+    assert "function daysInMonth(year, month)" in platform
+    assert "function dailyDisplayEndDay(year, month)" in platform
+    assert "function completeDailySeries(values, year, month)" in platform
+    assert "new Date(Number(year), Number(month), 0).getDate()" in platform
+    assert "m === now.getMonth() + 1" in platform
+    assert "window.completeDailySeries = completeDailySeries" in platform
     assert "daysInMonthArr" not in html
     assert "function trimDailySeries" not in html
-    assert "function completeDailySeries" in html
+    assert "completeDailySeries(monthData[key], year, month)" in combined
+
+
+def test_platform_trend_main_is_loaded_at_runtime_boundary():
+    html = read_html()
+    platform_main = read_js("platform-trend-main.js")
+
+    assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
+    assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
+    assert '<script src="js/platform-trend-main.js"></script>' in html
+    assert "function refreshPlatformChart()" in platform_main
+    assert "function switchYear(value)" in platform_main
 
 
 def test_per_capita_metrics_use_average_headcount_denominators():
     html = read_html()
     kpi = read_js("kpi-cards.js")
     target_modal = read_js("target-modal.js")
-    combined = html + "\n" + kpi + "\n" + target_modal
+    modal_content = read_js("kpi-modal-content.js")
+    combined = html + "\n" + kpi + "\n" + target_modal + "\n" + modal_content
 
     assert "月均新单保费 / 月均在职人力" in combined
     assert "const 月均保费 = 统计月数 > 0 ? 总保费 / 统计月数 : 总保费;" in combined

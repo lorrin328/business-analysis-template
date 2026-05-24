@@ -99,4 +99,71 @@ DISPLAY_CONSTRAINTS = {
     },
 }
 
-__all__ = ["METRICS", "DISPLAY_CONSTRAINTS"]
+DASHBOARD_KPI_CARDS = [
+    {
+        "code": "overall",
+        "name": "期交保费达成率",
+        "targetCategory": "qjPremium",
+        "actualField": "qj_premium",
+        "supportsBusinessBreakdown": True,
+        "definition": "期交保费实际 / 期交保费目标",
+    },
+    {
+        "code": "value",
+        "name": "价值达成率",
+        "targetCategory": "value",
+        "actualField": "value_premium",
+        "supportsBusinessBreakdown": True,
+        "definition": "价值保费实际 / 价值保费目标",
+    },
+    {
+        "code": "activity",
+        "name": "长险活动率",
+        "targetCategory": None,
+        "actualField": "activity_rate",
+        "supportsBusinessBreakdown": False,
+        "definition": "活动人力 / 在职人力，同比按百分点差展示",
+    },
+    {
+        "code": "annuity",
+        "name": "商保年金达成率",
+        "targetCategory": "shangbao",
+        "actualField": "product_annuity",
+        "supportsBusinessBreakdown": True,
+        "definition": "商保年金保费实际 / 商保年金目标",
+    },
+    {
+        "code": "protection",
+        "name": "保障类产品达成率",
+        "targetCategory": "baozhang",
+        "actualField": "product_protection",
+        "supportsBusinessBreakdown": True,
+        "definition": "保障类产品保费实际 / 保障类产品目标",
+    },
+    {
+        "code": "10year",
+        "name": "10年期产品达成率",
+        "targetCategory": "tenYear",
+        "actualField": "tenyear_qj",
+        "supportsBusinessBreakdown": True,
+        "definition": "10年期产品期交实际 / 10年期产品目标",
+    },
+    {
+        "code": "longterm",
+        "name": "长险期交达成率",
+        "targetCategory": "qjPremium",
+        "actualField": "longterm_qj",
+        "supportsBusinessBreakdown": True,
+        "definition": "长险期交实际 / 期交保费目标",
+    },
+    {
+        "code": "percapita",
+        "name": "人均保费",
+        "targetCategory": None,
+        "actualField": "avg_premium",
+        "supportsBusinessBreakdown": True,
+        "definition": "月均新单保费 / 月均在职人力",
+    },
+]
+
+__all__ = ["METRICS", "DISPLAY_CONSTRAINTS", "DASHBOARD_KPI_CARDS"]

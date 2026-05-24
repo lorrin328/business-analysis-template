@@ -1,9 +1,8 @@
-﻿// team-analysis.js — 队伍趋势图表
-(function (window) {
+﻿// team-analysis.js — team trend chart state and rendering
     // ---------- Chart 3: Team Trend ----------
     let currentTeamMetric = 'headcount';
     let currentTeamDim = 'year';
-    let selectedTeamYear = '2026';
+    let selectedTeamYear = DEFAULT_DASHBOARD_YEAR;
     let selectedTeamQuarter = 'Q2';
     const selectedTeamSeries = { 'OTO': true, '证保': true, '蚁桥': true };
     const ORG_LIST_TEAM = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
@@ -33,7 +32,7 @@
       const data = teamMock[year];
       const result = [];
       for (let i = 0; i < 12; i++) {
-        if (year === 2026 && i >= 5) { result.push(null); continue; }
+        if (Number(year) === DEFAULT_DASHBOARD_YEAR_NUM && i >= getLatestMonthForYear(String(year))) { result.push(null); continue; }
         let totalHeadcount = 0, totalActive = 0, totalPremium = 0;
         if (useOrgData) {
           for (const org of selectedOrgs) {
@@ -153,10 +152,25 @@
       teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
     }
+    function toggleTeamSeries(key, checked) {
+      selectedTeamSeries[key] = checked;
+      teamChart.clear();
+      teamChart.setOption(getTeamOption(), true);
+    }
 
-  window.teamChart = teamChart;
-  window.getTeamAggregated = getTeamAggregated;
-  window.getTeamOption = getTeamOption;
-  window.currentTeamMetric = currentTeamMetric;
-})(window);
+    function toggleTeamOrg(key, checked) {
+      if (key === 'all') {
+        ORG_LIST_TEAM.forEach(o => { selectedTeamOrgs[o] = checked; });
+        document.querySelectorAll('#teamOrgChecks input[type="checkbox"]').forEach((input, idx) => {
+          if (idx > 0) input.checked = checked;
+        });
+      } else {
+        selectedTeamOrgs[key] = checked;
+        const allChecked = ORG_LIST_TEAM.every(o => selectedTeamOrgs[o]);
+        const allInput = document.querySelector('#teamOrgChecks input[type="checkbox"]');
+        if (allInput) allInput.checked = allChecked;
+      }
+      teamChart.clear();
+      teamChart.setOption(getTeamOption(), true);
+    }
 

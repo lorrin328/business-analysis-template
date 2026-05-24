@@ -1,7 +1,5 @@
-﻿// org-analysis.js — 机构维度KPI表格
-(function (window) {
-    // ========== 机构维度 KPI ==========
-    let orgKpiData = null;
+// org-analysis.js - organization KPI loading, filters, and table rendering
+let orgKpiData = null;
     let selectedOrgs = ['all'];
     let orgTimeDim = 'year';
     let orgSubPeriod = 1; // Q2 default
@@ -388,15 +386,3 @@
       `;
       wrapper.innerHTML = html;
     }
-
-
-
-  window.orgKpiData = orgKpiData;
-  window.selectedOrgs = selectedOrgs;
-  window.orgTimeDim = orgTimeDim;
-  window.fetchOrgKpiData = fetchOrgKpiData;
-  window.toggleOrgFilter = toggleOrgFilter;
-  window.switchOrgDim = switchOrgDim;
-  window.renderOrgTable = renderOrgTable;
-})(window);
-

@@ -119,7 +119,8 @@
       var integrityPrefix = isPartialImport ? '部分导入成功，数据口径不完整: ' : '导入成功: ';
       var errorNote = isPartialImport && result.errors ? ' 未更新: ' + result.errors.join('; ') : '';
       _setAllInfos(integrityPrefix + uploadedCount + ' 个文件' +
-        (skippedCount > 0 ? ' (' + skippedCount + ' 个已跳过)' : '') + errorNote);
+        (skippedCount > 0 ? ' (' + skippedCount + ' 个已跳过)' : '') +
+        '，如后端数据为空将暂保留本地兜底数据' + errorNote);
       _refreshAfterUpload(uploadYear);
 
     } catch (e) {

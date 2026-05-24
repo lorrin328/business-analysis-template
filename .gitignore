@@ -21,6 +21,7 @@ data_agg.json
 data.json
 *.db
 _cleanup_backup_*/
+bak/
 .pytest_cache/
 .uv-cache/
 .uv-python/

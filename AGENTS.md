@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) and OpenClaw for automated deployment.
+This file provides guidance to Codex (Codex.ai/code) and OpenClaw for automated deployment.
 
 ## 项目概述
 

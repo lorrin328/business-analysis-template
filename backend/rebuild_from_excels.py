@@ -11,6 +11,7 @@ from etl import (
     aggregate_org_hr, aggregate_org_active_headcount,
 )
 from db import clear_year_data, get_db, init_db, replace_rows
+from services.operation_lock import operation_lock
 from services.product_config_service import extract_jingdai_products_to_config, extract_products_to_config
 
 
@@ -23,6 +24,11 @@ def _pick(pattern: str) -> Path | None:
 
 
 def main():
+    with operation_lock("excel-rebuild", timeout=1.0):
+        _main_locked()
+
+
+def _main_locked():
     init_db()
 
     performance_file = _pick('AI-经营分析业绩基表*.xlsx')

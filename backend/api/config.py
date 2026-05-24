@@ -2,7 +2,7 @@
 from fastapi import APIRouter
 
 from config.business_lines import BUSINESS_LINES
-from config.metrics import METRICS, DISPLAY_CONSTRAINTS
+from config.metrics import DASHBOARD_KPI_CARDS, DISPLAY_CONSTRAINTS, METRICS
 from services.response import success_response
 
 router = APIRouter(prefix="/api/config", tags=["config"])
@@ -43,6 +43,7 @@ def get_metrics():
         {
             "metrics": METRICS,
             "displayConstraints": DISPLAY_CONSTRAINTS,
+            "dashboardKpiCards": DASHBOARD_KPI_CARDS,
         },
         meta={
             "metric": "config-metrics",

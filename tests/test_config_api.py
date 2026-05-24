@@ -49,3 +49,16 @@ def test_business_lines_jingdai_no_org_support():
     resp = client.get("/api/config/business-lines")
     jingdai = next(l for l in resp.json()["data"] if l["code"] == "jingdai")
     assert jingdai["supportOrgDimension"] is False
+
+
+def test_metrics_endpoint_exposes_dashboard_kpi_registry():
+    resp = client.get("/api/config/metrics")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+
+    assert data["metrics"]["avg_premium"]["definition"] == "月均新单保费 / 月均在职人力"
+    assert "dashboardKpiCards" in data
+    assert any(
+        card["code"] == "protection" and card["targetCategory"] == "baozhang"
+        for card in data["dashboardKpiCards"]
+    )

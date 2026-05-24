@@ -23,7 +23,7 @@ PY
 )
 if [ "$PYTHON_VERSION_OK" != "1" ]; then
   echo "ERROR: Python 3.10+ is required. Current version: $(python3 --version 2>&1)"
-  echo "Please install Python 3.10 or newer, or deploy with Docker."
+  echo "Please install Python 3.10 or newer before running this deploy script."
   exit 1
 fi
 

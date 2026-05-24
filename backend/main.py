@@ -39,6 +39,8 @@ from etl import (
 
 from validators.data_validator import validate_rows
 from services.import_safety import RawIncrementalWriteError, write_raw_table_incremental
+from services.health_check import run_health_check
+from services.operation_lock import OperationLockError, operation_lock
 from services.product_config_service import extract_jingdai_products_to_config, extract_products_to_config
 
 
@@ -177,7 +179,7 @@ for router in [kpi_router, trend_router, org_router, team_router, product_router
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    return run_health_check()
 
 
 @app.post("/api/upload")
@@ -191,6 +193,22 @@ async def upload_files(
     _admin=Depends(require_admin),
 ):
     """上传Excel文件并聚合到SQLite"""
+    try:
+        with operation_lock("excel-import", timeout=1.0):
+            return await _upload_files_locked(performance, jingdai, hr, value, year, allow_partial)
+    except OperationLockError as exc:
+        raise HTTPException(status_code=409, detail="已有导入或重建任务正在执行，请稍后再试。") from exc
+
+
+async def _upload_files_locked(
+    performance: UploadFile = File(None),
+    jingdai: UploadFile = File(None),
+    hr: UploadFile = File(None),
+    value: UploadFile = File(None),
+    year: int = DEFAULT_YEAR,
+    allow_partial: bool = Query(False),
+):
+    """上传Excel文件并聚合到SQLite。调用方必须先获得 operation_lock。"""
     # 单文件最大 20MB
     max_size = MAX_UPLOAD_SIZE_MB * 1024 * 1024
     for f in [performance, jingdai, hr, value]:
