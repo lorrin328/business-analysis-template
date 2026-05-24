@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from auth import require_admin
 from config.business_lines import DEFAULT_YEAR
 from db import get_db
+from services.data_quality_audit import run_data_quality_audit
 
 router = APIRouter(prefix="/api", tags=["diagnostics"])
 
@@ -103,3 +104,8 @@ def get_diagnostics(_admin=Depends(require_admin)):
         "daily_cutoff": daily_info,
         "note": "ratio=长险期交/期交保费×100。ratio>95正常，80-95需关注，<80异常。",
     }
+
+
+@router.get("/diagnostics/data-quality")
+def get_data_quality_diagnostics(year: int = DEFAULT_YEAR, _admin=Depends(require_admin)):
+    return run_data_quality_audit(year)
