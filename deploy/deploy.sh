@@ -126,7 +126,6 @@ if ! grep -q "client_max_body_size" /etc/nginx/sites-available/business-analysis
 fi
 
 # 自动部署 Webhook（首次安装，后续更新保留配置）
-cp "$APP_DIR/deploy/webhook.py" "$APP_DIR/deploy/webhook.py"
 if [ ! -f /etc/systemd/system/webhook-deploy.service ]; then
   cp "$APP_DIR/deploy/webhook.service" /etc/systemd/system/webhook-deploy.service
   systemctl daemon-reload
