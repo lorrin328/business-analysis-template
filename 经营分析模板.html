@@ -728,7 +728,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.51</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.52</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" id="exportExcelBtn" onclick="exportDashboardExcel()" style="margin-right:8px;">导出Excel</button>
@@ -854,7 +854,7 @@
             <option value="11">12月</option>
           </select>
         </div>
-        <button class="chart-btn" id="orgExpandBtn" onclick="toggleOrgExpand()">展开</button>
+        <button class="chart-btn" id="orgExpandBtn" type="button" aria-expanded="false">展开</button>
       </div>
       <div class="org-table-wrapper" id="orgTableWrapper">
         <div class="org-empty">正在加载机构数据...</div>
@@ -1210,7 +1210,7 @@
   <script>
     // API integration lives in js/data-integration.js
   </script>
-  <script src="js/org-analysis.js"></script>
+  <script src="js/org-analysis.js?v=1.0.52"></script>
   <script src="js/seed-data.js"></script>
   <script src="js/data-integration.js"></script>
   <script src="js/platform-trend-main.js"></script>

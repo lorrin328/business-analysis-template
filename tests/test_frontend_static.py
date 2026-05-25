@@ -166,13 +166,14 @@ def test_html_js_references_exist():
     html = read_html()
     refs = re.findall(r'src="(js/[^"]+)"', html)
     for ref in refs:
-        assert os.path.exists(os.path.join(ROOT, ref)), f"Missing: {ref}"
+        path = ref.split("?", 1)[0]
+        assert os.path.exists(os.path.join(ROOT, path)), f"Missing: {ref}"
 
 
 def test_runtime_js_boundary_is_explicit():
     import re
     html = read_html()
-    refs = re.findall(r'src="(js/[^"]+)"', html)
+    refs = [ref.split("?", 1)[0] for ref in re.findall(r'src="(js/[^"]+)"', html)]
     assert refs == [
         "js/constants.js",
         "js/format-utils.js",
@@ -256,14 +257,23 @@ def test_org_analysis_has_expand_mode_and_colored_indicators():
     org = read_js("org-analysis.js")
     combined = html + "\n" + org
 
+    assert 'src="js/org-analysis.js?v=1.0.52"' in html
     assert 'id="orgExpandBtn"' in html
-    assert "function toggleOrgExpand()" in org
+    assert 'id="orgExpandBtn" type="button" aria-expanded="false"' in html
+    assert 'id="orgExpandBtn" onclick=' not in html
+    assert "function toggleOrgExpand(event)" in org
     assert "let orgExpanded = false" in org
+    assert "btn.addEventListener('click', toggleOrgExpand)" in org
+    assert "window.toggleOrgExpand = toggleOrgExpand" in org
+    assert "window.renderOrgTable = renderOrgTable" in org
+    assert "aria-expanded" in org
     assert "机构汇总" in org
     assert "aggregateOrgRows" in org
     assert "calcOrgTimeProgressPercent" in org
     assert "rate >= 100 ? 'org-ind-red' : rate >= progress ? 'org-ind-light-red' : 'org-ind-green'" in org
     assert "yoy >= 10 ? 'org-ind-red' : yoy >= 0 ? 'org-ind-light-red' : 'org-ind-green'" in org
+    assert 'return `<td class="${cls}">${fmtOrgPct(rate)}</td>`' in org
+    assert 'return `<td class="${cls}">${fmtOrgPct(yoy, true)}</td>`' in org
     assert "toFixed(1)" in org
     assert ".org-table .org-ind-green" in combined
     assert ".org-table .org-ind-light-red" in combined

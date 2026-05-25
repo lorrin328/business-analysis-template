@@ -78,11 +78,25 @@ let orgKpiData = null;
       renderOrgTable();
     }
 
-    function toggleOrgExpand() {
-      orgExpanded = !orgExpanded;
+    function syncOrgExpandButton() {
       const btn = document.getElementById('orgExpandBtn');
-      if (btn) btn.textContent = orgExpanded ? '收起' : '展开';
+      if (!btn) return;
+      btn.textContent = orgExpanded ? '收起' : '展开';
+      btn.setAttribute('aria-expanded', orgExpanded ? 'true' : 'false');
+      btn.dataset.expanded = orgExpanded ? 'true' : 'false';
+    }
+
+    function setOrgExpanded(expanded) {
+      orgExpanded = Boolean(expanded);
+      syncOrgExpandButton();
       renderOrgTable();
+    }
+
+    function toggleOrgExpand(event) {
+      if (event && typeof event.preventDefault === 'function') {
+        event.preventDefault();
+      }
+      setOrgExpanded(!orgExpanded);
     }
 
     function calcOrgTimeProgressPercent(year) {
@@ -259,6 +273,7 @@ let orgKpiData = null;
 
     function renderOrgTable() {
       const wrapper = document.getElementById('orgTableWrapper');
+      syncOrgExpandButton();
       if (!orgKpiData) {
         wrapper.innerHTML = '<div class="org-empty">正在加载机构数据...</div>';
         return;
@@ -449,3 +464,25 @@ let orgKpiData = null;
       `;
       wrapper.innerHTML = html;
     }
+
+    function initOrgAnalysisControls() {
+      syncOrgExpandButton();
+      const btn = document.getElementById('orgExpandBtn');
+      if (btn && !btn.dataset.boundOrgExpand) {
+        btn.addEventListener('click', toggleOrgExpand);
+        btn.dataset.boundOrgExpand = 'true';
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initOrgAnalysisControls);
+    } else {
+      initOrgAnalysisControls();
+    }
+
+    window.fetchOrgKpiData = fetchOrgKpiData;
+    window.toggleOrgFilter = toggleOrgFilter;
+    window.switchOrgDim = switchOrgDim;
+    window.renderOrgTable = renderOrgTable;
+    window.toggleOrgExpand = toggleOrgExpand;
+    window.setOrgExpanded = setOrgExpanded;
