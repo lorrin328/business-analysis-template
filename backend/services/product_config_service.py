@@ -12,6 +12,13 @@ from metrics.business_rules import normalize_product_code
 logger = logging.getLogger("business-analysis")
 
 
+def normalize_product_name(value) -> str:
+    if pd.isna(value):
+        return ""
+    text = str(value).strip()
+    return "" if text.lower() in {"nan", "none", "null"} else text
+
+
 def normalize_product_config_table(conn) -> int:
     """Normalize product_config.product_code and merge duplicates such as 4281/4281.0.
 
@@ -41,7 +48,7 @@ def normalize_product_config_table(conn) -> int:
             'created_at': row['created_at'],
             'updated_at': row['updated_at'],
         })
-        name = str(row['product_name'] or '').strip()
+        name = normalize_product_name(row['product_name'])
         if name and (not item['product_name'] or raw_code == code):
             item['product_name'] = name
         if str(row['is_annuity']).upper() == 'Y':
@@ -93,7 +100,7 @@ def extract_products_to_config(df):
         return
 
     if name_col:
-        work['_product_name'] = work[name_col].astype(str).str.strip()
+        work['_product_name'] = work[name_col].map(normalize_product_name)
     else:
         work['_product_name'] = ''
     if channel_col:
@@ -124,7 +131,7 @@ def extract_jingdai_products_to_config(df):
         return
 
     work = _period_year_month(df, None, time_col)
-    work['_product_name'] = work[name_col].astype(str).str.strip()
+    work['_product_name'] = work[name_col].map(normalize_product_name)
     work = work[work['_product_name'].replace('', pd.NA).notna()]
     work = work[work['_year'] >= DEFAULT_YEAR]
     if work.empty:

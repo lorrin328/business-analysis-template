@@ -31,6 +31,8 @@ def normalize_product_code(value) -> str:
     if pd.isna(value):
         return ""
     text = str(value).strip()
+    if text.lower() in {"nan", "none", "null"}:
+        return ""
     return text[:-2] if text.endswith(".0") else text
 
 

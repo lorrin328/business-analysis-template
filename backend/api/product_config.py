@@ -10,7 +10,7 @@ from db import get_db
 from db.repository import replace_rows_incremental
 from etl.aggregates.org import aggregate_org_performance
 from metrics.business_rules import normalize_product_code
-from services.product_config_service import normalize_product_config_table
+from services.product_config_service import normalize_product_config_table, normalize_product_name
 from services.response import success_response
 
 router = APIRouter(prefix="/api", tags=["product-config"])
@@ -58,7 +58,7 @@ def _auto_extract_from_performance(conn) -> int:
         code = normalize_product_code(row["product_code"])
         if not code:
             continue
-        name = row["product_name"].strip()
+        name = normalize_product_name(row["product_name"])
         channel = CHANNEL_MAP.get(row["business_type"], row["business_type"])
         c.execute('''
             INSERT OR IGNORE INTO product_config (product_code, product_name, business_type)
@@ -93,7 +93,9 @@ def _auto_extract_from_jingdai(conn) -> int:
 
     inserted = 0
     for row in c.fetchall():
-        name = row["product_name"].strip()
+        name = normalize_product_name(row["product_name"])
+        if not name:
+            continue
         c.execute('''
             INSERT OR IGNORE INTO product_config (product_code, product_name, business_type)
             VALUES (?, ?, '经代')
@@ -237,7 +239,7 @@ def save_product_config(
                     c.execute('''
                         INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection, updated_at)
                         VALUES (?, COALESCE(?, ''), '', ?, ?, CURRENT_TIMESTAMP)
-                    ''', (code, item.get("product_name"), annuity, protection))
+                    ''', (code, normalize_product_name(item.get("product_name")), annuity, protection))
             else:
                 business_type = CHANNEL_MAP.get(str(item_business_type).strip(), str(item_business_type).strip())
                 c.execute('''
@@ -250,7 +252,7 @@ def save_product_config(
                         updated_at = CURRENT_TIMESTAMP
                 ''', (
                     code,
-                    item.get("product_name"),
+                    normalize_product_name(item.get("product_name")),
                     business_type,
                     annuity,
                     protection,

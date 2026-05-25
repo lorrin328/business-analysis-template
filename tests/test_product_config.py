@@ -584,6 +584,41 @@ class TestProductConfig:
             conn.commit()
             conn.close()
 
+    def test_product_config_filters_nan_code_and_name(self, monkeypatch):
+        monkeypatch.setenv("ADMIN_TOKEN", "test-token")
+
+        from db import DB_PATH
+
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            conn.execute("DELETE FROM product_config")
+            conn.execute(
+                """
+                INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("nan", "nan", "OTO", "N", "N"),
+            )
+            conn.execute(
+                """
+                INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("NAN001", "nan", "OTO", "N", "N"),
+            )
+            conn.commit()
+
+            resp = client.get("/api/product-config")
+            assert resp.status_code == 200
+            rows = resp.json()["data"]
+            assert not any(str(r["product_code"]).lower() == "nan" for r in rows)
+            nan001 = next(r for r in rows if r["product_code"] == "NAN001")
+            assert nan001["product_name"] == ""
+        finally:
+            conn.execute("DELETE FROM product_config")
+            conn.commit()
+            conn.close()
+
     def test_aggregate_product_category_matches_normalized_code(self, monkeypatch):
         """A legacy 4281.0 config must still match raw performance product code 4281."""
         monkeypatch.setenv("ADMIN_TOKEN", "test-token")
