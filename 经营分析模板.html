@@ -701,6 +701,9 @@
     }
     .org-table tr.total-row:hover td { background: var(--bg-hover); }
     .org-table .sub-channel { color: var(--text-secondary); padding-left: 16px; }
+    .org-table .org-ind-green { color: var(--success); font-weight: 600; }
+    .org-table .org-ind-light-red { color: #fca5a5; font-weight: 600; }
+    .org-table .org-ind-red { color: var(--danger); font-weight: 700; }
     .org-empty { text-align: center; padding: 40px; color: var(--text-secondary); font-size: 14px; }
 
     /* Animations */
@@ -725,7 +728,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.49</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.50</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" id="exportExcelBtn" onclick="exportDashboardExcel()" style="margin-right:8px;">导出Excel</button>
@@ -851,6 +854,7 @@
             <option value="11">12月</option>
           </select>
         </div>
+        <button class="chart-btn" id="orgExpandBtn" onclick="toggleOrgExpand()">展开</button>
       </div>
       <div class="org-table-wrapper" id="orgTableWrapper">
         <div class="org-empty">正在加载机构数据...</div>

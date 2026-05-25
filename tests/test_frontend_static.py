@@ -251,6 +251,25 @@ def test_dynamic_org_controls_do_not_inline_unescaped_orgs():
     assert "container.innerHTML = orgs.map" not in combined
 
 
+def test_org_analysis_has_expand_mode_and_colored_indicators():
+    html = read_html()
+    org = read_js("org-analysis.js")
+    combined = html + "\n" + org
+
+    assert 'id="orgExpandBtn"' in html
+    assert "function toggleOrgExpand()" in org
+    assert "let orgExpanded = false" in org
+    assert "机构汇总" in org
+    assert "aggregateOrgRows" in org
+    assert "calcOrgTimeProgressPercent" in org
+    assert "rate >= 100 ? 'org-ind-red' : rate >= progress ? 'org-ind-light-red' : 'org-ind-green'" in org
+    assert "yoy >= 10 ? 'org-ind-red' : yoy >= 0 ? 'org-ind-light-red' : 'org-ind-green'" in org
+    assert "toFixed(1)" in org
+    assert ".org-table .org-ind-green" in combined
+    assert ".org-table .org-ind-light-red" in combined
+    assert ".org-table .org-ind-red" in combined
+
+
 def test_upload_js_exposes_handle_file():
     html = read_html()
     upload = read_js("upload.js")

@@ -4,6 +4,7 @@ let orgKpiData = null;
     let orgTimeDim = 'year';
     let orgSubPeriod = 1; // Q2 default
     let orgSubMonth = 3;  // 4月 default
+    let orgExpanded = false;
 
     const ORG_LIST = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
     const CHANNEL_LIST = ['OTO','证保','蚁桥'];
@@ -75,6 +76,26 @@ let orgKpiData = null;
         orgSubMonth = parseInt(mSelect.value);
       }
       renderOrgTable();
+    }
+
+    function toggleOrgExpand() {
+      orgExpanded = !orgExpanded;
+      const btn = document.getElementById('orgExpandBtn');
+      if (btn) btn.textContent = orgExpanded ? '收起' : '展开';
+      renderOrgTable();
+    }
+
+    function calcOrgTimeProgressPercent(year) {
+      const y = Number(year || orgKpiData?.year || new Date().getFullYear());
+      const today = new Date();
+      const start = new Date(y, 0, 1);
+      const end = new Date(y + 1, 0, 1);
+      const totalDays = Math.round((end - start) / 86400000);
+      if (!Number.isFinite(totalDays) || totalDays <= 0) return 0;
+      if (today.getFullYear() < y) return 0;
+      if (today.getFullYear() > y) return 100;
+      const elapsedDays = Math.min(totalDays, Math.max(1, Math.floor((today - start) / 86400000) + 1));
+      return Math.round(elapsedDays / totalDays * 1000) / 10;
     }
 
     function getOrgPeriodKey(dim, idx) {
@@ -161,6 +182,13 @@ let orgKpiData = null;
       return Math.round((current - prev) / prev * 1000) / 10;
     }
 
+    function fmtOrgPct(value, sign = false) {
+      if (value == null || !Number.isFinite(Number(value))) return '-';
+      const n = Math.round(Number(value) * 10) / 10;
+      const prefix = sign && n > 0 ? '+' : '';
+      return `${prefix}${n.toFixed(1)}%`;
+    }
+
     function fmtOrgNum(n) {
       if (n === 0 || n == null) return '-';
       return Math.round(n).toLocaleString('zh-CN');
@@ -168,15 +196,50 @@ let orgKpiData = null;
 
     function rateCell(rate) {
       if (rate == null) return '<td>-</td>';
-      const cls = rate >= 100 ? 'up' : rate >= 80 ? 'warning' : 'down';
-      return `<td style="color:var(--${cls});">${rate}%</td>`;
+      const progress = calcOrgTimeProgressPercent(orgKpiData?.year);
+      const cls = rate >= 100 ? 'org-ind-red' : rate >= progress ? 'org-ind-light-red' : 'org-ind-green';
+      return `<td class="${cls}">${fmtOrgPct(rate)}</td>`;
     }
 
     function yoyCell(yoy) {
       if (yoy == null) return '<td>-</td>';
-      const cls = yoy >= 0 ? 'up' : 'down';
-      const sign = yoy >= 0 ? '+' : '';
-      return `<td class="${cls}">${sign}${yoy}%</td>`;
+      const cls = yoy >= 10 ? 'org-ind-red' : yoy >= 0 ? 'org-ind-light-red' : 'org-ind-green';
+      return `<td class="${cls}">${fmtOrgPct(yoy, true)}</td>`;
+    }
+
+    function aggregateOrgRows(org, group, dim, periodIdx) {
+      const sum = {
+        org, channel: orgExpanded ? '小计' : '', isSubtotal: orgExpanded, isOrgSummary: !orgExpanded,
+        qjTarget: 0, qjActual: 0, qjRate: null, qjYoy: null,
+        valueTarget: 0, valueActual: 0, valueRate: null, valueYoy: null,
+        p10Target: 0, p10Actual: 0, p10Rate: null,
+        annuityTarget: 0, annuityActual: 0, annuityRate: null,
+        protectionTarget: 0, protectionActual: 0, protectionRate: null,
+      };
+      let qjHasTarget = false, valueHasTarget = false;
+      let qjPrevSum = 0, valuePrevSum = 0;
+      group.forEach(r => {
+        sum.qjActual += r.qjActual;
+        sum.valueActual += r.valueActual;
+        sum.p10Actual += r.p10Actual;
+        sum.annuityActual += r.annuityActual;
+        sum.protectionActual += r.protectionActual;
+        if (r.qjTarget > 0) { sum.qjTarget += r.qjTarget; qjHasTarget = true; }
+        if (r.valueTarget > 0) { sum.valueTarget += r.valueTarget; valueHasTarget = true; }
+        if (r.p10Target > 0) sum.p10Target += r.p10Target;
+        if (r.annuityTarget > 0) sum.annuityTarget += r.annuityTarget;
+        if (r.protectionTarget > 0) sum.protectionTarget += r.protectionTarget;
+        qjPrevSum += getOrgPrevActual(org, r.channel, 'qj', dim, periodIdx);
+        valuePrevSum += getOrgPrevActual(org, r.channel, 'value', dim, periodIdx);
+      });
+      sum.qjRate = qjHasTarget ? calcOrgRate(sum.qjActual, sum.qjTarget) : null;
+      sum.valueRate = valueHasTarget ? calcOrgRate(sum.valueActual, sum.valueTarget) : null;
+      sum.p10Rate = sum.p10Target > 0 ? calcOrgRate(sum.p10Actual, sum.p10Target) : null;
+      sum.annuityRate = sum.annuityTarget > 0 ? calcOrgRate(sum.annuityActual, sum.annuityTarget) : null;
+      sum.protectionRate = sum.protectionTarget > 0 ? calcOrgRate(sum.protectionActual, sum.protectionTarget) : null;
+      sum.qjYoy = calcOrgYoy(sum.qjActual, qjPrevSum);
+      sum.valueYoy = calcOrgYoy(sum.valueActual, valuePrevSum);
+      return sum;
     }
 
     function renderOrgTable() {
@@ -242,42 +305,12 @@ let orgKpiData = null;
 
       Object.keys(orgGroups).sort().forEach(org => {
         const group = orgGroups[org];
-        group.forEach(r => displayRows.push(r));
-        // 机构小计（仅当有多个业务模式时）
-        if (group.length > 1) {
-          const periodIdx = dim === 'month' ? mIdx : qIdx;
-          const sum = {
-            org, channel: '小计', isSubtotal: true,
-            qjTarget: 0, qjActual: 0, qjRate: null, qjYoy: null,
-            valueTarget: 0, valueActual: 0, valueRate: null, valueYoy: null,
-            p10Target: 0, p10Actual: 0, p10Rate: null,
-            annuityTarget: 0, annuityActual: 0, annuityRate: null,
-            protectionTarget: 0, protectionActual: 0, protectionRate: null,
-          };
-          let qjHasTarget = false, valueHasTarget = false;
-          let qjPrevSum = 0, valuePrevSum = 0;
-          group.forEach(r => {
-            sum.qjActual += r.qjActual;
-            sum.valueActual += r.valueActual;
-            sum.p10Actual += r.p10Actual;
-            sum.annuityActual += r.annuityActual;
-            sum.protectionActual += r.protectionActual;
-            if (r.qjTarget > 0) { sum.qjTarget += r.qjTarget; qjHasTarget = true; }
-            if (r.valueTarget > 0) { sum.valueTarget += r.valueTarget; valueHasTarget = true; }
-            if (r.p10Target > 0) sum.p10Target += r.p10Target;
-            if (r.annuityTarget > 0) sum.annuityTarget += r.annuityTarget;
-            if (r.protectionTarget > 0) sum.protectionTarget += r.protectionTarget;
-            qjPrevSum += getOrgPrevActual(org, r.channel, 'qj', dim, periodIdx);
-            valuePrevSum += getOrgPrevActual(org, r.channel, 'value', dim, periodIdx);
-          });
-          sum.qjRate = qjHasTarget ? calcOrgRate(sum.qjActual, sum.qjTarget) : null;
-          sum.valueRate = valueHasTarget ? calcOrgRate(sum.valueActual, sum.valueTarget) : null;
-          sum.p10Rate = sum.p10Target > 0 ? calcOrgRate(sum.p10Actual, sum.p10Target) : null;
-          sum.annuityRate = sum.annuityTarget > 0 ? calcOrgRate(sum.annuityActual, sum.annuityTarget) : null;
-          sum.protectionRate = sum.protectionTarget > 0 ? calcOrgRate(sum.protectionActual, sum.protectionTarget) : null;
-          sum.qjYoy = calcOrgYoy(sum.qjActual, qjPrevSum);
-          sum.valueYoy = calcOrgYoy(sum.valueActual, valuePrevSum);
-          displayRows.push(sum);
+        const periodIdx = dim === 'month' ? mIdx : qIdx;
+        if (orgExpanded) {
+          group.forEach(r => displayRows.push(r));
+          if (group.length > 1) displayRows.push(aggregateOrgRows(org, group, dim, periodIdx));
+        } else {
+          displayRows.push(aggregateOrgRows(org, group, dim, periodIdx));
         }
       });
 
@@ -293,7 +326,7 @@ let orgKpiData = null;
       };
       let totalQjHasTarget = false, totalValueHasTarget = false;
       let totalQjPrev = 0, totalValuePrev = 0;
-      displayRows.filter(r => !r.isSubtotal && !r.isTotal).forEach(r => {
+      rows.forEach(r => {
         totalRow.qjActual += r.qjActual;
         totalRow.valueActual += r.valueActual;
         totalRow.p10Actual += r.p10Actual;
@@ -322,7 +355,7 @@ let orgKpiData = null;
           <thead>
             <tr>
               <th rowspan="2" style="min-width:80px;">机构</th>
-              <th rowspan="2" style="min-width:60px;">业务模式</th>
+              <th rowspan="2" style="min-width:60px;">${orgExpanded ? '业务模式' : '维度'}</th>
               <th colspan="4" class="group-header">期交保费 (${periodLabel})</th>
               <th colspan="4" class="group-header">价值保费</th>
               <th colspan="3" class="group-header">10年期产品</th>
@@ -341,7 +374,7 @@ let orgKpiData = null;
             ${displayRows.map(r => `
               <tr ${r.isSubtotal ? 'style="background:rgba(255,255,255,0.03);"' : ''} ${r.isTotal ? 'class="total-row"' : ''}>
                 <td style="${r.isTotal ? 'font-weight:600;' : ''}">${r.org}</td>
-                <td class="${r.channel !== '小计' && r.channel !== '' ? 'sub-channel' : ''}" style="${r.isTotal||r.isSubtotal?'font-weight:600;':''}">${r.channel}</td>
+                <td class="${r.channel !== '小计' && r.channel !== '' && orgExpanded ? 'sub-channel' : ''}" style="${r.isTotal||r.isSubtotal||r.isOrgSummary?'font-weight:600;':''}">${r.channel || '机构汇总'}</td>
                 <td>${fmtOrgNum(r.qjTarget)}</td>
                 <td>${fmtOrgNum(r.qjActual)}</td>
                 ${rateCell(r.qjRate)}
