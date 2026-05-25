@@ -101,6 +101,7 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
     assert '<script src="js/api-client.js"></script>' in html
+    assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
     assert '<script src="js/kpi-cards.js"></script>' in html
@@ -117,7 +118,7 @@ def test_frontend_centralizes_read_api_fetches():
     assert "fetch(`${API_BASE}/api/product/" not in html
     assert "fetch(`${API_BASE}/api/org-kpi/" not in html
     # API URLs are only expected in the active runtime boundary plus the current HTML shell.
-    js_files = ["platform-trend.js", "kpi-cards.js", "dashboard-config.js", "product-config-modal.js",
+    js_files = ["platform-trend.js", "kpi-cards.js", "dashboard-config.js", "export-excel.js", "product-config-modal.js",
                 "kpi-modal-content.js", "org-analysis.js", "seed-data.js", "data-integration.js",
                 "product-analysis.js", "payperiod-chart.js", "team-analysis.js", "target-modal.js"]
     all_js = read_html() + " ".join(read_js(f) for f in js_files if os.path.exists(os.path.join(JS_DIR, f)))
@@ -176,6 +177,7 @@ def test_runtime_js_boundary_is_explicit():
         "js/constants.js",
         "js/format-utils.js",
         "js/api-client.js",
+        "js/export-excel.js",
         "js/dashboard-config.js",
         "js/upload.js",
         "js/target-modal.js",
@@ -217,6 +219,18 @@ def test_product_config_modal_is_outside_html_shell():
     assert "async function saveProductConfig()" not in html
     assert "async function openProductConfigModal()" in modal
     assert "async function saveProductConfig()" in modal
+
+
+def test_excel_export_is_runtime_module():
+    html = read_html()
+    exporter = read_js("export-excel.js")
+
+    assert '<script src="js/export-excel.js"></script>' in html
+    assert 'id="exportExcelBtn"' in html
+    assert "function exportDashboardExcel()" not in html
+    assert "function exportDashboardExcel()" in exporter
+    assert "/api/export/excel?year=" in exporter
+    assert "window.exportDashboardExcel = exportDashboardExcel" in exporter
 
 
 def test_kpi_modal_content_is_outside_html_shell():

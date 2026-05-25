@@ -6,6 +6,7 @@ Current production runtime:
 - `constants.js`
 - `format-utils.js`
 - `api-client.js`
+- `export-excel.js` (dashboard workbook download)
 - `dashboard-config.js`
 - `upload.js`
 - `target-modal.js`
