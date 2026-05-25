@@ -44,6 +44,9 @@ def test_excel_export_returns_workbook_with_module_sheets():
     assert wb["KPI概览"]["A3"].value == "期交保费达成率"
     assert wb["目标设置"]["A2"].value == "年份"
     assert wb["机构维度"]["A2"].value == "机构"
+    assert wb["机构维度"]["I2"].value == "长险期交目标"
+    assert wb["机构维度"]["J2"].value == "长险期交达成"
+    assert wb["机构维度"]["K2"].value == "长险期交达成率"
 
 
 def test_excel_export_applies_table_presentation():

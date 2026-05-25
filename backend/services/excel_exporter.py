@@ -200,10 +200,12 @@ def _org_rows(org_data: dict, target_payload: dict | None) -> list[list[Any]]:
     rows: list[list[Any]] = []
     perf = org_data.get("perf") or {}
     value = org_data.get("value") or {}
-    for key in sorted(set(perf.keys()) | set(value.keys())):
+    longterm = org_data.get("longterm") or {}
+    for key in sorted(set(perf.keys()) | set(value.keys()) | set(longterm.keys())):
         org, line = (key.split("|", 1) + [""])[:2] if "|" in key else (key, "")
         year_perf = (perf.get(key) or {}).get("year") or {}
         value_actual = ((value.get(key) or {}).get("year") or 0)
+        longterm_actual = ((longterm.get(key) or {}).get("year") or 0)
         qj_actual = year_perf.get("qj_premium", 0)
         qj_target = _org_target_year(target_payload, org, line, "qjPremium")
         value_target = _org_target_year(target_payload, org, line, "value")
@@ -219,6 +221,9 @@ def _org_rows(org_data: dict, target_payload: dict | None) -> list[list[Any]]:
             value_target,
             value_actual,
             _rate(value_actual, value_target),
+            qj_target,
+            longterm_actual,
+            _rate(longterm_actual, qj_target),
             ten_target,
             year_perf.get("product_10year", 0),
             _rate(year_perf.get("product_10year", 0), ten_target),
@@ -308,7 +313,7 @@ def build_dashboard_export_workbook(year: int) -> bytes:
     _sheet(ws, f"{year}年目标设置", ["年份", "目标分类", "层级", "机构", "业务线", "年度", "Q1", "Q2", "Q3", "Q4", "1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"], _flatten_targets(target_payload))
 
     ws = wb.create_sheet("机构维度")
-    _sheet(ws, f"{year}年机构维度", ["机构", "业务模式", "期交目标", "期交达成", "期交达成率", "价值目标", "价值达成", "价值达成率", "10年期目标", "10年期达成", "10年期达成率", "商保年金目标", "商保年金达成", "商保年金达成率", "保障类目标", "保障类达成", "保障类达成率"], _org_rows(org_data, target_payload))
+    _sheet(ws, f"{year}年机构维度", ["机构", "业务模式", "期交目标", "期交达成", "期交达成率", "价值目标", "价值达成", "价值达成率", "长险期交目标", "长险期交达成", "长险期交达成率", "10年期目标", "10年期达成", "10年期达成率", "商保年金目标", "商保年金达成", "商保年金达成率", "保障类目标", "保障类达成", "保障类达成率"], _org_rows(org_data, target_payload))
 
     ws = wb.create_sheet("平台趋势")
     _sheet(ws, f"{year}年平台月度数据", ["月份", "业务线", "期交保费", "规模保费", "折算保费"], _platform_rows(platform))
@@ -330,7 +335,7 @@ def build_dashboard_export_workbook(year: int) -> bytes:
 
     percent_columns = {
         "KPI概览": {4},
-        "机构维度": {5, 8, 11, 14, 17},
+        "机构维度": {5, 8, 11, 14, 17, 20},
         "队伍分析": {7},
     }
     for ws in wb.worksheets:

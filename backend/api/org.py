@@ -16,7 +16,7 @@ def org_analysis(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100)):
             "year": year,
             "metric": "org-analysis",
             "unit": "万元",
-            "dataSource": "agg_org_*",
+            "dataSource": "agg_org_*, agg_longterm_qj",
             "definitions": {
                 k: METRICS[k]
                 for k in ["achievement_rate", "yoy", "avg_premium", "avg_productivity"]

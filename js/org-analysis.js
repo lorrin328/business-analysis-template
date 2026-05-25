@@ -137,8 +137,17 @@ let orgKpiData = null;
       return item[dim]?.[periodKey] || 0;
     }
 
+    function getOrgLongtermMetric(source, org, channel) {
+      if (!source) return 0;
+      const item = source[`${org}|${channel}`];
+      if (!item) return 0;
+      if (typeof item === 'number') return item || 0;
+      return item.year || 0;
+    }
+
     function getOrgActual(org, channel, metric, dim, idx) {
       if (!orgKpiData) return 0;
+      if (metric === 'longterm') return getOrgLongtermMetric(orgKpiData.longterm, org, channel);
       if (metric === 'value') return getOrgValueMetric(orgKpiData.value, org, channel, dim, idx);
       return getOrgPerfMetric(orgKpiData.perf, org, channel, metric, dim, idx);
     }
@@ -153,6 +162,7 @@ let orgKpiData = null;
     function getOrgTarget(org, channel, metric, dim, idx) {
       const metricMap = {
         'qj': 'qjPremium',
+        'longterm': 'qjPremium',
         'value': 'value',
         '10year': 'tenYear',
         'annuity': 'shangbao',
@@ -166,6 +176,7 @@ let orgKpiData = null;
       if (!orgTargets || !orgTargets[key] || !orgTargets[key][catKey]) return 0;
 
       const item = orgTargets[key][catKey];
+      if (metric === 'longterm') return item.year || 0;
       if (dim === 'year') return item.year || 0;
       if (dim === 'quarter') return item.quarter?.[idx] || 0;
       if (dim === 'month') return item.month?.[idx] || 0;
@@ -212,6 +223,7 @@ let orgKpiData = null;
         org, channel: orgExpanded ? '小计' : '', isSubtotal: orgExpanded, isOrgSummary: !orgExpanded,
         qjTarget: 0, qjActual: 0, qjRate: null, qjYoy: null,
         valueTarget: 0, valueActual: 0, valueRate: null, valueYoy: null,
+        longtermTarget: 0, longtermActual: 0, longtermRate: null,
         p10Target: 0, p10Actual: 0, p10Rate: null,
         annuityTarget: 0, annuityActual: 0, annuityRate: null,
         protectionTarget: 0, protectionActual: 0, protectionRate: null,
@@ -221,11 +233,13 @@ let orgKpiData = null;
       group.forEach(r => {
         sum.qjActual += r.qjActual;
         sum.valueActual += r.valueActual;
+        sum.longtermActual += r.longtermActual;
         sum.p10Actual += r.p10Actual;
         sum.annuityActual += r.annuityActual;
         sum.protectionActual += r.protectionActual;
         if (r.qjTarget > 0) { sum.qjTarget += r.qjTarget; qjHasTarget = true; }
         if (r.valueTarget > 0) { sum.valueTarget += r.valueTarget; valueHasTarget = true; }
+        if (r.longtermTarget > 0) sum.longtermTarget += r.longtermTarget;
         if (r.p10Target > 0) sum.p10Target += r.p10Target;
         if (r.annuityTarget > 0) sum.annuityTarget += r.annuityTarget;
         if (r.protectionTarget > 0) sum.protectionTarget += r.protectionTarget;
@@ -234,6 +248,7 @@ let orgKpiData = null;
       });
       sum.qjRate = qjHasTarget ? calcOrgRate(sum.qjActual, sum.qjTarget) : null;
       sum.valueRate = valueHasTarget ? calcOrgRate(sum.valueActual, sum.valueTarget) : null;
+      sum.longtermRate = sum.longtermTarget > 0 ? calcOrgRate(sum.longtermActual, sum.longtermTarget) : null;
       sum.p10Rate = sum.p10Target > 0 ? calcOrgRate(sum.p10Actual, sum.p10Target) : null;
       sum.annuityRate = sum.annuityTarget > 0 ? calcOrgRate(sum.annuityActual, sum.annuityTarget) : null;
       sum.protectionRate = sum.protectionTarget > 0 ? calcOrgRate(sum.protectionActual, sum.protectionTarget) : null;
@@ -261,17 +276,19 @@ let orgKpiData = null;
           const periodIdx = dim === 'month' ? mIdx : qIdx;
           const qjActual = getOrgActual(org, ch, 'qj', dim, periodIdx);
           const valueActual = getOrgActual(org, ch, 'value', dim, periodIdx);
+          const longtermActual = getOrgActual(org, ch, 'longterm', dim, periodIdx);
           const p10Actual = getOrgActual(org, ch, '10year', dim, periodIdx);
           const annuityActual = getOrgActual(org, ch, 'annuity', dim, periodIdx);
           const protectionActual = getOrgActual(org, ch, 'protection', dim, periodIdx);
 
           // 只有有数据的行才显示
-          if (qjActual === 0 && valueActual === 0 && p10Actual === 0 && annuityActual === 0 && protectionActual === 0) {
+          if (qjActual === 0 && valueActual === 0 && longtermActual === 0 && p10Actual === 0 && annuityActual === 0 && protectionActual === 0) {
             return;
           }
 
           const qjTarget = getOrgTarget(org, ch, 'qj', dim, periodIdx);
           const valueTarget = getOrgTarget(org, ch, 'value', dim, periodIdx);
+          const longtermTarget = getOrgTarget(org, ch, 'longterm', dim, periodIdx);
           const p10Target = getOrgTarget(org, ch, '10year', dim, periodIdx);
           const annuityTarget = getOrgTarget(org, ch, 'annuity', dim, periodIdx);
           const protectionTarget = getOrgTarget(org, ch, 'protection', dim, periodIdx);
@@ -283,6 +300,7 @@ let orgKpiData = null;
             org, channel: ch,
             qjTarget, qjActual, qjRate: calcOrgRate(qjActual, qjTarget), qjYoy: calcOrgYoy(qjActual, qjPrev),
             valueTarget, valueActual, valueRate: calcOrgRate(valueActual, valueTarget), valueYoy: calcOrgYoy(valueActual, valuePrev),
+            longtermTarget, longtermActual, longtermRate: calcOrgRate(longtermActual, longtermTarget),
             p10Target, p10Actual, p10Rate: calcOrgRate(p10Actual, p10Target),
             annuityTarget, annuityActual, annuityRate: calcOrgRate(annuityActual, annuityTarget),
             protectionTarget, protectionActual, protectionRate: calcOrgRate(protectionActual, protectionTarget),
@@ -320,6 +338,7 @@ let orgKpiData = null;
         org: '合计', channel: '', isTotal: true,
         qjTarget: 0, qjActual: 0, qjRate: null, qjYoy: null,
         valueTarget: 0, valueActual: 0, valueRate: null, valueYoy: null,
+        longtermTarget: 0, longtermActual: 0, longtermRate: null,
         p10Target: 0, p10Actual: 0, p10Rate: null,
         annuityTarget: 0, annuityActual: 0, annuityRate: null,
         protectionTarget: 0, protectionActual: 0, protectionRate: null,
@@ -329,11 +348,13 @@ let orgKpiData = null;
       rows.forEach(r => {
         totalRow.qjActual += r.qjActual;
         totalRow.valueActual += r.valueActual;
+        totalRow.longtermActual += r.longtermActual;
         totalRow.p10Actual += r.p10Actual;
         totalRow.annuityActual += r.annuityActual;
         totalRow.protectionActual += r.protectionActual;
         if (r.qjTarget > 0) { totalRow.qjTarget += r.qjTarget; totalQjHasTarget = true; }
         if (r.valueTarget > 0) { totalRow.valueTarget += r.valueTarget; totalValueHasTarget = true; }
+        if (r.longtermTarget > 0) totalRow.longtermTarget += r.longtermTarget;
         if (r.p10Target > 0) totalRow.p10Target += r.p10Target;
         if (r.annuityTarget > 0) totalRow.annuityTarget += r.annuityTarget;
         if (r.protectionTarget > 0) totalRow.protectionTarget += r.protectionTarget;
@@ -342,6 +363,7 @@ let orgKpiData = null;
       });
       totalRow.qjRate = totalQjHasTarget ? calcOrgRate(totalRow.qjActual, totalRow.qjTarget) : null;
       totalRow.valueRate = totalValueHasTarget ? calcOrgRate(totalRow.valueActual, totalRow.valueTarget) : null;
+      totalRow.longtermRate = totalRow.longtermTarget > 0 ? calcOrgRate(totalRow.longtermActual, totalRow.longtermTarget) : null;
       totalRow.p10Rate = totalRow.p10Target > 0 ? calcOrgRate(totalRow.p10Actual, totalRow.p10Target) : null;
       totalRow.annuityRate = totalRow.annuityTarget > 0 ? calcOrgRate(totalRow.annuityActual, totalRow.annuityTarget) : null;
       totalRow.protectionRate = totalRow.protectionTarget > 0 ? calcOrgRate(totalRow.protectionActual, totalRow.protectionTarget) : null;
@@ -358,6 +380,7 @@ let orgKpiData = null;
               <th rowspan="2" style="min-width:60px;">${orgExpanded ? '业务模式' : '维度'}</th>
               <th colspan="4" class="group-header">期交保费 (${periodLabel})</th>
               <th colspan="4" class="group-header">价值保费</th>
+              <th colspan="3" class="group-header">长险期交（年度）</th>
               <th colspan="3" class="group-header">10年期产品</th>
               <th colspan="3" class="group-header">商保年金</th>
               <th colspan="3" class="group-header">保障类产品</th>
@@ -365,6 +388,7 @@ let orgKpiData = null;
             <tr>
               <th>目标(万)</th><th>达成(万)</th><th>达成率</th><th>同比</th>
               <th>目标(万)</th><th>达成(万)</th><th>达成率</th><th>同比</th>
+              <th>目标(万)</th><th>达成(万)</th><th>达成率</th>
               <th>目标(万)</th><th>达成(万)</th><th>达成率</th>
               <th>目标(万)</th><th>达成(万)</th><th>达成率</th>
               <th>目标(万)</th><th>达成(万)</th><th>达成率</th>
@@ -383,6 +407,9 @@ let orgKpiData = null;
                 <td>${fmtOrgNum(r.valueActual)}</td>
                 ${rateCell(r.valueRate)}
                 ${yoyCell(r.valueYoy)}
+                <td>${fmtOrgNum(r.longtermTarget)}</td>
+                <td>${fmtOrgNum(r.longtermActual)}</td>
+                ${rateCell(r.longtermRate)}
                 <td>${fmtOrgNum(r.p10Target)}</td>
                 <td>${fmtOrgNum(r.p10Actual)}</td>
                 ${rateCell(r.p10Rate)}
@@ -404,6 +431,9 @@ let orgKpiData = null;
               <td>${fmtOrgNum(totalRow.valueActual)}</td>
               ${rateCell(totalRow.valueRate)}
               ${yoyCell(totalRow.valueYoy)}
+              <td>${fmtOrgNum(totalRow.longtermTarget)}</td>
+              <td>${fmtOrgNum(totalRow.longtermActual)}</td>
+              ${rateCell(totalRow.longtermRate)}
               <td>${fmtOrgNum(totalRow.p10Target)}</td>
               <td>${fmtOrgNum(totalRow.p10Actual)}</td>
               ${rateCell(totalRow.p10Rate)}

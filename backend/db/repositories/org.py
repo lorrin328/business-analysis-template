@@ -153,11 +153,41 @@ def get_org_kpi_data(year: int):
                 item['quarter'][q_label] = round(item['quarter'].get(q_label, 0) + value, 2)
             return result
 
+        def collect_longterm(query_year: int):
+            result = {}
+            if use_daily and channel_cutoffs:
+                clauses = []
+                params = [query_year]
+                for channel, (month, day) in channel_cutoffs.items():
+                    clauses.append('(channel = ? AND (month < ? OR (month = ? AND day <= ?)))')
+                    params.extend([channel, month, month, day])
+                c.execute(f'''
+                    SELECT org, channel, SUM(qj_premium) AS total
+                    FROM agg_longterm_qj
+                    WHERE year = ?
+                      AND business_type = '转型'
+                      AND ({' OR '.join(clauses)})
+                    GROUP BY org, channel
+                ''', params)
+            else:
+                c.execute('''
+                    SELECT org, channel, SUM(qj_premium) AS total
+                    FROM agg_longterm_qj
+                    WHERE year = ?
+                      AND business_type = '转型'
+                      AND month <= ?
+                    GROUP BY org, channel
+                ''', (query_year, ytd_end_month))
+            for r in c.fetchall():
+                result[f"{r['org']}|{r['channel']}"] = {'year': round(r['total'] or 0, 2)}
+            return result
+
         org_perf = collect_perf(year)
         org_value = collect_value(year)
+        org_longterm = collect_longterm(year)
         org_perf_prev = collect_perf(year - 1)
         org_value_prev = collect_value(year - 1)
-        org_keys = set(org_perf.keys()) | set(org_value.keys())
+        org_keys = set(org_perf.keys()) | set(org_value.keys()) | set(org_longterm.keys())
         orgs = sorted({key.split('|', 1)[0] for key in org_keys})
 
         return {
@@ -165,8 +195,8 @@ def get_org_kpi_data(year: int):
             'orgs': orgs,
             'perf': org_perf,
             'value': org_value,
+            'longterm': org_longterm,
             'perf_prev': org_perf_prev,
             'value_prev': org_value_prev,
         }
-
 

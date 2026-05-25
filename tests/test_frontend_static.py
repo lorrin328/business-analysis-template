@@ -270,6 +270,18 @@ def test_org_analysis_has_expand_mode_and_colored_indicators():
     assert ".org-table .org-ind-red" in combined
 
 
+def test_org_analysis_includes_annual_longterm_qj_metric():
+    org = read_js("org-analysis.js")
+
+    assert "function getOrgLongtermMetric(source, org, channel)" in org
+    assert "'longterm': 'qjPremium'" in org
+    assert "if (metric === 'longterm') return item.year || 0;" in org
+    assert "longtermTarget" in org
+    assert "longtermActual" in org
+    assert "longtermRate" in org
+    assert "\u957f\u9669\u671f\u4ea4\uff08\u5e74\u5ea6\uff09" in org
+
+
 def test_upload_js_exposes_handle_file():
     html = read_html()
     upload = read_js("upload.js")
