@@ -100,9 +100,11 @@
       const qjSubEl = document.getElementById('kpi-qj-sub');
       if (qjSubEl) {
         const qjPrev = hasApiKpi ? (kpi.qj_premium_prev || {}) : {};
+        const 整体同比 = calcYoy(整体实际, qjPrev.total);
         const 经代同比 = calcYoy(经代实际, qjPrev.jingdai);
         const 转型同比 = calcYoy(转型实际, qjPrev.total_transform);
         qjSubEl.innerHTML = `
+          <span>整体 <span class="${yoyClass(整体同比)}">同比 ${yoyText(整体同比)}</span></span>
           <span>经代 <span class="${rateClass(经代达成率)}">${经代达成率}%</span> <span class="${yoyClass(经代同比)}">同比 ${yoyText(经代同比)}</span></span>
           <span>转型 <span class="${rateClass(转型达成率)}">${转型达成率}%</span> <span class="${yoyClass(转型同比)}">同比 ${yoyText(转型同比)}</span></span>`;
       }

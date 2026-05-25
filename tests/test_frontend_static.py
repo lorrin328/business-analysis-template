@@ -104,7 +104,7 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
-    assert '<script src="js/kpi-cards.js?v=1.0.55"></script>' in html
+    assert '<script src="js/kpi-cards.js?v=1.0.56"></script>' in html
     assert '<script src="js/platform-trend.js"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
@@ -320,7 +320,7 @@ def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
     kpi = read_js("kpi-cards.js")
 
     assert "function updateKPICards()" not in html
-    assert 'src="js/kpi-cards.js?v=1.0.55"' in html
+    assert 'src="js/kpi-cards.js?v=1.0.56"' in html
     assert "function updateKPICards()" in kpi
     assert "window.updateKPICards = updateKPICards" in kpi
     assert "KPI card rendering lives in js/kpi-cards.js" in html
@@ -332,8 +332,11 @@ def test_qj_kpi_card_shows_business_line_yoy():
     combined = html + "\n" + kpi
 
     assert "kpi.qj_premium_prev || {}" in kpi
+    assert "calcYoy(整体实际, qjPrev.total)" in kpi
     assert "calcYoy(经代实际, qjPrev.jingdai)" in kpi
     assert "calcYoy(转型实际, qjPrev.total_transform)" in kpi
+    assert "整体 <span" in kpi
+    assert "同比 ${yoyText(整体同比)}" in kpi
     assert "同比 ${yoyText(经代同比)}" in kpi
     assert "同比 ${yoyText(转型同比)}" in kpi
     assert ".kpi-bottom-meta .kpi-yoy-negative" in combined
@@ -351,6 +354,7 @@ def test_metric_calculation_review_report_exists():
     assert "target_config" in report
     assert "当前 KPI 实绩按各来源自身日级截止日" in report
     assert "机构维度不纳入未归属机构业绩" in report
+    assert "整体同比 = 本年整体期交保费累计 / 去年整体同截止日累计 - 1" in report
 
 
 def test_platform_trend_uses_calendar_days_for_daily_series():
