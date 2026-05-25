@@ -104,7 +104,7 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
-    assert '<script src="js/kpi-cards.js?v=1.0.54"></script>' in html
+    assert '<script src="js/kpi-cards.js?v=1.0.55"></script>' in html
     assert '<script src="js/platform-trend.js"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
@@ -320,7 +320,7 @@ def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
     kpi = read_js("kpi-cards.js")
 
     assert "function updateKPICards()" not in html
-    assert 'src="js/kpi-cards.js?v=1.0.54"' in html
+    assert 'src="js/kpi-cards.js?v=1.0.55"' in html
     assert "function updateKPICards()" in kpi
     assert "window.updateKPICards = updateKPICards" in kpi
     assert "KPI card rendering lives in js/kpi-cards.js" in html
@@ -339,6 +339,18 @@ def test_qj_kpi_card_shows_business_line_yoy():
     assert ".kpi-bottom-meta .kpi-yoy-negative" in combined
     assert ".kpi-bottom-meta .kpi-yoy-mid" in combined
     assert ".kpi-bottom-meta .kpi-yoy-strong" in combined
+
+
+def test_metric_calculation_review_report_exists():
+    report_path = os.path.join(ROOT, "docs", "指标计算口径核对报告_v1.0.55.md")
+    assert os.path.exists(report_path)
+    with open(report_path, "r", encoding="utf-8") as f:
+        report = f.read()
+    assert "期交保费达成率" in report
+    assert "长险活动率同比不是相对增速" in report
+    assert "target_config" in report
+    assert "当前 KPI 实绩按各来源自身日级截止日" in report
+    assert "机构维度不纳入未归属机构业绩" in report
 
 
 def test_platform_trend_uses_calendar_days_for_daily_series():
