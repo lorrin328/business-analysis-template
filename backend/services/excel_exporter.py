@@ -186,7 +186,7 @@ def _kpi_rows(kpi: dict, target_payload: dict | None) -> list[list[Any]]:
 
     return [
         ["期交保费达成率", qj.get("total", 0), qj_target, _rate(qj.get("total", 0), qj_target), "经代+OTO+证保+蚁桥", cutoff],
-        ["价值达成率", round(sum((_safe_float(v) or 0) for v in value.values()), 2), value_target, _rate(round(sum((_safe_float(v) or 0) for v in value.values()), 2), value_target), "OTO+证保+蚁桥", f"{kpi.get('year')}年{kpi.get('month')}月"],
+        ["价值达成率", round(sum((_safe_float(v) or 0) for v in value.values()), 2), value_target, _rate(round(sum((_safe_float(v) or 0) for v in value.values()), 2), value_target), "经代+OTO+证保+蚁桥；经代价值数据未接入时实绩为0", f"{kpi.get('year')}年{kpi.get('month')}月"],
         ["长险活动率", activity_rate, None, None, "活动人力/月均在职人力", f"{kpi.get('year')}年{kpi.get('month')}月"],
         ["商保年金达成率", kpi.get("annuity_total", 0), annuity_target, _rate(kpi.get("annuity_total", 0), annuity_target), "经代+转型参数打标产品", f"{kpi.get('year')}年{kpi.get('month')}月"],
         ["保障类产品达成率", kpi.get("protection_total", 0), protection_target, _rate(kpi.get("protection_total", 0), protection_target), "经代+转型参数打标产品", f"{kpi.get('year')}年{kpi.get('month')}月"],

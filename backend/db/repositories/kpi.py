@@ -286,6 +286,9 @@ def get_kpi_data(year: int):
             FROM agg_value_data WHERE year = ? AND month <= ? GROUP BY channel
         ''', (year, query_month))
         value = {r['channel']: r['total'] or 0 for r in c.fetchall()}
+        # 经代当前没有独立价值数据表，但业务口径要求纳入价值达成率。
+        # 在经代价值数据接入前显式返回 0，前端据此展示“经代”行并纳入整体目标口径。
+        value.setdefault('经代', 0.0)
 
         # 商保年金 / 保障类 / 10年期（月级精度）
         c.execute('''
@@ -374,5 +377,4 @@ def get_kpi_data(year: int):
             'hr_prev': hr_prev,
             'value': value,
         }
-
 

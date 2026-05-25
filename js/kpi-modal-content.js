@@ -6,13 +6,27 @@ function getModalContent(type) {
           const year = String((apiData.kpi && apiData.kpi.year) || selectedYear || DEFAULT_DASHBOARD_YEAR);
           const pm = platformMock[year];
           const qjData = pm ? pm.year.qj : null;
+          const prevYear = String(Number(year) - 1);
+          const prevPm = platformMock[prevYear];
+          const prevQjData = prevPm ? prevPm.year.qj : null;
+          const qjPrevApi = apiData.kpi && apiData.kpi.qj_premium_prev ? apiData.kpi.qj_premium_prev : {};
           const targets = targetData.categories.qjPremium.metrics;
           function fmt(n) { return n ? n.toLocaleString('zh-CN', {maximumFractionDigits:0}) : '0'; }
           function calc(a, t) { return t > 0 ? Math.round(a / t * 1000) / 10 : 0; }
+          function yoy(a, p) { return p > 0 ? Math.round((a / p - 1) * 1000) / 10 : null; }
+          function yoyFmt(v) { return v == null ? '-' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`; }
+          function yoyCls(v) { return v == null ? 'text-secondary' : v >= 10 ? 'danger' : v >= 0 ? 'warning' : 'success'; }
           function rc(r) { return r >= 100 ? 'up' : r >= 80 ? 'warning' : 'down'; }
           function sumCh(ch) { if (!qjData || !qjData[ch]) return 0; let s=0; for(const v of qjData[ch]){ if(v==null)break; s+=v;} return s; }
+          function sumChPrev(ch) { if (!prevQjData || !prevQjData[ch]) return 0; let s=0; for(const v of prevQjData[ch]){ if(v==null)break; s+=v;} return s; }
           const otoA = sumCh('OTO'), zbA = sumCh('证保'), yqA = sumCh('蚁桥'), jdA = sumCh('经代');
           const zxA = otoA + zbA + yqA, ztA = jdA + zxA;
+          const prevOtoA = qjPrevApi.oto ?? sumChPrev('OTO');
+          const prevZbA = qjPrevApi.zhengbao ?? sumChPrev('证保');
+          const prevYqA = qjPrevApi.yiqiao ?? sumChPrev('蚁桥');
+          const prevJdA = qjPrevApi.jingdai ?? sumChPrev('经代');
+          const prevZxA = qjPrevApi.total_transform ?? (prevOtoA + prevZbA + prevYqA);
+          const prevZtA = qjPrevApi.total ?? (prevJdA + prevZxA);
           const ztT = targets['整体']?.year || 0, jdT = targets['经代']?.year || 0, zxT = targets['转型业务']?.year || 0;
           const otoT = targets['OTO']?.year || 0, zbT = targets['证保']?.year || 0, yqT = targets['蚁桥']?.year || 0;
           // 动态计算当前月份和季度
@@ -33,11 +47,30 @@ function getModalContent(type) {
           const mztT = (targets['整体']?.month?.[mIdx]||0), mjdT = (targets['经代']?.month?.[mIdx]||0), mzxT = (targets['转型业务']?.month?.[mIdx]||0);
           const motoT = (targets['OTO']?.month?.[mIdx]||0), mzbT = (targets['证保']?.month?.[mIdx]||0), myqT = (targets['蚁桥']?.month?.[mIdx]||0);
           function qSum(ch, q) { const qm=[q*3,q*3+1,q*3+2]; if(!qjData||!qjData[ch])return 0; let s=0; for(const i of qm){const v=qjData[ch][i]; if(v!=null) s+=v;} return s; }
+          function qSumPrev(ch, q) { const qm=[q*3,q*3+1,q*3+2]; if(!prevQjData||!prevQjData[ch])return 0; let s=0; for(const i of qm){const v=prevQjData[ch][i]; if(v!=null) s+=v;} return s; }
           function mVal(ch, m) { if(!qjData||!qjData[ch])return 0; const v=qjData[ch][m]; return v!=null?v:0; }
+          function mValPrev(ch, m) { if(!prevQjData||!prevQjData[ch])return 0; const v=prevQjData[ch][m]; return v!=null?v:0; }
           const qotoA=qSum('OTO',qIdx), qzbA=qSum('证保',qIdx), qyqA=qSum('蚁桥',qIdx), qjdA=qSum('经代',qIdx);
           const qzxA=qotoA+qzbA+qyqA, qztA=qjdA+qzxA;
+          const qPrevOtoA=qSumPrev('OTO',qIdx), qPrevZbA=qSumPrev('证保',qIdx), qPrevYqA=qSumPrev('蚁桥',qIdx), qPrevJdA=qSumPrev('经代',qIdx);
+          const qPrevZxA=qPrevOtoA+qPrevZbA+qPrevYqA, qPrevZtA=qPrevJdA+qPrevZxA;
           const motoA=mVal('OTO',mIdx), mzbA=mVal('证保',mIdx), myqA=mVal('蚁桥',mIdx), mjdA=mVal('经代',mIdx);
           const mzxA=motoA+mzbA+myqA, mztA=mjdA+mzxA;
+          const mPrevOtoA=mValPrev('OTO',mIdx), mPrevZbA=mValPrev('证保',mIdx), mPrevYqA=mValPrev('蚁桥',mIdx), mPrevJdA=mValPrev('经代',mIdx);
+          const mPrevZxA=mPrevOtoA+mPrevZbA+mPrevYqA, mPrevZtA=mPrevJdA+mPrevZxA;
+          function qjRow(label, target, actual, prev, opts = {}) {
+            const rate = calc(actual, target);
+            const yoyValue = yoy(actual, prev);
+            const indent = opts.sub ? 'padding-left:20px;color:var(--text-secondary);' : '';
+            const weight = opts.bold ? 'font-weight:600;' : '';
+            return `<tr style="${weight}">
+                <td style="text-align:left;${indent}">${label}</td>
+                <td>${fmt(target)}</td>
+                <td>${fmt(actual)}</td>
+                <td style="color:var(--${rc(rate)});">${rate}%</td>
+                <td style="color:var(--${yoyCls(yoyValue)});">${yoyFmt(yoyValue)}</td>
+              </tr>`;
+          }
           const monthLabels = [];
           const chartData = { OTO:[], 证保:[], 蚁桥:[], 经代:[] };
           ['OTO','证保','蚁桥','经代'].forEach(ch=>{ for(let i=0;i<maxMonth;i++){ if (i===0) monthLabels.push((i+1)+'月'); chartData[ch].push(qjData&&qjData[ch]?qjData[ch][i]||0:0); } });
@@ -47,40 +80,40 @@ function getModalContent(type) {
             body: `
               <div class="modal-section-title">年度累计</div>
               <table class="modal-table">
-                <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th></tr></thead>
+                <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th><th>同比</th></tr></thead>
                 <tbody>
-                  <tr style="font-weight:600;"><td style="text-align:left;">整体</td><td>${fmt(ztT)}</td><td>${fmt(ztA)}</td><td style="color:var(--${rc(calc(ztA,ztT))});">${calc(ztA,ztT)}%</td></tr>
-                  <tr><td style="text-align:left;">经代</td><td>${fmt(jdT)}</td><td>${fmt(jdA)}</td><td style="color:var(--${rc(calc(jdA,jdT))});">${calc(jdA,jdT)}%</td></tr>
-                  <tr><td style="text-align:left;">转型业务</td><td>${fmt(zxT)}</td><td>${fmt(zxA)}</td><td style="color:var(--${rc(calc(zxA,zxT))});">${calc(zxA,zxT)}%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">OTO</td><td>${fmt(otoT)}</td><td>${fmt(otoA)}</td><td style="color:var(--${rc(calc(otoA,otoT))});">${calc(otoA,otoT)}%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">证保</td><td>${fmt(zbT)}</td><td>${fmt(zbA)}</td><td style="color:var(--${rc(calc(zbA,zbT))});">${calc(zbA,zbT)}%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">蚁桥</td><td>${fmt(yqT)}</td><td>${fmt(yqA)}</td><td style="color:var(--${rc(calc(yqA,yqT))});">${calc(yqA,yqT)}%</td></tr>
+                  ${qjRow('整体', ztT, ztA, prevZtA, { bold: true })}
+                  ${qjRow('经代', jdT, jdA, prevJdA)}
+                  ${qjRow('转型业务', zxT, zxA, prevZxA)}
+                  ${qjRow('OTO', otoT, otoA, prevOtoA, { sub: true })}
+                  ${qjRow('证保', zbT, zbA, prevZbA, { sub: true })}
+                  ${qjRow('蚁桥', yqT, yqA, prevYqA, { sub: true })}
                 </tbody>
               </table>
 
               <div class="modal-section-title">季度累计（Q${qNum}）</div>
               <table class="modal-table">
-                <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th></tr></thead>
+                <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th><th>同比</th></tr></thead>
                 <tbody>
-                  <tr style="font-weight:600;"><td style="text-align:left;">整体</td><td>${fmt(qztT)}</td><td>${fmt(qztA)}</td><td style="color:var(--${rc(calc(qztA,qztT))});">${calc(qztA,qztT)}%</td></tr>
-                  <tr><td style="text-align:left;">经代</td><td>${fmt(qjdT)}</td><td>${fmt(qjdA)}</td><td style="color:var(--${rc(calc(qjdA,qjdT))});">${calc(qjdA,qjdT)}%</td></tr>
-                  <tr><td style="text-align:left;">转型业务</td><td>${fmt(qzxT)}</td><td>${fmt(qzxA)}</td><td style="color:var(--${rc(calc(qzxA,qzxT))});">${calc(qzxA,qzxT)}%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">OTO</td><td>${fmt(qotoT)}</td><td>${fmt(qotoA)}</td><td style="color:var(--${rc(calc(qotoA,qotoT))});">${calc(qotoA,qotoT)}%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">证保</td><td>${fmt(qzbT)}</td><td>${fmt(qzbA)}</td><td style="color:var(--${rc(calc(qzbA,qzbT))});">${calc(qzbA,qzbT)}%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">蚁桥</td><td>${fmt(qyqT)}</td><td>${fmt(qyqA)}</td><td style="color:var(--${rc(calc(qyqA,qyqT))});">${calc(qyqA,qyqT)}%</td></tr>
+                  ${qjRow('整体', qztT, qztA, qPrevZtA, { bold: true })}
+                  ${qjRow('经代', qjdT, qjdA, qPrevJdA)}
+                  ${qjRow('转型业务', qzxT, qzxA, qPrevZxA)}
+                  ${qjRow('OTO', qotoT, qotoA, qPrevOtoA, { sub: true })}
+                  ${qjRow('证保', qzbT, qzbA, qPrevZbA, { sub: true })}
+                  ${qjRow('蚁桥', qyqT, qyqA, qPrevYqA, { sub: true })}
                 </tbody>
               </table>
 
               <div class="modal-section-title">月度累计（${maxMonth}月）</div>
               <table class="modal-table">
-                <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th></tr></thead>
+                <thead><tr><th style="text-align:left;">口径</th><th>目标（万）</th><th>达成（万）</th><th>达成率</th><th>同比</th></tr></thead>
                 <tbody>
-                  <tr style="font-weight:600;"><td style="text-align:left;">整体</td><td>${fmt(mztT)}</td><td>${fmt(mztA)}</td><td style="color:var(--${rc(calc(mztA,mztT))});">${calc(mztA,mztT)}%</td></tr>
-                  <tr><td style="text-align:left;">经代</td><td>${fmt(mjdT)}</td><td>${fmt(mjdA)}</td><td style="color:var(--${rc(calc(mjdA,mjdT))});">${calc(mjdA,mjdT)}%</td></tr>
-                  <tr><td style="text-align:left;">转型业务</td><td>${fmt(mzxT)}</td><td>${fmt(mzxA)}</td><td style="color:var(--${rc(calc(mzxA,mzxT))});">${calc(mzxA,mzxT)}%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">OTO</td><td>${fmt(motoT)}</td><td>${fmt(motoA)}</td><td style="color:var(--${rc(calc(motoA,motoT))});">${calc(motoA,motoT)}%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">证保</td><td>${fmt(mzbT)}</td><td>${fmt(mzbA)}</td><td style="color:var(--${rc(calc(mzbA,mzbT))});">${calc(mzbA,mzbT)}%</td></tr>
-                  <tr><td style="text-align:left;padding-left:20px;color:var(--text-secondary);">蚁桥</td><td>${fmt(myqT)}</td><td>${fmt(myqA)}</td><td style="color:var(--${rc(calc(myqA,myqT))});">${calc(myqA,myqT)}%</td></tr>
+                  ${qjRow('整体', mztT, mztA, mPrevZtA, { bold: true })}
+                  ${qjRow('经代', mjdT, mjdA, mPrevJdA)}
+                  ${qjRow('转型业务', mzxT, mzxA, mPrevZxA)}
+                  ${qjRow('OTO', motoT, motoA, mPrevOtoA, { sub: true })}
+                  ${qjRow('证保', mzbT, mzbA, mPrevZbA, { sub: true })}
+                  ${qjRow('蚁桥', myqT, myqA, mPrevYqA, { sub: true })}
                 </tbody>
               </table>
 
@@ -192,20 +225,21 @@ function getModalContent(type) {
               </table>
 
               <div id="modalChart" class="modal-chart" style="margin-top:16px;"></div>
-              <p style="color: var(--text-secondary); font-size: 13px; margin-top: 8px;">注：当前价值清单覆盖转型业务，若后续补充经代价值数据，整体口径将自动纳入。</p>
+              <p style="color: var(--text-secondary); font-size: 13px; margin-top: 8px;">注：价值达成率口径包含经代；当前经代价值数据表尚未接入，经代实绩暂按 0 展示，待补充数据后自动纳入。</p>
             `,
             initChart: () => {
               const chart = echarts.init(document.getElementById('modalChart'));
               chart.setOption({
                 tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
-                legend: { data: ['OTO', '证保', '蚁桥'], textStyle: { color: '#94a3b8' }, bottom: 0 },
+                legend: { data: ['OTO', '证保', '蚁桥', '经代'], textStyle: { color: '#94a3b8' }, bottom: 0 },
                 grid: { left: 50, right: 20, top: 10, bottom: 30 },
                 xAxis: { type: 'category', data: valueLabels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
                 yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
                 series: [
                   { name: 'OTO', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly.OTO[i]||0), itemStyle: { color: '#3b82f6' }, areaStyle: { opacity: 0.1 } },
                   { name: '证保', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly['证保'][i]||0), itemStyle: { color: '#10b981' }, areaStyle: { opacity: 0.1 } },
-                  { name: '蚁桥', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly['蚁桥'][i]||0), itemStyle: { color: '#f59e0b' }, areaStyle: { opacity: 0.1 } }
+                  { name: '蚁桥', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly['蚁桥'][i]||0), itemStyle: { color: '#f59e0b' }, areaStyle: { opacity: 0.1 } },
+                  { name: '经代', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly['经代'][i]||0), itemStyle: { color: '#8b5cf6' }, areaStyle: { opacity: 0.1 } }
                 ]
               });
             }

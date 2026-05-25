@@ -104,7 +104,7 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
-    assert '<script src="js/kpi-cards.js?v=1.0.56"></script>' in html
+    assert '<script src="js/kpi-cards.js?v=1.0.57"></script>' in html
     assert '<script src="js/platform-trend.js"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
@@ -238,7 +238,7 @@ def test_kpi_modal_content_is_outside_html_shell():
     html = read_html()
     modal_content = read_js("kpi-modal-content.js")
 
-    assert '<script src="js/kpi-modal-content.js"></script>' in html
+    assert '<script src="js/kpi-modal-content.js?v=1.0.57"></script>' in html
     assert "function getModalContent(type)" not in html
     assert "function getModalContent(type)" in modal_content
 
@@ -320,7 +320,7 @@ def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
     kpi = read_js("kpi-cards.js")
 
     assert "function updateKPICards()" not in html
-    assert 'src="js/kpi-cards.js?v=1.0.56"' in html
+    assert 'src="js/kpi-cards.js?v=1.0.57"' in html
     assert "function updateKPICards()" in kpi
     assert "window.updateKPICards = updateKPICards" in kpi
     assert "KPI card rendering lives in js/kpi-cards.js" in html
@@ -342,6 +342,31 @@ def test_qj_kpi_card_shows_business_line_yoy():
     assert ".kpi-bottom-meta .kpi-yoy-negative" in combined
     assert ".kpi-bottom-meta .kpi-yoy-mid" in combined
     assert ".kpi-bottom-meta .kpi-yoy-strong" in combined
+
+
+def test_qj_modal_shows_yoy_column():
+    modal = read_js("kpi-modal-content.js")
+    assert "qj_premium_prev" in modal
+    assert "<th>同比</th>" in modal
+    assert "function qjRow(label, target, actual, prev" in modal
+    assert "yoy(actual, prev)" in modal
+    assert "qjRow('整体', ztT, ztA, prevZtA" in modal
+    assert "qjRow('经代', jdT, jdA, prevJdA)" in modal
+    assert "qjRow('转型业务', zxT, zxA, prevZxA)" in modal
+
+
+def test_value_kpi_includes_jingdai_placeholder():
+    kpi = read_js("kpi-cards.js")
+    modal = read_js("kpi-modal-content.js")
+    exporter = open(os.path.join(ROOT, "backend", "services", "excel_exporter.py"), "r", encoding="utf-8").read()
+    backend_kpi = open(os.path.join(ROOT, "backend", "db", "repositories", "kpi.py"), "r", encoding="utf-8").read()
+    combined = kpi + "\n" + modal + "\n" + exporter + "\n" + backend_kpi
+    assert "value.setdefault('经代', 0.0)" in backend_kpi
+    assert "const jingdai = value['经代'] || 0" in kpi
+    assert "channels: ['经代', 'OTO', '证保', '蚁桥']" in modal
+    assert "价值达成率口径包含经代" in modal
+    assert "经代价值数据表尚未接入，经代实绩暂按 0 展示" in modal
+    assert "经代+OTO+证保+蚁桥" in exporter
 
 
 def test_metric_calculation_review_report_exists():
