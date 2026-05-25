@@ -34,6 +34,20 @@
           if (rate >= 80) return 'warning';
           return 'down';
         }
+        function calcYoy(current, previous) {
+          if (!previous || previous <= 0) return null;
+          return Math.round((current / previous - 1) * 1000) / 10;
+        }
+        function yoyClass(yoy) {
+          if (yoy == null) return '';
+          if (yoy >= 10) return 'kpi-yoy-strong';
+          if (yoy >= 0) return 'kpi-yoy-mid';
+          return 'kpi-yoy-negative';
+        }
+        function yoyText(yoy) {
+          if (yoy == null || !Number.isFinite(Number(yoy))) return '--';
+          return `${yoy >= 0 ? '+' : ''}${Number(yoy).toFixed(1)}%`;
+        }
         function getTarget(catKey, metric, dim, idx) {
           const metricData = targetData.categories?.[catKey]?.metrics?.[metric];
           if (!metricData) return 0;
@@ -85,9 +99,12 @@
       if (qjRateEl) qjRateEl.textContent = 整体达成率 + '%';
       const qjSubEl = document.getElementById('kpi-qj-sub');
       if (qjSubEl) {
+        const qjPrev = hasApiKpi ? (kpi.qj_premium_prev || {}) : {};
+        const 经代同比 = calcYoy(经代实际, qjPrev.jingdai);
+        const 转型同比 = calcYoy(转型实际, qjPrev.total_transform);
         qjSubEl.innerHTML = `
-          <span>经代 <span class="${rateClass(经代达成率)}">${经代达成率}%</span></span>
-          <span>转型 <span class="${rateClass(转型达成率)}">${转型达成率}%</span></span>`;
+          <span>经代 <span class="${rateClass(经代达成率)}">${经代达成率}%</span> <span class="${yoyClass(经代同比)}">同比 ${yoyText(经代同比)}</span></span>
+          <span>转型 <span class="${rateClass(转型达成率)}">${转型达成率}%</span> <span class="${yoyClass(转型同比)}">同比 ${yoyText(转型同比)}</span></span>`;
       }
 
       // 2. 价值达成率
