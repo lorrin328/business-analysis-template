@@ -295,9 +295,11 @@ let orgKpiData = null;
           const p10Actual = getOrgActual(org, ch, '10year', dim, periodIdx);
           const annuityActual = getOrgActual(org, ch, 'annuity', dim, periodIdx);
           const protectionActual = getOrgActual(org, ch, 'protection', dim, periodIdx);
+          const qjPrev = getOrgPrevActual(org, ch, 'qj', dim, periodIdx);
+          const valuePrev = getOrgPrevActual(org, ch, 'value', dim, periodIdx);
 
-          // 只有有数据的行才显示
-          if (qjActual === 0 && valueActual === 0 && longtermActual === 0 && p10Actual === 0 && annuityActual === 0 && protectionActual === 0) {
+          // 本年或去年同期任一方有数据，都要进入同比分母，避免上一年有业绩、今年为0的行被漏算。
+          if (qjActual === 0 && valueActual === 0 && longtermActual === 0 && p10Actual === 0 && annuityActual === 0 && protectionActual === 0 && qjPrev === 0 && valuePrev === 0) {
             return;
           }
 
@@ -307,9 +309,6 @@ let orgKpiData = null;
           const p10Target = getOrgTarget(org, ch, '10year', dim, periodIdx);
           const annuityTarget = getOrgTarget(org, ch, 'annuity', dim, periodIdx);
           const protectionTarget = getOrgTarget(org, ch, 'protection', dim, periodIdx);
-
-          const qjPrev = getOrgPrevActual(org, ch, 'qj', dim, periodIdx);
-          const valuePrev = getOrgPrevActual(org, ch, 'value', dim, periodIdx);
 
           rows.push({
             org, channel: ch,
