@@ -58,6 +58,58 @@
     let currentPieType = 'premium';
     productChart.setOption(getPieOption(currentPieType));
 
+    function fmtStructureAmount(value) {
+      const n = Number(value || 0);
+      return n.toLocaleString('zh-CN', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    }
+
+    function escapeStructureText(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[ch]));
+    }
+
+    function renderProductTopTable(rows) {
+      const wrapper = document.getElementById('productTopTableWrapper');
+      if (!wrapper) return;
+      const order = ['OTO', '证保', '蚁桥', '经代'];
+      const byLine = new Map((rows || []).map(row => [row.businessLine, row]));
+      const visibleRows = order.filter(line => byLine.has(line)).map(line => byLine.get(line));
+      if (visibleRows.length === 0) {
+        wrapper.innerHTML = '<div class="structure-empty">暂无各业务模式最高占比产品数据</div>';
+        return;
+      }
+      const htmlRows = visibleRows.map(row => {
+        const line = escapeStructureText(row.businessLine || '-');
+        const productName = escapeStructureText(row.productName || '-');
+        return `
+        <tr>
+          <td class="primary-text">${line}</td>
+          <td title="${productName}">${productName}</td>
+          <td class="num">${fmtStructureAmount(row.premium)}万</td>
+          <td class="num">${Number(row.share || 0).toFixed(1)}%</td>
+        </tr>
+      `;
+      }).join('');
+      wrapper.innerHTML = `
+        <table class="structure-table" id="productTopTable">
+          <thead>
+            <tr>
+              <th style="width:18%;">业务模式</th>
+              <th>最高占比产品</th>
+              <th style="width:24%;" class="num">期交保费</th>
+              <th style="width:20%;" class="num">模式内占比</th>
+            </tr>
+          </thead>
+          <tbody>${htmlRows}</tbody>
+        </table>
+      `;
+    }
+
     function switchPie(btn, type) {
       btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');

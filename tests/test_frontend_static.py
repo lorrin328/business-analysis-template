@@ -369,6 +369,33 @@ def test_value_kpi_includes_jingdai_placeholder():
     assert "经代+OTO+证保+蚁桥" in exporter
 
 
+def test_structure_modules_are_same_level_with_tables():
+    html = read_html()
+    product = read_js("product-analysis.js")
+    payperiod = read_js("payperiod-chart.js")
+    data_integration = read_js("data-integration.js")
+    backend_product = open(os.path.join(ROOT, "backend", "db", "repositories", "product.py"), "r", encoding="utf-8").read()
+    combined = html + "\n" + product + "\n" + payperiod + "\n" + data_integration + "\n" + backend_product
+
+    assert 'id="structureSection"' in html
+    assert "产品与交期结构" in html
+    assert 'id="productTopTableWrapper"' in html
+    assert 'id="payPeriodTableWrapper"' in html
+    assert html.index('<span class="chart-title">业务平台趋势</span>') < html.index("产品与交期结构")
+    assert html.index("产品与交期结构") < html.index('<span class="chart-title">产品结构</span>')
+    assert html.index("产品与交期结构") < html.index('<span class="chart-title">交期结构</span>')
+    assert "function renderProductTopTable(rows)" in product
+    assert "最高占比产品" in product
+    assert "期交保费" in product
+    assert "模式内占比" in product
+    assert "function renderPayPeriodTable()" in payperiod
+    assert "保费占比" in payperiod
+    assert "件数占比" in payperiod
+    assert "topProducts" in combined
+    assert "renderProductTopTable(product.topProducts || [])" in data_integration
+    assert "def _query_top_product_by_business_line" in backend_product
+
+
 def test_metric_calculation_review_report_exists():
     report_path = os.path.join(ROOT, "docs", "指标计算口径核对报告_v1.0.55.md")
     assert os.path.exists(report_path)

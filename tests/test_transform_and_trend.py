@@ -909,3 +909,76 @@ def test_product_structure_keeps_transform_and_jingdai_labels_separate_when_mixe
     labels = {row["name"] for row in mixed["premium"]}
     assert any(label.startswith("转型-") for label in labels)
     assert any(label.startswith("经代-") for label in labels)
+
+
+def test_product_structure_returns_top_product_by_business_line(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        '''
+        CREATE TABLE performance (
+            "年月" TEXT,
+            "业务模式" TEXT,
+            "销售机构名称" TEXT,
+            "产品名称" TEXT,
+            "产品类型" TEXT,
+            "产品代码" TEXT,
+            "期交保费" REAL,
+            "承保件数" INTEGER
+        )
+        '''
+    )
+    conn.execute(
+        '''
+        CREATE TABLE jingdai (
+            "时间" TEXT,
+            "经代机构" TEXT,
+            "产品名称" TEXT,
+            "期交保费" REAL
+        )
+        '''
+    )
+    conn.executemany(
+        'INSERT INTO performance VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+            ("202605", "OTO", "上海", "OTO主力产品", "寿险", "A", 80000, 1),
+            ("202605", "OTO", "上海", "OTO其他产品", "寿险", "B", 20000, 1),
+            ("202605", "证券", "北京", "证保主力产品", "年金", "C", 50000, 1),
+            ("202605", "证券", "北京", "证保其他产品", "年金", "D", 50000, 1),
+            ("202605", "网服", "四川", "蚁桥主力产品", "短期险", "E", 70000, 1),
+            ("202605", "网服", "四川", "蚁桥其他产品", "短期险", "F", 30000, 1),
+        ],
+    )
+    conn.executemany(
+        'INSERT INTO jingdai VALUES (?, ?, ?, ?)',
+        [
+            ("2026-05-01", "测试经代", "经代主力产品", 60000),
+            ("2026-05-01", "测试经代", "经代其他产品", 40000),
+        ],
+    )
+
+    @contextmanager
+    def fake_get_db():
+        yield conn
+
+    monkeypatch.setattr(product_repo, "get_db", fake_get_db)
+    result = product_repo.get_product_structure(
+        2026,
+        dimension="product_mix",
+        transform_lines=["OTO", "证保", "蚁桥"],
+        jingdai_orgs=[],
+        include_transform=True,
+        include_jingdai=True,
+        months=[5],
+    )
+    by_line = {row["businessLine"]: row for row in result["topProducts"]}
+
+    assert by_line["OTO"]["productName"] == "OTO主力产品"
+    assert by_line["OTO"]["premium"] == 8.0
+    assert by_line["OTO"]["share"] == 80.0
+    assert by_line["证保"]["productName"] == "证保主力产品"
+    assert by_line["证保"]["share"] == 50.0
+    assert by_line["蚁桥"]["productName"] == "蚁桥主力产品"
+    assert by_line["蚁桥"]["share"] == 70.0
+    assert by_line["经代"]["productName"] == "经代主力产品"
+    assert by_line["经代"]["share"] == 60.0

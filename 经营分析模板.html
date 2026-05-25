@@ -330,6 +330,43 @@
       background: var(--accent); color: white; border-color: var(--accent);
     }
     .chart-container { height: 320px; }
+    .structure-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .structure-table-wrapper {
+      margin-top: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(15, 23, 42, 0.25);
+    }
+    .structure-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      table-layout: fixed;
+    }
+    .structure-table th,
+    .structure-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: middle;
+    }
+    .structure-table th {
+      color: var(--text-secondary);
+      background: rgba(15, 23, 42, 0.75);
+      font-weight: 600;
+    }
+    .structure-table tr:last-child td { border-bottom: none; }
+    .structure-table tr:hover td { background: rgba(59,130,246,0.05); }
+    .structure-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .structure-table .primary-text { color: var(--text); font-weight: 600; }
+    .structure-table .muted { color: var(--text-secondary); }
+    .structure-empty {
+      padding: 18px;
+      color: var(--text-secondary);
+      text-align: center;
+      font-size: 12px;
+    }
 
     /* Upload Module - 4 columns */
     .upload-grid {
@@ -451,6 +488,7 @@
     @media (max-width: 1200px) {
       .chart-row { grid-template-columns: 1fr; }
       .chart-row-2 { grid-template-columns: 1fr; }
+      .structure-row { grid-template-columns: 1fr; }
     }
     @media (max-width: 768px) {
       .kpi-grid { grid-template-columns: repeat(2, 1fr); }
@@ -731,7 +769,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.57</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.58</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" id="exportExcelBtn" onclick="exportDashboardExcel()" style="margin-right:8px;">导出Excel</button>
@@ -864,10 +902,10 @@
       </div>
     </div>
 
-    <!-- Charts Row 1: Platform Trend + Product Structure -->
+    <!-- Business Platform Trend -->
     <div class="section">
       <div class="section-title">业务分析</div>
-      <div class="chart-row">
+      <div class="chart-row" style="grid-template-columns: 1fr;">
         <div class="chart-card">
           <div class="chart-header">
             <span class="chart-title">业务平台趋势</span>
@@ -923,6 +961,13 @@
           <div class="chart-container" id="platformChart"></div>
           <div class="chart-note" id="platformScopeNote" style="padding: 0 16px 12px; color:#94a3b8; font-size:12px; line-height:1.5;"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- Product and Payment Period Structure -->
+    <div class="section" id="structureSection">
+      <div class="section-title">产品与交期结构</div>
+      <div class="structure-row">
         <div class="chart-card">
           <div class="chart-header">
             <span class="chart-title">产品结构</span>
@@ -975,14 +1020,10 @@
             </div>
           </div>
           <div class="chart-container" id="productChart"></div>
+          <div class="structure-table-wrapper" id="productTopTableWrapper">
+            <div class="structure-empty">正在加载各业务模式最高占比产品...</div>
+          </div>
         </div>
-      </div>
-    </div>
-
-    <!-- Charts Row 1.5: Payment Period Structure -->
-    <div class="section" id="payPeriodSection">
-      <div class="section-title">交期结构</div>
-      <div class="chart-row" style="grid-template-columns: 1fr;">
         <div class="chart-card">
           <div class="chart-header">
             <span class="chart-title">交期结构</span>
@@ -1038,6 +1079,9 @@
             </div>
           </div>
           <div class="chart-container" id="payPeriodChart"></div>
+          <div class="structure-table-wrapper" id="payPeriodTableWrapper">
+            <div class="structure-empty">正在加载交期结构明细...</div>
+          </div>
         </div>
       </div>
     </div>
@@ -1219,10 +1263,10 @@
   <script src="js/platform-trend-main.js"></script>
   <script>
   </script>
-  <script src="js/product-analysis.js"></script>
+  <script src="js/product-analysis.js?v=1.0.58"></script>
   <script>
   </script>
-  <script src="js/payperiod-chart.js"></script>
+  <script src="js/payperiod-chart.js?v=1.0.58"></script>
   <script>
   </script>
   <script src="js/team-analysis.js"></script>

@@ -73,11 +73,84 @@
       payPeriodData.count = [];
       const chart = payPeriodChart;
       if (chart) chart.setOption(getPayPeriodPieOption('premium'), true);
+      renderPayPeriodTable();
+    }
+
+    function fmtPayPeriodAmount(value, digits = 1) {
+      const n = Number(value || 0);
+      return n.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    }
+
+    function escapePayPeriodText(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[ch]));
+    }
+
+    function renderPayPeriodTable() {
+      const wrapper = document.getElementById('payPeriodTableWrapper');
+      if (!wrapper) return;
+      const premiumRows = Array.isArray(payPeriodData.premium) ? payPeriodData.premium : [];
+      const countRows = Array.isArray(payPeriodData.count) ? payPeriodData.count : [];
+      const map = new Map();
+      premiumRows.forEach(row => {
+        const name = row.name || '未分类';
+        const item = map.get(name) || { name, premium: 0, count: 0 };
+        item.premium += Number(row.value || 0);
+        map.set(name, item);
+      });
+      countRows.forEach(row => {
+        const name = row.name || '未分类';
+        const item = map.get(name) || { name, premium: 0, count: 0 };
+        item.count += Number(row.value || 0);
+        map.set(name, item);
+      });
+      const rows = Array.from(map.values()).sort((a, b) => Math.abs(b.premium) - Math.abs(a.premium));
+      if (rows.length === 0) {
+        wrapper.innerHTML = '<div class="structure-empty">暂无交期结构明细数据</div>';
+        return;
+      }
+      const totalPremium = rows.reduce((sum, row) => sum + Number(row.premium || 0), 0);
+      const totalCount = rows.reduce((sum, row) => sum + Number(row.count || 0), 0);
+      const premiumLabel = payPeriodFilters.metric === 'gm' ? '规模保费' : '期交保费';
+      const htmlRows = rows.map(row => {
+        const name = escapePayPeriodText(row.name || '未分类');
+        const premiumShare = totalPremium ? row.premium / totalPremium * 100 : 0;
+        const countShare = totalCount ? row.count / totalCount * 100 : 0;
+        return `
+          <tr>
+            <td class="primary-text">${name}</td>
+            <td class="num">${fmtPayPeriodAmount(row.premium)}万</td>
+            <td class="num">${premiumShare.toFixed(1)}%</td>
+            <td class="num">${fmtPayPeriodAmount(row.count, 0)}件</td>
+            <td class="num">${countShare.toFixed(1)}%</td>
+          </tr>
+        `;
+      }).join('');
+      wrapper.innerHTML = `
+        <table class="structure-table" id="payPeriodTable">
+          <thead>
+            <tr>
+              <th>交期分类</th>
+              <th class="num">${premiumLabel}</th>
+              <th class="num">保费占比</th>
+              <th class="num">件数</th>
+              <th class="num">件数占比</th>
+            </tr>
+          </thead>
+          <tbody>${htmlRows}</tbody>
+        </table>
+      `;
     }
 
     function renderPayPeriodChart() {
       const type = payPeriodFilters.currentPieType;
       payPeriodChart.setOption(getPayPeriodPieOption(type), true);
+      renderPayPeriodTable();
     }
 
     function switchPayPeriodPie(btn, type) {

@@ -294,6 +294,7 @@
       const data = mergeProductRows(rows, mixedSources);
       productData.premium = data.premium;
       productData.count = data.count;
+      if (typeof renderProductTopTable === 'function') renderProductTopTable([]);
       return productData.premium.length > 0 || productData.count.length > 0;
     }
 
@@ -306,6 +307,7 @@
       }
       productData.premium = product.premium;
       productData.count = Array.isArray(product.count) && product.count.length > 0 ? product.count : product.premium;
+      if (typeof renderProductTopTable === 'function') renderProductTopTable(product.topProducts || []);
       return true;
     }
 
