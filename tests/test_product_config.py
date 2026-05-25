@@ -507,3 +507,118 @@ class TestProductConfig:
             conn.execute("DELETE FROM product_config")
             conn.commit()
             conn.close()
+
+    def test_product_config_merges_decimal_duplicate_codes(self, monkeypatch):
+        """4281 and 4281.0 should be one configurable product, with Y flags preserved."""
+        monkeypatch.setenv("ADMIN_TOKEN", "test-token")
+
+        from db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            c = conn.cursor()
+            c.execute("DELETE FROM product_config")
+            c.execute(
+                """
+                INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("4281", "产品4281", "OTO", "N", "N"),
+            )
+            c.execute(
+                """
+                INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("4281.0", "产品4281小数", "OTO", "Y", "Y"),
+            )
+            conn.commit()
+
+            resp = client.get("/api/product-config")
+            assert resp.status_code == 200
+            rows = [r for r in resp.json()["data"] if r["business_type"] == "OTO" and r["product_code"] == "4281"]
+            assert len(rows) == 1
+            assert rows[0]["is_annuity"] == "Y"
+            assert rows[0]["is_protection"] == "Y"
+
+            count = conn.execute(
+                "SELECT COUNT(*) FROM product_config WHERE business_type = 'OTO' AND product_code IN ('4281', '4281.0')"
+            ).fetchone()[0]
+            assert count == 1
+        finally:
+            conn.execute("DELETE FROM product_config")
+            conn.commit()
+            conn.close()
+
+    def test_product_config_save_normalizes_decimal_code(self, monkeypatch):
+        monkeypatch.setenv("ADMIN_TOKEN", "test-token")
+
+        from db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            conn.execute("DELETE FROM product_config")
+            conn.execute(
+                """
+                INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("4281", "产品4281", "OTO", "N", "N"),
+            )
+            conn.commit()
+
+            resp = client.post(
+                "/api/product-config",
+                json={"products": [{"product_code": "4281.0", "business_type": "OTO", "is_annuity": "Y", "is_protection": "N"}]},
+                headers={"X-Admin-Token": "test-token"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["data"]["normalized"] == 0
+
+            row = conn.execute(
+                "SELECT product_code, is_annuity, is_protection FROM product_config WHERE business_type = 'OTO'"
+            ).fetchone()
+            assert row[0] == "4281"
+            assert row[1] == "Y"
+            assert row[2] == "N"
+        finally:
+            conn.execute("DELETE FROM product_config")
+            conn.commit()
+            conn.close()
+
+    def test_aggregate_product_category_matches_normalized_code(self, monkeypatch):
+        """A legacy 4281.0 config must still match raw performance product code 4281."""
+        monkeypatch.setenv("ADMIN_TOKEN", "test-token")
+
+        import pandas as pd
+        from db import DB_PATH
+        from etl.aggregates.org import aggregate_org_performance
+
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            conn.execute("DELETE FROM product_config")
+            conn.execute(
+                """
+                INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("4281.0", "产品4281", "OTO", "Y", "Y"),
+            )
+            conn.commit()
+
+            df = pd.DataFrame([{
+                "年": 2097,
+                "年月": "209701",
+                "业务模式": "OTO",
+                "销售机构名称": "上海",
+                "产品代码": "4281",
+                "产品名称": "产品4281",
+                "期交保费": 10000,
+                "缴费年限": 10,
+            }])
+            rows = aggregate_org_performance(df)
+            assert len(rows) == 1
+            assert rows[0]["product_annuity"] == 1
+            assert rows[0]["product_protection"] == 1
+        finally:
+            conn.execute("DELETE FROM product_config")
+            conn.commit()
+            conn.close()

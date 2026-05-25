@@ -97,13 +97,12 @@ def aggregate_org_performance(df: pd.DataFrame) -> List[Dict]:
             with get_db() as conn:
                 c = conn.cursor()
                 c.execute('SELECT product_code, business_type, is_annuity, is_protection FROM product_config')
-                config_map = {
-                    (str(r['business_type'] or '').strip(), str(r['product_code']).strip()): {
-                        'is_annuity': str(r['is_annuity']).upper() == 'Y',
-                        'is_protection': str(r['is_protection']).upper() == 'Y',
-                    }
-                    for r in c.fetchall()
-                }
+                config_map = {}
+                for r in c.fetchall():
+                    key = (str(r['business_type'] or '').strip(), normalize_product_code(r['product_code']))
+                    item = config_map.setdefault(key, {'is_annuity': False, 'is_protection': False})
+                    item['is_annuity'] = item['is_annuity'] or str(r['is_annuity']).upper() == 'Y'
+                    item['is_protection'] = item['is_protection'] or str(r['is_protection']).upper() == 'Y'
             work['_is_annuity'] = work['_product_code'].map(
                 lambda x: False
             ).fillna(False)

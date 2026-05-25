@@ -9,6 +9,8 @@ from config.business_lines import CHANNEL_MAP, DEFAULT_YEAR
 from db import get_db
 from db.repository import replace_rows_incremental
 from etl.aggregates.org import aggregate_org_performance
+from metrics.business_rules import normalize_product_code
+from services.product_config_service import normalize_product_config_table
 from services.response import success_response
 
 router = APIRouter(prefix="/api", tags=["product-config"])
@@ -53,7 +55,9 @@ def _auto_extract_from_performance(conn) -> int:
 
     inserted = 0
     for row in c.fetchall():
-        code = row["product_code"].strip()
+        code = normalize_product_code(row["product_code"])
+        if not code:
+            continue
         name = row["product_name"].strip()
         channel = CHANNEL_MAP.get(row["business_type"], row["business_type"])
         c.execute('''
@@ -160,6 +164,10 @@ def get_product_config():
     with get_db() as conn:
         c = conn.cursor()
         inserted = _auto_extract_from_performance(conn) + _auto_extract_from_jingdai(conn)
+        normalized = normalize_product_config_table(conn)
+        if normalized:
+            conn.commit()
+            logger.info("normalized %s duplicate product_config rows", normalized)
         if inserted > 0:
             logger.info("auto-extracted %s products from raw tables to product_config", inserted)
 
@@ -206,7 +214,9 @@ def save_product_config(
             code = item.get("product_code")
             if not code:
                 continue
-            code = str(code).strip()
+            code = normalize_product_code(code)
+            if not code:
+                continue
             item_business_type = item.get("business_type")
             annuity = str(item.get("is_annuity", "N")).upper()
             protection = str(item.get("is_protection", "N")).upper()
@@ -246,6 +256,7 @@ def save_product_config(
                     protection,
                 ))
             updated += 1
+        normalized = normalize_product_config_table(conn)
         conn.commit()
 
     # 重新计算机构业绩聚合表
@@ -254,7 +265,7 @@ def save_product_config(
         logger.info("recalculated %s agg_org_performance rows after product-config update", recalc_count)
 
     return success_response(
-        {"updated": updated, "recalculated": recalc_count},
+        {"updated": updated, "normalized": normalized, "recalculated": recalc_count},
         message="产品配置已保存" + (f"，已重新计算 {recalc_count} 条机构业绩数据" if recalc_count else ""),
         meta={"metric": "product-config", "unit": "-"},
     )
