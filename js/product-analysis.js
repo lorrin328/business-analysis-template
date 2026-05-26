@@ -77,18 +77,25 @@
       const wrapper = document.getElementById('productTopTableWrapper');
       if (!wrapper) return;
       const order = ['OTO', '证保', '蚁桥', '经代'];
-      const byLine = new Map((rows || []).map(row => [row.businessLine, row]));
-      const visibleRows = order.filter(line => byLine.has(line)).map(line => byLine.get(line));
+      const visibleRows = (rows || [])
+        .filter(row => order.includes(row.businessLine))
+        .sort((a, b) => {
+          const lineDiff = order.indexOf(a.businessLine) - order.indexOf(b.businessLine);
+          if (lineDiff !== 0) return lineDiff;
+          return Number(a.rank || 99) - Number(b.rank || 99);
+        });
       if (visibleRows.length === 0) {
-        wrapper.innerHTML = '<div class="structure-empty">暂无各业务模式最高占比产品数据</div>';
+        wrapper.innerHTML = '<div class="structure-empty">暂无各业务模式前三名产品数据</div>';
         return;
       }
       const htmlRows = visibleRows.map(row => {
         const line = escapeStructureText(row.businessLine || '-');
         const productName = escapeStructureText(row.productName || '-');
+        const rank = Number(row.rank || 0);
         return `
         <tr>
           <td class="primary-text">${line}</td>
+          <td class="num">${rank > 0 ? rank : '-'}</td>
           <td title="${productName}">${productName}</td>
           <td class="num">${fmtStructureAmount(row.premium)}万</td>
           <td class="num">${Number(row.share || 0).toFixed(1)}%</td>
@@ -99,10 +106,11 @@
         <table class="structure-table" id="productTopTable">
           <thead>
             <tr>
-              <th style="width:18%;">业务模式</th>
-              <th>最高占比产品</th>
-              <th style="width:24%;" class="num">期交保费</th>
-              <th style="width:20%;" class="num">模式内占比</th>
+              <th style="width:16%;">业务模式</th>
+              <th style="width:12%;" class="num">排名</th>
+              <th>前三名产品</th>
+              <th style="width:22%;" class="num">期交保费</th>
+              <th style="width:18%;" class="num">模式内占比</th>
             </tr>
           </thead>
           <tbody>${htmlRows}</tbody>

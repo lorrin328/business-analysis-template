@@ -252,7 +252,7 @@ def _text_coalesce_expr(conn: sqlite3.Connection, table: str, candidates: list[s
     return f"COALESCE({', '.join(parts)}, '{fallback}')"
 
 
-def _query_top_product_by_business_line(
+def _query_top_products_by_business_line(
     conn: sqlite3.Connection,
     year: int,
     transform_lines: list[str],
@@ -262,7 +262,7 @@ def _query_top_product_by_business_line(
     orgs: list[str] | None = None,
     months: list[int] | None = None,
 ) -> list[dict]:
-    """按业务模式返回期交保费占比最高的产品，用于前端表格展示。"""
+    """按业务模式返回期交保费占比前三名产品，用于前端表格展示。"""
     rows: list[dict] = []
     normalized_transform_lines = set(transform_lines or [])
     raw_transform_lines = set(normalized_transform_lines)
@@ -351,31 +351,31 @@ def _query_top_product_by_business_line(
         premium = float(row.get('premium') or 0)
         if premium == 0:
             continue
-        line_bucket = by_line.setdefault(line, {'total_premium': 0.0, 'top': None})
+        line_bucket = by_line.setdefault(line, {'total_premium': 0.0, 'products': []})
         line_bucket['total_premium'] += premium
-        top = line_bucket['top']
-        if top is None or abs(premium) > abs(top['premium']):
-            line_bucket['top'] = {
-                'business_line': line,
-                'product_name': row.get('product_name') or '未分类',
-                'premium': premium,
-            }
+        line_bucket['products'].append({
+            'business_line': line,
+            'product_name': row.get('product_name') or '未分类',
+            'premium': premium,
+        })
 
     ordered_lines = ['OTO', '证保', '蚁桥', '经代']
     result = []
     for line in ordered_lines:
         bucket = by_line.get(line)
-        if not bucket or not bucket.get('top') or bucket['total_premium'] == 0:
+        if not bucket or not bucket.get('products') or bucket['total_premium'] == 0:
             continue
-        top = bucket['top']
-        share = top['premium'] / bucket['total_premium'] * 100
-        result.append({
-            'businessLine': line,
-            'productName': top['product_name'],
-            'premium': round(top['premium'], 2),
-            'totalPremium': round(bucket['total_premium'], 2),
-            'share': round(share, 1),
-        })
+        top_products = sorted(bucket['products'], key=lambda item: abs(item['premium']), reverse=True)[:3]
+        for rank, product in enumerate(top_products, start=1):
+            share = product['premium'] / bucket['total_premium'] * 100
+            result.append({
+                'businessLine': line,
+                'rank': rank,
+                'productName': product['product_name'],
+                'premium': round(product['premium'], 2),
+                'totalPremium': round(bucket['total_premium'], 2),
+                'share': round(share, 1),
+            })
     return result
 
 
@@ -424,7 +424,7 @@ def get_product_structure(
                 'dimension': dimension,
                 'premium': [{'name': r['label'], 'value': round(r['premium'], 2)} for r in rows if round(r['premium'], 2) != 0],
                 'count': [{'name': r['label'], 'value': int(r['count'])} for r in rows if int(r['count']) != 0],
-                'topProducts': _query_top_product_by_business_line(
+                'topProducts': _query_top_products_by_business_line(
                     conn, year, transform_list, jingdai_org_list,
                     include_transform, include_jingdai,
                     orgs=org_list, months=month_list,
@@ -448,4 +448,3 @@ def get_product_structure(
             'count': [{'name': r['label'], 'value': int(r['count'])} for r in rows],
             'jingdaiOrgs': get_jingdai_orgs(year),
         }
-

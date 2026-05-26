@@ -385,7 +385,8 @@ def test_structure_modules_are_same_level_with_tables():
     assert html.index("产品与交期结构") < html.index('<span class="chart-title">产品结构</span>')
     assert html.index("产品与交期结构") < html.index('<span class="chart-title">交期结构</span>')
     assert "function renderProductTopTable(rows)" in product
-    assert "最高占比产品" in product
+    assert "前三名产品" in product
+    assert "rank" in product
     assert "期交保费" in product
     assert "模式内占比" in product
     assert "function renderPayPeriodTable()" in payperiod
@@ -393,7 +394,26 @@ def test_structure_modules_are_same_level_with_tables():
     assert "件数占比" in payperiod
     assert "topProducts" in combined
     assert "renderProductTopTable(product.topProducts || [])" in data_integration
-    assert "def _query_top_product_by_business_line" in backend_product
+    assert "def _query_top_products_by_business_line" in backend_product
+
+
+def test_team_enhanced_panel_is_added_without_replacing_team_trend():
+    html = read_html()
+    team = read_js("team-analysis.js")
+    data_integration = read_js("data-integration.js")
+    combined = html + "\n" + team + "\n" + data_integration
+
+    assert 'id="teamChart"' in html
+    assert 'id="teamEnhancedPanel"' in html
+    assert "队伍结构与产能分析（试运行）" in html
+    assert "function renderTeamEnhancedPanel()" in team
+    assert "teamEnhancedSummaryTable" in team
+    assert "司龄段结构" in team
+    assert "产能段结构" in team
+    assert "P25 / P50 / P75" in team
+    assert "待接入人级月度底座" in team
+    assert "不影响队伍趋势、KPI 和机构维度" in team
+    assert "if (typeof renderTeamEnhancedPanel === 'function') renderTeamEnhancedPanel();" in combined
 
 
 def test_metric_calculation_review_report_exists():

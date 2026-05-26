@@ -943,10 +943,13 @@ def test_product_structure_returns_top_product_by_business_line(monkeypatch):
         [
             ("202605", "OTO", "上海", "OTO主力产品", "寿险", "A", 80000, 1),
             ("202605", "OTO", "上海", "OTO其他产品", "寿险", "B", 20000, 1),
+            ("202605", "OTO", "上海", "OTO第三产品", "寿险", "G", 10000, 1),
             ("202605", "证券", "北京", "证保主力产品", "年金", "C", 50000, 1),
             ("202605", "证券", "北京", "证保其他产品", "年金", "D", 50000, 1),
+            ("202605", "证券", "北京", "证保第三产品", "年金", "H", 10000, 1),
             ("202605", "网服", "四川", "蚁桥主力产品", "短期险", "E", 70000, 1),
             ("202605", "网服", "四川", "蚁桥其他产品", "短期险", "F", 30000, 1),
+            ("202605", "网服", "四川", "蚁桥第三产品", "短期险", "I", 10000, 1),
         ],
     )
     conn.executemany(
@@ -954,6 +957,7 @@ def test_product_structure_returns_top_product_by_business_line(monkeypatch):
         [
             ("2026-05-01", "测试经代", "经代主力产品", 60000),
             ("2026-05-01", "测试经代", "经代其他产品", 40000),
+            ("2026-05-01", "测试经代", "经代第三产品", 20000),
         ],
     )
 
@@ -971,14 +975,17 @@ def test_product_structure_returns_top_product_by_business_line(monkeypatch):
         include_jingdai=True,
         months=[5],
     )
-    by_line = {row["businessLine"]: row for row in result["topProducts"]}
+    by_line = {}
+    for row in result["topProducts"]:
+        by_line.setdefault(row["businessLine"], []).append(row)
 
-    assert by_line["OTO"]["productName"] == "OTO主力产品"
-    assert by_line["OTO"]["premium"] == 8.0
-    assert by_line["OTO"]["share"] == 80.0
-    assert by_line["证保"]["productName"] == "证保主力产品"
-    assert by_line["证保"]["share"] == 50.0
-    assert by_line["蚁桥"]["productName"] == "蚁桥主力产品"
-    assert by_line["蚁桥"]["share"] == 70.0
-    assert by_line["经代"]["productName"] == "经代主力产品"
-    assert by_line["经代"]["share"] == 60.0
+    assert [row["rank"] for row in by_line["OTO"]] == [1, 2, 3]
+    assert [row["productName"] for row in by_line["OTO"]] == ["OTO主力产品", "OTO其他产品", "OTO第三产品"]
+    assert by_line["OTO"][0]["premium"] == 8.0
+    assert by_line["OTO"][0]["share"] == 72.7
+    assert [row["productName"] for row in by_line["证保"]] == ["证保主力产品", "证保其他产品", "证保第三产品"]
+    assert by_line["证保"][0]["share"] == 45.5
+    assert [row["productName"] for row in by_line["蚁桥"]] == ["蚁桥主力产品", "蚁桥其他产品", "蚁桥第三产品"]
+    assert by_line["蚁桥"][0]["share"] == 63.6
+    assert [row["productName"] for row in by_line["经代"]] == ["经代主力产品", "经代其他产品", "经代第三产品"]
+    assert by_line["经代"][0]["share"] == 50.0
