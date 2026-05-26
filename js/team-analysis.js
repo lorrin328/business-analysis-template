@@ -136,13 +136,13 @@
         </select>
       `;
       return `
-        <div class="chart-controls" style="margin: 0 0 12px 0;">
-          <span style="font-size:12px;color:var(--text-secondary);">统计期间</span>
+        <div class="chart-controls team-enhanced-controls">
+          <span class="team-enhanced-control-label">统计期间</span>
           <button class="chart-btn ${periodType === 'year' ? 'active' : ''}" onclick="switchTeamEnhancedPeriodType('year')">年度</button>
           <button class="chart-btn ${periodType === 'quarter' ? 'active' : ''}" onclick="switchTeamEnhancedPeriodType('quarter')">季度</button>
           <button class="chart-btn ${periodType === 'month' ? 'active' : ''}" onclick="switchTeamEnhancedPeriodType('month')">月度</button>
           ${selectHtml}
-          <span style="font-size:12px;color:var(--text-secondary);margin-left:10px;">业务模式</span>
+          <span class="team-enhanced-control-label">业务模式</span>
           ${['全部', 'OTO', '证保', '蚁桥'].map(line => `
             <button class="chart-btn ${businessLine === line ? 'active' : ''}" onclick="switchTeamEnhancedBusinessLine('${line}')">${line}</button>
           `).join('')}
@@ -287,7 +287,7 @@
             <div class="team-insight-value">${fmtTeamNumber(summary.zeroRate, 1)}%</div>
             <div class="team-insight-note">产能≤0人员 / 样本人数</div>
           </div>
-            <div class="team-insight-card">
+          <div class="team-insight-card">
             <div class="team-insight-label">P50 中位数</div>
             <div class="team-insight-value">${fmtTeamNumber(summary.p50, 2)}万</div>
             <div class="team-insight-note">≥P50：${fmtTeamNumber(summary.p50Count)}人</div>

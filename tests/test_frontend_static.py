@@ -100,14 +100,14 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.66"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.66"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.68"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.68"></script>' in html
     assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.57"></script>' in html
     assert '<script src="js/platform-trend.js"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.66"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.68"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -142,6 +142,8 @@ def test_permission_admin_can_manage_admin_role_and_save_column_is_fixed():
     assert "permission-save-btn" in auth_ui
     assert ".permission-action-cell" in html
     assert ".permission-save-btn" in html
+    assert "position: sticky; right: 0" in html
+    assert ".permission-table { width: 100%; min-width: 0; table-layout: fixed; }" in html
 
 
 def test_local_seed_data_remains_available_when_api_is_slow_or_unavailable():
@@ -458,6 +460,8 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert "switchTeamEnhancedPeriodValue" in team
     assert "selectedTeamEnhancedBusinessLine" in team
     assert "switchTeamEnhancedBusinessLine" in team
+    assert "team-enhanced-controls" in team
+    assert "team-enhanced-control-label" in team
     assert "业务模式" in team
     assert "['全部', 'OTO', '证保', '蚁桥']" in team
     assert "periodType" in team
@@ -475,6 +479,10 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert "需完善人员产能分布统计" not in team
     assert "月度按当月个人期交保费计算" in team
     assert "P 值人数为达到该分位阈值及以上的人数" in team
+    assert "#teamEnhancedPanel .team-insight-grid { grid-template-columns: repeat(2, minmax(0, 1fr));" in html
+    assert "#teamEnhancedPanel .team-insight-grid {\n        grid-template-columns: 1fr;" in html
+    assert "#teamEnhancedPanel .structure-table {\n        min-width: 680px;" in html
+    assert "#teamEnhancedPanel #teamTenureStructureTable" in html
     assert "if (typeof refreshTeamEnhancedPanel === 'function') refreshTeamEnhancedPanel();" in combined
 
 

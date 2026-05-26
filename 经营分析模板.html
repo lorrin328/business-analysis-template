@@ -7,8 +7,8 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/format-utils.js"></script>
-  <script src="js/api-client.js?v=1.0.66"></script>
-  <script src="js/auth-ui.js?v=1.0.66"></script>
+  <script src="js/api-client.js?v=1.0.68"></script>
+  <script src="js/auth-ui.js?v=1.0.68"></script>
   <script src="js/export-excel.js"></script>
   <script src="js/dashboard-config.js"></script>
   <script src="js/upload.js"></script>
@@ -380,6 +380,19 @@
     .team-insight-value { color: #60a5fa; font-size: 22px; font-weight: 700; line-height: 1.2; }
     .team-insight-note { color: var(--text-secondary); font-size: 12px; margin-top: 8px; line-height: 1.45; }
     .team-insight-layout { display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; }
+    .team-enhanced-controls {
+      margin: 0 0 12px 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 0 0 10px 0;
+    }
+    .team-enhanced-control-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
     .team-analysis-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .team-analysis-tile {
       border: 1px solid var(--border);
@@ -531,6 +544,21 @@
       .header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
       .modal-kpi-detail { grid-template-columns: 1fr; }
       .modal-kpi-detail.three-col { grid-template-columns: 1fr; }
+      #teamEnhancedPanel .team-insight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      #teamEnhancedPanel .team-insight-layout { grid-template-columns: 1fr; gap: 10px; }
+      #teamEnhancedPanel .structure-table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      #teamEnhancedPanel .structure-table {
+        min-width: 680px;
+        table-layout: auto;
+        white-space: nowrap;
+      }
+      #teamEnhancedPanel #teamTenureStructureTable,
+      #teamEnhancedPanel #teamProductivityBandTable {
+        min-width: 560px;
+      }
     }
 
     /* iPhone 专用适配 */
@@ -701,6 +729,44 @@
       .org-table th, .org-table td {
         padding: 6px 8px;
       }
+      #teamEnhancedPanel .team-enhanced-controls {
+        margin: 0 0 10px 0;
+        padding-bottom: 8px;
+        gap: 6px;
+      }
+      #teamEnhancedPanel .team-enhanced-control-label {
+        width: 100%;
+        margin-top: 2px;
+      }
+      #teamEnhancedPanel .chart-btn {
+        min-height: 32px;
+        padding: 5px 9px;
+      }
+      #teamEnhancedPanel .chart-select {
+        min-height: 32px;
+        max-width: 96px;
+      }
+      #teamEnhancedPanel .team-insight-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      #teamEnhancedPanel .team-insight-card {
+        min-height: 0;
+        padding: 12px;
+      }
+      #teamEnhancedPanel .team-insight-value {
+        font-size: 20px;
+      }
+      #teamEnhancedPanel .team-insight-note {
+        font-size: 11px;
+      }
+      #teamEnhancedPanel .structure-table {
+        font-size: 11px;
+      }
+      #teamEnhancedPanel .structure-table th,
+      #teamEnhancedPanel .structure-table td {
+        padding: 7px 8px;
+      }
     }
 
     /* 机构维度表格 */
@@ -808,15 +874,15 @@
     .auth-message { min-height: 18px; color: var(--warning); font-size: 12px; margin-top: 12px; }
     .user-pill { color: var(--text-secondary); font-size: 12px; }
     .permission-toolbar { display:grid; grid-template-columns: 1fr 1fr 150px auto; gap: 8px; margin-bottom: 12px; }
-    .permission-table { min-width: 1120px; table-layout: fixed; }
-    .permission-table th:nth-child(1), .permission-table td:nth-child(1) { width: 190px; }
-    .permission-table th:nth-child(2), .permission-table td:nth-child(2) { width: 180px; }
-    .permission-table th:nth-child(3), .permission-table td:nth-child(3) { width: 190px; }
-    .permission-table th:nth-child(5), .permission-table td:nth-child(5) { width: 92px; }
+    .permission-table { width: 100%; min-width: 0; table-layout: fixed; }
+    .permission-table th:nth-child(1), .permission-table td:nth-child(1) { width: 22%; }
+    .permission-table th:nth-child(2), .permission-table td:nth-child(2) { width: 18%; }
+    .permission-table th:nth-child(3), .permission-table td:nth-child(3) { width: 22%; }
+    .permission-table th:nth-child(5), .permission-table td:nth-child(5) { width: 84px; }
     .permission-table th, .permission-table td { vertical-align: top; }
-    .permission-checkboxes { display:grid; grid-template-columns: repeat(4, minmax(84px, 1fr)); gap: 6px 10px; }
+    .permission-checkboxes { display:grid; grid-template-columns: repeat(2, minmax(72px, 1fr)); gap: 6px 10px; }
     .permission-checkboxes label { color: var(--text-secondary); font-size: 12px; display:flex; gap: 5px; align-items:center; }
-    .permission-action-cell { text-align: right; white-space: nowrap; vertical-align: middle !important; }
+    .permission-action-cell { text-align: right; white-space: nowrap; vertical-align: middle !important; position: sticky; right: 0; background: var(--bg-card); }
     .permission-save-btn { min-width: 64px; }
 
     /* Animations */
@@ -841,7 +907,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.66</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.68</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" data-permission="permission_admin" onclick="openPermissionAdmin()" style="margin-right:8px;">权限管理</button>
@@ -1352,7 +1418,7 @@
   <script src="js/payperiod-chart.js?v=1.0.58"></script>
   <script>
   </script>
-  <script src="js/team-analysis.js?v=1.0.66"></script>
+  <script src="js/team-analysis.js?v=1.0.68"></script>
   <script>
     // ---------- Resize ----------
     window.addEventListener('resize', () => {
