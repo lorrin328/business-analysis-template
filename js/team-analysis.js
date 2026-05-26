@@ -23,6 +23,8 @@
     };
     let teamEnhancedData = null;
     let teamEnhancedLoading = false;
+    let selectedTeamEnhancedPeriodType = 'month';
+    let selectedTeamEnhancedPeriodValue = null;
 
     const teamChart = echarts.init(document.getElementById('teamChart'));
 
@@ -87,7 +89,17 @@
     }
 
     function buildTeamEnhancedParams() {
-      const params = new URLSearchParams({ year: String(selectedTeamYear || DEFAULT_DASHBOARD_YEAR), scope: 'all' });
+      const params = new URLSearchParams({
+        year: String(selectedTeamYear || DEFAULT_DASHBOARD_YEAR),
+        periodType: selectedTeamEnhancedPeriodType,
+        scope: 'all'
+      });
+      const defaultMonth = latestTeamMonthIndex(String(selectedTeamYear || DEFAULT_DASHBOARD_YEAR)) + 1 || 12;
+      const periodValue = selectedTeamEnhancedPeriodValue || (
+        selectedTeamEnhancedPeriodType === 'quarter' ? Math.ceil(defaultMonth / 3) :
+        selectedTeamEnhancedPeriodType === 'month' ? defaultMonth : null
+      );
+      if (periodValue) params.set('periodValue', String(periodValue));
       const selectedKeys = Object.keys(selectedTeamSeries).filter(k => selectedTeamSeries[k]);
       const selectedOrgs = Object.keys(selectedTeamOrgs).filter(k => selectedTeamOrgs[k]);
       if (selectedKeys.length === 0) {
@@ -101,6 +113,52 @@
         params.set('orgs', selectedOrgs.join(','));
       }
       return params;
+    }
+
+    function teamEnhancedPeriodLabel(data) {
+      if (!data) return '';
+      const year = String(data.year || selectedTeamYear || DEFAULT_DASHBOARD_YEAR);
+      if (data.periodType === 'year') return `${year}年`;
+      if (data.periodType === 'quarter') return `${year}年Q${data.periodValue || ''}`;
+      return `${year}年${data.month}月`;
+    }
+
+    function renderTeamEnhancedControls(data) {
+      const periodType = data?.periodType || selectedTeamEnhancedPeriodType;
+      const periodValue = data?.periodValue || selectedTeamEnhancedPeriodValue || data?.month || '';
+      const quarterOptions = [1, 2, 3, 4].map(q => `<option value="${q}" ${Number(periodValue) === q ? 'selected' : ''}>Q${q}</option>`).join('');
+      const monthOptions = Array.from({ length: 12 }, (_, idx) => {
+        const month = idx + 1;
+        return `<option value="${month}" ${Number(periodValue) === month ? 'selected' : ''}>${month}月</option>`;
+      }).join('');
+      const selectHtml = periodType === 'year' ? '' : `
+        <select class="chart-select" onchange="switchTeamEnhancedPeriodValue(this.value)">
+          ${periodType === 'quarter' ? quarterOptions : monthOptions}
+        </select>
+      `;
+      return `
+        <div class="chart-controls" style="margin: 0 0 12px 0;">
+          <span style="font-size:12px;color:var(--text-secondary);">统计期间</span>
+          <button class="chart-btn ${periodType === 'year' ? 'active' : ''}" onclick="switchTeamEnhancedPeriodType('year')">年度</button>
+          <button class="chart-btn ${periodType === 'quarter' ? 'active' : ''}" onclick="switchTeamEnhancedPeriodType('quarter')">季度</button>
+          <button class="chart-btn ${periodType === 'month' ? 'active' : ''}" onclick="switchTeamEnhancedPeriodType('month')">月度</button>
+          ${selectHtml}
+        </div>
+      `;
+    }
+
+    function switchTeamEnhancedPeriodType(periodType) {
+      selectedTeamEnhancedPeriodType = periodType;
+      const defaultMonth = latestTeamMonthIndex(String(selectedTeamYear || DEFAULT_DASHBOARD_YEAR)) + 1 || 12;
+      if (periodType === 'year') selectedTeamEnhancedPeriodValue = null;
+      else if (periodType === 'quarter') selectedTeamEnhancedPeriodValue = Math.ceil(defaultMonth / 3);
+      else selectedTeamEnhancedPeriodValue = defaultMonth;
+      refreshTeamEnhancedPanel();
+    }
+
+    function switchTeamEnhancedPeriodValue(value) {
+      selectedTeamEnhancedPeriodValue = Number(value);
+      refreshTeamEnhancedPanel();
     }
 
     async function fetchTeamEnhancedData() {
@@ -152,6 +210,8 @@
       const year = String(data.year || selectedTeamYear || DEFAULT_DASHBOARD_YEAR);
       const summary = data.summary || {};
       const selectedOrgCount = Object.values(selectedTeamOrgs).filter(Boolean).length;
+      const periodLabel = teamEnhancedPeriodLabel(data);
+      const controlsHtml = renderTeamEnhancedControls(data);
       const tenureRows = renderRows(data.tenureStructure || [], [
         { render: row => `<span class="primary-text">${escapeTeamText(row.label)}</span>` },
         { className: 'num', render: row => `${fmtTeamNumber(row.count)}人` },
@@ -172,23 +232,42 @@
         { className: 'num', render: row => `${fmtTeamNumber(row.sampleCount)}人` },
         { className: 'num', render: row => `${fmtTeamNumber(row.zeroRate, 1)}%` },
         { className: 'num', render: row => `${fmtTeamNumber(row.p25, 2)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p25Count)}人` },
         { className: 'num', render: row => `${fmtTeamNumber(row.p50, 2)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p50Count)}人` },
         { className: 'num', render: row => `${fmtTeamNumber(row.p75, 2)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p75Count)}人` },
         { className: 'num', render: row => `${fmtTeamNumber(row.avg, 2)}万` }
       ], '暂无分位数数据');
+      const orgRows = renderRows(data.orgPercentiles || [], [
+        { render: row => `<span class="primary-text">${escapeTeamText(row.label)}</span>` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.sampleCount)}人` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.zeroRate, 1)}%` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p25, 2)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p25Count)}人` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p50, 2)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p50Count)}人` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p75, 2)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p75Count)}人` }
+      ], '暂无机构分位数数据');
       const trendRows = renderRows((data.trend || []).slice(-6), [
         { render: row => `${row.month}月` },
         { className: 'num', render: row => `${fmtTeamNumber(row.sampleCount)}人` },
         { className: 'num', render: row => `${fmtTeamNumber(row.zeroRate, 1)}%` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p25, 2)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p25Count)}人` },
         { className: 'num', render: row => `${fmtTeamNumber(row.p50, 2)}万` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p75, 2)}万` }
+        { className: 'num', render: row => `${fmtTeamNumber(row.p50Count)}人` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p75, 2)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p75Count)}人` }
       ], '暂无趋势数据');
 
       wrapper.innerHTML = `
+        ${controlsHtml}
         <div class="team-insight-grid">
           <div class="team-insight-card">
-            <div class="team-insight-label">统计月份</div>
-            <div class="team-insight-value">${year}年${data.month}月</div>
+            <div class="team-insight-label">统计期间</div>
+            <div class="team-insight-value">${periodLabel}</div>
             <div class="team-insight-note">人员月度原始表口径</div>
           </div>
           <div class="team-insight-card">
@@ -201,15 +280,15 @@
             <div class="team-insight-value">${fmtTeamNumber(summary.zeroRate, 1)}%</div>
             <div class="team-insight-note">产能≤0人员 / 样本人数</div>
           </div>
-          <div class="team-insight-card">
+            <div class="team-insight-card">
             <div class="team-insight-label">P50 中位数</div>
             <div class="team-insight-value">${fmtTeamNumber(summary.p50, 2)}万</div>
-            <div class="team-insight-note">保留零/负产能人员</div>
+            <div class="team-insight-note">≥P50：${fmtTeamNumber(summary.p50Count)}人</div>
           </div>
           <div class="team-insight-card">
             <div class="team-insight-label">P75 骨干门槛</div>
             <div class="team-insight-value">${fmtTeamNumber(summary.p75, 2)}万</div>
-            <div class="team-insight-note">人员月产能上四分位</div>
+            <div class="team-insight-note">≥P75：${fmtTeamNumber(summary.p75Count)}人</div>
           </div>
         </div>
         <div class="team-insight-layout">
@@ -252,8 +331,11 @@
                   <th class="num">样本</th>
                   <th class="num">零/负产能占比</th>
                   <th class="num">P25</th>
+                  <th class="num">≥P25人数</th>
                   <th class="num">P50</th>
+                  <th class="num">≥P50人数</th>
                   <th class="num">P75</th>
+                  <th class="num">≥P75人数</th>
                   <th class="num">平均</th>
                 </tr>
               </thead>
@@ -267,16 +349,38 @@
                   <th>月份</th>
                   <th class="num">样本</th>
                   <th class="num">零/负产能占比</th>
+                  <th class="num">P25</th>
+                  <th class="num">≥P25人数</th>
                   <th class="num">P50</th>
+                  <th class="num">≥P50人数</th>
                   <th class="num">P75</th>
+                  <th class="num">≥P75人数</th>
                 </tr>
               </thead>
               <tbody>${trendRows}</tbody>
             </table>
           </div>
         </div>
+        <div class="structure-table-wrapper" style="margin-top:10px;">
+          <table class="structure-table" id="teamOrgPercentileTable">
+            <thead>
+              <tr>
+                <th>机构</th>
+                <th class="num">样本</th>
+                <th class="num">零/负产能占比</th>
+                <th class="num">P25</th>
+                <th class="num">≥P25人数</th>
+                <th class="num">P50</th>
+                <th class="num">≥P50人数</th>
+                <th class="num">P75</th>
+                <th class="num">≥P75人数</th>
+              </tr>
+            </thead>
+            <tbody>${orgRows}</tbody>
+          </table>
+        </div>
         <div class="team-insight-note" style="margin-top:12px;">
-          口径：以人力原始表人员月度记录为基准，按同一人员、同一年月左关联保单明细，保留零/负产能人员；经代无队伍人力基表，不进入本模块。当前筛选机构数：${selectedOrgCount}。
+          口径：月度按当月个人期交保费计算；季度/年度按期间内个人累计期交保费计算，同一期间内同一人员只计 1 人；P 值人数为达到该分位阈值及以上的人数。当前筛选机构数：${selectedOrgCount}。
         </div>
       `;
     }

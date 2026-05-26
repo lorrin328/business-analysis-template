@@ -42,7 +42,7 @@
 | `/api/platform-trend?year=2026&month=5&businessLines=经代,OTO&metric=qj` | GET | 平台趋势统一接口 |
 | `/api/org-analysis?year=2026` | GET | 机构分析 |
 | `/api/team-analysis?year=2026` | GET | 队伍分析 |
-| `/api/team-enhanced-analysis?year=2026&month=5&businessLines=OTO,证保&orgs=上海` | GET | 队伍结构与产能分析；以 `hr_data` 人员月度原始表左关联 `performance`，输出司龄段、产能段、P25/P50/P75 |
+| `/api/team-enhanced-analysis?year=2026&periodType=quarter&periodValue=2&businessLines=OTO,证保&orgs=上海` | GET | 队伍结构与产能分析；支持年度/季度/月度，输出司龄段、产能段、业务模式/机构 P25/P50/P75 及达标人数 |
 | `/api/product-analysis?year=2026&dimension=product_mix&months=4,5,6&metric=gm` | GET | 产品结构，支持业务线、机构、月份和保费口径筛选 |
 | `/api/targets?year=2026` | GET | 读取目标配置 |
 | `/api/targets?year=2026` | POST | 保存目标配置并同步写入 `target_values` |

@@ -117,6 +117,12 @@ def _percentile(values: list[float], p: float) -> float | None:
     return ordered[lower] * (1 - weight) + ordered[upper] * weight
 
 
+def _threshold_count(values: list[float], threshold: float | None) -> int | None:
+    if threshold is None:
+        return None
+    return sum(1 for value in values if value >= threshold)
+
+
 def _row_value(row: dict[str, Any], names: tuple[str, ...]) -> Any:
     for name in names:
         if name in row:
@@ -154,6 +160,26 @@ def _latest_hr_month(conn, year: int) -> int | None:
     if not row:
         return None
     return _to_int(row["month"], None)
+
+
+def _period_months(conn, year: int, period_type: str, period_value: int | None) -> list[int]:
+    available = [
+        _to_int(row["month"], None)
+        for row in conn.execute(
+            'SELECT DISTINCT CAST("统计月" AS INTEGER) AS month FROM hr_data '
+            'WHERE CAST("统计年" AS INTEGER) = ? ORDER BY month',
+            (year,),
+        ).fetchall()
+    ]
+    available = [month for month in available if month]
+    if period_type == "year":
+        return available
+    if period_type == "quarter":
+        quarter = period_value or ((_latest_hr_month(conn, year) - 1) // 3 + 1 if _latest_hr_month(conn, year) else 1)
+        quarter_months = set(range((quarter - 1) * 3 + 1, quarter * 3 + 1))
+        return [month for month in available if month in quarter_months]
+    selected_month = period_value or _latest_hr_month(conn, year)
+    return [selected_month] if selected_month in available else []
 
 
 def _load_performance(conn, year: int, business_lines: set[str] | None, orgs: set[str] | None):
@@ -247,6 +273,44 @@ def _sample_staff(
     return sample
 
 
+def _sample_staff_period(
+    conn,
+    year: int,
+    months: list[int],
+    perf_map: dict[tuple[int, int, str], dict[str, Any]],
+    business_lines: set[str] | None,
+    orgs: set[str] | None,
+    scope: str,
+) -> list[dict[str, Any]]:
+    if len(months) == 1:
+        return _sample_staff(conn, year, months[0], perf_map, business_lines, orgs, scope)
+
+    aggregated: dict[str, dict[str, Any]] = {}
+    for month in months:
+        for row in _sample_staff(conn, year, month, perf_map, business_lines, orgs, "all"):
+            staff_id = row["staff_id"]
+            current = aggregated.get(staff_id)
+            if current is None:
+                current = {**row, "qjPremium": 0.0, "policyCount": 0, "periodMonths": 0, "_latestMonth": month}
+                aggregated[staff_id] = current
+            if month >= current["_latestMonth"]:
+                for key in ("org", "businessLine", "rank", "tenure", "startHeadcount", "endHeadcount"):
+                    current[key] = row[key]
+                current["_latestMonth"] = month
+            current["qjPremium"] += row["qjPremium"]
+            current["policyCount"] += row["policyCount"]
+            current["periodMonths"] += 1
+
+    sample = []
+    for row in aggregated.values():
+        row.pop("_latestMonth", None)
+        row["active"] = row["qjPremium"] > 0
+        if scope == "active" and row["qjPremium"] <= 0:
+            continue
+        sample.append(row)
+    return sample
+
+
 def _group_structure(sample: list[dict[str, Any]], field: str) -> list[dict[str, Any]]:
     grouped: dict[str, dict[str, Any]] = defaultdict(lambda: {"count": 0, "premium": 0.0, "active": 0})
     total_count = 0
@@ -305,15 +369,21 @@ def _percentile_summary(label: str, sample: list[dict[str, Any]]) -> dict[str, A
     sample_count = len(sample)
     total_premium = sum(values)
     zero_count = sum(1 for row in sample if row["qjPremium"] <= 0)
+    p25 = _percentile(values, 0.25)
+    p50 = _percentile(values, 0.50)
+    p75 = _percentile(values, 0.75)
     return {
         "label": label,
         "sampleCount": sample_count,
         "activeCount": active_count,
         "zeroCount": zero_count,
         "zeroRate": _round(_ratio(zero_count, sample_count), 1),
-        "p25": _round(_percentile(values, 0.25), 2),
-        "p50": _round(_percentile(values, 0.50), 2),
-        "p75": _round(_percentile(values, 0.75), 2),
+        "p25": _round(p25, 2),
+        "p25Count": _threshold_count(values, p25),
+        "p50": _round(p50, 2),
+        "p50Count": _threshold_count(values, p50),
+        "p75": _round(p75, 2),
+        "p75Count": _threshold_count(values, p75),
         "avg": _round(total_premium / sample_count if sample_count else None, 2),
         "qjPremium": _round(total_premium, 2),
     }
@@ -328,6 +398,16 @@ def _percentiles_by_line(sample: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if grouped.get(line):
             result.append(_percentile_summary(line, grouped[line]))
     return result
+
+
+def _percentiles_by_org(sample: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in sample:
+        grouped[row["org"]].append(row)
+    return sorted(
+        (_percentile_summary(org, rows) for org, rows in grouped.items()),
+        key=lambda item: (-item["sampleCount"], item["label"]),
+    )
 
 
 def _trend(
@@ -357,6 +437,8 @@ def _trend(
 def get_team_enhanced_analysis(
     year: int,
     month: int | None = None,
+    period_type: str = "month",
+    period_value: int | None = None,
     business_lines: list[str] | None = None,
     orgs: list[str] | None = None,
     scope: str = "all",
@@ -372,6 +454,10 @@ def get_team_enhanced_analysis(
     org_filter = {_clean_text(item) for item in orgs or [] if _clean_text(item)}
     if scope not in {"all", "active"}:
         scope = "all"
+    if period_type not in {"year", "quarter", "month"}:
+        period_type = "month"
+    if month is not None and period_value is None:
+        period_value = month
 
     with get_db() as conn:
         if "hr_data" not in {
@@ -380,37 +466,49 @@ def get_team_enhanced_analysis(
             return {
                 "year": year,
                 "month": month,
+                "periodType": period_type,
+                "periodValue": period_value,
+                "months": [],
                 "summary": _percentile_summary("整体", []),
                 "tenureStructure": [],
                 "rankStructure": [],
                 "productivityBands": [],
                 "percentiles": [],
+                "orgPercentiles": [],
                 "trend": [],
                 "filters": {"businessLines": sorted(line_filter), "orgs": sorted(org_filter), "scope": scope},
             }
-        selected_month = month or _latest_hr_month(conn, year)
-        if not selected_month:
+        selected_months = _period_months(conn, year, period_type, period_value)
+        if not selected_months:
             return {
                 "year": year,
                 "month": None,
+                "periodType": period_type,
+                "periodValue": period_value,
+                "months": [],
                 "summary": _percentile_summary("整体", []),
                 "tenureStructure": [],
                 "rankStructure": [],
                 "productivityBands": [],
                 "percentiles": [],
+                "orgPercentiles": [],
                 "trend": [],
                 "filters": {"businessLines": sorted(line_filter), "orgs": sorted(org_filter), "scope": scope},
             }
         perf_map = _load_performance(conn, year, line_filter or None, org_filter or None)
-        sample = _sample_staff(conn, year, selected_month, perf_map, line_filter or None, org_filter or None, scope)
+        sample = _sample_staff_period(conn, year, selected_months, perf_map, line_filter or None, org_filter or None, scope)
         return {
             "year": year,
-            "month": selected_month,
+            "month": selected_months[-1],
+            "periodType": period_type,
+            "periodValue": period_value or (selected_months[-1] if period_type == "month" else None),
+            "months": selected_months,
             "summary": _percentile_summary("整体", sample),
             "tenureStructure": _group_structure(sample, "tenure"),
             "rankStructure": _group_structure(sample, "rank"),
             "productivityBands": _productivity_bands(sample),
             "percentiles": _percentiles_by_line(sample),
+            "orgPercentiles": _percentiles_by_org(sample),
             "trend": _trend(conn, year, perf_map, line_filter or None, org_filter or None, scope),
             "filters": {
                 "businessLines": sorted(line_filter),
