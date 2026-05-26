@@ -100,13 +100,14 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.65"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.65"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.66"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.66"></script>' in html
     assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.57"></script>' in html
     assert '<script src="js/platform-trend.js"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.66"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -128,6 +129,19 @@ def test_frontend_centralizes_read_api_fetches():
     assert "/api/product-analysis?" in all_js
     assert "/api/org-analysis?year=" in all_js
     assert "/api/targets?year=" in all_js
+
+
+def test_permission_admin_can_manage_admin_role_and_save_column_is_fixed():
+    html = read_html()
+    auth_ui = read_js("auth-ui.js")
+    assert "team_enhanced: '队伍结构与产能分析'" in auth_ui
+    assert "const ROLE_OPTIONS = ['normal', 'senior', 'admin']" in auth_ui
+    assert "ROLE_OPTIONS.map(role" in auth_ui
+    assert "user.role === 'admin' ? 'disabled'" not in auth_ui
+    assert "permission-action-cell" in auth_ui
+    assert "permission-save-btn" in auth_ui
+    assert ".permission-action-cell" in html
+    assert ".permission-save-btn" in html
 
 
 def test_local_seed_data_remains_available_when_api_is_slow_or_unavailable():
@@ -428,9 +442,12 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
 
     assert 'id="teamChart"' in html
     assert 'id="teamEnhancedPanel"' in html
-    assert "队伍结构与产能分析（试运行）" in html
+    assert "队伍结构与产能分析（试运行）" not in html
+    assert "队伍结构与产能分析" in html
+    assert 'data-permission="team_enhanced"' in html
     assert "async function fetchTeamEnhancedData()" in team
     assert "/api/team-enhanced-analysis" in team
+    assert "window.fetchJson(`/api/team-enhanced-analysis?" in team
     assert "function renderTeamEnhancedPanel()" in team
     assert "teamTenureStructureTable" in team
     assert "teamProductivityBandTable" in team

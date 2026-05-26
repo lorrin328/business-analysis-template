@@ -44,7 +44,7 @@ def team_enhanced_analysis(
     businessLines: str | None = Query(None),
     orgs: str | None = Query(None),
     scope: str = Query("all", pattern="^(all|active)$"),
-    _user=Depends(require_permission("team")),
+    _user=Depends(require_permission("team_enhanced")),
 ):
     data = get_team_enhanced_analysis(
         year=year,

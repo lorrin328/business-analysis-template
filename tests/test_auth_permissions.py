@@ -58,6 +58,7 @@ def test_register_creates_normal_user_with_restricted_permissions(auth_db):
     user = data["user"]
     assert user["role"] == "normal"
     assert user["permissions"]["kpi"] is True
+    assert user["permissions"]["team_enhanced"] is True
     assert user["permissions"]["upload"] is False
     assert user["permissions"]["product_config"] is False
     assert user["permissions"]["targets"] is False
@@ -70,6 +71,7 @@ def test_register_creates_normal_user_with_restricted_permissions(auth_db):
     assert client.get("/api/product-config", headers=headers).status_code == 403
     assert client.get("/api/export/excel?year=2026", headers=headers).status_code == 403
     assert client.get("/api/admin/users", headers=headers).status_code == 403
+    assert client.get("/api/team-enhanced-analysis?year=2026", headers=headers).status_code == 200
 
 
 def test_admin_can_create_senior_and_update_permissions(auth_db):
@@ -86,6 +88,7 @@ def test_admin_can_create_senior_and_update_permissions(auth_db):
     senior = created.json()["data"]
     assert senior["permissions"]["permission_admin"] is False
     assert senior["permissions"]["upload"] is True
+    assert senior["permissions"]["team_enhanced"] is True
     assert senior["permissions"]["excel_export"] is True
 
     senior_login = _login(client, "senior_user", "senior-pass-123")
@@ -102,3 +105,71 @@ def test_admin_can_create_senior_and_update_permissions(auth_db):
     senior_login = _login(client, "senior_user", "senior-pass-123")
     assert client.get("/api/export/excel?year=2026", headers=_auth_headers(senior_login["token"])).status_code == 403
 
+
+def test_admin_can_promote_and_demote_admin_group_safely(auth_db):
+    client = TestClient(app)
+    admin = _login(client)
+    admin_headers = _auth_headers(admin["token"])
+
+    created = client.post(
+        "/api/admin/users",
+        headers=admin_headers,
+        json={"username": "manager_user", "password": "manager-pass-123", "role": "normal"},
+    )
+    assert created.status_code == 200
+    manager = created.json()["data"]
+
+    promoted = client.patch(
+        f"/api/admin/users/{manager['id']}",
+        headers=admin_headers,
+        json={"role": "admin", "permissions": {}},
+    )
+    assert promoted.status_code == 200
+    assert promoted.json()["data"]["role"] == "admin"
+    assert all(promoted.json()["data"]["permissions"].values())
+
+    manager_login = _login(client, "manager_user", "manager-pass-123")
+    manager_headers = _auth_headers(manager_login["token"])
+    assert client.get("/api/admin/users", headers=manager_headers).status_code == 200
+
+    self_demote = client.patch(
+        f"/api/admin/users/{manager['id']}",
+        headers=manager_headers,
+        json={"role": "normal", "permissions": {}},
+    )
+    assert self_demote.status_code == 400
+
+    demoted = client.patch(
+        f"/api/admin/users/{manager['id']}",
+        headers=admin_headers,
+        json={"role": "normal", "permissions": {"upload": True, "excel_export": True}},
+    )
+    assert demoted.status_code == 200
+    demoted_user = demoted.json()["data"]
+    assert demoted_user["role"] == "normal"
+    assert demoted_user["permissions"]["upload"] is False
+    assert demoted_user["permissions"]["excel_export"] is False
+    assert demoted_user["permissions"]["team_enhanced"] is True
+    manager_login = _login(client, "manager_user", "manager-pass-123")
+    assert client.get("/api/admin/users", headers=_auth_headers(manager_login["token"])).status_code == 403
+
+
+def test_last_active_admin_cannot_be_removed(auth_db):
+    client = TestClient(app)
+    admin = _login(client)
+    admin_headers = _auth_headers(admin["token"])
+    admin_id = admin["user"]["id"]
+
+    self_demote = client.patch(
+        f"/api/admin/users/{admin_id}",
+        headers=admin_headers,
+        json={"role": "normal", "permissions": {}},
+    )
+    assert self_demote.status_code == 400
+
+    self_disable = client.patch(
+        f"/api/admin/users/{admin_id}",
+        headers=admin_headers,
+        json={"role": "admin", "isActive": False},
+    )
+    assert self_disable.status_code == 400

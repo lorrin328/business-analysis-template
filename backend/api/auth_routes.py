@@ -21,6 +21,14 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
+def _active_admin_count(conn) -> int:
+    row = conn.execute(
+        "SELECT COUNT(*) AS count FROM users WHERE role = ? AND is_active = 1",
+        (ROLE_ADMIN,),
+    ).fetchone()
+    return int(row["count"] if row else 0)
+
+
 @router.post("/login")
 def login(payload: dict = Body(...)):
     user = authenticate_user(payload.get("username", ""), payload.get("password", ""))
@@ -74,8 +82,6 @@ def create_user(payload: dict = Body(...), _admin=Depends(require_admin)):
     username = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
     role = normalize_role(payload.get("role") or ROLE_NORMAL)
-    if role == ROLE_ADMIN:
-        raise HTTPException(status_code=400, detail="不支持通过界面新增管理员账号")
     if len(username) < 3:
         raise HTTPException(status_code=400, detail="用户名至少需要3个字符")
     if len(password) < 8:
@@ -120,11 +126,17 @@ def update_user(user_id: int, payload: dict = Body(...), admin=Depends(require_a
 
         username = payload.get("username")
         role = normalize_role(payload.get("role") or row["role"])
-        if row["role"] != ROLE_ADMIN and role == ROLE_ADMIN:
-            raise HTTPException(status_code=400, detail="不支持将普通用户或高级用户提升为管理员")
         is_active = payload.get("isActive")
+        projected_active = bool(row["is_active"]) if is_active is None else bool(is_active)
+        removing_active_admin = row["role"] == ROLE_ADMIN and bool(row["is_active"]) and (
+            role != ROLE_ADMIN or not projected_active
+        )
+        if removing_active_admin and _active_admin_count(conn) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot remove the last active administrator")
         if role == ROLE_ADMIN:
             permissions = default_permissions_for_role(ROLE_ADMIN)
+        elif row["role"] == ROLE_ADMIN:
+            permissions = default_permissions_for_role(role)
         else:
             permissions = default_permissions_for_role(role)
             permissions.update(payload.get("permissions") or {})

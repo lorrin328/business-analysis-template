@@ -8,6 +8,7 @@
     product_structure: '产品结构',
     payment_period: '交期结构',
     team: '队伍分析',
+    team_enhanced: '队伍结构与产能分析',
     upload: '数据上传',
     product_config: '参数设置',
     targets: '目标设置',
@@ -16,6 +17,7 @@
     recalculate: '重新计算'
   };
   const ROLE_LABELS = { admin: '管理员组', senior: '高级用户组', normal: '普通用户组' };
+  const ROLE_OPTIONS = ['normal', 'senior', 'admin'];
   let adminUsersCache = [];
 
   function ensureAuthClient() {
@@ -216,32 +218,37 @@
   }
 
   function renderPermissionAdmin(container) {
-    const rows = adminUsersCache.map(user => `
+    const currentUser = getUser();
+    const rows = adminUsersCache.map(user => {
+      const isCurrentUser = currentUser?.id === user.id;
+      const roleOptions = ROLE_OPTIONS.map(role => (
+        `<option value="${role}" ${user.role === role ? 'selected' : ''}>${ROLE_LABELS[role]}</option>`
+      )).join('');
+      return `
       <tr data-user-id="${user.id}">
-        <td><input class="permission-input" data-field="username" value="${escapeHtml(user.username)}" ${user.role === 'admin' ? 'disabled' : ''}></td>
+        <td><input class="permission-input" data-field="username" value="${escapeHtml(user.username)}" ${isCurrentUser ? 'disabled' : ''}></td>
         <td>
-          <select class="permission-input" data-field="role" ${user.role === 'admin' ? 'disabled' : ''}>
-            ${['normal', 'senior'].map(role => `<option value="${role}" ${user.role === role ? 'selected' : ''}>${ROLE_LABELS[role]}</option>`).join('')}
-            ${user.role === 'admin' ? '<option value="admin" selected>管理员组</option>' : ''}
+          <select class="permission-input" data-field="role" ${isCurrentUser ? 'disabled' : ''}>
+            ${roleOptions}
           </select>
         </td>
-        <td><input class="permission-input" data-field="password" type="password" placeholder="留空不修改" ${user.role === 'admin' ? 'disabled' : ''}></td>
+        <td><input class="permission-input" data-field="password" type="password" placeholder="留空不修改"></td>
         <td class="permission-checkboxes">
           ${Object.keys(MODULE_LABELS).map(key => {
             const locked = user.role === 'admin' || key === 'permission_admin';
             return `<label><input type="checkbox" data-module="${key}" ${user.permissions?.[key] ? 'checked' : ''} ${locked ? 'disabled' : ''}>${MODULE_LABELS[key]}</label>`;
           }).join('')}
         </td>
-        <td><button class="chart-btn" onclick="saveUserPermission(${user.id})" ${user.role === 'admin' ? 'disabled' : ''}>保存</button></td>
+        <td class="permission-action-cell"><button class="chart-btn permission-save-btn" onclick="saveUserPermission(${user.id})" ${isCurrentUser ? 'disabled' : ''}>保存</button></td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
     container.innerHTML = `
       <div class="permission-toolbar">
         <input class="permission-input" id="newUserName" placeholder="新用户名">
         <input class="permission-input" id="newUserPassword" type="password" placeholder="初始密码">
         <select class="permission-input" id="newUserRole">
-          <option value="normal">普通用户组</option>
-          <option value="senior">高级用户组</option>
+          ${ROLE_OPTIONS.map(role => `<option value="${role}">${ROLE_LABELS[role]}</option>`).join('')}
         </select>
         <button class="chart-btn auth-primary" onclick="createPermissionUser()">新增用户</button>
       </div>

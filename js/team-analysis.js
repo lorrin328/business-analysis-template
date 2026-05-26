@@ -178,10 +178,8 @@
       }
       try {
         const params = buildTeamEnhancedParams();
-        const resp = await fetch(`/api/team-enhanced-analysis?${params.toString()}`);
-        if (!resp.ok) throw new Error(`team enhanced api ${resp.status}`);
-        const payload = await resp.json();
-        teamEnhancedData = payload?.data || null;
+        const payload = await window.fetchJson(`/api/team-enhanced-analysis?${params.toString()}`);
+        teamEnhancedData = window.unwrapApiResponse ? window.unwrapApiResponse(payload) : (payload?.data || null);
       } catch (error) {
         console.error('load team enhanced analysis failed', error);
         teamEnhancedData = null;
