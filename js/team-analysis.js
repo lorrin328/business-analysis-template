@@ -25,6 +25,7 @@
     let teamEnhancedLoading = false;
     let selectedTeamEnhancedPeriodType = 'month';
     let selectedTeamEnhancedPeriodValue = null;
+    let selectedTeamEnhancedBusinessLine = '全部';
 
     const teamChart = echarts.init(document.getElementById('teamChart'));
 
@@ -100,12 +101,9 @@
         selectedTeamEnhancedPeriodType === 'month' ? defaultMonth : null
       );
       if (periodValue) params.set('periodValue', String(periodValue));
-      const selectedKeys = Object.keys(selectedTeamSeries).filter(k => selectedTeamSeries[k]);
       const selectedOrgs = Object.keys(selectedTeamOrgs).filter(k => selectedTeamOrgs[k]);
-      if (selectedKeys.length === 0) {
-        params.set('businessLines', '__none__');
-      } else if (selectedKeys.length < Object.keys(selectedTeamSeries).length) {
-        params.set('businessLines', selectedKeys.join(','));
+      if (selectedTeamEnhancedBusinessLine !== '全部') {
+        params.set('businessLines', selectedTeamEnhancedBusinessLine);
       }
       if (selectedOrgs.length === 0) {
         params.set('orgs', '__none__');
@@ -126,6 +124,7 @@
     function renderTeamEnhancedControls(data) {
       const periodType = data?.periodType || selectedTeamEnhancedPeriodType;
       const periodValue = data?.periodValue || selectedTeamEnhancedPeriodValue || data?.month || '';
+      const businessLine = selectedTeamEnhancedBusinessLine;
       const quarterOptions = [1, 2, 3, 4].map(q => `<option value="${q}" ${Number(periodValue) === q ? 'selected' : ''}>Q${q}</option>`).join('');
       const monthOptions = Array.from({ length: 12 }, (_, idx) => {
         const month = idx + 1;
@@ -143,6 +142,10 @@
           <button class="chart-btn ${periodType === 'quarter' ? 'active' : ''}" onclick="switchTeamEnhancedPeriodType('quarter')">季度</button>
           <button class="chart-btn ${periodType === 'month' ? 'active' : ''}" onclick="switchTeamEnhancedPeriodType('month')">月度</button>
           ${selectHtml}
+          <span style="font-size:12px;color:var(--text-secondary);margin-left:10px;">业务模式</span>
+          ${['全部', 'OTO', '证保', '蚁桥'].map(line => `
+            <button class="chart-btn ${businessLine === line ? 'active' : ''}" onclick="switchTeamEnhancedBusinessLine('${line}')">${line}</button>
+          `).join('')}
         </div>
       `;
     }
@@ -158,6 +161,11 @@
 
     function switchTeamEnhancedPeriodValue(value) {
       selectedTeamEnhancedPeriodValue = Number(value);
+      refreshTeamEnhancedPanel();
+    }
+
+    function switchTeamEnhancedBusinessLine(value) {
+      selectedTeamEnhancedBusinessLine = value;
       refreshTeamEnhancedPanel();
     }
 
@@ -212,6 +220,7 @@
       const selectedOrgCount = Object.values(selectedTeamOrgs).filter(Boolean).length;
       const periodLabel = teamEnhancedPeriodLabel(data);
       const controlsHtml = renderTeamEnhancedControls(data);
+      const businessLineLabel = selectedTeamEnhancedBusinessLine === '全部' ? 'OTO+证保+蚁桥' : selectedTeamEnhancedBusinessLine;
       const tenureRows = renderRows(data.tenureStructure || [], [
         { render: row => `<span class="primary-text">${escapeTeamText(row.label)}</span>` },
         { className: 'num', render: row => `${fmtTeamNumber(row.count)}人` },
@@ -273,7 +282,7 @@
           <div class="team-insight-card">
             <div class="team-insight-label">样本人数</div>
             <div class="team-insight-value">${fmtTeamNumber(summary.sampleCount)}人</div>
-            <div class="team-insight-note">当前筛选范围</div>
+            <div class="team-insight-note">${escapeTeamText(businessLineLabel)}</div>
           </div>
           <div class="team-insight-card">
             <div class="team-insight-label">零/负产能占比</div>

@@ -416,6 +416,10 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert "teamOrgPercentileTable" in team
     assert "switchTeamEnhancedPeriodType" in team
     assert "switchTeamEnhancedPeriodValue" in team
+    assert "selectedTeamEnhancedBusinessLine" in team
+    assert "switchTeamEnhancedBusinessLine" in team
+    assert "业务模式" in team
+    assert "['全部', 'OTO', '证保', '蚁桥']" in team
     assert "periodType" in team
     assert "periodValue" in team
     assert "≥P25人数" in team
