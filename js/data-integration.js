@@ -371,7 +371,7 @@
         await refreshPlatformChart();
         productChart.setOption(getPieOption(currentPieType), true);
         teamChart.setOption(getTeamOption(), true);
-        if (typeof renderTeamEnhancedPanel === 'function') renderTeamEnhancedPanel();
+        if (typeof refreshTeamEnhancedPanel === 'function') refreshTeamEnhancedPanel();
         updateCutoffLabel(platformYear);
         updateKPICards();
         if (btn) {

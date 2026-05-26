@@ -21,6 +21,8 @@
       perCapitaPremium: '万',
       perCapitaCapacity: '万'
     };
+    let teamEnhancedData = null;
+    let teamEnhancedLoading = false;
 
     const teamChart = echarts.init(document.getElementById('teamChart'));
 
@@ -84,101 +86,197 @@
       return { byLine, total };
     }
 
+    function buildTeamEnhancedParams() {
+      const params = new URLSearchParams({ year: String(selectedTeamYear || DEFAULT_DASHBOARD_YEAR), scope: 'all' });
+      const selectedKeys = Object.keys(selectedTeamSeries).filter(k => selectedTeamSeries[k]);
+      const selectedOrgs = Object.keys(selectedTeamOrgs).filter(k => selectedTeamOrgs[k]);
+      if (selectedKeys.length === 0) {
+        params.set('businessLines', '__none__');
+      } else if (selectedKeys.length < Object.keys(selectedTeamSeries).length) {
+        params.set('businessLines', selectedKeys.join(','));
+      }
+      if (selectedOrgs.length === 0) {
+        params.set('orgs', '__none__');
+      } else if (selectedOrgs.length < ORG_LIST_TEAM.length) {
+        params.set('orgs', selectedOrgs.join(','));
+      }
+      return params;
+    }
+
+    async function fetchTeamEnhancedData() {
+      const wrapper = document.getElementById('teamEnhancedPanel');
+      if (teamEnhancedLoading) return;
+      teamEnhancedLoading = true;
+      if (wrapper && !teamEnhancedData) {
+        wrapper.innerHTML = '<div class="structure-empty">正在加载队伍结构与产能分析...</div>';
+      }
+      try {
+        const params = buildTeamEnhancedParams();
+        const resp = await fetch(`/api/team-enhanced-analysis?${params.toString()}`);
+        if (!resp.ok) throw new Error(`team enhanced api ${resp.status}`);
+        const payload = await resp.json();
+        teamEnhancedData = payload?.data || null;
+      } catch (error) {
+        console.error('load team enhanced analysis failed', error);
+        teamEnhancedData = null;
+      } finally {
+        teamEnhancedLoading = false;
+      }
+    }
+
+    async function refreshTeamEnhancedPanel() {
+      teamEnhancedData = null;
+      await fetchTeamEnhancedData();
+      renderTeamEnhancedPanel();
+    }
+
+    function renderRows(rows, columns, emptyText) {
+      if (!rows || rows.length === 0) {
+        return `<tr><td colspan="${columns.length}" class="muted">${escapeTeamText(emptyText)}</td></tr>`;
+      }
+      return rows.map(row => `
+        <tr>
+          ${columns.map(col => `<td class="${col.className || ''}">${col.render(row)}</td>`).join('')}
+        </tr>
+      `).join('');
+    }
+
     function renderTeamEnhancedPanel() {
       const wrapper = document.getElementById('teamEnhancedPanel');
       if (!wrapper) return;
-      const year = String(selectedTeamYear || DEFAULT_DASHBOARD_YEAR);
-      const monthIndex = latestTeamMonthIndex(year);
-      if (monthIndex < 0) {
-        wrapper.innerHTML = '<div class="structure-empty">暂无队伍结构与产能数据</div>';
+      const data = teamEnhancedData;
+      if (!data || !data.month) {
+        wrapper.innerHTML = '<div class="structure-empty">暂无队伍结构与产能分析数据</div>';
         return;
       }
-      const { byLine, total } = aggregateTeamMonth(year, monthIndex);
-      const activityRate = total.headcount > 0 ? total.active / total.headcount * 100 : 0;
-      const perCapitaPremium = total.headcount > 0 ? total.premium / total.headcount : 0;
-      const perActivePremium = total.active > 0 ? total.premium / total.active : 0;
+      const year = String(data.year || selectedTeamYear || DEFAULT_DASHBOARD_YEAR);
+      const summary = data.summary || {};
       const selectedOrgCount = Object.values(selectedTeamOrgs).filter(Boolean).length;
-      const lineRows = Object.entries(byLine)
-        .filter(([, row]) => row.headcount > 0 || row.premium > 0)
-        .map(([line, row]) => {
-          const lineActivity = row.headcount > 0 ? row.active / row.headcount * 100 : 0;
-          const linePerCapita = row.headcount > 0 ? row.premium / row.headcount : 0;
-          return `
-            <tr>
-              <td class="primary-text">${escapeTeamText(line)}</td>
-              <td class="num">${fmtTeamNumber(row.headcount)}人</td>
-              <td class="num">${fmtTeamNumber(row.active)}人</td>
-              <td class="num">${lineActivity.toFixed(1)}%</td>
-              <td class="num">${fmtTeamNumber(row.premium, 1)}万</td>
-              <td class="num">${fmtTeamNumber(linePerCapita, 1)}万</td>
-            </tr>
-          `;
-        }).join('');
+      const tenureRows = renderRows(data.tenureStructure || [], [
+        { render: row => `<span class="primary-text">${escapeTeamText(row.label)}</span>` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.count)}人` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.share, 1)}%` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.activityRate, 1)}%` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.qjPremium, 1)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.avgPremium, 2)}万` }
+      ], '暂无司龄段结构数据');
+      const bandRows = renderRows(data.productivityBands || [], [
+        { render: row => `<span class="primary-text">${escapeTeamText(row.label)}</span>` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.count)}人` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.share, 1)}%` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.qjPremium, 1)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.premiumShare, 1)}%` }
+      ], '暂无产能段结构数据');
+      const percentileRows = renderRows(data.percentiles || [], [
+        { render: row => `<span class="primary-text">${escapeTeamText(row.label)}</span>` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.sampleCount)}人` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.zeroRate, 1)}%` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p25, 2)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p50, 2)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p75, 2)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.avg, 2)}万` }
+      ], '暂无分位数数据');
+      const trendRows = renderRows((data.trend || []).slice(-6), [
+        { render: row => `${row.month}月` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.sampleCount)}人` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.zeroRate, 1)}%` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p50, 2)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.p75, 2)}万` }
+      ], '暂无趋势数据');
 
       wrapper.innerHTML = `
         <div class="team-insight-grid">
           <div class="team-insight-card">
             <div class="team-insight-label">统计月份</div>
-            <div class="team-insight-value">${year}年${monthIndex + 1}月</div>
-            <div class="team-insight-note">随队伍趋势筛选联动</div>
+            <div class="team-insight-value">${year}年${data.month}月</div>
+            <div class="team-insight-note">人员月度原始表口径</div>
           </div>
           <div class="team-insight-card">
-            <div class="team-insight-label">月均在职人力</div>
-            <div class="team-insight-value">${fmtTeamNumber(total.headcount)}人</div>
+            <div class="team-insight-label">样本人数</div>
+            <div class="team-insight-value">${fmtTeamNumber(summary.sampleCount)}人</div>
             <div class="team-insight-note">当前筛选范围</div>
           </div>
           <div class="team-insight-card">
-            <div class="team-insight-label">长险活动率</div>
-            <div class="team-insight-value">${activityRate.toFixed(1)}%</div>
-            <div class="team-insight-note">活动人力 / 月均在职</div>
+            <div class="team-insight-label">零/负产能占比</div>
+            <div class="team-insight-value">${fmtTeamNumber(summary.zeroRate, 1)}%</div>
+            <div class="team-insight-note">产能≤0人员 / 样本人数</div>
           </div>
           <div class="team-insight-card">
-            <div class="team-insight-label">人均保费</div>
-            <div class="team-insight-value">${fmtTeamNumber(perCapitaPremium, 1)}万</div>
-            <div class="team-insight-note">期交保费 / 月均在职</div>
+            <div class="team-insight-label">P50 中位数</div>
+            <div class="team-insight-value">${fmtTeamNumber(summary.p50, 2)}万</div>
+            <div class="team-insight-note">保留零/负产能人员</div>
           </div>
           <div class="team-insight-card">
-            <div class="team-insight-label">人均产能</div>
-            <div class="team-insight-value">${fmtTeamNumber(perActivePremium, 1)}万</div>
-            <div class="team-insight-note">期交保费 / 活动人力</div>
+            <div class="team-insight-label">P75 骨干门槛</div>
+            <div class="team-insight-value">${fmtTeamNumber(summary.p75, 2)}万</div>
+            <div class="team-insight-note">人员月产能上四分位</div>
           </div>
         </div>
         <div class="team-insight-layout">
           <div class="structure-table-wrapper" style="margin-top:0;">
-            <table class="structure-table" id="teamEnhancedSummaryTable">
+            <table class="structure-table" id="teamTenureStructureTable">
               <thead>
                 <tr>
-                  <th>业务模式</th>
-                  <th class="num">月均在职</th>
-                  <th class="num">活动人力</th>
+                  <th>司龄段</th>
+                  <th class="num">月末在职</th>
+                  <th class="num">占比</th>
                   <th class="num">活动率</th>
                   <th class="num">期交保费</th>
                   <th class="num">人均保费</th>
                 </tr>
               </thead>
-              <tbody>${lineRows || '<tr><td colspan="6" class="muted">暂无当前筛选范围数据</td></tr>'}</tbody>
+              <tbody>${tenureRows}</tbody>
             </table>
           </div>
-          <div class="team-analysis-tiles">
-            <div class="team-analysis-tile">
-              <div class="team-analysis-tile-title">司龄段结构</div>
-              <div class="team-analysis-tile-desc">按司龄段、机构、模式观察新人和成熟人员结构趋势。</div>
-              <span class="team-analysis-status">需完善人员月度明细统计</span>
-            </div>
-            <div class="team-analysis-tile">
-              <div class="team-analysis-tile-title">产能段结构</div>
-              <div class="team-analysis-tile-desc">识别零产能、低产能、中腰部和高产能人员占比。</div>
-              <span class="team-analysis-status">需完善人员月度明细统计</span>
-            </div>
-            <div class="team-analysis-tile">
-              <div class="team-analysis-tile-title">P25 / P50 / P75</div>
-              <div class="team-analysis-tile-desc">用分位数判断普通人员、底部人员和骨干层真实产能。</div>
-              <span class="team-analysis-status">需完善人员产能分布统计</span>
-            </div>
+          <div class="structure-table-wrapper" style="margin-top:0;">
+            <table class="structure-table" id="teamProductivityBandTable">
+              <thead>
+                <tr>
+                  <th>产能段</th>
+                  <th class="num">人数</th>
+                  <th class="num">人数占比</th>
+                  <th class="num">期交保费</th>
+                  <th class="num">保费占比</th>
+                </tr>
+              </thead>
+              <tbody>${bandRows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="team-insight-layout" style="margin-top:10px;">
+          <div class="structure-table-wrapper" style="margin-top:0;">
+            <table class="structure-table" id="teamPercentileTable">
+              <thead>
+                <tr>
+                  <th>维度</th>
+                  <th class="num">样本</th>
+                  <th class="num">零/负产能占比</th>
+                  <th class="num">P25</th>
+                  <th class="num">P50</th>
+                  <th class="num">P75</th>
+                  <th class="num">平均</th>
+                </tr>
+              </thead>
+              <tbody>${percentileRows}</tbody>
+            </table>
+          </div>
+          <div class="structure-table-wrapper" style="margin-top:0;">
+            <table class="structure-table" id="teamProductivityTrendTable">
+              <thead>
+                <tr>
+                  <th>月份</th>
+                  <th class="num">样本</th>
+                  <th class="num">零/负产能占比</th>
+                  <th class="num">P50</th>
+                  <th class="num">P75</th>
+                </tr>
+              </thead>
+              <tbody>${trendRows}</tbody>
+            </table>
           </div>
         </div>
         <div class="team-insight-note" style="margin-top:12px;">
-          当前试运行区只读取现有汇总数据，不影响队伍趋势、KPI 和机构维度。司龄段、职等、产能段和分位数需要先完成“每个人每个月”的保费、件数、司龄、职等统计后再正式启用。当前筛选机构数：${selectedOrgCount}。
+          口径：以人力原始表人员月度记录为基准，按同一人员、同一年月左关联保单明细，保留零/负产能人员；经代无队伍人力基表，不进入本模块。当前筛选机构数：${selectedOrgCount}。
         </div>
       `;
     }
@@ -284,14 +382,14 @@
     }
 
     teamChart.setOption(getTeamOption());
-    renderTeamEnhancedPanel();
+    refreshTeamEnhancedPanel();
 
     async function switchTeamYear(value) {
       selectedTeamYear = value;
       await loadYearFromApi(value, { updateKpi: false, updateProduct: false });
       teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
-      renderTeamEnhancedPanel();
+      refreshTeamEnhancedPanel();
     }
     function switchTeamMetric(btn, metric) {
       btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
@@ -299,7 +397,7 @@
       currentTeamMetric = metric;
       teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
-      renderTeamEnhancedPanel();
+      refreshTeamEnhancedPanel();
     }
     function switchTeamDim(btn, dim) {
       btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
@@ -308,19 +406,19 @@
       document.getElementById('teamQuarterSelect').style.display = dim === 'quarter' ? 'inline-block' : 'none';
       teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
-      renderTeamEnhancedPanel();
+      refreshTeamEnhancedPanel();
     }
     function switchTeamQuarter(value) {
       selectedTeamQuarter = value;
       teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
-      renderTeamEnhancedPanel();
+      refreshTeamEnhancedPanel();
     }
     function toggleTeamSeries(key, checked) {
       selectedTeamSeries[key] = checked;
       teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
-      renderTeamEnhancedPanel();
+      refreshTeamEnhancedPanel();
     }
 
     function toggleTeamOrg(key, checked) {
@@ -337,6 +435,6 @@
       }
       teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
-      renderTeamEnhancedPanel();
+      refreshTeamEnhancedPanel();
     }
 

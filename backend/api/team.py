@@ -3,9 +3,16 @@ from fastapi import APIRouter, Query
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_platform_data
+from db.repositories.team_enhanced import get_team_enhanced_analysis
 from services.response import success_response
 
 router = APIRouter(prefix="/api", tags=["team"])
+
+
+def _split_csv(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in str(value).split(",") if item and item.strip()]
 
 
 @router.get("/team-analysis")
@@ -22,6 +29,42 @@ def team_analysis(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100)):
                 k: METRICS[k]
                 for k in ["activity_rate", "avg_premium", "avg_productivity"]
                 if k in METRICS
+            },
+        },
+    )
+
+
+@router.get("/team-enhanced-analysis")
+def team_enhanced_analysis(
+    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
+    month: int | None = Query(None, ge=1, le=12),
+    businessLines: str | None = Query(None),
+    orgs: str | None = Query(None),
+    scope: str = Query("all", pattern="^(all|active)$"),
+):
+    data = get_team_enhanced_analysis(
+        year=year,
+        month=month,
+        business_lines=_split_csv(businessLines),
+        orgs=_split_csv(orgs),
+        scope=scope,
+    )
+    return success_response(
+        data,
+        meta={
+            "year": year,
+            "month": data.get("month"),
+            "metric": "team-enhanced-analysis",
+            "unit": "人、万元、%",
+            "dataSource": "hr_data LEFT JOIN performance",
+            "definitions": {
+                "sample": "以人力原始表 hr_data 的人员月度记录为样本，按人员代码和同一年月左关联 performance；保留零/负产能人员，避免产能分布被高估。",
+                "scope_all": "默认样本为月初或月末在职人员；结构占比使用月末在职人员。",
+                "scope_active": "仅看当月期交保费大于 0 的正产能人员，用于补充观察，不作为默认结构口径。",
+                "productivity": "人员月产能 = 当月个人期交保费 / 10000，单位为万元。",
+                "percentile": "P25/P50/P75 按人员月产能升序后线性插值计算；零/负产能人员纳入默认样本。",
+                "businessLine": "业务模式统一映射：证券=证保，网服=蚁桥，OTO保持不变。",
+                "filters": "机构和业务模式筛选与队伍趋势联动；经代无队伍人力基表，不进入本模块。",
             },
         },
     )

@@ -82,6 +82,12 @@ class TestOtherEndpointsIncludeDefinitions:
         assert resp.status_code == 200
         assert "definitions" in resp.json()["meta"]
 
+    def test_team_enhanced_analysis_has_definitions(self):
+        resp = client.get("/api/team-enhanced-analysis?year=2026")
+        assert resp.status_code == 200
+        assert "definitions" in resp.json()["meta"]
+        assert resp.json()["meta"]["dataSource"] == "hr_data LEFT JOIN performance"
+
     def test_platform_data_has_definitions(self):
         resp = client.get("/api/platform-data?year=2026")
         assert resp.status_code == 200

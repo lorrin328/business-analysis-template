@@ -406,19 +406,24 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert 'id="teamChart"' in html
     assert 'id="teamEnhancedPanel"' in html
     assert "队伍结构与产能分析（试运行）" in html
+    assert "async function fetchTeamEnhancedData()" in team
+    assert "/api/team-enhanced-analysis" in team
     assert "function renderTeamEnhancedPanel()" in team
-    assert "teamEnhancedSummaryTable" in team
-    assert "司龄段结构" in team
-    assert "产能段结构" in team
-    assert "P25 / P50 / P75" in team
+    assert "teamTenureStructureTable" in team
+    assert "teamProductivityBandTable" in team
+    assert "teamPercentileTable" in team
+    assert "teamProductivityTrendTable" in team
+    assert "零/负产能占比" in team
+    assert "P50 中位数" in team
+    assert "P75 骨干门槛" in team
     assert "诊断矩阵" not in team
     assert "接入人级底座" not in team
     assert "待接入人级月度底座" not in team
-    assert "需完善人员月度明细统计" in team
-    assert "需完善人员产能分布统计" in team
-    assert "每个人每个月" in team
-    assert "不影响队伍趋势、KPI 和机构维度" in team
-    assert "if (typeof renderTeamEnhancedPanel === 'function') renderTeamEnhancedPanel();" in combined
+    assert "需完善人员月度明细统计" not in team
+    assert "需完善人员产能分布统计" not in team
+    assert "以人力原始表人员月度记录为基准" in team
+    assert "保留零/负产能人员" in team
+    assert "if (typeof refreshTeamEnhancedPanel === 'function') refreshTeamEnhancedPanel();" in combined
 
 
 def test_metric_calculation_review_report_exists():
