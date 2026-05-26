@@ -217,6 +217,76 @@
     }
   }
 
+  const OPERATION_LABELS = {
+    register: '用户注册',
+    login: '用户登录',
+    password_reset: '重置密码',
+    import_report: '导入报表',
+    target_save: '设置目标',
+    excel_export: '导出Excel',
+    product_config: '参数设置',
+    permission_admin: '权限管理'
+  };
+
+  function formatOperationTime(value) {
+    if (!value) return '-';
+    return String(value).replace('T', ' ').slice(0, 19);
+  }
+
+  function summarizeOperationDetail(raw) {
+    if (!raw) return '-';
+    try {
+      const detail = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (detail.operation) return detail.operation;
+      if (detail.year && detail.import_id) return `${detail.year}年，导入ID ${detail.import_id}`;
+      if (detail.year) return `${detail.year}年`;
+      if (detail.reason) return detail.reason;
+      return Object.keys(detail).length ? JSON.stringify(detail) : '-';
+    } catch (e) {
+      return String(raw).slice(0, 120);
+    }
+  }
+
+  async function openOperationLogs() {
+    if (!hasPermission('permission_admin')) return;
+    const overlay = document.getElementById('modalOverlay');
+    const title = document.getElementById('modalTitle');
+    const body = document.getElementById('modalBody');
+    title.textContent = '操作日志';
+    body.innerHTML = '<div class="structure-empty">正在加载操作日志...</div>';
+    overlay.classList.add('active');
+    try {
+      const payload = await window.fetchJson('/api/admin/operation-logs?limit=300');
+      const data = window.unwrapApiResponse(payload);
+      const logs = data.logs || [];
+      const rows = logs.map(log => `
+        <tr>
+          <td>${formatOperationTime(log.created_at)}</td>
+          <td>${escapeHtml(log.username || '-')}</td>
+          <td>${escapeHtml(OPERATION_LABELS[log.action] || log.action || '-')}</td>
+          <td>${escapeHtml(log.target_username || '-')}</td>
+          <td>${escapeHtml(log.status || '-')}</td>
+          <td>${escapeHtml(summarizeOperationDetail(log.detail))}</td>
+        </tr>
+      `).join('');
+      body.innerHTML = `
+        <div class="chart-note" style="margin-bottom:10px;color:#94a3b8;font-size:12px;">
+          记录用户注册、登录、重置密码、导入报表、设置目标、导出Excel、参数设置和权限管理等关键动作，按发生时间倒序展示。
+        </div>
+        <div class="structure-table-wrapper">
+          <table class="structure-table">
+            <thead>
+              <tr><th>时间</th><th>操作用户</th><th>动作</th><th>对象用户</th><th>状态</th><th>说明</th></tr>
+            </thead>
+            <tbody>${rows || '<tr><td colspan="6" class="structure-empty">暂无操作日志</td></tr>'}</tbody>
+          </table>
+        </div>
+      `;
+    } catch (e) {
+      body.innerHTML = `<div class="structure-empty">操作日志加载失败：${escapeHtml(e.message || e)}</div>`;
+    }
+  }
+
   function renderPermissionAdmin(container) {
     const currentUser = getUser();
     const rows = adminUsersCache.map(user => {
@@ -322,6 +392,7 @@
   window.showAuthGate = showAuthGate;
   window.logout = logout;
   window.openPermissionAdmin = openPermissionAdmin;
+  window.openOperationLogs = openOperationLogs;
   window.createPermissionUser = createPermissionUser;
   window.saveUserPermission = saveUserPermission;
 })(window, document);

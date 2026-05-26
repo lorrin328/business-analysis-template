@@ -4,6 +4,7 @@ from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_target_config, get_target_values, save_target_config
+from services.audit_log import log_operation
 from services.response import success_response
 from validators.target_validator import validate_target_payload
 
@@ -43,6 +44,7 @@ def save_targets(
     if not validation.valid:
         raise HTTPException(status_code=400, detail=validation.to_dict())
     data = save_target_config(year, payload, updated_by=updatedBy)
+    log_operation("target_save", user=_user, detail={"year": year})
     return success_response(
         data,
         message="目标已保存",

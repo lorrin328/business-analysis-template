@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Header, HTTPException, Depends
+from fastapi import APIRouter, Body, Header, HTTPException, Depends, Query
 
 from auth import (
     MODULE_KEYS,
@@ -15,6 +15,7 @@ from auth import (
     set_user_permissions,
 )
 from db import get_db
+from services.audit_log import list_operation_logs, log_operation
 from services.response import success_response
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -77,8 +78,32 @@ def list_users(_admin=Depends(require_admin)):
         )
 
 
+@admin_router.get("/operation-logs")
+def operation_logs(
+    limit: int = Query(200, ge=1, le=500),
+    action: str | None = None,
+    username: str | None = None,
+    _admin=Depends(require_admin),
+):
+    return success_response(
+        {
+            "logs": list_operation_logs(limit=limit, action=action, username=username),
+            "actions": [
+                "register",
+                "login",
+                "password_reset",
+                "import_report",
+                "target_save",
+                "excel_export",
+                "product_config",
+                "permission_admin",
+            ],
+        }
+    )
+
+
 @admin_router.post("/users")
-def create_user(payload: dict = Body(...), _admin=Depends(require_admin)):
+def create_user(payload: dict = Body(...), admin=Depends(require_admin)):
     username = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
     role = normalize_role(payload.get("role") or ROLE_NORMAL)
@@ -110,11 +135,21 @@ def create_user(payload: dict = Body(...), _admin=Depends(require_admin)):
         set_user_permissions(conn, cur.lastrowid, permissions)
         conn.commit()
         row = conn.execute("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)).fetchone()
-        return success_response(serialize_user(conn, row))
+        data = serialize_user(conn, row)
+    log_operation(
+        "permission_admin",
+        user=admin,
+        target_user_id=data["id"],
+        target_username=data["username"],
+        detail={"operation": "create_user", "role": data["role"]},
+    )
+    return success_response(data)
 
 
 @admin_router.patch("/users/{user_id}")
 def update_user(user_id: int, payload: dict = Body(...), admin=Depends(require_admin)):
+    password_changed = False
+    password_target_username = None
     with get_db() as conn:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         if not row:
@@ -163,8 +198,25 @@ def update_user(user_id: int, payload: dict = Body(...), admin=Depends(require_a
                 "UPDATE users SET password_salt = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (salt, password_hash, user_id),
             )
+            password_changed = True
+            password_target_username = username or row["username"]
 
         set_user_permissions(conn, user_id, permissions)
         conn.commit()
         updated = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-        return success_response(serialize_user(conn, updated))
+        data = serialize_user(conn, updated)
+    if password_changed:
+        log_operation(
+            "password_reset",
+            user=admin,
+            target_user_id=user_id,
+            target_username=password_target_username or data["username"],
+        )
+    log_operation(
+        "permission_admin",
+        user=admin,
+        target_user_id=data["id"],
+        target_username=data["username"],
+        detail={"operation": "update_user", "role": data["role"], "isActive": data["isActive"]},
+    )
+    return success_response(data)

@@ -100,14 +100,14 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.69"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.69"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.70"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.70"></script>' in html
     assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.57"></script>' in html
     assert '<script src="js/platform-trend.js"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.69"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.70"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html

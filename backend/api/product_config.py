@@ -11,6 +11,7 @@ from db.repository import replace_rows_incremental
 from etl.aggregates.org import aggregate_org_performance
 from metrics.business_rules import normalize_product_code
 from services.product_config_service import normalize_product_config_table, normalize_product_name
+from services.audit_log import log_operation
 from services.response import success_response
 
 router = APIRouter(prefix="/api", tags=["product-config"])
@@ -266,6 +267,11 @@ def save_product_config(
     if recalc_count > 0:
         logger.info("recalculated %s agg_org_performance rows after product-config update", recalc_count)
 
+    log_operation(
+        "product_config",
+        user=_user,
+        detail={"updated": updated, "normalized": normalized, "recalculated": recalc_count},
+    )
     return success_response(
         {"updated": updated, "normalized": normalized, "recalculated": recalc_count},
         message="产品配置已保存" + (f"，已重新计算 {recalc_count} 条机构业绩数据" if recalc_count else ""),

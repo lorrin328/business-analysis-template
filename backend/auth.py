@@ -159,6 +159,7 @@ def serialize_user(conn, row) -> dict:
         "permissions": permissions,
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
+        "lastLoginAt": row["last_login_at"],
     }
 
 
@@ -186,7 +187,10 @@ def authenticate_user(username: str, password: str) -> dict | None:
         user = serialize_user(conn, row)
         user["token"] = token
         user["expiresAt"] = expires_at
-        return user
+    from services.audit_log import log_operation
+
+    log_operation("login", user=user, detail={"username": user["username"]})
+    return user
 
 
 def register_user(username: str, password: str) -> dict:
@@ -217,7 +221,10 @@ def register_user(username: str, password: str) -> dict:
         user = serialize_user(conn, row)
         user["token"] = token
         user["expiresAt"] = expires_at
-        return user
+    from services.audit_log import log_operation
+
+    log_operation("register", user=user, target_user_id=user["id"], target_username=user["username"])
+    return user
 
 
 def _test_bypass_enabled() -> bool:

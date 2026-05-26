@@ -74,6 +74,34 @@ def test_register_creates_normal_user_with_restricted_permissions(auth_db):
     assert client.get("/api/team-enhanced-analysis?year=2026", headers=headers).status_code == 200
 
 
+def test_admin_operation_logs_capture_login_register_and_permission_changes(auth_db):
+    client = TestClient(app)
+    admin = _login(client)
+    admin_headers = _auth_headers(admin["token"])
+
+    registered = client.post("/api/auth/register", json={"username": "log_user", "password": "normal-pass-123"})
+    assert registered.status_code == 200
+    user_id = registered.json()["data"]["user"]["id"]
+
+    reset = client.patch(
+        f"/api/admin/users/{user_id}",
+        headers=admin_headers,
+        json={"role": "normal", "password": "normal-pass-456", "permissions": {}},
+    )
+    assert reset.status_code == 200
+
+    logs = client.get("/api/admin/operation-logs?limit=20", headers=admin_headers)
+    assert logs.status_code == 200
+    actions = [row["action"] for row in logs.json()["data"]["logs"]]
+    assert "login" in actions
+    assert "register" in actions
+    assert "password_reset" in actions
+    assert "permission_admin" in actions
+
+    normal_token = registered.json()["data"]["token"]
+    assert client.get("/api/admin/operation-logs", headers=_auth_headers(normal_token)).status_code == 403
+
+
 def test_admin_can_create_senior_and_update_permissions(auth_db):
     client = TestClient(app)
     admin = _login(client)

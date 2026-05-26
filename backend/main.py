@@ -44,6 +44,7 @@ from services.import_safety import RawIncrementalWriteError, write_raw_table_inc
 from services.health_check import run_health_check
 from services.operation_lock import OperationLockError, operation_lock
 from services.product_config_service import extract_jingdai_products_to_config, extract_products_to_config
+from services.audit_log import log_operation
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -208,9 +209,28 @@ async def upload_files(
     """上传Excel文件并聚合到SQLite"""
     try:
         with operation_lock("excel-import", timeout=1.0):
-            return await _upload_files_locked(performance, jingdai, hr, value, year, allow_partial)
+            result = await _upload_files_locked(performance, jingdai, hr, value, year, allow_partial)
     except OperationLockError as exc:
+        log_operation("import_report", user=_user, status="failed", detail={"reason": "operation_locked"})
         raise HTTPException(status_code=409, detail="已有导入或重建任务正在执行，请稍后再试。") from exc
+    except HTTPException as exc:
+        log_operation("import_report", user=_user, status="failed", detail={"year": year, "detail": exc.detail})
+        raise
+
+    log_operation(
+        "import_report",
+        user=_user,
+        status=result.get("status", "success"),
+        detail={
+            "year": year,
+            "import_id": result.get("import_id"),
+            "uploaded": result.get("uploaded", []),
+            "errors": result.get("errors", []),
+            "skipped": result.get("skipped", []),
+            "data_years": result.get("data_years", []),
+        },
+    )
+    return result
 
 
 async def _upload_files_locked(
@@ -454,7 +474,7 @@ async def import_files(
     year: int = DEFAULT_YEAR,
     _user=Depends(require_permission("upload")),
 ):
-    return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year)
+    return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year, _user=_user)
 
 
 # 静态文件服务 - 生产HTML

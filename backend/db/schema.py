@@ -181,6 +181,19 @@ def init_db():
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         )''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS operation_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            username TEXT NOT NULL DEFAULT 'system',
+            action TEXT NOT NULL,
+            target_user_id INTEGER,
+            target_username TEXT,
+            status TEXT NOT NULL DEFAULT 'success',
+            detail TEXT DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+        )''')
+
         c.execute('''CREATE TABLE IF NOT EXISTS schema_migrations (
             version TEXT PRIMARY KEY,
             applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -220,6 +233,13 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_user_permissions_user ON user_module_permissions(user_id)',
             'CREATE INDEX IF NOT EXISTS ix_raw_performance_ym_line ON performance("年月", "业务模式")',
             'CREATE INDEX IF NOT EXISTS ix_raw_jingdai_time_org ON jingdai("时间", "经代机构")',
+        ]:
+            c.execute(sql)
+
+        for sql in [
+            'CREATE INDEX IF NOT EXISTS ix_operation_logs_created ON operation_logs(created_at)',
+            'CREATE INDEX IF NOT EXISTS ix_operation_logs_action ON operation_logs(action)',
+            'CREATE INDEX IF NOT EXISTS ix_operation_logs_username ON operation_logs(username)',
         ]:
             c.execute(sql)
 
