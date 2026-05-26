@@ -7,8 +7,8 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/format-utils.js"></script>
-  <script src="js/api-client.js?v=1.0.70"></script>
-  <script src="js/auth-ui.js?v=1.0.70"></script>
+  <script src="js/api-client.js?v=1.0.71"></script>
+  <script src="js/auth-ui.js?v=1.0.71"></script>
   <script src="js/export-excel.js"></script>
   <script src="js/dashboard-config.js"></script>
   <script src="js/upload.js"></script>
@@ -918,7 +918,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.70</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.71</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" data-permission="permission_admin" onclick="openPermissionAdmin()" style="margin-right:8px;">权限管理</button>
@@ -929,7 +929,7 @@
       <button class="chart-btn" id="recalcBtn" onclick="recalculateDashboard()" style="margin-right:8px;">重新计算</button>
       <span class="user-pill" id="currentUserName"></span>
       <button class="chart-btn" onclick="logout()" style="margin-right:8px;">退出</button>
-      <span class="date-display" id="dataCutoff">数据截止：2026年5月</span>
+      <span class="date-display" id="dataCutoff">数据截止：--</span>
     </div>
   </div>
 
@@ -1421,7 +1421,7 @@
   <script src="js/org-analysis.js?v=1.0.53"></script>
   <script src="js/seed-data.js"></script>
   <script src="js/data-integration.js"></script>
-  <script src="js/platform-trend-main.js"></script>
+  <script src="js/platform-trend-main.js?v=1.0.71"></script>
   <script>
   </script>
   <script src="js/product-analysis.js?v=1.0.59"></script>
@@ -1430,7 +1430,7 @@
   <script src="js/payperiod-chart.js?v=1.0.58"></script>
   <script>
   </script>
-  <script src="js/team-analysis.js?v=1.0.70"></script>
+  <script src="js/team-analysis.js?v=1.0.71"></script>
   <script>
     // ---------- Resize ----------
     window.addEventListener('resize', () => {
@@ -1446,10 +1446,9 @@
       applyPermissionVisibility();
       populateDashboardYearSelects();
       await loadDashboardConfig();
-      updateKPICards();
       await fetchTargetData(DEFAULT_DASHBOARD_YEAR_NUM);
       const ok = await loadYearFromApi(DEFAULT_DASHBOARD_YEAR, { updateKpi: true, updateProduct: true });
-      if (ok) {
+      if (ok || window.ALLOW_LOCAL_FALLBACK) {
         await refreshPlatformChart();
         productChart.setOption(getPieOption(currentPieType), true);
         teamChart.setOption(getTeamOption(), true);

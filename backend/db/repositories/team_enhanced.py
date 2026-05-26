@@ -6,6 +6,7 @@ from typing import Any
 
 from db.connection import get_db
 from db.schema import init_db
+from services.raw_table_reader import quote_identifier, raw_table_columns, read_raw_table_rows
 
 
 BUSINESS_LINE_MAP = {
@@ -186,7 +187,7 @@ def _load_performance(conn, year: int, business_lines: set[str] | None, orgs: se
     columns = _available_columns(conn, "performance")
     if not columns:
         return {}
-    rows = conn.execute('SELECT * FROM performance').fetchall()
+    rows = read_raw_table_rows(conn, "performance")
     grouped: dict[tuple[int, int, str], dict[str, Any]] = defaultdict(
         lambda: {"qj_premium": 0.0, "policy_numbers": set()}
     )
@@ -227,8 +228,12 @@ def _sample_staff(
     orgs: set[str] | None,
     scope: str,
 ) -> list[dict[str, Any]]:
+    columns = raw_table_columns(conn, "hr_data")
+    if not columns:
+        return []
+    select_list = ", ".join(quote_identifier(col) for col in columns)
     rows = conn.execute(
-        'SELECT * FROM hr_data WHERE CAST("统计年" AS INTEGER) = ? AND CAST("统计月" AS INTEGER) = ?',
+        f'SELECT {select_list} FROM hr_data WHERE CAST("统计年" AS INTEGER) = ? AND CAST("统计月" AS INTEGER) = ?',
         (year, month),
     ).fetchall()
     sample = []

@@ -201,3 +201,24 @@ def test_last_active_admin_cannot_be_removed(auth_db):
         json={"role": "admin", "isActive": False},
     )
     assert self_disable.status_code == 400
+
+
+def test_auth_test_bypass_is_disabled_in_production(monkeypatch):
+    from auth import _test_bypass_enabled
+
+    monkeypatch.setenv("AUTH_TEST_BYPASS", "1")
+    monkeypatch.setenv("APP_ENV", "production")
+    assert _test_bypass_enabled() is False
+
+
+def test_default_admin_password_must_come_from_environment(monkeypatch):
+    import importlib
+    import auth
+
+    monkeypatch.delenv("DEFAULT_ADMIN_PASSWORD", raising=False)
+    reloaded = importlib.reload(auth)
+    try:
+        assert reloaded.DEFAULT_ADMIN_PASSWORD == ""
+    finally:
+        monkeypatch.setenv("DEFAULT_ADMIN_PASSWORD", "Aaaaasynology8888%")
+        importlib.reload(auth)

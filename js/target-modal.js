@@ -6,6 +6,10 @@
     let targetData = null;
     let targetDataSource = 'default';
 
+    function allowLocalTargetCache() {
+      return window.ALLOW_LOCAL_FALLBACK === true;
+    }
+
     function buildRecentYearOptions(selectedYear) {
       return [0, 1, 2].map(offset => {
         const year = DEFAULT_DASHBOARD_YEAR_NUM - offset;
@@ -128,7 +132,9 @@
         targetData = normalizeTargetData(targetData, desiredYear);
         return;
       }
-      const saved = localStorage.getItem(targetStorageKey(desiredYear)) || localStorage.getItem(TARGET_STORAGE_KEY);
+      const saved = allowLocalTargetCache()
+        ? (localStorage.getItem(targetStorageKey(desiredYear)) || localStorage.getItem(TARGET_STORAGE_KEY))
+        : null;
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
@@ -147,7 +153,7 @@
 
     function targetSourceLabel() {
       if (targetDataSource === 'server') return '服务端目标';
-      if (targetDataSource === 'local') return '本地缓存目标';
+      if (targetDataSource === 'local') return '本机开发缓存目标';
       return '默认目标，服务端尚未配置正式目标';
     }
 
@@ -158,7 +164,9 @@
         const hasServerTarget = !!(data && data.categories);
         targetData = normalizeTargetData(hasServerTarget ? data : createDefaultTargetData(desiredYear), desiredYear);
         targetDataSource = hasServerTarget ? 'server' : 'default';
-        localStorage.setItem(targetStorageKey(desiredYear), JSON.stringify(targetData));
+        if (allowLocalTargetCache()) {
+          localStorage.setItem(targetStorageKey(desiredYear), JSON.stringify(targetData));
+        }
         return true;
       } catch(e) {
         loadTargetData(desiredYear);
@@ -485,7 +493,9 @@
       }
       try {
         targetData = normalizeTargetData(targetData, targetData?.year || DEFAULT_DASHBOARD_YEAR_NUM);
-        localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
+        if (allowLocalTargetCache()) {
+          localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
+        }
         const resp = await adminFetch(apiUrl(`/api/targets?year=${targetData.year}`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -493,7 +503,9 @@
         });
         if (!resp.ok) throw new Error('目标保存失败');
         targetData = normalizeTargetData(unwrapApiResponse(await resp.json()), targetData.year);
-        localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
+        if (allowLocalTargetCache()) {
+          localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
+        }
         await recalculateDashboard();
         if (btn) {
           btn.textContent = '已保存';
@@ -532,7 +544,9 @@
           const data = JSON.parse(e.target.result);
           if (data.year && data.categories) {
             targetData = normalizeTargetData(data, data.year);
-            localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
+            if (allowLocalTargetCache()) {
+              localStorage.setItem(targetStorageKey(targetData.year), JSON.stringify(targetData));
+            }
             const resp = await adminFetch(apiUrl(`/api/targets?year=${targetData.year}`), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

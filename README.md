@@ -8,7 +8,7 @@
 
 ## 项目概览
 
-本项目定位为太平人寿网电多元条线经营分析看板/经营驾驶舱，当前版本为 **v1.0.70**，采用 **FastAPI + SQLite + 原生 HTML/JS + ECharts** 的轻量架构。核心目标是保证数据处理准确、指标口径统一、页面展示清晰、多人访问稳定，并为后续扩展预留空间。
+本项目定位为太平人寿网电多元条线经营分析看板/经营驾驶舱，当前版本为 **v1.0.71**，采用 **FastAPI + SQLite + 原生 HTML/JS + ECharts** 的轻量架构。核心目标是保证数据处理准确、指标口径统一、页面展示清晰、多人访问稳定，并为后续扩展预留空间。
 
 本项目覆盖以下业务线：
 
@@ -172,6 +172,14 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python uv run python -m pytest 
 sudo bash deploy/deploy.sh
 ```
 
+首次部署且数据库中尚无管理员账号时，需在部署环境文件中配置管理员初始密码：
+
+```bash
+sudo mkdir -p /opt/business-analysis/deploy
+echo 'DEFAULT_ADMIN_PASSWORD=请替换为强密码' | sudo tee -a /opt/business-analysis/deploy/.admin_env
+sudo chmod 600 /opt/business-analysis/deploy/.admin_env
+```
+
 详细说明见 `docs/部署说明.md`。
 
 ---
@@ -203,6 +211,14 @@ Excel 原始口径 → 看板口径：
 ---
 
 ## 修改历史
+
+### 2026-05-26 security: v1.0.71 生产兜底与认证安全治理
+
+- **本地兜底**：生产环境不再自动使用本地 seed 数据；仅 `file://`、`localhost/127.0.0.1` 或显式 `?localFallback=1` 时启用开发兜底，并显示“开发环境：本地兜底数据”。
+- **认证安全**：默认管理员初始密码改为从 `DEFAULT_ADMIN_PASSWORD` 环境变量读取；生产环境强制禁用 `AUTH_TEST_BYPASS`。
+- **展示口径**：顶部数据截止初始值改为 `--`，只在服务端数据加载后展示真实截止日。
+- **原始表治理**：原始表读取改为显式列清单，减少 `SELECT *` 对字段变化和长期维护的影响。
+- **发布说明**：详见 [v1.0.71 发布说明](./docs/发布说明_v1.0.71.md)。
 
 ### 2026-05-26 feature: v1.0.70 管理员操作日志
 

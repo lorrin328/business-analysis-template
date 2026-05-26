@@ -26,6 +26,7 @@ from etl import (
     aggregate_transform_longterm,
     aggregate_value,
 )
+from services.raw_table_reader import read_raw_table_dataframe
 
 
 RAW_TABLES = ("performance", "jingdai", "hr_data", "value_data")
@@ -49,7 +50,7 @@ def _table_exists(conn, table: str) -> bool:
 def _read_raw_table(conn, table: str) -> pd.DataFrame | None:
     if not _table_exists(conn, table):
         return None
-    return pd.read_sql_query(f'SELECT * FROM "{table}"', conn).drop_duplicates()
+    return read_raw_table_dataframe(conn, table).drop_duplicates()
 
 
 def _merge_active_headcount(hr_rows: list[dict], active_rows: list[dict]) -> None:

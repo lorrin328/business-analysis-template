@@ -9,11 +9,53 @@
     let apiData = { kpi: null, platform: null, team: null, product: null };
     const apiCache = {};
     let apiAvailable = false;
-    const ALLOW_LOCAL_FALLBACK = true;
+    const ALLOW_LOCAL_FALLBACK = (
+      window.location.protocol === 'file:' ||
+      ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname) ||
+      new URLSearchParams(window.location.search).get('localFallback') === '1'
+    );
+    window.ALLOW_LOCAL_FALLBACK = ALLOW_LOCAL_FALLBACK;
+
+    function setDataSourceStatus(kind, message) {
+      let el = document.getElementById('dataSourceStatus');
+      const header = document.querySelector('.header');
+      if (!el && header) {
+        el = document.createElement('span');
+        el.id = 'dataSourceStatus';
+        el.className = 'tag';
+        header.querySelector('.header-actions')?.prepend(el);
+      }
+      if (!el) return;
+      el.textContent = message || '';
+      el.style.display = message ? '' : 'none';
+      el.style.color = kind === 'fallback' ? '#f59e0b' : '#94a3b8';
+      el.style.borderColor = kind === 'fallback' ? 'rgba(245,158,11,0.45)' : 'rgba(148,163,184,0.3)';
+      el.style.background = kind === 'fallback' ? 'rgba(245,158,11,0.12)' : 'rgba(148,163,184,0.08)';
+    }
+
+    if (!ALLOW_LOCAL_FALLBACK) {
+      try {
+        if (productData) {
+          productData.premium = [];
+          productData.count = [];
+        }
+        if (productFallbackData) {
+          Object.keys(productFallbackData).forEach(key => delete productFallbackData[key]);
+        }
+        if (teamMock) {
+          Object.keys(teamMock).forEach(key => delete teamMock[key]);
+        }
+      } catch (e) {
+        console.error('clear local fallback seed failed:', e);
+      }
+    }
 
     function clearRuntimeFallbackYear(year) {
-      // Keep local seed data available. API data overwrites it after load; if API is slow
-      // or unavailable, the dashboard remains usable instead of rendering blank cards.
+      if (ALLOW_LOCAL_FALLBACK) {
+        setDataSourceStatus('fallback', '开发环境：本地兜底数据');
+        return;
+      }
+      setDataSourceStatus('fallback', `服务端数据加载失败：${year}年数据未展示`);
     }
 
     function buildProductQuery(year) {
@@ -67,9 +109,11 @@
         apiData.kpi = kpi;
         apiData.product = product;
         apiAvailable = true;
+        setDataSourceStatus('server', '');
         return true;
       } catch (e) {
         apiAvailable = false;
+        clearRuntimeFallbackYear(year);
         return false;
       }
     }
@@ -95,8 +139,12 @@
         el.textContent = `数据截止：${year}年${cutoff.month}月${cutoff.day}日`;
         return;
       }
-      const latest = getLatestMonthForYear(year);
-      el.textContent = `数据截止：${year}年${latest}月`;
+      if (apiAvailable || ALLOW_LOCAL_FALLBACK) {
+        const latest = getLatestMonthForYear(year);
+        el.textContent = `数据截止：${year}年${latest}月`;
+        return;
+      }
+      el.textContent = '数据截止：--';
     }
 
     // 检查API数据是否包含有效记录（非空）
@@ -276,6 +324,14 @@
     }
 
     function applyProductFallback(year) {
+      if (!ALLOW_LOCAL_FALLBACK) {
+        productData.premium = [];
+        productData.count = [];
+        renderProductJingdaiOrgs([]);
+        if (typeof renderProductTopTable === 'function') renderProductTopTable([]);
+        return false;
+      }
+      setDataSourceStatus('fallback', '开发环境：本地兜底数据');
       const groups = productFallbackData[String(year)] || {};
       const rows = [];
       const transformLines = Object.keys(productFilters.transformLines).filter(k => productFilters.transformLines[k]);

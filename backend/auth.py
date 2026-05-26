@@ -54,8 +54,8 @@ ROLE_DEFAULT_PERMISSIONS = {
     },
 }
 
-DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = "Aaaaasynology8888%"
+DEFAULT_ADMIN_USERNAME = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
+DEFAULT_ADMIN_PASSWORD = os.getenv("DEFAULT_ADMIN_PASSWORD", "")
 SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
 PBKDF2_ITERATIONS = 200_000
 
@@ -105,6 +105,8 @@ def ensure_default_admin() -> None:
         row = conn.execute("SELECT id FROM users WHERE role = ? AND is_active = 1 LIMIT 1", (ROLE_ADMIN,)).fetchone()
         if row:
             return
+        if not DEFAULT_ADMIN_PASSWORD:
+            raise RuntimeError("DEFAULT_ADMIN_PASSWORD must be set before initializing the first admin user")
         salt, password_hash = _hash_password(DEFAULT_ADMIN_PASSWORD)
         conn.execute(
             """
@@ -228,6 +230,8 @@ def register_user(username: str, password: str) -> dict:
 
 
 def _test_bypass_enabled() -> bool:
+    if os.getenv("APP_ENV", "").strip().lower() == "production":
+        return False
     return os.getenv("AUTH_TEST_BYPASS", "").strip() == "1"
 
 

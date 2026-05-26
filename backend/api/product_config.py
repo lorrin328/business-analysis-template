@@ -1,7 +1,6 @@
 """产品分类配置 API — 商保年金 / 保障类产品可配置化。"""
 import logging
 
-import pandas as pd
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from auth import require_permission
@@ -12,6 +11,7 @@ from etl.aggregates.org import aggregate_org_performance
 from metrics.business_rules import normalize_product_code
 from services.product_config_service import normalize_product_config_table, normalize_product_name
 from services.audit_log import log_operation
+from services.raw_table_reader import read_raw_table_dataframe
 from services.response import success_response
 
 router = APIRouter(prefix="/api", tags=["product-config"])
@@ -122,7 +122,7 @@ def _recalc_org_performance_from_raw() -> int:
         if c.fetchone()[0] == 0:
             return 0
 
-        df = pd.read_sql_query('SELECT * FROM performance', conn)
+        df = read_raw_table_dataframe(conn, 'performance')
 
     if df.empty:
         return 0
@@ -145,7 +145,7 @@ def _recalc_jingdai_from_raw() -> int:
         c.execute("SELECT COUNT(*) FROM jingdai LIMIT 1")
         if c.fetchone()[0] == 0:
             return 0
-        df = pd.read_sql_query('SELECT * FROM jingdai', conn)
+        df = read_raw_table_dataframe(conn, 'jingdai')
 
     if df.empty:
         return 0

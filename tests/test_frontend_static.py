@@ -41,6 +41,8 @@ def test_default_target_source_is_explicit():
     target = read_js("target-modal.js")
     assert "服务端尚未配置正式目标" in target
     assert "targetSourceLabel" in target
+    assert "allowLocalTargetCache" in target
+    assert "本机开发缓存目标" in target
 
 
 def test_product_config_does_not_embed_admin_token_and_uses_protection_kpi():
@@ -100,14 +102,14 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.70"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.70"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.71"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.71"></script>' in html
     assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.57"></script>' in html
     assert '<script src="js/platform-trend.js"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.70"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.71"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -146,7 +148,7 @@ def test_permission_admin_can_manage_admin_role_and_save_column_is_fixed():
     assert ".permission-table { width: 100%; min-width: 0; table-layout: fixed; }" in html
 
 
-def test_local_seed_data_remains_available_when_api_is_slow_or_unavailable():
+def test_local_seed_data_is_development_only_when_api_is_slow_or_unavailable():
     html = read_html()
     upload = read_js("upload.js")
     seed = read_js("seed-data.js")
@@ -157,9 +159,16 @@ def test_local_seed_data_remains_available_when_api_is_slow_or_unavailable():
     assert "const productData =" in seed
     assert "const teamMock =" in seed
     assert "ALLOW_LOCAL_FALLBACK" in data_integration
+    assert "window.ALLOW_LOCAL_FALLBACK = ALLOW_LOCAL_FALLBACK" in data_integration
+    assert "window.location.hostname" in data_integration
+    assert "localFallback') === '1'" in data_integration
+    assert "服务端数据加载失败" in data_integration
+    assert "开发环境：本地兜底数据" in data_integration
+    assert "Object.keys(productFallbackData).forEach(key => delete productFallbackData[key])" in data_integration
+    assert "Object.keys(teamMock).forEach(key => delete teamMock[key])" in data_integration
     assert "clearRuntimeFallbackYear" in data_integration
     assert "暂保留本地兜底数据" in combined
-    assert "updateKPICards();\n      await fetchTargetData" in html
+    assert "await fetchTargetData(DEFAULT_DASHBOARD_YEAR_NUM);\n      const ok = await loadYearFromApi" in html
 
 
 def test_upload_js_no_duplicate_vars():
@@ -271,6 +280,27 @@ def test_account_auth_replaces_admin_token_prompt():
     assert "/api/admin/users" in auth_ui
     assert "function ensureAuthClient()" in auth_ui
     assert "window.setAuthSession = function" in auth_ui
+
+
+def test_static_cutoff_starts_empty_until_server_data_arrives():
+    html = read_html()
+    assert 'id="dataCutoff">数据截止：--</span>' in html
+    assert '数据截止：2026年5月</span>' not in html
+
+
+def test_raw_table_runtime_reads_are_explicit_column_lists():
+    paths = [
+        os.path.join(ROOT, "backend", "api", "product_config.py"),
+        os.path.join(ROOT, "backend", "db", "repositories", "team_enhanced.py"),
+        os.path.join(ROOT, "backend", "services", "aggregate_rebuilder.py"),
+    ]
+    combined = ""
+    for path in paths:
+        with open(path, "r", encoding="utf-8") as f:
+            combined += f.read()
+    assert "SELECT * FROM performance" not in combined
+    assert "SELECT * FROM jingdai" not in combined
+    assert "SELECT * FROM hr_data" not in combined
 
 
 def test_kpi_modal_content_is_outside_html_shell():
@@ -532,7 +562,8 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
 
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
-    assert '<script src="js/platform-trend-main.js"></script>' in html
+    assert '<script src="js/platform-trend-main.js?v=1.0.71"></script>' in html
+    assert "Object.keys(platformMock).forEach(year => delete platformMock[year])" in platform_main
     assert "function refreshPlatformChart()" in platform_main
     assert "function switchYear(value)" in platform_main
 

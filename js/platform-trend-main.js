@@ -16838,6 +16838,10 @@
       };
     }
 
+    if (!window.ALLOW_LOCAL_FALLBACK) {
+      Object.keys(platformMock).forEach(year => delete platformMock[year]);
+    }
+
     updatePlatformScopeNote();
     platformChart.setOption(getPlatformOption());
 
