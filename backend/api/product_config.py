@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from auth import require_admin
+from auth import require_permission
 from config.business_lines import CHANNEL_MAP, DEFAULT_YEAR
 from db import get_db
 from db.repository import replace_rows_incremental
@@ -158,7 +158,7 @@ def _recalc_jingdai_from_raw() -> int:
 
 
 @router.get("/product-config")
-def get_product_config():
+def get_product_config(_user=Depends(require_permission("product_config"))):
     """返回所有产品配置列表（按产品代码排序）。
 
     若 product_config 表为空，自动从 performance 原始表提取年份≥2026的产品列表。
@@ -197,7 +197,7 @@ def get_product_config():
 @router.post("/product-config")
 def save_product_config(
     payload: dict = Body(...),
-    _admin=Depends(require_admin),
+    _user=Depends(require_permission("product_config")),
 ):
     """批量保存产品分类配置。
 

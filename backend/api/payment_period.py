@@ -1,8 +1,9 @@
 """交期结构 API — 按交期分类聚合展示保费/件数饼图。"""
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from auth import require_permission
 from config.metrics import METRICS
 from db import get_payment_period_structure
 
@@ -19,6 +20,7 @@ def payment_period_analysis(
     orgs: Optional[str] = Query(None),
     jingdaiOrgs: Optional[str] = Query(None),
     metric: str = Query("qj"),
+    _user=Depends(require_permission("payment_period")),
 ):
     """获取交期结构数据。
 

@@ -1,7 +1,7 @@
 """诊断端点 — 对比期交保费与长险期交差异，辅助排查数据口径问题。"""
 from fastapi import APIRouter, Depends
 
-from auth import require_admin
+from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
 from db import get_db
 from services.data_quality_audit import run_data_quality_audit
@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api", tags=["diagnostics"])
 
 
 @router.get("/diagnostics")
-def get_diagnostics(_admin=Depends(require_admin)):
+def get_diagnostics(_user=Depends(require_permission("permission_admin"))):
     """对比 agg_performance 与 agg_longterm_qj 的总保费。"""
     with get_db() as conn:
         c = conn.cursor()
@@ -107,5 +107,5 @@ def get_diagnostics(_admin=Depends(require_admin)):
 
 
 @router.get("/diagnostics/data-quality")
-def get_data_quality_diagnostics(year: int = DEFAULT_YEAR, _admin=Depends(require_admin)):
+def get_data_quality_diagnostics(year: int = DEFAULT_YEAR, _user=Depends(require_permission("permission_admin"))):
     return run_data_quality_audit(year)

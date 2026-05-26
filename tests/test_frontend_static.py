@@ -101,6 +101,7 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
     assert '<script src="js/api-client.js"></script>' in html
+    assert '<script src="js/auth-ui.js"></script>' in html
     assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
@@ -111,7 +112,7 @@ def test_frontend_centralizes_read_api_fetches():
     assert "async function fetchJson(path" not in html
     assert "function apiUrl(path)" in api_client
     assert "async function fetchJson(path" in api_client
-    assert "window.adminFetch = adminFetch" in api_client
+    assert "window.adminFetch = authFetch" in api_client
     # No raw fetch with template literals in HTML
     assert "fetch(`${API_BASE}/api/data/" not in html
     assert "fetch(`${API_BASE}/api/kpi/" not in html
@@ -178,6 +179,7 @@ def test_runtime_js_boundary_is_explicit():
         "js/constants.js",
         "js/format-utils.js",
         "js/api-client.js",
+        "js/auth-ui.js",
         "js/export-excel.js",
         "js/dashboard-config.js",
         "js/upload.js",
@@ -232,6 +234,25 @@ def test_excel_export_is_runtime_module():
     assert "function exportDashboardExcel()" in exporter
     assert "/api/export/excel?year=" in exporter
     assert "window.exportDashboardExcel = exportDashboardExcel" in exporter
+
+
+def test_account_auth_replaces_admin_token_prompt():
+    html = read_html()
+    api_client = read_js("api-client.js")
+    auth_ui = read_js("auth-ui.js")
+    upload = read_js("upload.js")
+    combined = html + "\n" + api_client + "\n" + auth_ui + "\n" + upload
+
+    assert "business_admin_token" not in combined
+    assert "X-Admin-Token" not in combined
+    assert "Admin Token" not in combined
+    assert "requireAuthenticatedUser" in html
+    assert "权限管理" in html
+    assert 'data-permission="permission_admin"' in html
+    assert 'data-permission="upload"' in html
+    assert 'data-permission="excel_export"' in html
+    assert "/api/auth/${mode}" in auth_ui
+    assert "/api/admin/users" in auth_ui
 
 
 def test_kpi_modal_content_is_outside_html_shell():

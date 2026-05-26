@@ -149,6 +149,38 @@ def init_db():
             error_message TEXT,
             imported_by TEXT DEFAULT 'web')''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_salt TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'normal',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_login_at TIMESTAMP
+        )''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS user_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TEXT NOT NULL,
+            revoked_at TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS user_module_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            module_key TEXT NOT NULL,
+            allowed INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, module_key),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )''')
+
         c.execute('''CREATE TABLE IF NOT EXISTS schema_migrations (
             version TEXT PRIMARY KEY,
             applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -183,12 +215,18 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_pay_period_year_month_type ON agg_payment_period(year, month, business_type)',
             'CREATE INDEX IF NOT EXISTS ix_longterm_qj_year_month ON agg_longterm_qj(year, month, business_type)',
             'CREATE INDEX IF NOT EXISTS ix_data_imports_hash ON data_imports(file_hash)',
+            'CREATE INDEX IF NOT EXISTS ix_users_role ON users(role)',
+            'CREATE INDEX IF NOT EXISTS ix_user_sessions_user ON user_sessions(user_id)',
+            'CREATE INDEX IF NOT EXISTS ix_user_permissions_user ON user_module_permissions(user_id)',
             'CREATE INDEX IF NOT EXISTS ix_raw_performance_ym_line ON performance("年月", "业务模式")',
             'CREATE INDEX IF NOT EXISTS ix_raw_jingdai_time_org ON jingdai("时间", "经代机构")',
         ]:
             c.execute(sql)
 
         conn.commit()
+
+    from auth import ensure_default_admin
+    ensure_default_admin()
 
 
 def _migrate(c, sql):

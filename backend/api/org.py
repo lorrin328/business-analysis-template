@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_org_kpi_data
@@ -9,7 +10,7 @@ router = APIRouter(prefix="/api", tags=["org"])
 
 
 @router.get("/org-analysis")
-def org_analysis(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100)):
+def org_analysis(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100), _user=Depends(require_permission("org"))):
     return success_response(
         get_org_kpi_data(year),
         meta={

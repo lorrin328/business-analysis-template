@@ -37,8 +37,7 @@ echo 浏览器将自动打开 http://localhost:45679
 echo 按 Ctrl+C 停止服务
 echo.
 
-:: 设置管理 Token：如需上传/保存，请先在当前终端设置 ADMIN_TOKEN
-if "%ADMIN_TOKEN%"=="" echo 警告：未设置 ADMIN_TOKEN，生产环境会拒绝管理操作
+echo 管理操作已改为登录账号权限校验，不再需要 ADMIN_TOKEN
 
 :: 启动浏览器（延迟2秒确保服务启动）
 start "" /b cmd /c "timeout /t 2 >nul && start http://localhost:45679"

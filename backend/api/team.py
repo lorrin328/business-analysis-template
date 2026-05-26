@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_platform_data
@@ -16,7 +17,7 @@ def _split_csv(value: str | None) -> list[str]:
 
 
 @router.get("/team-analysis")
-def team_analysis(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100)):
+def team_analysis(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100), _user=Depends(require_permission("team"))):
     data = get_platform_data(year)
     return success_response(
         {"year": year, "hr": data.get("hr", [])},
@@ -43,6 +44,7 @@ def team_enhanced_analysis(
     businessLines: str | None = Query(None),
     orgs: str | None = Query(None),
     scope: str = Query("all", pattern="^(all|active)$"),
+    _user=Depends(require_permission("team")),
 ):
     data = get_team_enhanced_analysis(
         year=year,

@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_product_structure
@@ -19,6 +20,7 @@ def product_analysis(
     orgs: str | None = None,
     months: str | None = None,
     metric: str = Query("qj", pattern="^(qj|gm)$"),
+    _user=Depends(require_permission("product_structure")),
 ):
     return success_response(
         get_product_structure(year, dimension, transformLines, jingdaiOrgs, includeTransform, includeJingdai, orgs, months, metric),

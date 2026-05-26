@@ -1,0 +1,104 @@
+import os
+import sys
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(ROOT, "backend"))
+
+pytest = __import__("pytest")
+pytest.importorskip("fastapi")
+from fastapi.testclient import TestClient
+
+from main import app
+
+
+@pytest.fixture()
+def auth_db(tmp_path, monkeypatch):
+    db_path = tmp_path / "auth_test.db"
+    import db as db_module
+    import db.connection as connection
+    from db import init_db
+
+    monkeypatch.setattr(connection, "DB_PATH", str(db_path))
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    monkeypatch.setenv("AUTH_TEST_BYPASS", "0")
+    init_db()
+    yield
+    monkeypatch.setenv("AUTH_TEST_BYPASS", "1")
+
+
+def _login(client, username="admin", password="Aaaaasynology8888%"):
+    resp = client.post("/api/auth/login", json={"username": username, "password": password})
+    assert resp.status_code == 200
+    return resp.json()["data"]
+
+
+def _auth_headers(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_default_admin_login_and_business_api_requires_login(auth_db):
+    client = TestClient(app)
+    assert client.get("/api/kpi?year=2026").status_code == 401
+
+    data = _login(client)
+    assert data["user"]["username"] == "admin"
+    assert data["user"]["role"] == "admin"
+    assert all(data["user"]["permissions"].values())
+
+    resp = client.get("/api/kpi?year=2026", headers=_auth_headers(data["token"]))
+    assert resp.status_code == 200
+
+
+def test_register_creates_normal_user_with_restricted_permissions(auth_db):
+    client = TestClient(app)
+    resp = client.post("/api/auth/register", json={"username": "normal_user", "password": "normal-pass-123"})
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    token = data["token"]
+    user = data["user"]
+    assert user["role"] == "normal"
+    assert user["permissions"]["kpi"] is True
+    assert user["permissions"]["upload"] is False
+    assert user["permissions"]["product_config"] is False
+    assert user["permissions"]["targets"] is False
+    assert user["permissions"]["excel_export"] is False
+    assert user["permissions"]["permission_admin"] is False
+    assert user["permissions"]["recalculate"] is True
+
+    headers = _auth_headers(token)
+    assert client.post("/api/upload", headers=headers).status_code == 403
+    assert client.get("/api/product-config", headers=headers).status_code == 403
+    assert client.get("/api/export/excel?year=2026", headers=headers).status_code == 403
+    assert client.get("/api/admin/users", headers=headers).status_code == 403
+
+
+def test_admin_can_create_senior_and_update_permissions(auth_db):
+    client = TestClient(app)
+    admin = _login(client)
+    admin_headers = _auth_headers(admin["token"])
+
+    created = client.post(
+        "/api/admin/users",
+        headers=admin_headers,
+        json={"username": "senior_user", "password": "senior-pass-123", "role": "senior"},
+    )
+    assert created.status_code == 200
+    senior = created.json()["data"]
+    assert senior["permissions"]["permission_admin"] is False
+    assert senior["permissions"]["upload"] is True
+    assert senior["permissions"]["excel_export"] is True
+
+    senior_login = _login(client, "senior_user", "senior-pass-123")
+    senior_headers = _auth_headers(senior_login["token"])
+    assert client.get("/api/admin/users", headers=senior_headers).status_code == 403
+    assert client.get("/api/export/excel?year=2026", headers=senior_headers).status_code == 200
+
+    changed = client.patch(
+        f"/api/admin/users/{senior['id']}",
+        headers=admin_headers,
+        json={"role": "senior", "permissions": {"excel_export": False}},
+    )
+    assert changed.status_code == 200
+    senior_login = _login(client, "senior_user", "senior-pass-123")
+    assert client.get("/api/export/excel?year=2026", headers=_auth_headers(senior_login["token"])).status_code == 403
+

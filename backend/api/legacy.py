@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, Response
 
-from auth import require_admin
+from auth import require_permission
 from db import (
     get_kpi_data,
     get_org_kpi_data,
@@ -68,7 +68,7 @@ def get_targets(year: int, response: Response):
 
 
 @router.put("/api/targets/{year}")
-def put_targets(year: int, response: Response, payload: dict = Body(...), _admin=Depends(require_admin)):
+def put_targets(year: int, response: Response, payload: dict = Body(...), _user=Depends(require_permission("targets"))):
     """Legacy target write endpoint. Prefer POST /api/targets?year=YYYY."""
     mark_legacy_api(response, "/api/targets?year={year}")
     validation = validate_target_payload(payload)

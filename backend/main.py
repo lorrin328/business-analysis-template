@@ -2,10 +2,10 @@ import hashlib
 import json
 import os
 import sys
-from fastapi import Depends, FastAPI, File, Query, UploadFile, HTTPException
+from fastapi import Depends, FastAPI, File, Query, Request, UploadFile, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import logging
 from logging.handlers import RotatingFileHandler
 
@@ -22,7 +22,8 @@ from api.config import router as config_router
 from api.product_config import router as product_config_router
 from api.diagnostics import router as diagnostics_router
 from api.export import router as export_router
-from auth import require_admin
+from api.auth_routes import admin_router, router as auth_router
+from auth import get_current_user, require_permission
 from config.business_lines import DEFAULT_YEAR
 from db import (
     init_db, get_db, replace_rows_incremental,
@@ -174,8 +175,19 @@ if _cors_origins:
 # 初始化数据库
 init_db()
 
-for router in [kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, export_router, legacy_router]:
+for router in [auth_router, admin_router, kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, export_router, legacy_router]:
     app.include_router(router)
+
+
+@app.middleware("http")
+async def require_login_for_api(request: Request, call_next):
+    public_prefixes = ("/api/auth/", "/api/health")
+    if request.url.path.startswith("/api/") and not request.url.path.startswith(public_prefixes):
+        try:
+            get_current_user(request.headers.get("authorization"))
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    return await call_next(request)
 
 
 @app.get("/api/health")
@@ -191,7 +203,7 @@ async def upload_files(
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
     allow_partial: bool = Query(False),
-    _admin=Depends(require_admin),
+    _user=Depends(require_permission("upload")),
 ):
     """上传Excel文件并聚合到SQLite"""
     try:
@@ -440,7 +452,7 @@ async def import_files(
     hr: UploadFile = File(None),
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
-    _admin=Depends(require_admin),
+    _user=Depends(require_permission("upload")),
 ):
     return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year)
 

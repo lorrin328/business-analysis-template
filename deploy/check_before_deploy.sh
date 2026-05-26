@@ -22,11 +22,8 @@ test -f "deploy/systemd.service"
 echo "== preflight: nginx upload limit =="
 grep -q "client_max_body_size 100m" deploy/nginx.conf
 
-echo "== preflight: admin token =="
-if [ -z "${ADMIN_TOKEN:-}" ] && [ ! -f "deploy/.admin_env" ]; then
-  echo "ERROR: ADMIN_TOKEN is not set and deploy/.admin_env is missing"
-  exit 1
-fi
+echo "== preflight: account auth =="
+echo "account auth enabled; ADMIN_TOKEN is no longer required"
 
 echo "== preflight: tests =="
 if command -v uv >/dev/null 2>&1; then

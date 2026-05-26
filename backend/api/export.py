@@ -1,17 +1,18 @@
 from io import BytesIO
 from urllib.parse import quote
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
 from config.business_lines import DEFAULT_YEAR
+from auth import require_permission
 from services.excel_exporter import build_dashboard_export_workbook
 
 router = APIRouter(prefix="/api", tags=["export"])
 
 
 @router.get("/export/excel")
-def export_excel(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100)):
+def export_excel(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100), _user=Depends(require_permission("excel_export"))):
     content = build_dashboard_export_workbook(year)
     filename = quote(f"经营分析看板数据_{year}.xlsx")
     return StreamingResponse(

@@ -8,6 +8,7 @@
   <script src="js/constants.js"></script>
   <script src="js/format-utils.js"></script>
   <script src="js/api-client.js"></script>
+  <script src="js/auth-ui.js"></script>
   <script src="js/export-excel.js"></script>
   <script src="js/dashboard-config.js"></script>
   <script src="js/upload.js"></script>
@@ -780,6 +781,37 @@
     .org-table .org-ind-red { color: var(--danger); font-weight: 700; }
     .org-empty { text-align: center; padding: 40px; color: var(--text-secondary); font-size: 14px; }
 
+    .auth-gate {
+      position: fixed; inset: 0; z-index: 500;
+      display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(circle at 30% 20%, rgba(59,130,246,0.18), transparent 34%), rgba(15,23,42,0.96);
+      padding: 24px;
+    }
+    .auth-panel {
+      width: min(420px, 100%);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.35);
+    }
+    .auth-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    .auth-subtitle { color: var(--text-secondary); font-size: 13px; line-height: 1.6; margin-bottom: 18px; }
+    .auth-label { display:block; color: var(--text-secondary); font-size: 12px; margin: 12px 0 6px; }
+    .auth-input, .permission-input {
+      width: 100%; padding: 8px 10px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+      font-size: 13px;
+    }
+    .auth-actions { display:flex; gap: 10px; margin-top: 18px; }
+    .auth-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .auth-message { min-height: 18px; color: var(--warning); font-size: 12px; margin-top: 12px; }
+    .user-pill { color: var(--text-secondary); font-size: 12px; }
+    .permission-toolbar { display:grid; grid-template-columns: 1fr 1fr 140px auto; gap: 8px; margin-bottom: 12px; }
+    .permission-table th, .permission-table td { vertical-align: top; }
+    .permission-checkboxes { display:grid; grid-template-columns: repeat(3, minmax(110px, 1fr)); gap: 6px 10px; }
+    .permission-checkboxes label { color: var(--text-secondary); font-size: 12px; display:flex; gap: 5px; align-items:center; }
+
     /* Animations */
     @keyframes fadeInUp {
       from { opacity: 0; transform: translateY(12px); }
@@ -802,20 +834,23 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.63</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.64</span>
     </div>
     <div class="header-right">
-      <button class="chart-btn" id="exportExcelBtn" onclick="exportDashboardExcel()" style="margin-right:8px;">导出Excel</button>
-      <button class="chart-btn" onclick="openProductConfigModal()" style="margin-right:8px;">参数设置</button>
-      <button class="chart-btn" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
+      <button class="chart-btn" data-permission="permission_admin" onclick="openPermissionAdmin()" style="margin-right:8px;">权限管理</button>
+      <button class="chart-btn" id="exportExcelBtn" data-permission="excel_export" onclick="exportDashboardExcel()" style="margin-right:8px;">导出Excel</button>
+      <button class="chart-btn" data-permission="product_config" onclick="openProductConfigModal()" style="margin-right:8px;">参数设置</button>
+      <button class="chart-btn" data-permission="targets" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
       <button class="chart-btn" id="recalcBtn" onclick="recalculateDashboard()" style="margin-right:8px;">重新计算</button>
+      <span class="user-pill" id="currentUserName"></span>
+      <button class="chart-btn" onclick="logout()" style="margin-right:8px;">退出</button>
       <span class="date-display" id="dataCutoff">数据截止：2026年5月</span>
     </div>
   </div>
 
   <div class="container">
     <!-- KPI Section -->
-    <div class="section">
+    <div class="section" data-permission="kpi">
       <div class="section-title">KPI 概览</div>
       <div class="kpi-grid">
         <!-- 1. 整体达成率（期交保费） -->
@@ -878,7 +913,7 @@
     </div>
 
     <!-- 机构维度 -->
-    <div class="section org-section">
+    <div class="section org-section" data-permission="org">
       <div class="section-title">机构维度</div>
       <div class="org-filters">
         <div class="org-filter-group">
@@ -936,7 +971,7 @@
     </div>
 
     <!-- Business Platform Trend -->
-    <div class="section">
+    <div class="section" data-permission="platform_trend">
       <div class="section-title">业务分析</div>
       <div class="chart-row" style="grid-template-columns: 1fr;">
         <div class="chart-card">
@@ -1001,7 +1036,7 @@
     <div class="section" id="structureSection">
       <div class="section-title">产品与交期结构</div>
       <div class="structure-row">
-        <div class="chart-card">
+        <div class="chart-card" data-permission="product_structure">
           <div class="chart-header">
             <span class="chart-title">产品结构</span>
             <div class="chart-actions">
@@ -1057,7 +1092,7 @@
             <div class="structure-empty">正在加载各业务模式前三名产品...</div>
           </div>
         </div>
-        <div class="chart-card">
+        <div class="chart-card" data-permission="payment_period">
           <div class="chart-header">
             <span class="chart-title">交期结构</span>
             <div class="chart-actions">
@@ -1120,7 +1155,7 @@
     </div>
 
     <!-- Charts Row 2: Team Trend + YoY -->
-    <div class="section">
+    <div class="section" data-permission="team">
       <div class="section-title">队伍分析</div>
       <div class="chart-row" style="grid-template-columns: 1fr;">
         <div class="chart-card">
@@ -1192,7 +1227,7 @@
     </div>
 
     <!-- Upload Module -->
-    <div class="section">
+    <div class="section" data-permission="upload">
       <div class="section-title">数据上传</div>
       <div class="upload-grid">
         <div class="upload-card" onclick="document.getElementById('file1').click()">
@@ -1322,6 +1357,8 @@
 
     // 初始化：尝试从API加载数据，成功后覆盖本地mock
     (async function init() {
+      await requireAuthenticatedUser();
+      applyPermissionVisibility();
       populateDashboardYearSelects();
       await loadDashboardConfig();
       updateKPICards();

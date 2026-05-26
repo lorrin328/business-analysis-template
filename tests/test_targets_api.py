@@ -50,43 +50,6 @@ def test_target_save_and_read(tmp_path):
         db_connection.DB_PATH = old_connection_path
 
 
-def test_admin_auth_allows_development_without_token(monkeypatch):
-    fastapi = pytest.importorskip("fastapi")
-    from auth import require_admin
-
-    monkeypatch.delenv("ADMIN_TOKEN", raising=False)
-    monkeypatch.setenv("APP_ENV", "development")
-
-    assert require_admin(None) is True
-
-
-def test_admin_auth_blocks_production_without_token(monkeypatch):
-    fastapi = pytest.importorskip("fastapi")
-    from auth import require_admin
-
-    monkeypatch.delenv("ADMIN_TOKEN", raising=False)
-    monkeypatch.setenv("APP_ENV", "production")
-
-    with pytest.raises(fastapi.HTTPException) as exc:
-        require_admin(None)
-
-    assert exc.value.status_code == 503
-
-
-def test_admin_auth_validates_configured_token(monkeypatch):
-    fastapi = pytest.importorskip("fastapi")
-    from auth import require_admin
-
-    monkeypatch.setenv("ADMIN_TOKEN", "secret-token")
-    monkeypatch.setenv("APP_ENV", "production")
-
-    assert require_admin("secret-token") is True
-    with pytest.raises(fastapi.HTTPException) as exc:
-        require_admin("bad-token")
-
-    assert exc.value.status_code == 401
-
-
 def test_init_db_creates_raw_detail_tables(tmp_path):
     old_database_path = database.DB_PATH
     old_connection_path = db_connection.DB_PATH

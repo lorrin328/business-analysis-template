@@ -88,7 +88,7 @@
         return;
       }
       if (resp.status === 401 || resp.status === 403) {
-        _setAllInfos('认证失败 (' + resp.status + ')，请检查 Admin Token');
+        _setAllInfos('认证或权限不足 (' + resp.status + ')，请登录有导入权限的账号');
         _resetAllCards();
         return;
       }

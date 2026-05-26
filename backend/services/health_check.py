@@ -15,6 +15,9 @@ REQUIRED_TABLES = [
     "target_config",
     "target_values",
     "data_imports",
+    "users",
+    "user_sessions",
+    "user_module_permissions",
     *AGG_TABLES,
 ]
 
@@ -42,7 +45,7 @@ def _latest_period(conn) -> int | None:
 def run_health_check() -> dict:
     checks: dict[str, object] = {
         "database_exists": os.path.exists(DB_PATH),
-        "admin_token_configured": bool(os.getenv("ADMIN_TOKEN")),
+        "account_auth_enabled": True,
         "page_exists": HTML_PATH.exists(),
         "page_version": _page_version(),
     }

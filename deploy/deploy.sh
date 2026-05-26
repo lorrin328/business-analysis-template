@@ -104,18 +104,7 @@ else
     || echo "⚠ SQLite 原始表重建失败；请上传 Excel 后通过 Web 界面导入，或手动运行 rebuild_from_excels.py"
 fi
 
-if [ -z "${ADMIN_TOKEN:-}" ] && [ -f "$APP_DIR/deploy/.admin_env" ]; then
-  # shellcheck disable=SC1091
-  . "$APP_DIR/deploy/.admin_env"
-fi
-if [ -z "${ADMIN_TOKEN:-}" ]; then
-  echo "ERROR: ADMIN_TOKEN is required. Export ADMIN_TOKEN before running deploy.sh."
-  exit 1
-fi
-printf 'ADMIN_TOKEN=%s\n' "$ADMIN_TOKEN" > "$APP_DIR/deploy/.admin_env"
-chmod 640 "$APP_DIR/deploy/.admin_env"
-chown "$RUN_USER:$RUN_USER" "$APP_DIR/deploy/.admin_env"
-echo "后台管理 Token 已统一写入: $APP_DIR/deploy/.admin_env"
+echo "Account auth enabled; ADMIN_TOKEN is no longer required."
 
 cp "$APP_DIR/deploy/systemd.service" "/etc/systemd/system/${SERVICE_NAME}.service"
 cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/business-analysis
@@ -165,4 +154,4 @@ echo "       URL: http://<服务器IP>/webhook/deploy"
 echo "       Secret: 与服务器 $APP_DIR/deploy/.webhook_env 一致"
 echo "    2. 验证: systemctl status webhook-deploy"
 echo "============================================"
-echo "  后台管理 Token 查看: sudo cat $APP_DIR/deploy/.admin_env"
+echo "  默认管理员账号: admin"

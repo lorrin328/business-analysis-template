@@ -1,13 +1,53 @@
 (function (window) {
-  const ADMIN_TOKEN_STORAGE_KEY = 'business_admin_token';
+  const AUTH_TOKEN_STORAGE_KEY = 'business_auth_token';
+  const AUTH_USER_STORAGE_KEY = 'business_auth_user';
 
   function apiUrl(path) {
     const base = window.API_BASE || '';
     return `${base}${path}`;
   }
 
+  function getAuthToken() {
+    return sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '';
+  }
+
+  function getCurrentUser() {
+    try {
+      return JSON.parse(sessionStorage.getItem(AUTH_USER_STORAGE_KEY) || 'null');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function setAuthSession(token, user) {
+    if (token) sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+    if (user) sessionStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+    window.currentUser = user || null;
+  }
+
+  function clearAuthSession() {
+    sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    sessionStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    window.currentUser = null;
+  }
+
+  function authHeaders(headers = {}) {
+    const token = getAuthToken();
+    return token ? { ...headers, Authorization: `Bearer ${token}` } : headers;
+  }
+
+  async function authFetch(url, options = {}) {
+    const headers = authHeaders(options.headers || {});
+    const resp = await fetch(url, { ...options, headers });
+    if (resp.status === 401 && !String(url).includes('/api/auth/')) {
+      clearAuthSession();
+      if (window.showAuthGate) window.showAuthGate('登录已失效，请重新登录');
+    }
+    return resp;
+  }
+
   async function fetchJson(path, options = {}) {
-    const resp = await fetch(apiUrl(path), options);
+    const resp = await authFetch(apiUrl(path), options);
     if (!resp.ok) throw new Error(`API ${path} failed: ${resp.status}`);
     return resp.json();
   }
@@ -18,26 +58,14 @@
       : payload;
   }
 
-  function adminHeaders(headers = {}) {
-    const token = sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '';
-    return token ? { ...headers, 'X-Admin-Token': token } : headers;
-  }
-
-  async function adminFetch(url, options = {}) {
-    let resp = await fetch(url, { ...options, headers: adminHeaders(options.headers || {}) });
-    if ([401, 403, 503].includes(resp.status)) {
-      const token = prompt('请输入后台管理 Token', sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '');
-      if (token) {
-        sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token.trim());
-        resp = await fetch(url, { ...options, headers: adminHeaders(options.headers || {}) });
-      }
-    }
-    return resp;
-  }
-
   window.apiUrl = apiUrl;
   window.fetchJson = fetchJson;
   window.unwrapApiResponse = unwrapApiResponse;
-  window.adminFetch = adminFetch;
-  window.clearAdminToken = () => sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+  window.authFetch = authFetch;
+  window.adminFetch = authFetch;
+  window.getAuthToken = getAuthToken;
+  window.getCurrentUser = getCurrentUser;
+  window.setAuthSession = setAuthSession;
+  window.clearAuthSession = clearAuthSession;
+  window.clearAdminToken = clearAuthSession;
 })(window);

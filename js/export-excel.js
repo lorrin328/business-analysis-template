@@ -12,7 +12,7 @@
         btn.disabled = true;
         btn.textContent = '导出中...';
       }
-      const resp = await fetch(url);
+      const resp = await (window.authFetch || fetch)(url);
       if (!resp.ok) throw new Error(`导出失败：${resp.status}`);
       const blob = await resp.blob();
       const objectUrl = URL.createObjectURL(blob);

@@ -1,6 +1,7 @@
 """运行时配置 API — 业务线、指标等前后端统一配置。"""
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from auth import require_permission
 from config.business_lines import BUSINESS_LINES
 from config.metrics import DASHBOARD_KPI_CARDS, DISPLAY_CONSTRAINTS, METRICS
 from services.response import success_response
@@ -9,7 +10,7 @@ router = APIRouter(prefix="/api/config", tags=["config"])
 
 
 @router.get("/business-lines")
-def get_business_lines():
+def get_business_lines(_user=Depends(require_permission("kpi"))):
     """返回所有业务线配置。
 
     前端启动时调用，替换硬编码的业务线名称、颜色、能力标记等。
@@ -33,7 +34,7 @@ def get_business_lines():
 
 
 @router.get("/metrics")
-def get_metrics():
+def get_metrics(_user=Depends(require_permission("kpi"))):
     """返回所有指标定义与口径。
 
     前端启动时调用，获取统一的指标公式、单位和不可计算规则。

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
-from auth import require_admin
+from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_target_config, get_target_values, save_target_config
@@ -37,7 +37,7 @@ def save_targets(
     year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
     payload: dict = Body(...),
     updatedBy: str = "admin",
-    _admin=Depends(require_admin),
+    _user=Depends(require_permission("targets")),
 ):
     validation = validate_target_payload(payload)
     if not validation.valid:

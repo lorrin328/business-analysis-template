@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_platform_data
@@ -10,7 +11,7 @@ router = APIRouter(prefix="/api", tags=["trend"])
 
 
 @router.get("/platform-data")
-def platform_data(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100)):
+def platform_data(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100), _user=Depends(require_permission("platform_trend"))):
     return success_response(
         get_platform_data(year),
         meta={
@@ -36,6 +37,7 @@ def platform_trend(
     periodValue: int | None = Query(None, ge=0, le=12),
     businessLines: str | None = None,
     metric: str = Query("qj", pattern="^(qj|gm|zs)$"),
+    _user=Depends(require_permission("platform_trend")),
 ):
     channels = [x.strip() for x in businessLines.split(",") if x.strip()] if businessLines else None
     if month:

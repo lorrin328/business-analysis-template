@@ -1,0 +1,158 @@
+from fastapi import APIRouter, Body, Header, HTTPException, Depends
+
+from auth import (
+    MODULE_KEYS,
+    ROLE_ADMIN,
+    ROLE_NORMAL,
+    default_permissions_for_role,
+    authenticate_user,
+    get_current_user,
+    normalize_role,
+    register_user,
+    require_admin,
+    revoke_session,
+    serialize_user,
+    set_user_permissions,
+)
+from db import get_db
+from services.response import success_response
+
+router = APIRouter(prefix="/api/auth", tags=["auth"])
+admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+@router.post("/login")
+def login(payload: dict = Body(...)):
+    user = authenticate_user(payload.get("username", ""), payload.get("password", ""))
+    if not user:
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    token = user.pop("token")
+    expires_at = user.pop("expiresAt")
+    return success_response({"token": token, "expiresAt": expires_at, "user": user})
+
+
+@router.post("/register")
+def register(payload: dict = Body(...)):
+    user = register_user(payload.get("username", ""), payload.get("password", ""))
+    token = user.pop("token")
+    expires_at = user.pop("expiresAt")
+    return success_response({"token": token, "expiresAt": expires_at, "user": user})
+
+
+@router.post("/logout")
+def logout(authorization: str | None = Header(default=None)):
+    revoke_session(authorization)
+    return success_response({"ok": True})
+
+
+@router.get("/me")
+def me(user: dict = Depends(get_current_user)):
+    return success_response(user)
+
+
+@admin_router.get("/users")
+def list_users(_admin=Depends(require_admin)):
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM users ORDER BY CASE role WHEN 'admin' THEN 1 WHEN 'senior' THEN 2 ELSE 3 END, username"
+        ).fetchall()
+        return success_response(
+            {
+                "moduleKeys": MODULE_KEYS,
+                "roleDefaults": {
+                    "admin": default_permissions_for_role("admin"),
+                    "senior": default_permissions_for_role("senior"),
+                    "normal": default_permissions_for_role("normal"),
+                },
+                "users": [serialize_user(conn, row) for row in rows],
+            }
+        )
+
+
+@admin_router.post("/users")
+def create_user(payload: dict = Body(...), _admin=Depends(require_admin)):
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    role = normalize_role(payload.get("role") or ROLE_NORMAL)
+    if role == ROLE_ADMIN:
+        raise HTTPException(status_code=400, detail="不支持通过界面新增管理员账号")
+    if len(username) < 3:
+        raise HTTPException(status_code=400, detail="用户名至少需要3个字符")
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="密码至少需要8个字符")
+
+    from auth import _hash_password
+
+    salt, password_hash = _hash_password(password)
+    permissions = default_permissions_for_role(role)
+    permissions.update(payload.get("permissions") or {})
+    if role == ROLE_ADMIN:
+        permissions = default_permissions_for_role(ROLE_ADMIN)
+    with get_db() as conn:
+        try:
+            cur = conn.execute(
+                """
+                INSERT INTO users (username, password_salt, password_hash, role, is_active)
+                VALUES (?, ?, ?, ?, 1)
+                """,
+                (username, salt, password_hash, role),
+            )
+        except Exception as exc:
+            if "unique" in str(exc).lower():
+                raise HTTPException(status_code=409, detail="用户名已存在") from exc
+            raise
+        set_user_permissions(conn, cur.lastrowid, permissions)
+        conn.commit()
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)).fetchone()
+        return success_response(serialize_user(conn, row))
+
+
+@admin_router.patch("/users/{user_id}")
+def update_user(user_id: int, payload: dict = Body(...), admin=Depends(require_admin)):
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if row["role"] == ROLE_ADMIN and row["id"] == admin["id"]:
+            requested_role = payload.get("role")
+            if requested_role and normalize_role(requested_role) != ROLE_ADMIN:
+                raise HTTPException(status_code=400, detail="不能降低当前管理员账号权限")
+
+        username = payload.get("username")
+        role = normalize_role(payload.get("role") or row["role"])
+        if row["role"] != ROLE_ADMIN and role == ROLE_ADMIN:
+            raise HTTPException(status_code=400, detail="不支持将普通用户或高级用户提升为管理员")
+        is_active = payload.get("isActive")
+        if role == ROLE_ADMIN:
+            permissions = default_permissions_for_role(ROLE_ADMIN)
+        else:
+            permissions = default_permissions_for_role(role)
+            permissions.update(payload.get("permissions") or {})
+            permissions["permission_admin"] = False
+
+        if username is not None:
+            username = str(username).strip()
+            if len(username) < 3:
+                raise HTTPException(status_code=400, detail="用户名至少需要3个字符")
+            conn.execute("UPDATE users SET username = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (username, user_id))
+        conn.execute("UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (role, user_id))
+        if is_active is not None:
+            if row["role"] == ROLE_ADMIN and row["id"] == admin["id"] and not bool(is_active):
+                raise HTTPException(status_code=400, detail="不能停用当前管理员账号")
+            conn.execute("UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (1 if is_active else 0, user_id))
+
+        new_password = payload.get("password")
+        if new_password:
+            if len(new_password) < 8:
+                raise HTTPException(status_code=400, detail="密码至少需要8个字符")
+            from auth import _hash_password
+            salt, password_hash = _hash_password(new_password)
+            conn.execute(
+                "UPDATE users SET password_salt = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (salt, password_hash, user_id),
+            )
+
+        set_user_permissions(conn, user_id, permissions)
+        conn.commit()
+        updated = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return success_response(serialize_user(conn, updated))
