@@ -411,7 +411,12 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert "司龄段结构" in team
     assert "产能段结构" in team
     assert "P25 / P50 / P75" in team
-    assert "待接入人级月度底座" in team
+    assert "诊断矩阵" not in team
+    assert "接入人级底座" not in team
+    assert "待接入人级月度底座" not in team
+    assert "需完善人员月度明细统计" in team
+    assert "需完善人员产能分布统计" in team
+    assert "每个人每个月" in team
     assert "不影响队伍趋势、KPI 和机构维度" in team
     assert "if (typeof renderTeamEnhancedPanel === 'function') renderTeamEnhancedPanel();" in combined
 

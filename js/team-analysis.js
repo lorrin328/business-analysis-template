@@ -163,27 +163,22 @@
             <div class="team-analysis-tile">
               <div class="team-analysis-tile-title">司龄段结构</div>
               <div class="team-analysis-tile-desc">按司龄段、机构、模式观察新人和成熟人员结构趋势。</div>
-              <span class="team-analysis-status">待接入人级月度底座</span>
+              <span class="team-analysis-status">需完善人员月度明细统计</span>
             </div>
             <div class="team-analysis-tile">
               <div class="team-analysis-tile-title">产能段结构</div>
               <div class="team-analysis-tile-desc">识别零产能、低产能、中腰部和高产能人员占比。</div>
-              <span class="team-analysis-status">待接入人级月度底座</span>
+              <span class="team-analysis-status">需完善人员月度明细统计</span>
             </div>
             <div class="team-analysis-tile">
               <div class="team-analysis-tile-title">P25 / P50 / P75</div>
               <div class="team-analysis-tile-desc">用分位数判断普通人员、底部人员和骨干层真实产能。</div>
-              <span class="team-analysis-status">待接入人级产能分布</span>
-            </div>
-            <div class="team-analysis-tile">
-              <div class="team-analysis-tile-title">诊断矩阵</div>
-              <div class="team-analysis-tile-desc">后续按机构 × 司龄 × 职等定位低产、爬坡和断层问题。</div>
-              <span class="team-analysis-status">规划中</span>
+              <span class="team-analysis-status">需完善人员产能分布统计</span>
             </div>
           </div>
         </div>
         <div class="team-insight-note" style="margin-top:12px;">
-          当前试运行区只读取现有汇总数据，不影响队伍趋势、KPI 和机构维度。司龄段、职等、产能段和分位数需新增人级/月级分析表后正式启用。当前筛选机构数：${selectedOrgCount}。
+          当前试运行区只读取现有汇总数据，不影响队伍趋势、KPI 和机构维度。司龄段、职等、产能段和分位数需要先完成“每个人每个月”的保费、件数、司龄、职等统计后再正式启用。当前筛选机构数：${selectedOrgCount}。
         </div>
       `;
     }
