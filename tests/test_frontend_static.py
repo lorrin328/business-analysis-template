@@ -100,14 +100,14 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.68"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.68"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.69"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.69"></script>' in html
     assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.57"></script>' in html
     assert '<script src="js/platform-trend.js"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.68"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.69"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -458,12 +458,20 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert "teamOrgPercentileTable" in team
     assert "switchTeamEnhancedPeriodType" in team
     assert "switchTeamEnhancedPeriodValue" in team
-    assert "selectedTeamEnhancedBusinessLine" in team
-    assert "switchTeamEnhancedBusinessLine" in team
+    assert "selectedTeamEnhancedBusinessLines = { OTO: true, '证保': true, '蚁桥': true }" in team
+    assert "toggleTeamEnhancedBusinessLine" in team
+    assert "getSelectedTeamEnhancedBusinessLines" in team
+    assert "params.set('businessLines', selectedLines.join(','))" in team
+    assert "params.set('businessLines', '__none__')" in team
+    assert "let selectedTeamEnhancedBusinessLine =" not in team
+    assert "switchTeamEnhancedBusinessLine" not in team
     assert "team-enhanced-controls" in team
     assert "team-enhanced-control-label" in team
+    assert "team-enhanced-check" in team
+    assert ".team-enhanced-check" in html
+    assert "<span>全选</span>" in team
     assert "业务模式" in team
-    assert "['全部', 'OTO', '证保', '蚁桥']" in team
+    assert "Object.keys(selectedTeamEnhancedBusinessLines).map(line" in team
     assert "periodType" in team
     assert "periodValue" in team
     assert "≥P25人数" in team

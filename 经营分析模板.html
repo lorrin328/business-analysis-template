@@ -7,8 +7,8 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/format-utils.js"></script>
-  <script src="js/api-client.js?v=1.0.68"></script>
-  <script src="js/auth-ui.js?v=1.0.68"></script>
+  <script src="js/api-client.js?v=1.0.69"></script>
+  <script src="js/auth-ui.js?v=1.0.69"></script>
   <script src="js/export-excel.js"></script>
   <script src="js/dashboard-config.js"></script>
   <script src="js/upload.js"></script>
@@ -392,6 +392,17 @@
       font-size: 12px;
       color: var(--text-secondary);
       white-space: nowrap;
+    }
+    .team-enhanced-check {
+      padding: 5px 10px;
+      border-radius: 6px;
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+    }
+    .team-enhanced-check input[type="checkbox"] {
+      accent-color: var(--accent);
+      width: 14px;
+      height: 14px;
     }
     .team-analysis-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .team-analysis-tile {
@@ -907,7 +918,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.68</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.69</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" data-permission="permission_admin" onclick="openPermissionAdmin()" style="margin-right:8px;">权限管理</button>
@@ -1418,7 +1429,7 @@
   <script src="js/payperiod-chart.js?v=1.0.58"></script>
   <script>
   </script>
-  <script src="js/team-analysis.js?v=1.0.68"></script>
+  <script src="js/team-analysis.js?v=1.0.69"></script>
   <script>
     // ---------- Resize ----------
     window.addEventListener('resize', () => {

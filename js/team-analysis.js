@@ -25,7 +25,7 @@
     let teamEnhancedLoading = false;
     let selectedTeamEnhancedPeriodType = 'month';
     let selectedTeamEnhancedPeriodValue = null;
-    let selectedTeamEnhancedBusinessLine = '全部';
+    const selectedTeamEnhancedBusinessLines = { OTO: true, '证保': true, '蚁桥': true };
 
     const teamChart = echarts.init(document.getElementById('teamChart'));
 
@@ -102,8 +102,11 @@
       );
       if (periodValue) params.set('periodValue', String(periodValue));
       const selectedOrgs = Object.keys(selectedTeamOrgs).filter(k => selectedTeamOrgs[k]);
-      if (selectedTeamEnhancedBusinessLine !== '全部') {
-        params.set('businessLines', selectedTeamEnhancedBusinessLine);
+      const selectedLines = getSelectedTeamEnhancedBusinessLines();
+      if (selectedLines.length === 0) {
+        params.set('businessLines', '__none__');
+      } else if (selectedLines.length < Object.keys(selectedTeamEnhancedBusinessLines).length) {
+        params.set('businessLines', selectedLines.join(','));
       }
       if (selectedOrgs.length === 0) {
         params.set('orgs', '__none__');
@@ -124,7 +127,8 @@
     function renderTeamEnhancedControls(data) {
       const periodType = data?.periodType || selectedTeamEnhancedPeriodType;
       const periodValue = data?.periodValue || selectedTeamEnhancedPeriodValue || data?.month || '';
-      const businessLine = selectedTeamEnhancedBusinessLine;
+      const selectedLines = getSelectedTeamEnhancedBusinessLines();
+      const allSelected = selectedLines.length === Object.keys(selectedTeamEnhancedBusinessLines).length;
       const quarterOptions = [1, 2, 3, 4].map(q => `<option value="${q}" ${Number(periodValue) === q ? 'selected' : ''}>Q${q}</option>`).join('');
       const monthOptions = Array.from({ length: 12 }, (_, idx) => {
         const month = idx + 1;
@@ -143,8 +147,15 @@
           <button class="chart-btn ${periodType === 'month' ? 'active' : ''}" onclick="switchTeamEnhancedPeriodType('month')">月度</button>
           ${selectHtml}
           <span class="team-enhanced-control-label">业务模式</span>
-          ${['全部', 'OTO', '证保', '蚁桥'].map(line => `
-            <button class="chart-btn ${businessLine === line ? 'active' : ''}" onclick="switchTeamEnhancedBusinessLine('${line}')">${line}</button>
+          <label class="check-label team-enhanced-check">
+            <input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleTeamEnhancedBusinessLine('全部', this.checked)">
+            <span>全选</span>
+          </label>
+          ${Object.keys(selectedTeamEnhancedBusinessLines).map(line => `
+            <label class="check-label team-enhanced-check">
+              <input type="checkbox" ${selectedTeamEnhancedBusinessLines[line] ? 'checked' : ''} onchange="toggleTeamEnhancedBusinessLine('${line}', this.checked)">
+              <span>${line}</span>
+            </label>
           `).join('')}
         </div>
       `;
@@ -164,8 +175,18 @@
       refreshTeamEnhancedPanel();
     }
 
-    function switchTeamEnhancedBusinessLine(value) {
-      selectedTeamEnhancedBusinessLine = value;
+    function getSelectedTeamEnhancedBusinessLines() {
+      return Object.keys(selectedTeamEnhancedBusinessLines).filter(line => selectedTeamEnhancedBusinessLines[line]);
+    }
+
+    function toggleTeamEnhancedBusinessLine(value, checked) {
+      if (value === '全部') {
+        Object.keys(selectedTeamEnhancedBusinessLines).forEach(line => {
+          selectedTeamEnhancedBusinessLines[line] = !!checked;
+        });
+      } else if (Object.prototype.hasOwnProperty.call(selectedTeamEnhancedBusinessLines, value)) {
+        selectedTeamEnhancedBusinessLines[value] = !!checked;
+      }
       refreshTeamEnhancedPanel();
     }
 
@@ -218,7 +239,10 @@
       const selectedOrgCount = Object.values(selectedTeamOrgs).filter(Boolean).length;
       const periodLabel = teamEnhancedPeriodLabel(data);
       const controlsHtml = renderTeamEnhancedControls(data);
-      const businessLineLabel = selectedTeamEnhancedBusinessLine === '全部' ? 'OTO+证保+蚁桥' : selectedTeamEnhancedBusinessLine;
+      const selectedBusinessLines = getSelectedTeamEnhancedBusinessLines();
+      const businessLineLabel = selectedBusinessLines.length === Object.keys(selectedTeamEnhancedBusinessLines).length
+        ? 'OTO+证保+蚁桥'
+        : (selectedBusinessLines.length ? selectedBusinessLines.join('+') : '未选择业务模式');
       const tenureRows = renderRows(data.tenureStructure || [], [
         { render: row => `<span class="primary-text">${escapeTeamText(row.label)}</span>` },
         { className: 'num', render: row => `${fmtTeamNumber(row.count)}人` },
