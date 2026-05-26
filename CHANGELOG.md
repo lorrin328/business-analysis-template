@@ -1,5 +1,16 @@
 # 经营分析看板 - 需求与开发文档
 
+## v1.0.65 更新说明（2026-05-26）
+
+**类型**：fix / auth / frontend-cache
+
+**变更内容**：
+- 修复登录/注册后提示 `window.setAuthSession is not a function` 的问题。
+- `api-client.js` 与 `auth-ui.js` 增加 `v1.0.65` 缓存标识，避免浏览器继续加载旧鉴权脚本。
+- `auth-ui.js` 增加最小会话函数兜底，旧版 API 客户端缓存未刷新时也能完成登录注册。
+- 补充前端静态测试，锁定鉴权脚本缓存标识和兜底函数。
+- 统一版本号到 v1.0.65
+
 ## v1.0.64 更新说明（2026-05-26）
 
 **类型**：feature / auth / permission

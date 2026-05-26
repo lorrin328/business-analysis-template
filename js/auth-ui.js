@@ -1,4 +1,6 @@
 (function (window, document) {
+  const FALLBACK_TOKEN_KEY = 'business_auth_token';
+  const FALLBACK_USER_KEY = 'business_auth_user';
   const MODULE_LABELS = {
     kpi: 'KPI概览',
     org: '机构维度',
@@ -15,6 +17,48 @@
   };
   const ROLE_LABELS = { admin: '管理员组', senior: '高级用户组', normal: '普通用户组' };
   let adminUsersCache = [];
+
+  function ensureAuthClient() {
+    if (typeof window.setAuthSession !== 'function') {
+      window.setAuthSession = function (token, user) {
+        if (token) sessionStorage.setItem(FALLBACK_TOKEN_KEY, token);
+        if (user) sessionStorage.setItem(FALLBACK_USER_KEY, JSON.stringify(user));
+        window.currentUser = user || null;
+      };
+    }
+    if (typeof window.getAuthToken !== 'function') {
+      window.getAuthToken = function () {
+        return sessionStorage.getItem(FALLBACK_TOKEN_KEY) || '';
+      };
+    }
+    if (typeof window.getCurrentUser !== 'function') {
+      window.getCurrentUser = function () {
+        try {
+          return JSON.parse(sessionStorage.getItem(FALLBACK_USER_KEY) || 'null');
+        } catch (e) {
+          return null;
+        }
+      };
+    }
+    if (typeof window.clearAuthSession !== 'function') {
+      window.clearAuthSession = function () {
+        sessionStorage.removeItem(FALLBACK_TOKEN_KEY);
+        sessionStorage.removeItem(FALLBACK_USER_KEY);
+        window.currentUser = null;
+      };
+    }
+    if (typeof window.authFetch !== 'function') {
+      window.authFetch = function (url, options = {}) {
+        const token = window.getAuthToken();
+        const headers = token
+          ? { ...(options.headers || {}), Authorization: `Bearer ${token}` }
+          : (options.headers || {});
+        return fetch(url, { ...options, headers });
+      };
+    }
+  }
+
+  ensureAuthClient();
 
   function getUser() {
     return window.currentUser || window.getCurrentUser?.() || null;

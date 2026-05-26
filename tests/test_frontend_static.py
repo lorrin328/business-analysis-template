@@ -100,8 +100,8 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js"></script>' in html
-    assert '<script src="js/auth-ui.js"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.65"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.65"></script>' in html
     assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
@@ -253,6 +253,8 @@ def test_account_auth_replaces_admin_token_prompt():
     assert 'data-permission="excel_export"' in html
     assert "/api/auth/${mode}" in auth_ui
     assert "/api/admin/users" in auth_ui
+    assert "function ensureAuthClient()" in auth_ui
+    assert "window.setAuthSession = function" in auth_ui
 
 
 def test_kpi_modal_content_is_outside_html_shell():
