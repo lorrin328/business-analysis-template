@@ -102,14 +102,14 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.72"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.72"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.73"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.73"></script>' in html
     assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.57"></script>' in html
     assert '<script src="js/platform-trend.js"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.72"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.73"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -287,17 +287,23 @@ def test_account_auth_replaces_admin_token_prompt():
 
 
 def test_honor_page_is_separate_runtime():
+    html = read_html()
     honor_path = os.path.join(ROOT, "honor.html")
     with open(honor_path, "r", encoding="utf-8") as f:
         honor_html = f.read()
     honor_js = read_js("honor.js")
 
+    assert 'data-permission="honor_view" onclick="window.location.href=\'/honor\'" style="margin-right:8px;">荣誉体系</button>' in html
+    assert "????" not in html
     assert "星钻联盟荣誉体系" in honor_html
-    assert '<script src="/js/honor.js?v=1.0.72"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.73"></script>' in honor_html
     assert "/api/honor/field-audit" in honor_js
     assert "/api/honor/recalculate" in honor_js
     assert "/api/honor/export?batchId=" in honor_js
     assert 'data-permission="honor_recalculate"' in honor_html
+    assert "机构会员与星钻汇总" in honor_js
+    assert "business_line: '业务模式'" in honor_js
+    assert "return `${(n * 100).toFixed(1)}%`" in honor_js
 
 
 def test_static_cutoff_starts_empty_until_server_data_arrives():
@@ -580,7 +586,7 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
 
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
-    assert '<script src="js/platform-trend-main.js?v=1.0.72"></script>' in html
+    assert '<script src="js/platform-trend-main.js?v=1.0.73"></script>' in html
     assert "Object.keys(platformMock).forEach(year => delete platformMock[year])" in platform_main
     assert "function refreshPlatformChart()" in platform_main
     assert "function switchYear(value)" in platform_main
