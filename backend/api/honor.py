@@ -95,7 +95,12 @@ def persons(batch_id: int | None = Query(None, alias="batchId"), year: int = Que
 @router.get("/exceptions")
 def exceptions(batch_id: int | None = Query(None, alias="batchId"), year: int = Query(DEFAULT_YEAR), month: int | None = None, _user=Depends(require_permission("honor_view"))):
     batch = _batch_or_404(batch_id, year, month)
-    return success_response({"rows": fetch_table("honor_exceptions", int(batch["id"]))}, meta={"batchId": batch["id"]})
+    rows = fetch_table("honor_exceptions", int(batch["id"]))
+    persons = fetch_table("honor_person_summary", int(batch["id"]), limit=5000)
+    name_index = {str(row.get("staff_code") or ""): row.get("staff_name") for row in persons if row.get("staff_code")}
+    for row in rows:
+        row["staff_name"] = name_index.get(str(row.get("staff_code") or ""), "")
+    return success_response({"rows": rows}, meta={"batchId": batch["id"]})
 
 
 @router.get("/trend")
@@ -132,4 +137,3 @@ def export(batch_id: int = Query(..., alias="batchId"), _user=Depends(require_pe
 @router.post("/upload")
 def upload_placeholder(_user=Depends(require_permission("honor_upload"))):
     raise HTTPException(status_code=501, detail="本期不新增星钻专用上传，请优先复用现有数据。")
-

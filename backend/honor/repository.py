@@ -51,10 +51,18 @@ def latest_batch(year: int | None = None, month: int | None = None) -> dict | No
     if month is not None:
         where.append("month = ?")
         params.append(month)
-    sql = "SELECT * FROM honor_import_batches"
+    sql = """
+        SELECT b.*
+        FROM honor_import_batches b
+        LEFT JOIN (
+            SELECT batch_id, COUNT(*) AS row_count
+            FROM honor_person_summary
+            GROUP BY batch_id
+        ) s ON s.batch_id = b.id
+    """
     if where:
-        sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY id DESC LIMIT 1"
+        sql += " WHERE " + " AND ".join([f"b.{item}" for item in where])
+    sql += " ORDER BY CASE WHEN COALESCE(s.row_count, 0) > 0 THEN 0 ELSE 1 END, b.id DESC LIMIT 1"
     with get_db() as conn:
         row = conn.execute(sql, params).fetchone()
         return dict(row) if row else None
@@ -182,4 +190,3 @@ def fetch_table(table: str, batch_id: int, limit: int = 500) -> list[dict[str, A
             (batch_id, max(1, min(int(limit or 500), 5000))),
         ).fetchall()
         return [dict(row) for row in rows]
-

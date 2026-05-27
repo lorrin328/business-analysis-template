@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>星钻联盟荣誉体系</title>
-  <script src="/js/api-client.js?v=1.0.73"></script>
+  <script src="/js/api-client.js?v=1.0.74"></script>
   <style>
     :root {
       color-scheme: dark;
@@ -42,7 +42,7 @@
     }
     main { padding: 24px; max-width: 1560px; margin: 0 auto; }
     a { color: #9fc2ff; text-decoration: none; }
-    button, input {
+    button, input, select {
       background: #243650;
       color: var(--text);
       border: 1px solid var(--line);
@@ -100,6 +100,20 @@
       color: var(--muted);
       line-height: 1.55;
     }
+    .insight-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .insight {
+      background: rgba(16,28,46,.72);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .insight span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+    .insight strong { color: #d9e8ff; font-size: 16px; }
     .summary-note strong { color: var(--text); }
     .tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--line); margin: 18px 0; overflow-x: auto; }
     .tab { padding: 11px 16px; border-radius: 6px 6px 0 0; color: #bcd3ef; cursor: pointer; white-space: nowrap; }
@@ -114,6 +128,22 @@
     }
     .panel.active { display: block; }
     .panel-title { font-size: 16px; font-weight: 700; margin: 0 0 12px; }
+    .panel-note { color: var(--muted); margin: 0 0 12px; line-height: 1.55; }
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 10px;
+      background: rgba(13,24,41,.72);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .filter-bar label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+    .filter-bar input { min-width: 180px; }
+    .filter-bar select { min-width: 120px; }
+    .check-label input { width: auto; min-height: auto; }
     .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: #101c2e; }
     table { width: 100%; border-collapse: collapse; min-width: 860px; }
     th, td { padding: 10px 12px; border-bottom: 1px solid rgba(49,73,100,.8); text-align: left; white-space: nowrap; }
@@ -129,22 +159,23 @@
       header { padding: 0 14px; align-items: flex-start; flex-direction: column; justify-content: center; padding-top: 10px; padding-bottom: 10px; }
       main { padding: 14px; }
       .toolbar { align-items: stretch; }
-      button, input { width: 100%; }
-      .toolbar label { width: 100%; }
+      button, input, select { width: 100%; }
+      .toolbar label, .filter-bar label { width: 100%; }
+      .filter-bar input, .filter-bar select { min-width: 0; }
       .card .value { font-size: 22px; }
     }
   </style>
 </head>
 <body>
   <header>
-    <div><span class="page-title">星钻联盟荣誉体系</span><span class="version">v1.0.73</span></div>
+    <div><span class="page-title">星钻联盟荣誉体系</span><span class="version">v1.0.74</span></div>
     <div><a href="/">返回经营看板</a></div>
   </header>
   <main>
     <div class="toolbar">
       <label>年份 <input id="honorYear" type="number" min="2020" max="2100" value="2026"></label>
       <label>月份 <input id="honorMonth" type="number" min="1" max="12" value="5"></label>
-      <button id="auditBtn" data-permission="honor_audit">字段审计</button>
+      <button id="auditBtn" data-permission="honor_audit">数据适配检查</button>
       <button id="recalcBtn" class="primary" data-permission="honor_recalculate">重新计算</button>
       <button id="exportBtn" data-permission="honor_export">导出Excel</button>
       <span id="honorStatus" class="status-pill">等待加载</span>
@@ -166,10 +197,10 @@
       <div class="tab" data-tab="warnings">预警清单</div>
       <div class="tab" data-tab="persons">人员明细</div>
       <div class="tab" data-tab="exceptions">异常清单</div>
-      <div class="tab" data-tab="audit">字段审计</div>
+      <div class="tab" data-tab="audit">数据适配</div>
     </nav>
 
-    <section id="overview" class="panel active"><div class="empty">正在加载字段审计结果...</div></section>
+    <section id="overview" class="panel active"><div class="empty">正在加载数据适配结果...</div></section>
     <section id="orgs" class="panel"></section>
     <section id="levels" class="panel"></section>
     <section id="trend" class="panel"></section>
@@ -178,6 +209,6 @@
     <section id="exceptions" class="panel"></section>
     <section id="audit" class="panel"></section>
   </main>
-  <script src="/js/honor.js?v=1.0.73"></script>
+  <script src="/js/honor.js?v=1.0.74"></script>
 </body>
 </html>

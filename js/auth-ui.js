@@ -16,7 +16,7 @@
     permission_admin: '权限管理',
     recalculate: '重新计算',
     honor_view: '星钻联盟查看',
-    honor_audit: '星钻字段审计',
+    honor_audit: '星钻数据适配',
     honor_recalculate: '星钻重算',
     honor_export: '星钻导出',
     honor_admin: '星钻规则管理',
@@ -232,7 +232,7 @@
     excel_export: '导出Excel',
     product_config: '参数设置',
     permission_admin: '权限管理',
-    honor_field_audit: '星钻字段审计',
+    honor_field_audit: '星钻数据适配',
     honor_recalculate: '星钻重算',
     honor_export: '星钻导出',
     honor_view_batch: '星钻批次查看'
