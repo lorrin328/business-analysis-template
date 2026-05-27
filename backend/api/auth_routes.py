@@ -97,6 +97,10 @@ def operation_logs(
                 "excel_export",
                 "product_config",
                 "permission_admin",
+                "honor_field_audit",
+                "honor_recalculate",
+                "honor_export",
+                "honor_view_batch",
             ],
         }
     )

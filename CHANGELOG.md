@@ -1,4 +1,16 @@
 # 经营分析看板 - 需求与开发文档
+## v1.0.72 更新说明（2026-05-27）
+
+**类型**：feature / honor / field-audit
+
+**变更内容**：
+- 新增“星钻联盟 / 荣誉体系”独立业务域，不新增 Node.js 服务，不新增独立登录。
+- 新增 `honor_*` SQLite 表，支持字段审计、批次留存、个人星钻 MVP、机构汇总、异常清单和季度奖励测算导出。
+- 新增 `/api/honor/field-audit`、`/api/honor/recalculate`、`/api/honor/summary`、`/api/honor/export` 等接口，全部接入现有认证、权限和操作日志。
+- 新增 `/honor` 独立页面，提供字段审计、总览、机构对比、等级分布、趋势、人员明细、异常清单和 Excel 导出。
+- 新增 `docs/honor_data_assessment.md`，明确当前现有数据足以支撑转型 OTO、证保个人星钻 MVP；经代和蚁桥（网服）均不涉及星钻。
+- 统一版本号到 v1.0.72。
+
 
 ## v1.0.71 更新说明（2026-05-26）
 **类型**：security / stability / data-source

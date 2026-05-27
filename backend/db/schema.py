@@ -205,6 +205,169 @@ def init_db():
             VALUES ('20260524_aggregate_rebuild_from_raw', 1, 'Adds raw SQLite aggregate rebuild path')
         ''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS honor_import_batches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL,
+            month INTEGER,
+            rule_version TEXT NOT NULL,
+            source_cutoff TEXT,
+            data_source_mode TEXT NOT NULL DEFAULT 'existing_data',
+            source_tables TEXT DEFAULT '{}',
+            source_files TEXT DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'success',
+            exception_count INTEGER NOT NULL DEFAULT 0,
+            created_by TEXT DEFAULT 'system',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS honor_field_audit_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER,
+            table_name TEXT NOT NULL,
+            required_field TEXT NOT NULL,
+            matched_column TEXT,
+            required_level TEXT NOT NULL,
+            available INTEGER NOT NULL DEFAULT 0,
+            impact TEXT,
+            fallback_strategy TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS honor_source_staff_month (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            org TEXT,
+            business_line TEXT,
+            staff_code TEXT NOT NULL,
+            staff_name TEXT,
+            rank_name TEXT,
+            role_type TEXT,
+            entry_year INTEGER,
+            entry_month INTEGER,
+            is_employed_end_month INTEGER DEFAULT 0,
+            group_code TEXT,
+            department_code TEXT,
+            raw_payload TEXT DEFAULT '{}',
+            UNIQUE(batch_id, year, month, staff_code, business_line)
+        )''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS honor_source_policy (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            org TEXT,
+            business_line TEXT,
+            staff_code TEXT,
+            policy_no TEXT,
+            is_longterm INTEGER DEFAULT 0,
+            payment_years REAL,
+            standard_premium REAL DEFAULT 0,
+            annualized_premium REAL DEFAULT 0,
+            qj_premium REAL DEFAULT 0,
+            premium_source TEXT,
+            issue_date TEXT,
+            callback_date TEXT,
+            account_date TEXT,
+            raw_payload TEXT DEFAULT '{}'
+        )''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS honor_person_month (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            org TEXT,
+            business_line TEXT,
+            staff_code TEXT NOT NULL,
+            staff_name TEXT,
+            role_type TEXT,
+            is_employed_end_month INTEGER DEFAULT 0,
+            standard_premium REAL DEFAULT 0,
+            longterm_policy_count INTEGER DEFAULT 0,
+            monthly_qualified INTEGER DEFAULT 0,
+            protected_month INTEGER DEFAULT 0,
+            diamond_delta INTEGER DEFAULT 0,
+            diamond_balance INTEGER DEFAULT 0,
+            membership_level TEXT DEFAULT '未入会',
+            is_new_star INTEGER DEFAULT 0,
+            exception_flags TEXT DEFAULT '[]',
+            UNIQUE(batch_id, year, month, staff_code, business_line)
+        )''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS honor_person_summary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL,
+            year INTEGER NOT NULL,
+            latest_month INTEGER NOT NULL,
+            org TEXT,
+            business_line TEXT,
+            staff_code TEXT NOT NULL,
+            staff_name TEXT,
+            role_type TEXT,
+            diamond_balance INTEGER DEFAULT 0,
+            membership_level TEXT DEFAULT '未入会',
+            total_gain INTEGER DEFAULT 0,
+            total_deduct INTEGER DEFAULT 0,
+            qualified_months INTEGER DEFAULT 0,
+            is_new_star INTEGER DEFAULT 0,
+            warning_tags TEXT DEFAULT '[]',
+            UNIQUE(batch_id, year, staff_code, business_line)
+        )''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS honor_org_summary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            org TEXT NOT NULL,
+            business_line TEXT,
+            tracked_headcount INTEGER DEFAULT 0,
+            member_count INTEGER DEFAULT 0,
+            senior_plus_count INTEGER DEFAULT 0,
+            monthly_gain_count INTEGER DEFAULT 0,
+            monthly_deduct_count INTEGER DEFAULT 0,
+            total_diamond INTEGER DEFAULT 0,
+            member_rate REAL DEFAULT 0,
+            avg_diamond REAL DEFAULT 0,
+            estimated_reward REAL DEFAULT 0,
+            UNIQUE(batch_id, year, month, org, business_line)
+        )''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS honor_quarter_rewards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL,
+            year INTEGER NOT NULL,
+            quarter INTEGER NOT NULL,
+            org TEXT NOT NULL,
+            staff_code TEXT,
+            staff_name TEXT,
+            membership_level TEXT,
+            reward_amount REAL DEFAULT 0,
+            reward_label TEXT,
+            is_estimated INTEGER DEFAULT 1
+        )''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS honor_exceptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL,
+            severity TEXT NOT NULL,
+            exception_type TEXT NOT NULL,
+            org TEXT,
+            staff_code TEXT,
+            policy_no TEXT,
+            message TEXT NOT NULL,
+            suggested_action TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+
+        c.execute('''
+            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+            VALUES ('20260527_honor_domain', 0, 'Adds honor alliance tables and field audit foundation')
+        ''')
+
         c.execute('''CREATE TABLE IF NOT EXISTS performance (
             "年月" TEXT, "业务模式" TEXT, "销售机构名称" TEXT, "产品类型" TEXT,
             "期交保费" REAL DEFAULT 0, "年化规保" REAL DEFAULT 0,
@@ -240,6 +403,15 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_operation_logs_created ON operation_logs(created_at)',
             'CREATE INDEX IF NOT EXISTS ix_operation_logs_action ON operation_logs(action)',
             'CREATE INDEX IF NOT EXISTS ix_operation_logs_username ON operation_logs(username)',
+        ]:
+            c.execute(sql)
+
+        for sql in [
+            'CREATE INDEX IF NOT EXISTS ix_honor_batches_year_month ON honor_import_batches(year, month)',
+            'CREATE INDEX IF NOT EXISTS ix_honor_person_month_batch ON honor_person_month(batch_id, year, month)',
+            'CREATE INDEX IF NOT EXISTS ix_honor_person_summary_batch ON honor_person_summary(batch_id, year)',
+            'CREATE INDEX IF NOT EXISTS ix_honor_org_summary_batch ON honor_org_summary(batch_id, year, month)',
+            'CREATE INDEX IF NOT EXISTS ix_honor_exceptions_batch ON honor_exceptions(batch_id, severity)',
         ]:
             c.execute(sql)
 

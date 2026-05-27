@@ -32,11 +32,20 @@ MODULE_KEYS = [
     "excel_export",
     "permission_admin",
     "recalculate",
+    "honor_view",
+    "honor_audit",
+    "honor_recalculate",
+    "honor_export",
+    "honor_admin",
+    "honor_upload",
 ]
 
 ROLE_DEFAULT_PERMISSIONS = {
     ROLE_ADMIN: {key: True for key in MODULE_KEYS},
-    ROLE_SENIOR: {key: key != "permission_admin" for key in MODULE_KEYS},
+    ROLE_SENIOR: {
+        key: key not in {"permission_admin", "honor_admin", "honor_upload"}
+        for key in MODULE_KEYS
+    },
     ROLE_NORMAL: {
         "kpi": True,
         "org": True,
@@ -51,6 +60,12 @@ ROLE_DEFAULT_PERMISSIONS = {
         "excel_export": False,
         "permission_admin": False,
         "recalculate": True,
+        "honor_view": True,
+        "honor_audit": False,
+        "honor_recalculate": False,
+        "honor_export": False,
+        "honor_admin": False,
+        "honor_upload": False,
     },
 }
 

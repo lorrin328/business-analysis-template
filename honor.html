@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>星钻联盟荣誉体系</title>
+  <script src="/js/api-client.js?v=1.0.72"></script>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1426; --panel:#1b2a40; --line:#30445f; --text:#f4f8ff; --muted:#9fb3cc; --blue:#4f8cff; --green:#19c37d; --red:#ff6b6b; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: "Microsoft YaHei", Arial, sans-serif; background:var(--bg); color:var(--text); }
+    header { height:56px; display:flex; align-items:center; justify-content:space-between; padding:0 28px; background:#13243a; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:2; }
+    main { padding:24px; max-width:1500px; margin:0 auto; }
+    a { color:#9fc2ff; text-decoration:none; }
+    button, select, input { background:#243650; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px 12px; }
+    button.primary { background:var(--blue); border-color:var(--blue); color:white; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:18px; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:18px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; min-height:96px; }
+    .card .label { color:var(--muted); font-size:13px; }
+    .card .value { font-size:28px; font-weight:700; margin-top:10px; }
+    .tabs { display:flex; gap:8px; border-bottom:1px solid var(--line); margin:18px 0; overflow:auto; }
+    .tab { padding:10px 14px; border-radius:6px 6px 0 0; color:var(--muted); cursor:pointer; }
+    .tab.active { background:var(--panel); color:var(--text); }
+    .panel { display:none; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; overflow:auto; }
+    .panel.active { display:block; }
+    table { width:100%; border-collapse:collapse; min-width:760px; }
+    th, td { padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+    th { color:#b8d4ff; background:#101b2d; position:sticky; top:0; }
+    .muted { color:var(--muted); }
+    .ok { color:var(--green); }
+    .warn { color:#ffbe3d; }
+    .bad { color:var(--red); }
+    @media (max-width: 720px) { header { padding:0 14px; } main { padding:14px; } .toolbar { align-items:stretch; } button, select, input { width:100%; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>星钻联盟荣誉体系</strong> <span class="muted">v1.0.72</span></div>
+    <div><a href="/">返回经营看板</a></div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <label>年份 <input id="honorYear" type="number" min="2020" max="2100" value="2026"></label>
+      <label>月份 <input id="honorMonth" type="number" min="1" max="12" value="5"></label>
+      <button id="auditBtn" data-permission="honor_audit">字段审计</button>
+      <button id="recalcBtn" class="primary" data-permission="honor_recalculate">重新计算</button>
+      <button id="exportBtn" data-permission="honor_export">导出Excel</button>
+      <span id="honorStatus" class="muted"></span>
+    </div>
+
+    <section class="cards" id="honorCards"></section>
+
+    <nav class="tabs">
+      <div class="tab active" data-tab="overview">总览</div>
+      <div class="tab" data-tab="orgs">机构对比</div>
+      <div class="tab" data-tab="levels">等级分布</div>
+      <div class="tab" data-tab="trend">趋势分析</div>
+      <div class="tab" data-tab="warnings">预警清单</div>
+      <div class="tab" data-tab="persons">人员明细</div>
+      <div class="tab" data-tab="exceptions">异常清单</div>
+      <div class="tab" data-tab="audit">字段审计</div>
+    </nav>
+
+    <section id="overview" class="panel active"><div class="muted">请先执行字段审计或重算。</div></section>
+    <section id="orgs" class="panel"></section>
+    <section id="levels" class="panel"></section>
+    <section id="trend" class="panel"></section>
+    <section id="warnings" class="panel"></section>
+    <section id="persons" class="panel"></section>
+    <section id="exceptions" class="panel"></section>
+    <section id="audit" class="panel"></section>
+  </main>
+  <script src="/js/honor.js?v=1.0.72"></script>
+</body>
+</html>

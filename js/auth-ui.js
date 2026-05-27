@@ -14,7 +14,13 @@
     targets: '目标设置',
     excel_export: '导出Excel',
     permission_admin: '权限管理',
-    recalculate: '重新计算'
+    recalculate: '重新计算',
+    honor_view: '星钻联盟查看',
+    honor_audit: '星钻字段审计',
+    honor_recalculate: '星钻重算',
+    honor_export: '星钻导出',
+    honor_admin: '星钻规则管理',
+    honor_upload: '星钻上传'
   };
   const ROLE_LABELS = { admin: '管理员组', senior: '高级用户组', normal: '普通用户组' };
   const ROLE_OPTIONS = ['normal', 'senior', 'admin'];
@@ -225,7 +231,11 @@
     target_save: '设置目标',
     excel_export: '导出Excel',
     product_config: '参数设置',
-    permission_admin: '权限管理'
+    permission_admin: '权限管理',
+    honor_field_audit: '星钻字段审计',
+    honor_recalculate: '星钻重算',
+    honor_export: '星钻导出',
+    honor_view_batch: '星钻批次查看'
   };
 
   function formatOperationTime(value) {

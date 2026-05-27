@@ -23,6 +23,7 @@ from api.product_config import router as product_config_router
 from api.diagnostics import router as diagnostics_router
 from api.export import router as export_router
 from api.auth_routes import admin_router, router as auth_router
+from api.honor import router as honor_router
 from auth import get_current_user, require_permission
 from config.business_lines import DEFAULT_YEAR
 from db import (
@@ -176,7 +177,7 @@ if _cors_origins:
 # 初始化数据库
 init_db()
 
-for router in [auth_router, admin_router, kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, export_router, legacy_router]:
+for router in [auth_router, admin_router, kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, export_router, honor_router, legacy_router]:
     app.include_router(router)
 
 
@@ -488,6 +489,10 @@ if os.path.exists(os.path.join(static_dir, '经营分析模板.html')):
     @app.get("/")
     def index():
         return FileResponse(os.path.join(static_dir, '经营分析模板.html'))
+
+    @app.get("/honor")
+    def honor_page():
+        return FileResponse(os.path.join(static_dir, "honor.html"))
 
 
 if __name__ == "__main__":
