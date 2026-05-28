@@ -203,6 +203,38 @@ def test_last_active_admin_cannot_be_removed(auth_db):
     assert self_disable.status_code == 400
 
 
+def test_admin_can_delete_users_but_not_self_or_last_admin(auth_db):
+    client = TestClient(app)
+    admin = _login(client)
+    admin_headers = _auth_headers(admin["token"])
+    admin_id = admin["user"]["id"]
+
+    created = client.post(
+        "/api/admin/users",
+        headers=admin_headers,
+        json={"username": "delete_me", "password": "delete-pass-123", "role": "normal"},
+    )
+    assert created.status_code == 200
+    user_id = created.json()["data"]["id"]
+
+    delete_user = client.delete(f"/api/admin/users/{user_id}", headers=admin_headers)
+    assert delete_user.status_code == 200
+    assert client.post("/api/auth/login", json={"username": "delete_me", "password": "delete-pass-123"}).status_code == 401
+
+    self_delete = client.delete(f"/api/admin/users/{admin_id}", headers=admin_headers)
+    assert self_delete.status_code == 400
+
+    created_admin = client.post(
+        "/api/admin/users",
+        headers=admin_headers,
+        json={"username": "temp_admin", "password": "admin-pass-123", "role": "admin"},
+    )
+    assert created_admin.status_code == 200
+    temp_admin_id = created_admin.json()["data"]["id"]
+    delete_other_admin = client.delete(f"/api/admin/users/{temp_admin_id}", headers=admin_headers)
+    assert delete_other_admin.status_code == 200
+
+
 def test_auth_test_bypass_is_disabled_in_production(monkeypatch):
     from auth import _test_bypass_enabled
 

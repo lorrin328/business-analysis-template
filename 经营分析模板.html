@@ -7,11 +7,11 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/format-utils.js"></script>
-  <script src="js/api-client.js?v=1.0.83"></script>
-  <script src="js/auth-ui.js?v=1.0.83"></script>
+  <script src="js/api-client.js?v=1.0.84"></script>
+  <script src="js/auth-ui.js?v=1.0.84"></script>
   <script src="js/export-excel.js"></script>
   <script src="js/dashboard-config.js"></script>
-  <script src="js/upload.js?v=1.0.83"></script>
+  <script src="js/upload.js?v=1.0.84"></script>
   <script src="js/target-modal.js"></script>
   <script src="js/kpi-cards.js?v=1.0.57"></script>
   <script src="js/platform-trend.js"></script>
@@ -901,6 +901,9 @@
     .permission-checkboxes label { color: var(--text-secondary); font-size: 12px; display:flex; gap: 5px; align-items:center; }
     .permission-action-cell { text-align: right; white-space: nowrap; vertical-align: middle !important; position: sticky; right: 0; background: var(--bg-card); }
     .permission-save-btn { min-width: 64px; }
+    .permission-delete-btn { min-width: 64px; border-color: rgba(248,113,113,0.45); color: #fecaca; }
+    .permission-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:10px; }
+    .permission-save-all-btn { min-width: 96px; }
 
     /* Animations */
     @keyframes fadeInUp {
@@ -924,7 +927,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.83</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.84</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" data-permission="permission_admin" onclick="openPermissionAdmin()" style="margin-right:8px;">权限管理</button>
@@ -1428,7 +1431,7 @@
   <script src="js/org-analysis.js?v=1.0.53"></script>
   <script src="js/seed-data.js"></script>
   <script src="js/data-integration.js"></script>
-  <script src="js/platform-trend-main.js?v=1.0.83"></script>
+  <script src="js/platform-trend-main.js?v=1.0.84"></script>
   <script>
   </script>
   <script src="js/product-analysis.js?v=1.0.59"></script>
@@ -1437,7 +1440,7 @@
   <script src="js/payperiod-chart.js?v=1.0.58"></script>
   <script>
   </script>
-  <script src="js/team-analysis.js?v=1.0.83"></script>
+  <script src="js/team-analysis.js?v=1.0.84"></script>
   <script>
     // ---------- Resize ----------
     window.addEventListener('resize', () => {

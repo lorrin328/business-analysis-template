@@ -224,3 +224,27 @@ def update_user(user_id: int, payload: dict = Body(...), admin=Depends(require_a
         detail={"operation": "update_user", "role": data["role"], "isActive": data["isActive"]},
     )
     return success_response(data)
+
+
+@admin_router.delete("/users/{user_id}")
+def delete_user(user_id: int, admin=Depends(require_admin)):
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if row["id"] == admin["id"]:
+            raise HTTPException(status_code=400, detail="不能删除当前登录管理员账号")
+        if row["role"] == ROLE_ADMIN and bool(row["is_active"]) and _active_admin_count(conn) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last active administrator")
+        conn.execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM user_module_permissions WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+    log_operation(
+        "permission_admin",
+        user=admin,
+        target_user_id=user_id,
+        target_username=row["username"],
+        detail={"operation": "delete_user", "role": row["role"]},
+    )
+    return success_response({"deleted": True, "id": user_id})

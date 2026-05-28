@@ -319,7 +319,7 @@
             return `<label><input type="checkbox" data-module="${key}" ${user.permissions?.[key] ? 'checked' : ''} ${locked ? 'disabled' : ''}>${MODULE_LABELS[key]}</label>`;
           }).join('')}
         </td>
-        <td class="permission-action-cell"><button class="chart-btn permission-save-btn" onclick="saveUserPermission(${user.id})" ${isCurrentUser ? 'disabled' : ''}>保存</button></td>
+        <td class="permission-action-cell"><button class="chart-btn permission-delete-btn" onclick="deletePermissionUser(${user.id}, '${escapeHtml(user.username)}')" ${isCurrentUser ? 'disabled' : ''}>删除</button></td>
       </tr>
     `;
     }).join('');
@@ -338,7 +338,10 @@
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <div class="chart-note" style="margin-top:10px;color:#94a3b8;font-size:12px;">管理员账号拥有全部权限；密码只支持重置，不展示原密码。</div>
+      <div class="permission-footer">
+        <div class="chart-note" style="color:#94a3b8;font-size:12px;">管理员账号拥有全部权限；密码只支持重置，不展示原密码。修改多个用户后，点击右侧按钮统一保存。</div>
+        <button class="chart-btn auth-primary permission-save-all-btn" onclick="saveAllUserPermissions()">统一保存</button>
+      </div>
     `;
   }
 
@@ -359,19 +362,24 @@
     await openPermissionAdmin();
   }
 
-  async function saveUserPermission(userId) {
-    const row = document.querySelector(`tr[data-user-id="${userId}"]`);
-    if (!row) return;
+  function buildPermissionPayload(row) {
+    const password = row.querySelector('[data-field="password"]').value;
     const payload = {
       username: row.querySelector('[data-field="username"]').value.trim(),
       role: row.querySelector('[data-field="role"]').value,
       permissions: {}
     };
-    const password = row.querySelector('[data-field="password"]').value;
     if (password) payload.password = password;
     row.querySelectorAll('[data-module]').forEach(input => {
       payload.permissions[input.dataset.module] = input.checked;
     });
+    return payload;
+  }
+
+  async function saveUserPermission(userId) {
+    const row = document.querySelector(`tr[data-user-id="${userId}"]`);
+    if (!row) return;
+    const payload = buildPermissionPayload(row);
     const resp = await window.authFetch(window.apiUrl(`/api/admin/users/${userId}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -380,6 +388,38 @@
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}));
       alert(data.detail || '保存失败');
+      return;
+    }
+    await openPermissionAdmin();
+  }
+
+  async function saveAllUserPermissions() {
+    const rows = Array.from(document.querySelectorAll('tr[data-user-id]')).filter(row => {
+      const usernameInput = row.querySelector('[data-field="username"]');
+      return usernameInput && !usernameInput.disabled;
+    });
+    for (const row of rows) {
+      const userId = row.dataset.userId;
+      const resp = await window.authFetch(window.apiUrl(`/api/admin/users/${userId}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPermissionPayload(row))
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        alert(data.detail || `用户 ${userId} 保存失败`);
+        return;
+      }
+    }
+    await openPermissionAdmin();
+  }
+
+  async function deletePermissionUser(userId, username) {
+    if (!confirm(`确认删除用户「${username}」？删除后该用户将无法继续登录。`)) return;
+    const resp = await window.authFetch(window.apiUrl(`/api/admin/users/${userId}`), { method: 'DELETE' });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      alert(data.detail || '删除用户失败');
       return;
     }
     await openPermissionAdmin();
@@ -405,4 +445,6 @@
   window.openOperationLogs = openOperationLogs;
   window.createPermissionUser = createPermissionUser;
   window.saveUserPermission = saveUserPermission;
+  window.saveAllUserPermissions = saveAllUserPermissions;
+  window.deletePermissionUser = deletePermissionUser;
 })(window, document);
