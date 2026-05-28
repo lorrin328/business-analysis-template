@@ -213,6 +213,56 @@ def test_team_enhanced_business_line_filter(tmp_path, monkeypatch):
     assert result["filters"]["businessLines"] == ["证保"]
 
 
+def test_team_enhanced_uses_end_month_headcount_scope(tmp_path, monkeypatch):
+    from db import connection
+    import db as db_module
+    from db.repositories import team_enhanced
+    from db.repositories.team_enhanced import get_team_enhanced_analysis
+
+    db_path = tmp_path / "team_enhanced_end_month.db"
+    monkeypatch.setattr(connection, "DB_PATH", str(db_path))
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    monkeypatch.setattr(team_enhanced, "init_db", lambda: None)
+
+    with connection.get_db() as conn:
+        conn.execute(
+            """CREATE TABLE hr_data (
+                "统计年" INTEGER, "统计月" INTEGER, "销售机构名称" TEXT,
+                "业务模式名称" TEXT, "职等" TEXT, "人员代码" TEXT,
+                "月末司龄区间" TEXT, "月初在职人力" INTEGER, "月末在职人力" INTEGER
+            )"""
+        )
+        conn.execute(
+            """CREATE TABLE performance (
+                "年" INTEGER, "年月" TEXT, "业务模式" TEXT, "销售机构名称" TEXT,
+                "人员工号" TEXT, "投保单号" TEXT, "期交保费" REAL, "折算保费" REAL
+            )"""
+        )
+        conn.executemany(
+            'INSERT INTO hr_data VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                (2026, 5, "上海", "OTO", "F1", "A001", "1年以内", 1, 1),
+                (2026, 5, "上海", "OTO", "F1", "A002", "1年以内", 1, 0),
+                (2026, 5, "上海", "证券", "F2", "B001", "1年以内", 1, 1),
+            ],
+        )
+        conn.executemany(
+            'INSERT INTO performance VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                (2026, "202605", "OTO", "上海", "A001", "P1", 20000, 20000),
+                (2026, "202605", "OTO", "上海", "A002", "P2", 80000, 80000),
+                (2026, "202605", "证券", "上海", "B001", "P3", 30000, 30000),
+            ],
+        )
+        conn.commit()
+
+    result = get_team_enhanced_analysis(2026, period_type="month", period_value=5, business_lines=["OTO", "证保"])
+
+    assert result["summary"]["sampleCount"] == 2
+    assert result["summary"]["qjPremium"] == 5.0
+    assert result["standardManpower"]["summary"][0]["trackedHeadcount"] == 2
+
+
 def test_team_enhanced_standard_manpower_by_org_line_and_month(tmp_path, monkeypatch):
     from db import connection
     import db as db_module

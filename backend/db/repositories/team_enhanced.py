@@ -263,7 +263,7 @@ def _sample_staff(
             continue
         start_headcount = _to_int(_row_value(row, ("月初在职人力",)), 0) or 0
         end_headcount = _to_int(_row_value(row, ("月末在职人力",)), 0) or 0
-        if start_headcount <= 0 and end_headcount <= 0:
+        if end_headcount <= 0:
             continue
         perf = perf_map.get(
             (year, month, staff_id),

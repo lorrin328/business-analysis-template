@@ -331,7 +331,7 @@
             <div class="team-insight-note">人员月度原始表口径</div>
           </div>
           <div class="team-insight-card">
-            <div class="team-insight-label">样本人数</div>
+            <div class="team-insight-label">月末在职样本</div>
             <div class="team-insight-value">${fmtTeamNumber(summary.sampleCount)}人</div>
             <div class="team-insight-note">${escapeTeamText(businessLineLabel)}</div>
           </div>
@@ -512,7 +512,7 @@
           标准人力口径：OTO 为月末在职且当月折算保费/标准保费≥2万元；证保为月末在职且当月折算保费/标准保费≥3万元。标准人力贡献按对应人员期交保费统计；季度/年度按所选月份人月汇总。
         </div>
         <div class="team-insight-note" style="margin-top:12px;">
-          口径：月度按当月个人期交保费计算；季度/年度按期间内个人累计期交保费计算，同一期间内同一人员只计 1 人；P 值人数为达到该分位阈值及以上的人数。当前筛选机构数：${selectedOrgCount}。
+          口径：月度仅纳入当月月末在职人员；季度/年度纳入期间内任一统计月月末在职过的人员，同一期间内同一人员只计 1 人；P 值人数为达到该分位阈值及以上的人数。当前筛选机构数：${selectedOrgCount}。
         </div>
       `;
     }
