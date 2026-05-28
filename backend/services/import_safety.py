@@ -65,6 +65,24 @@ def table_columns(conn, table: str) -> set[str]:
     return {row[1] for row in rows}
 
 
+def ensure_table_columns(conn, table: str, columns: list[str]):
+    """Add missing raw-table columns before appending newer Excel layouts.
+
+    Raw Excel files occasionally add columns. These columns are not used by the
+    aggregate formulas immediately, but aborting the whole import leaves the
+    dashboard on stale data. Adding them as TEXT preserves old raw history and
+    lets the current import refresh aggregates safely.
+    """
+    existing = table_columns(conn, table)
+    for column in columns:
+        if column in existing:
+            continue
+        conn.execute(
+            f'ALTER TABLE {quote_identifier(table)} ADD COLUMN {quote_identifier(column)} TEXT'
+        )
+        existing.add(column)
+
+
 def delete_raw_period(conn, table: str, year: int, month: int, cols: tuple[str | None, str | None, str | None]):
     year_col, month_col, date_col = cols
     if date_col:
@@ -116,9 +134,7 @@ def write_raw_table_incremental(conn, table: str, df):
         return
     if not df_cols.issubset(existing_cols):
         missing = sorted(df_cols - existing_cols)
-        raise RawIncrementalWriteError(
-            f"raw table {table} schema mismatch; new columns require an explicit full rebuild: {missing}"
-        )
+        ensure_table_columns(conn, table, missing)
     if table in KNOWN_RAW_TABLES and not periods:
         raise RawIncrementalWriteError(
             f"raw table {table} has no recognizable year/month period; import aborted to avoid replacing history"

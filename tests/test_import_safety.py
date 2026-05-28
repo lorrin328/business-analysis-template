@@ -127,7 +127,7 @@ def test_write_raw_table_incremental_rejects_existing_table_without_periods():
         conn.close()
 
 
-def test_write_raw_table_incremental_rejects_schema_drift_without_rebuild():
+def test_write_raw_table_incremental_expands_schema_drift_without_rebuild():
     conn = sqlite3.connect(":memory:")
     try:
         initial = pd.DataFrame(
@@ -142,11 +142,12 @@ def test_write_raw_table_incremental_rejects_schema_drift_without_rebuild():
                 {"年月": "202601", "业务模式": "OTO", "期交保费": 99, "新增字段": "x"},
             ]
         )
-        with pytest.raises(RawIncrementalWriteError):
-            write_raw_table_incremental(conn, "performance", changed)
+        write_raw_table_incremental(conn, "performance", changed)
 
-        rows = conn.execute('SELECT COUNT(*), SUM("期交保费") FROM performance').fetchall()
-        assert rows == [(1, 10)]
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(performance)").fetchall()}
+        assert "新增字段" in columns
+        rows = conn.execute('SELECT COUNT(*), SUM("期交保费"), MAX("新增字段") FROM performance').fetchall()
+        assert rows == [(1, 99, "x")]
     finally:
         conn.close()
 

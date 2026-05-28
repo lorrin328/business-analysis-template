@@ -1,4 +1,14 @@
 # 经营分析看板 - 需求与开发文档
+## v1.0.79 更新说明（2026-05-28）
+
+**类型**：fix / import / raw-schema
+
+**变更内容**：
+- 修复 Web 上传 Excel 时，原始明细表字段结构与新 Excel 字段不一致会触发 schema mismatch 并回滚整次导入的问题。
+- `write_raw_table_incremental` 对新增原始字段自动执行 `ALTER TABLE ADD COLUMN`，再按年月增量替换数据，避免聚合表继续停留在旧截止日。
+- 用当前 4 份 Excel 通过 `/api/upload?force=true` 完整验证，上传后转型日级累计、机构日级累计和经代日级累计均能写入最新数据。
+- 统一版本号到 v1.0.79。
+
 ## v1.0.78 更新说明（2026-05-28）
 
 **类型**：fix / cache / diagnostics
