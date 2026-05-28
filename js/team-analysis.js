@@ -351,78 +351,6 @@
             <div class="team-insight-note">≥P75：${fmtTeamNumber(summary.p75Count)}人</div>
           </div>
         </div>
-        <div class="structure-block-title">标准人力贡献分析</div>
-        <div class="team-insight-layout" style="margin-top:10px;">
-          <div class="structure-table-wrapper" style="margin-top:0;">
-            <table class="structure-table" id="teamStandardManpowerSummaryTable">
-              <thead>
-                <tr>
-                  <th>维度</th>
-                  <th class="num">月末在职${standardCountLabel}</th>
-                  <th class="num">标准人力${standardCountLabel}</th>
-                  <th class="num">标准人力占比</th>
-                  <th class="num">期交保费</th>
-                  <th class="num">标准人力贡献</th>
-                  <th class="num">贡献占比</th>
-                </tr>
-              </thead>
-              <tbody>${standardSummaryRows}</tbody>
-            </table>
-          </div>
-          <div class="structure-table-wrapper" style="margin-top:0;">
-            <table class="structure-table" id="teamStandardManpowerTrendTable">
-              <thead>
-                <tr>
-                  <th>月份</th>
-                  <th>业务模式</th>
-                  <th class="num">月末在职</th>
-                  <th class="num">标准人力</th>
-                  <th class="num">标准占比</th>
-                  <th class="num">标准人力贡献</th>
-                  <th class="num">贡献占比</th>
-                </tr>
-              </thead>
-              <tbody>${standardTrendRows}</tbody>
-            </table>
-          </div>
-        </div>
-        <div class="team-insight-layout" style="margin-top:10px;">
-          <div class="structure-table-wrapper" style="margin-top:0;">
-            <table class="structure-table" id="teamStandardManpowerOrgTable">
-              <thead>
-                <tr>
-                  <th>机构</th>
-                  <th class="num">月末在职${standardCountLabel}</th>
-                  <th class="num">标准人力${standardCountLabel}</th>
-                  <th class="num">标准人力占比</th>
-                  <th class="num">期交保费</th>
-                  <th class="num">标准人力贡献</th>
-                  <th class="num">贡献占比</th>
-                </tr>
-              </thead>
-              <tbody>${standardOrgRows}</tbody>
-            </table>
-          </div>
-          <div class="structure-table-wrapper" style="margin-top:0;">
-            <table class="structure-table" id="teamStandardManpowerOrgLineTable">
-              <thead>
-                <tr>
-                  <th>机构 / 业务模式</th>
-                  <th class="num">月末在职${standardCountLabel}</th>
-                  <th class="num">标准人力${standardCountLabel}</th>
-                  <th class="num">标准人力占比</th>
-                  <th class="num">期交保费</th>
-                  <th class="num">标准人力贡献</th>
-                  <th class="num">贡献占比</th>
-                </tr>
-              </thead>
-              <tbody>${standardOrgLineRows}</tbody>
-            </table>
-          </div>
-        </div>
-        <div class="team-insight-note" style="margin-top:8px;">
-          标准人力口径：OTO 为月末在职且当月折算保费/标准保费≥2万元；证保为月末在职且当月折算保费/标准保费≥3万元。标准人力贡献按对应人员期交保费统计；季度/年度按所选月份人月汇总。
-        </div>
         <div class="team-insight-layout">
           <div class="structure-table-wrapper" style="margin-top:0;">
             <table class="structure-table" id="teamTenureStructureTable">
@@ -510,6 +438,78 @@
             </thead>
             <tbody>${orgRows}</tbody>
           </table>
+        </div>
+        <div class="structure-block-title">标准人力贡献分析</div>
+        <div class="team-insight-layout" style="margin-top:10px;">
+          <div class="structure-table-wrapper" style="margin-top:0;">
+            <table class="structure-table" id="teamStandardManpowerSummaryTable">
+              <thead>
+                <tr>
+                  <th>维度</th>
+                  <th class="num">月末在职${standardCountLabel}</th>
+                  <th class="num">标准人力${standardCountLabel}</th>
+                  <th class="num">标准人力占比</th>
+                  <th class="num">期交保费</th>
+                  <th class="num">标准人力贡献</th>
+                  <th class="num">贡献占比</th>
+                </tr>
+              </thead>
+              <tbody>${standardSummaryRows}</tbody>
+            </table>
+          </div>
+          <div class="structure-table-wrapper" style="margin-top:0;">
+            <table class="structure-table" id="teamStandardManpowerTrendTable">
+              <thead>
+                <tr>
+                  <th>月份</th>
+                  <th>业务模式</th>
+                  <th class="num">月末在职</th>
+                  <th class="num">标准人力</th>
+                  <th class="num">标准占比</th>
+                  <th class="num">标准人力贡献</th>
+                  <th class="num">贡献占比</th>
+                </tr>
+              </thead>
+              <tbody>${standardTrendRows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="team-insight-layout" style="margin-top:10px;">
+          <div class="structure-table-wrapper" style="margin-top:0;">
+            <table class="structure-table" id="teamStandardManpowerOrgTable">
+              <thead>
+                <tr>
+                  <th>机构</th>
+                  <th class="num">月末在职${standardCountLabel}</th>
+                  <th class="num">标准人力${standardCountLabel}</th>
+                  <th class="num">标准人力占比</th>
+                  <th class="num">期交保费</th>
+                  <th class="num">标准人力贡献</th>
+                  <th class="num">贡献占比</th>
+                </tr>
+              </thead>
+              <tbody>${standardOrgRows}</tbody>
+            </table>
+          </div>
+          <div class="structure-table-wrapper" style="margin-top:0;">
+            <table class="structure-table" id="teamStandardManpowerOrgLineTable">
+              <thead>
+                <tr>
+                  <th>机构 / 业务模式</th>
+                  <th class="num">月末在职${standardCountLabel}</th>
+                  <th class="num">标准人力${standardCountLabel}</th>
+                  <th class="num">标准人力占比</th>
+                  <th class="num">期交保费</th>
+                  <th class="num">标准人力贡献</th>
+                  <th class="num">贡献占比</th>
+                </tr>
+              </thead>
+              <tbody>${standardOrgLineRows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="team-insight-note" style="margin-top:8px;">
+          标准人力口径：OTO 为月末在职且当月折算保费/标准保费≥2万元；证保为月末在职且当月折算保费/标准保费≥3万元。标准人力贡献按对应人员期交保费统计；季度/年度按所选月份人月汇总。
         </div>
         <div class="team-insight-note" style="margin-top:12px;">
           口径：月度按当月个人期交保费计算；季度/年度按期间内个人累计期交保费计算，同一期间内同一人员只计 1 人；P 值人数为达到该分位阈值及以上的人数。当前筛选机构数：${selectedOrgCount}。
