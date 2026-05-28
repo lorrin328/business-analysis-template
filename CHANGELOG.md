@@ -1,4 +1,15 @@
 # 经营分析看板 - 需求与开发文档
+## v1.0.80 更新说明（2026-05-28）
+
+**类型**：fix / import / excel-compat / deployment
+
+**变更内容**：
+- 修复部分 xlsx 文件内部 ZIP 路径使用 Windows 反斜杠时，Linux 服务器上 `openpyxl` 无法读取 `xl/sharedStrings.xml` 的问题。
+- Excel 读取工具在内存中自动规范化 ZIP 内部路径，兼容 Windows 可读但 Linux 解析失败的源文件。
+- 已修复 Ubuntu 回程路由，恢复本机 OpenVPN 直连 `192.168.50.6` 的 SSH、HTTP 和业务端口访问。
+- 已上传并规范化 2026年5月28日 4 份 Excel，在服务器重建运行库并验证数据更新：转型期交约 16,024 万，经代期交约 32,588 万。
+- 统一版本号到 v1.0.80。
+
 ## v1.0.79 更新说明（2026-05-28）
 
 **类型**：fix / import / raw-schema
