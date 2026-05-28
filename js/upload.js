@@ -28,6 +28,7 @@
   function _refreshAfterUpload(year) {
     // 上传成功后刷新全部数据，与 init() 链路一致
     var y = year || 2026;
+    window.__apiRefreshNonce = Date.now();
     if (window.fetchTargetData) { window.fetchTargetData(y); }
     if (window.loadYearFromApi) {
       window.loadYearFromApi(String(y), { updateKpi: true, updateProduct: true }).then(function (ok) {

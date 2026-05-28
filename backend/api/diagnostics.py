@@ -3,10 +3,118 @@ from fastapi import APIRouter, Depends
 
 from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
-from db import get_db
+from db import DB_PATH, get_db
 from services.data_quality_audit import run_data_quality_audit
 
 router = APIRouter(prefix="/api", tags=["diagnostics"])
+
+
+@router.get("/diagnostics/import-status")
+def get_import_status(year: int = DEFAULT_YEAR, _user=Depends(require_permission("permission_admin"))):
+    """Return database freshness details for Excel import troubleshooting."""
+    with get_db() as conn:
+        c = conn.cursor()
+
+        def one(sql: str, params=()):
+            row = c.execute(sql, params).fetchone()
+            return dict(row) if row else {}
+
+        def all_rows(sql: str, params=()):
+            return [dict(r) for r in c.execute(sql, params).fetchall()]
+
+        latest_imports = all_rows(
+            """
+            SELECT id, imported_at, file_name, file_size, data_years, table_counts, status, error_message
+            FROM data_imports
+            ORDER BY id DESC
+            LIMIT 8
+            """
+        )
+        transform_cutoff = one(
+            """
+            SELECT month, MAX(day) AS day
+            FROM agg_daily_performance
+            WHERE year = ?
+            GROUP BY month
+            ORDER BY month DESC
+            LIMIT 1
+            """,
+            (year,),
+        )
+        transform_channel_cutoffs = all_rows(
+            """
+            SELECT channel, month, MAX(day) AS day
+            FROM agg_daily_performance
+            WHERE year = ?
+              AND month = (SELECT MAX(month) FROM agg_daily_performance WHERE year = ?)
+            GROUP BY channel, month
+            ORDER BY channel
+            """,
+            (year, year),
+        )
+        jingdai_cutoff = one(
+            """
+            SELECT month, MAX(day) AS day
+            FROM agg_jingdai_daily
+            WHERE year = ?
+            GROUP BY month
+            ORDER BY month DESC
+            LIMIT 1
+            """,
+            (year,),
+        )
+        transform_monthly_ytd = one(
+            "SELECT ROUND(SUM(qj_premium), 4) AS qj FROM agg_performance WHERE year = ?",
+            (year,),
+        ).get("qj") or 0
+        transform_daily_ytd = one(
+            "SELECT ROUND(SUM(qj_premium), 4) AS qj FROM agg_daily_performance WHERE year = ?",
+            (year,),
+        ).get("qj") or 0
+        transform_org_daily_ytd = one(
+            "SELECT ROUND(SUM(qj_premium), 4) AS qj FROM agg_org_daily_performance WHERE year = ?",
+            (year,),
+        ).get("qj") or 0
+        transform_by_channel = all_rows(
+            """
+            SELECT channel, ROUND(SUM(qj_premium), 4) AS qj
+            FROM agg_daily_performance
+            WHERE year = ?
+            GROUP BY channel
+            ORDER BY channel
+            """,
+            (year,),
+        )
+        org_by_cutoff = {}
+        for day in [26, 27, 28, 29, 30, 31]:
+            row = one(
+                """
+                SELECT ROUND(SUM(qj_premium), 4) AS qj
+                FROM agg_org_daily_performance
+                WHERE year = ?
+                  AND (month < 5 OR (month = 5 AND day <= ?))
+                """,
+                (year, day),
+            )
+            org_by_cutoff[f"through_05_{day:02d}"] = row.get("qj") or 0
+
+    return {
+        "year": year,
+        "database_path": DB_PATH,
+        "latest_imports": latest_imports,
+        "cutoffs": {
+            "transform": transform_cutoff,
+            "transform_by_channel": transform_channel_cutoffs,
+            "jingdai": jingdai_cutoff,
+        },
+        "transform_ytd": {
+            "monthly": transform_monthly_ytd,
+            "daily": transform_daily_ytd,
+            "org_daily": transform_org_daily_ytd,
+            "org_daily_by_cutoff": org_by_cutoff,
+            "by_channel": transform_by_channel,
+        },
+    }
 
 
 @router.get("/diagnostics")

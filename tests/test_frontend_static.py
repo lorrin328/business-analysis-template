@@ -102,20 +102,23 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.77"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.77"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.78"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.78"></script>' in html
     assert '<script src="js/export-excel.js"></script>' in html
-    assert '<script src="js/upload.js?v=1.0.77"></script>' in html
+    assert '<script src="js/upload.js?v=1.0.78"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.57"></script>' in html
     assert '<script src="js/platform-trend.js"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.77"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.78"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
     assert "function apiUrl(path)" in api_client
     assert "async function fetchJson(path" in api_client
     assert "window.adminFetch = authFetch" in api_client
+    assert "function withRefreshNonce" in api_client
+    assert "fetchOptions.cache = 'no-store'" in api_client
+    assert "'Cache-Control': 'no-cache'" in api_client
     # No raw fetch with template literals in HTML
     assert "fetch(`${API_BASE}/api/data/" not in html
     assert "fetch(`${API_BASE}/api/kpi/" not in html
@@ -182,6 +185,7 @@ def test_upload_js_no_duplicate_vars():
     assert "var uploadYear = _pickRefreshYear(years)" in upload
     assert "years.length > 0 ? years[0]" not in upload
     assert "normalized[normalized.length - 1]" in upload
+    assert "window.__apiRefreshNonce = Date.now()" in upload
     assert "window._pickUploadRefreshYear = _pickRefreshYear" in upload
 
 
@@ -303,7 +307,7 @@ def test_honor_page_is_separate_runtime():
     assert 'data-permission="honor_view" onclick="window.location.href=\'/honor\'" style="margin-right:8px;">荣誉体系</button>' in html
     assert "????" not in html
     assert "星钻联盟荣誉体系" in honor_html
-    assert '<script src="/js/honor.js?v=1.0.77"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.78"></script>' in honor_html
     assert "数据适配检查" in honor_html
     assert "数据适配" in honor_html
     assert "/api/honor/field-audit" in honor_js
@@ -600,7 +604,7 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
 
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
-    assert '<script src="js/platform-trend-main.js?v=1.0.77"></script>' in html
+    assert '<script src="js/platform-trend-main.js?v=1.0.78"></script>' in html
     assert "Object.keys(platformMock).forEach(year => delete platformMock[year])" in platform_main
     assert "function refreshPlatformChart()" in platform_main
     assert "function switchYear(value)" in platform_main

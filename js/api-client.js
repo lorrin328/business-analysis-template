@@ -7,6 +7,16 @@
     return `${base}${path}`;
   }
 
+  function withRefreshNonce(path, options = {}) {
+    const method = String(options.method || 'GET').toUpperCase();
+    if (method !== 'GET' || !String(path).startsWith('/api/')) {
+      return path;
+    }
+    const nonce = window.__apiRefreshNonce || Date.now();
+    const separator = String(path).includes('?') ? '&' : '?';
+    return `${path}${separator}_ts=${encodeURIComponent(nonce)}`;
+  }
+
   function getAuthToken() {
     return sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '';
   }
@@ -37,8 +47,14 @@
   }
 
   async function authFetch(url, options = {}) {
-    const headers = authHeaders(options.headers || {});
-    const resp = await fetch(url, { ...options, headers });
+    const method = String(options.method || 'GET').toUpperCase();
+    const headers = authHeaders({
+      ...(method === 'GET' ? { 'Cache-Control': 'no-cache' } : {}),
+      ...(options.headers || {})
+    });
+    const fetchOptions = { ...options, headers };
+    if (method === 'GET') fetchOptions.cache = 'no-store';
+    const resp = await fetch(url, fetchOptions);
     if (resp.status === 401 && !String(url).includes('/api/auth/')) {
       clearAuthSession();
       if (window.showAuthGate) window.showAuthGate('登录已失效，请重新登录');
@@ -47,7 +63,8 @@
   }
 
   async function fetchJson(path, options = {}) {
-    const resp = await authFetch(apiUrl(path), options);
+    const finalPath = withRefreshNonce(path, options);
+    const resp = await authFetch(apiUrl(finalPath), options);
     if (!resp.ok) throw new Error(`API ${path} failed: ${resp.status}`);
     return resp.json();
   }

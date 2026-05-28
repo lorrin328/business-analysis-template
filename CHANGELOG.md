@@ -1,4 +1,14 @@
 # 经营分析看板 - 需求与开发文档
+## v1.0.78 更新说明（2026-05-28）
+
+**类型**：fix / cache / diagnostics
+
+**变更内容**：
+- 所有 `/api/` 业务接口响应增加禁止缓存响应头，前端读取接口同步使用 `cache: no-store` 和 `Cache-Control: no-cache`，避免导入后继续展示旧接口响应。
+- Excel 上传成功后写入新的 `__apiRefreshNonce`，强制后续 KPI、机构维度、平台趋势等读取请求使用新刷新批次。
+- 新增管理员诊断接口 `/api/diagnostics/import-status?year=2026`，可直接查看服务器运行库、最近导入记录、日级截止日、转型年度累计及机构日累计分日对账。
+- 统一版本号到 v1.0.78。
+
 ## v1.0.77 更新说明（2026-05-28）
 
 **类型**：fix / import / deployment
