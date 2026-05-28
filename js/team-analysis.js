@@ -226,6 +226,18 @@
       `).join('');
     }
 
+    function renderStandardManpowerRows(rows, emptyText, firstColumnName = '维度') {
+      return renderRows(rows || [], [
+        { render: row => `<span class="primary-text">${escapeTeamText(row.label || firstColumnName)}</span>` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.trackedHeadcount)}人` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.standardCount)}人` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.standardRate, 1)}%` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.qjPremium, 1)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.standardQjPremium, 1)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.premiumContributionRate, 1)}%` }
+      ], emptyText);
+    }
+
     function renderTeamEnhancedPanel() {
       const wrapper = document.getElementById('teamEnhancedPanel');
       if (!wrapper) return;
@@ -292,6 +304,23 @@
         { className: 'num', render: row => `${fmtTeamNumber(row.p75, 2)}万` },
         { className: 'num', render: row => `${fmtTeamNumber(row.p75Count)}人` }
       ], '暂无趋势数据');
+      const standardManpower = data.standardManpower || {};
+      const standardSummaryRows = renderStandardManpowerRows([
+        ...(standardManpower.summary || []),
+        ...(standardManpower.byBusinessLine || [])
+      ], '暂无标准人力汇总数据');
+      const standardOrgRows = renderStandardManpowerRows(standardManpower.byOrg || [], '暂无标准人力机构数据');
+      const standardOrgLineRows = renderStandardManpowerRows(standardManpower.byOrgBusinessLine || [], '暂无标准人力机构+业务模式数据');
+      const standardTrendRows = renderRows(standardManpower.trend || [], [
+        { render: row => `${row.month}月` },
+        { render: row => `<span class="primary-text">${escapeTeamText(row.label)}</span>` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.trackedHeadcount)}人` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.standardCount)}人` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.standardRate, 1)}%` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.standardQjPremium, 1)}万` },
+        { className: 'num', render: row => `${fmtTeamNumber(row.premiumContributionRate, 1)}%` }
+      ], '暂无标准人力分月数据');
+      const standardCountLabel = Number(standardManpower.periodMonths || 0) > 1 ? '人月' : '人';
 
       wrapper.innerHTML = `
         ${controlsHtml}
@@ -321,6 +350,78 @@
             <div class="team-insight-value">${fmtTeamNumber(summary.p75, 2)}万</div>
             <div class="team-insight-note">≥P75：${fmtTeamNumber(summary.p75Count)}人</div>
           </div>
+        </div>
+        <div class="structure-block-title">标准人力贡献分析</div>
+        <div class="team-insight-layout" style="margin-top:10px;">
+          <div class="structure-table-wrapper" style="margin-top:0;">
+            <table class="structure-table" id="teamStandardManpowerSummaryTable">
+              <thead>
+                <tr>
+                  <th>维度</th>
+                  <th class="num">月末在职${standardCountLabel}</th>
+                  <th class="num">标准人力${standardCountLabel}</th>
+                  <th class="num">标准人力占比</th>
+                  <th class="num">期交保费</th>
+                  <th class="num">标准人力贡献</th>
+                  <th class="num">贡献占比</th>
+                </tr>
+              </thead>
+              <tbody>${standardSummaryRows}</tbody>
+            </table>
+          </div>
+          <div class="structure-table-wrapper" style="margin-top:0;">
+            <table class="structure-table" id="teamStandardManpowerTrendTable">
+              <thead>
+                <tr>
+                  <th>月份</th>
+                  <th>业务模式</th>
+                  <th class="num">月末在职</th>
+                  <th class="num">标准人力</th>
+                  <th class="num">标准占比</th>
+                  <th class="num">标准人力贡献</th>
+                  <th class="num">贡献占比</th>
+                </tr>
+              </thead>
+              <tbody>${standardTrendRows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="team-insight-layout" style="margin-top:10px;">
+          <div class="structure-table-wrapper" style="margin-top:0;">
+            <table class="structure-table" id="teamStandardManpowerOrgTable">
+              <thead>
+                <tr>
+                  <th>机构</th>
+                  <th class="num">月末在职${standardCountLabel}</th>
+                  <th class="num">标准人力${standardCountLabel}</th>
+                  <th class="num">标准人力占比</th>
+                  <th class="num">期交保费</th>
+                  <th class="num">标准人力贡献</th>
+                  <th class="num">贡献占比</th>
+                </tr>
+              </thead>
+              <tbody>${standardOrgRows}</tbody>
+            </table>
+          </div>
+          <div class="structure-table-wrapper" style="margin-top:0;">
+            <table class="structure-table" id="teamStandardManpowerOrgLineTable">
+              <thead>
+                <tr>
+                  <th>机构 / 业务模式</th>
+                  <th class="num">月末在职${standardCountLabel}</th>
+                  <th class="num">标准人力${standardCountLabel}</th>
+                  <th class="num">标准人力占比</th>
+                  <th class="num">期交保费</th>
+                  <th class="num">标准人力贡献</th>
+                  <th class="num">贡献占比</th>
+                </tr>
+              </thead>
+              <tbody>${standardOrgLineRows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="team-insight-note" style="margin-top:8px;">
+          标准人力口径：OTO 为月末在职且当月折算保费/标准保费≥2万元；证保为月末在职且当月折算保费/标准保费≥3万元。标准人力贡献按对应人员期交保费统计；季度/年度按所选月份人月汇总。
         </div>
         <div class="team-insight-layout">
           <div class="structure-table-wrapper" style="margin-top:0;">
