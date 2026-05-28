@@ -17,10 +17,30 @@ from services.product_config_service import extract_jingdai_products_to_config, 
 
 ROOT = Path(__file__).resolve().parent.parent
 
+EXCEL_SOURCE_PATTERNS = {
+    'performance': 'AI-\u7ecf\u8425\u5206\u6790\u4e1a\u7ee9\u57fa\u8868*.xlsx',
+    'value': 'AI-\u7ecf\u8425\u5206\u6790\u4ef7\u503c\u57fa\u8868*.xlsx',
+    'hr': 'N1AI-\u4eba\u529b\u57fa\u8868*.xlsx',
+    'jingdai': '*\u7ecf\u4ee3*\u4e1a\u7ee9*.xlsx',
+}
+
 
 def _pick(pattern: str) -> Path | None:
     files = sorted(ROOT.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
     return files[0] if files else None
+
+
+def find_excel_sources(required: bool = True) -> dict[str, Path | None]:
+    sources = {name: _pick(pattern) for name, pattern in EXCEL_SOURCE_PATTERNS.items()}
+    if required:
+        missing = [name for name, path in sources.items() if path is None]
+        if missing:
+            existing = ', '.join(sorted(p.name for p in ROOT.glob('*.xlsx'))) or 'none'
+            raise FileNotFoundError(
+                f"Missing required Excel source(s): {', '.join(missing)}. "
+                f"Existing root Excel files: {existing}"
+            )
+    return sources
 
 
 def main():
@@ -31,10 +51,11 @@ def main():
 def _main_locked():
     init_db()
 
-    performance_file = _pick('AI-经营分析业绩基表*.xlsx')
-    value_file = _pick('AI-经营分析价值基表*.xlsx')
-    hr_file = _pick('N1AI-人力基表*.xlsx')
-    jingdai_file = _pick('*经代*业绩*.xlsx')
+    sources = find_excel_sources(required=True)
+    performance_file = sources['performance']
+    value_file = sources['value']
+    hr_file = sources['hr']
+    jingdai_file = sources['jingdai']
 
     perf_rows, daily_rows, org_daily_rows = [], [], []
     product_rows, value_rows, org_value_rows = [], [], []

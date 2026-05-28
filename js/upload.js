@@ -48,6 +48,41 @@
     if (window.fetchOrgKpiData) { window.fetchOrgKpiData(y); }
   }
 
+  function _currentDashboardYear() {
+    var candidates = [
+      window.currentYear,
+      window.selectedYear,
+      window.DEFAULT_DASHBOARD_YEAR_NUM,
+      window.DEFAULT_DASHBOARD_YEAR,
+      new Date().getFullYear()
+    ];
+    for (var i = 0; i < candidates.length; i += 1) {
+      var value = Number(candidates[i]);
+      if (Number.isFinite(value) && value >= 2000 && value <= 2100) {
+        return value;
+      }
+    }
+    return 2026;
+  }
+
+  function _pickRefreshYear(years) {
+    var normalized = (years || [])
+      .map(function (year) { return Number(year); })
+      .filter(function (year) { return Number.isFinite(year) && year >= 2000 && year <= 2100; })
+      .sort(function (a, b) { return a - b; });
+
+    if (!normalized.length) {
+      return _currentDashboardYear();
+    }
+
+    var current = _currentDashboardYear();
+    if (normalized.indexOf(current) >= 0) {
+      return current;
+    }
+
+    return normalized[normalized.length - 1];
+  }
+
   async function handleFile(input, infoId) {
     if (!input.files || !input.files[0]) return;
     var file = input.files[0];
@@ -114,7 +149,7 @@
       var uploadedCount = result.uploaded ? result.uploaded.length : 0;
       var skippedCount = result.skipped ? result.skipped.length : 0;
       var years = result.data_years || [];
-      var uploadYear = years.length > 0 ? years[0] : 2026;
+      var uploadYear = _pickRefreshYear(years);
 
       var integrityPrefix = result.status === 'skipped'
         ? '未写入数据: '
@@ -137,4 +172,5 @@
   window.handleFile = handleFile;
   window._setAllInfos = _setAllInfos;
   window._resetAllCards = _resetAllCards;
+  window._pickUploadRefreshYear = _pickRefreshYear;
 })(window);

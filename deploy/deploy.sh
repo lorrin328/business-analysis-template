@@ -96,7 +96,10 @@ fi
 EXCEL_COUNT=$(find "$APP_DIR" -maxdepth 1 -name "*.xlsx" 2>/dev/null | wc -l)
 if [ "$EXCEL_COUNT" -ge 3 ]; then
   echo "检测到 $EXCEL_COUNT 个 Excel 文件，正在重建数据库..."
-  "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_from_excels.py" || echo "⚠ 数据库重建失败，请手动运行 rebuild_from_excels.py"
+  "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_from_excels.py" || {
+    echo "ERROR: 数据库重建失败，部署已中止。请检查 Excel 文件名、字段和重建日志。"
+    exit 1
+  }
 else
   echo "⚠ 未检测到足够 Excel 文件（需 ≥3），跳过数据库重建"
   echo "  尝试从 SQLite 原始明细表重建聚合..."
