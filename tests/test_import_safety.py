@@ -10,7 +10,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 pytest.importorskip("fastapi")
-from main import _check_skip, _set_import_status, _validate_daily_cutoff_alignment
+from main import _check_skip, _set_import_status, _skip_duplicate_upload, _validate_daily_cutoff_alignment
 from services.import_safety import RawIncrementalWriteError, write_raw_table_incremental
 
 
@@ -33,6 +33,12 @@ def test_check_skip_only_uses_successful_hashes():
         assert _check_skip(conn, "x.xlsx", "same") is True
     finally:
         conn.close()
+
+
+def test_force_upload_bypasses_duplicate_skip():
+    results = {"skipped": []}
+    assert _skip_duplicate_upload("x.xlsx", "same", "performance", results, force=True) is False
+    assert results["skipped"] == []
 
 
 def test_import_status_marks_partial_data_integrity():

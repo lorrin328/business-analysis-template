@@ -77,7 +77,7 @@
       fd.append('jingdai', document.getElementById('file3').files[0]);
       fd.append('value', document.getElementById('file4').files[0]);
 
-      var uploadUrl = window.apiUrl ? window.apiUrl('/api/upload') : (window.API_BASE || '') + '/api/upload';
+      var uploadUrl = window.apiUrl ? window.apiUrl('/api/upload?force=true') : (window.API_BASE || '') + '/api/upload?force=true';
       var fetchFn = window.adminFetch || window.fetch;
 
       var resp = await fetchFn(uploadUrl, { method: 'POST', body: fd });
@@ -116,11 +116,13 @@
       var years = result.data_years || [];
       var uploadYear = years.length > 0 ? years[0] : 2026;
 
-      var integrityPrefix = isPartialImport ? '部分导入成功，数据口径不完整: ' : '导入成功: ';
+      var integrityPrefix = result.status === 'skipped'
+        ? '未写入数据: '
+        : (isPartialImport ? '部分导入成功，数据口径不完整: ' : '导入成功: ');
       var errorNote = isPartialImport && result.errors ? ' 未更新: ' + result.errors.join('; ') : '';
       _setAllInfos(integrityPrefix + uploadedCount + ' 个文件' +
         (skippedCount > 0 ? ' (' + skippedCount + ' 个已跳过)' : '') +
-        '，如后端数据为空将暂保留本地兜底数据' + errorNote);
+        (result.status === 'skipped' ? '，所选文件与历史成功导入文件完全相同，聚合表未重写' : '，已重新写入并刷新看板数据') + errorNote);
       _refreshAfterUpload(uploadYear);
 
     } catch (e) {

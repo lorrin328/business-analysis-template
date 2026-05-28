@@ -72,8 +72,11 @@ def _record_import(conn, file_name: str, file_hash: str, file_size: int,
     return conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
 
-def _skip_duplicate_upload(file_name: str, file_hash: str, label: str, results: dict) -> bool:
+def _skip_duplicate_upload(file_name: str, file_hash: str, label: str, results: dict, *, force: bool = False) -> bool:
     """Return True when the same successful file hash has already been imported."""
+    if force:
+        logger.info("import duplicate check bypassed by force=true file=%s hash=%s", file_name, file_hash)
+        return False
     with get_db() as conn:
         if not _check_skip(conn, file_name, file_hash):
             return False
@@ -205,12 +208,13 @@ async def upload_files(
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
     allow_partial: bool = Query(False),
+    force: bool = Query(False),
     _user=Depends(require_permission("upload")),
 ):
     """上传Excel文件并聚合到SQLite"""
     try:
         with operation_lock("excel-import", timeout=1.0):
-            result = await _upload_files_locked(performance, jingdai, hr, value, year, allow_partial)
+            result = await _upload_files_locked(performance, jingdai, hr, value, year, allow_partial, force)
     except OperationLockError as exc:
         log_operation("import_report", user=_user, status="failed", detail={"reason": "operation_locked"})
         raise HTTPException(status_code=409, detail="已有导入或重建任务正在执行，请稍后再试。") from exc
@@ -241,6 +245,7 @@ async def _upload_files_locked(
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
     allow_partial: bool = Query(False),
+    force: bool = Query(False),
 ):
     """上传Excel文件并聚合到SQLite。调用方必须先获得 operation_lock。"""
     # 单文件最大 20MB
@@ -252,7 +257,7 @@ async def _upload_files_locked(
     file_hashes = {}  # file_name -> hash
     file_sizes = {}   # file_name -> size
     table_row_counts = {}  # table -> count
-    logger.info("import started year=%s", year)
+    logger.info("import started year=%s force=%s", year, force)
 
     # 第一步：解析所有Excel文件，收集实际年份
     perf_rows = []
@@ -278,7 +283,7 @@ async def _upload_files_locked(
         try:
             perf_bytes = await performance.read()
             h = _hash_bytes(perf_bytes)
-            if _skip_duplicate_upload(performance.filename, h, "performance", results):
+            if _skip_duplicate_upload(performance.filename, h, "performance", results, force=force):
                 raise _DuplicateUpload()
             file_hashes[performance.filename] = h
             file_sizes[performance.filename] = len(perf_bytes)
@@ -308,7 +313,7 @@ async def _upload_files_locked(
         try:
             jd_bytes = await jingdai.read()
             h = _hash_bytes(jd_bytes)
-            if _skip_duplicate_upload(jingdai.filename, h, "jingdai", results):
+            if _skip_duplicate_upload(jingdai.filename, h, "jingdai", results, force=force):
                 raise _DuplicateUpload()
             file_hashes[jingdai.filename] = h
             file_sizes[jingdai.filename] = len(jd_bytes)
@@ -333,7 +338,7 @@ async def _upload_files_locked(
         try:
             hr_bytes = await hr.read()
             h = _hash_bytes(hr_bytes)
-            if _skip_duplicate_upload(hr.filename, h, "hr", results):
+            if _skip_duplicate_upload(hr.filename, h, "hr", results, force=force):
                 raise _DuplicateUpload()
             file_hashes[hr.filename] = h
             file_sizes[hr.filename] = len(hr_bytes)
@@ -352,7 +357,7 @@ async def _upload_files_locked(
         try:
             val_bytes = await value.read()
             h = _hash_bytes(val_bytes)
-            if _skip_duplicate_upload(value.filename, h, "value", results):
+            if _skip_duplicate_upload(value.filename, h, "value", results, force=force):
                 raise _DuplicateUpload()
             file_hashes[value.filename] = h
             file_sizes[value.filename] = len(val_bytes)
@@ -473,9 +478,10 @@ async def import_files(
     hr: UploadFile = File(None),
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
+    force: bool = Query(False),
     _user=Depends(require_permission("upload")),
 ):
-    return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year, _user=_user)
+    return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year, force=force, _user=_user)
 
 
 # 静态文件服务 - 生产HTML

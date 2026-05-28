@@ -102,14 +102,14 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.74"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.74"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.75"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.75"></script>' in html
     assert '<script src="js/export-excel.js"></script>' in html
     assert '<script src="js/upload.js"></script>' in html
     assert '<script src="js/target-modal.js"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.57"></script>' in html
     assert '<script src="js/platform-trend.js"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.74"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.75"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -167,7 +167,7 @@ def test_local_seed_data_is_development_only_when_api_is_slow_or_unavailable():
     assert "Object.keys(productFallbackData).forEach(key => delete productFallbackData[key])" in data_integration
     assert "Object.keys(teamMock).forEach(key => delete teamMock[key])" in data_integration
     assert "clearRuntimeFallbackYear" in data_integration
-    assert "暂保留本地兜底数据" in combined
+    assert "已重新写入并刷新看板数据" in combined
     assert "await fetchTargetData(DEFAULT_DASHBOARD_YEAR_NUM);\n      const ok = await loadYearFromApi" in html
 
 
@@ -176,6 +176,9 @@ def test_upload_js_no_duplicate_vars():
     import re
     declarations = re.findall(r'(?:const|let|var)\s+_uploading', upload)
     assert len(declarations) <= 1, f"Duplicate _uploading: {declarations}"
+    assert "/api/upload?force=true" in upload
+    assert "已重新写入并刷新看板数据" in upload
+    assert "未写入数据" in upload
 
 
 def test_all_js_brackets_balanced():
@@ -296,7 +299,7 @@ def test_honor_page_is_separate_runtime():
     assert 'data-permission="honor_view" onclick="window.location.href=\'/honor\'" style="margin-right:8px;">荣誉体系</button>' in html
     assert "????" not in html
     assert "星钻联盟荣誉体系" in honor_html
-    assert '<script src="/js/honor.js?v=1.0.74"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.75"></script>' in honor_html
     assert "数据适配检查" in honor_html
     assert "数据适配" in honor_html
     assert "/api/honor/field-audit" in honor_js
@@ -593,7 +596,7 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
 
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
-    assert '<script src="js/platform-trend-main.js?v=1.0.74"></script>' in html
+    assert '<script src="js/platform-trend-main.js?v=1.0.75"></script>' in html
     assert "Object.keys(platformMock).forEach(year => delete platformMock[year])" in platform_main
     assert "function refreshPlatformChart()" in platform_main
     assert "function switchYear(value)" in platform_main
