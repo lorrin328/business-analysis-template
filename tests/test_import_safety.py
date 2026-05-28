@@ -41,6 +41,14 @@ def test_force_upload_bypasses_duplicate_skip():
     assert results["skipped"] == []
 
 
+def test_upload_endpoint_defaults_to_force_true():
+    import inspect
+    from main import upload_files
+
+    default = inspect.signature(upload_files).parameters["force"].default
+    assert getattr(default, "default", None) is True
+
+
 def test_import_status_marks_partial_data_integrity():
     result = _set_import_status(
         {"uploaded": ["performance"], "errors": ["value failed"], "skipped": []},

@@ -208,7 +208,7 @@ async def upload_files(
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
     allow_partial: bool = Query(False),
-    force: bool = Query(False),
+    force: bool = Query(True),
     _user=Depends(require_permission("upload")),
 ):
     """上传Excel文件并聚合到SQLite"""
@@ -228,6 +228,7 @@ async def upload_files(
         status=result.get("status", "success"),
         detail={
             "year": year,
+            "force": result.get("force"),
             "import_id": result.get("import_id"),
             "uploaded": result.get("uploaded", []),
             "errors": result.get("errors", []),
@@ -245,7 +246,7 @@ async def _upload_files_locked(
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
     allow_partial: bool = Query(False),
-    force: bool = Query(False),
+    force: bool = Query(True),
 ):
     """上传Excel文件并聚合到SQLite。调用方必须先获得 operation_lock。"""
     # 单文件最大 20MB
@@ -254,6 +255,7 @@ async def _upload_files_locked(
         if f and f.size and f.size > max_size:
             raise HTTPException(status_code=413, detail=f"文件 {f.filename} 超过 {MAX_UPLOAD_SIZE_MB}MB 限制")
     results = {"uploaded": [], "errors": [], "skipped": [], "data_years": set()}
+    results["force"] = bool(force)
     file_hashes = {}  # file_name -> hash
     file_sizes = {}   # file_name -> size
     table_row_counts = {}  # table -> count
@@ -478,7 +480,7 @@ async def import_files(
     hr: UploadFile = File(None),
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
-    force: bool = Query(False),
+    force: bool = Query(True),
     _user=Depends(require_permission("upload")),
 ):
     return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year, force=force, _user=_user)
