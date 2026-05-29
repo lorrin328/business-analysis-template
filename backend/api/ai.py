@@ -241,7 +241,14 @@ def ai_dashboard_snapshot(
 
 @router.get("/openapi.json")
 def ai_openapi(request: Request):
-    base_url = str(request.base_url).rstrip("/")
+    public_base = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if public_base:
+        base_url = public_base
+    else:
+        forwarded_proto = request.headers.get("x-forwarded-proto")
+        host = request.headers.get("host") or request.url.netloc
+        scheme = forwarded_proto or ("https" if host and not host.startswith(("127.0.0.1", "localhost")) else request.url.scheme)
+        base_url = f"{scheme}://{host}".rstrip("/")
     return {
         "openapi": "3.1.0",
         "info": {
