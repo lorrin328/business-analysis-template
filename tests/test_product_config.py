@@ -657,3 +657,33 @@ class TestProductConfig:
             conn.execute("DELETE FROM product_config")
             conn.commit()
             conn.close()
+
+    def test_aggregate_2026_4281_counts_as_10year_product(self):
+        """2026 business rule: product 4281 enters both longterm and 10-year metrics."""
+        import pandas as pd
+        from etl.aggregates.org import aggregate_org_performance
+
+        df = pd.DataFrame([{
+            "年": 2026,
+            "年月": "202605",
+            "业务模式": "OTO",
+            "销售机构名称": "上海",
+            "产品代码": "4281.0",
+            "产品名称": "太平超e保（长享版）长期医疗保险（费率可调）",
+            "期交保费": 10000,
+            "缴费年限": 1,
+        }, {
+            "年": 2027,
+            "年月": "202705",
+            "业务模式": "OTO",
+            "销售机构名称": "上海",
+            "产品代码": "4281",
+            "产品名称": "太平超e保（长享版）长期医疗保险（费率可调）",
+            "期交保费": 10000,
+            "缴费年限": 1,
+        }])
+
+        rows = aggregate_org_performance(df)
+        by_year = {r["year"]: r for r in rows}
+        assert by_year[2026]["product_10year"] == 1
+        assert by_year[2027]["product_10year"] == 0

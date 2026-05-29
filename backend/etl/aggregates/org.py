@@ -12,7 +12,7 @@ from etl.columns import _pick_col
 from config.business_lines import TRANSFORM_CHANNELS
 from config.orgs import ORG_SCOPE
 from db import get_db
-from metrics.business_rules import normalize_product_code
+from metrics.business_rules import is_tenyear_product, normalize_product_code
 
 def aggregate_org_daily_performance(df: pd.DataFrame) -> List[Dict]:
     """按日、机构、业务模式聚合保费，用于机构筛选后的同口径日累计趋势。"""
@@ -83,16 +83,27 @@ def aggregate_org_performance(df: pd.DataFrame) -> List[Dict]:
     work['_zs'] = _to_number(work[zs_col]) if zs_col else 0
 
     # 产品分类：10年期 / 商保年金 / 保障类
+    work['_product_code'] = ""
+    if product_code_col:
+        work['_product_code'] = work[product_code_col].map(normalize_product_code)
+
     work['_is_10year'] = False
     if pay_years_col:
         work['_pay_years_num'] = pd.to_numeric(work[pay_years_col], errors='coerce').fillna(0)
-        work['_is_10year'] = work['_pay_years_num'] >= 10
+        work['_is_10year'] = work.apply(
+            lambda r: is_tenyear_product(r['_pay_years_num'], r['_product_code'], r['_year']),
+            axis=1,
+        )
+    elif product_code_col:
+        work['_is_10year'] = work.apply(
+            lambda r: is_tenyear_product(None, r['_product_code'], r['_year']),
+            axis=1,
+        )
 
     # 从 product_config 表读取商保年金和保障类配置
     work['_is_annuity'] = False
     work['_is_protection'] = False
     if product_code_col:
-        work['_product_code'] = work[product_code_col].map(normalize_product_code)
         try:
             with get_db() as conn:
                 c = conn.cursor()

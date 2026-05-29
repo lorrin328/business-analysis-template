@@ -25,6 +25,9 @@ SHORTTERM_TERMS = {
 }
 
 LONGTERM_PRODUCT_CODES = {"4281"}
+TENYEAR_PRODUCT_CODES_BY_YEAR = {
+    2026: {"4281"},
+}
 
 
 def normalize_product_code(value) -> str:
@@ -60,3 +63,18 @@ def is_longterm_policy(term_value=None, product_code=None, pay_years_value=None)
         return float(pay_years_value) >= 2
     except (TypeError, ValueError):
         return False
+
+
+def is_tenyear_product(pay_years_value=None, product_code=None, year=None) -> bool:
+    """Return whether a policy should enter the 10-year product metric."""
+    try:
+        if float(pay_years_value) >= 10:
+            return True
+    except (TypeError, ValueError):
+        pass
+
+    try:
+        rule_year = int(year)
+    except (TypeError, ValueError):
+        return False
+    return normalize_product_code(product_code) in TENYEAR_PRODUCT_CODES_BY_YEAR.get(rule_year, set())
