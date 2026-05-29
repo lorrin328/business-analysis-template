@@ -8,6 +8,8 @@
       projects: { businessLine: 'all' },
       specialists: { keyword: '', org: 'all', businessLine: 'all' },
       managers: { keyword: '', roleType: 'all', businessLine: 'all' },
+      specialistHistory: { keyword: '', org: 'all', businessLine: 'all' },
+      managerHistory: { keyword: '', org: 'all', businessLine: 'all', roleType: 'all' },
       warnings: { keyword: '', org: 'all', businessLine: 'all', type: 'all' },
       persons: { keyword: '', org: 'all', businessLine: 'all', roleType: 'all', level: 'all' },
     },
@@ -21,6 +23,11 @@
     role_type: '层级',
     staff_code: '人员代码',
     staff_name: '人员姓名',
+    manager_code: '主管/经理代码',
+    manager_name: '主管/经理姓名',
+    team_code: '团队代码',
+    team_scope: '团队层级',
+    data_note: '数据说明',
     tracked_headcount: '追踪人力',
     member_count: '会员人数',
     member_rate: '会员率',
@@ -38,7 +45,14 @@
     warning_type: '预警类型',
     month: '月份',
     diamond_delta: '本月变化',
-    standard_premium: '标保',
+    standard_premium: '标保(万)',
+    qj_premium: '期交保费(万)',
+    team_qj_premium: '团队期交(万)',
+    team_standard_premium: '团队标保(万)',
+    team_tracked_headcount: '团队人力',
+    star_manpower_count: '星钻人力数',
+    team_diamond_balance: '团队钻石',
+    manager_diamond_balance: '管理职钻石',
     longterm_policy_count: '长险件数',
     suggested_action: '建议动作',
     level: '会员等级',
@@ -54,7 +68,9 @@
     'rank', 'tracked_headcount', 'member_count', 'monthly_gain_count',
     'monthly_deduct_count', 'total_diamond', 'estimated_reward',
     'diamond_balance', 'total_gain', 'total_deduct', 'qualified_months',
-    'month', 'diamond_delta', 'standard_premium', 'longterm_policy_count',
+    'month', 'diamond_delta', 'standard_premium', 'qj_premium', 'team_qj_premium',
+    'team_standard_premium', 'team_tracked_headcount', 'star_manpower_count',
+    'team_diamond_balance', 'manager_diamond_balance', 'longterm_policy_count',
     'count', 'gain_count', 'deduct_count', 'qualified_count',
   ]);
 
@@ -116,7 +132,7 @@
     if (key === 'is_new_star') return Number(value) ? '是' : '否';
     if (PERCENT_COLUMNS.has(key)) return percentText(value);
     if (key === 'avg_diamond') return numberText(value, 1);
-    if (key === 'standard_premium') return numberText(Number(value || 0) / 10000, 2);
+    if (['standard_premium', 'qj_premium', 'team_qj_premium', 'team_standard_premium'].includes(key)) return numberText(Number(value || 0) / 10000, 2);
     if (NUMBER_COLUMNS.has(key)) return numberText(value, 0);
     return value ?? '-';
   }
@@ -304,8 +320,12 @@
           ${selectControl('specialistBusinessLine', '项目', f.businessLine, optionValues(rows, 'business_line'))}
         </div>
       </div>
-      <div id="specialistTable"></div>`;
+      <div class="split-layout">
+        <div><h3>机构 / 项目整体表现</h3><div id="specialistTable"></div></div>
+        <div><h3>人员历史月度明细</h3><div id="specialistHistoryTable"></div></div>
+      </div>`;
     renderTable('specialistTable', filtered, ['rank', 'dimension', 'business_line', 'tracked_headcount', 'member_count', 'member_rate', 'monthly_gain_count', 'monthly_deduct_count', 'total_diamond']);
+    renderSpecialistHistory();
     bindFilter('specialistKeyword', 'input', () => { state.filters.specialists.keyword = document.getElementById('specialistKeyword').value; renderSpecialists(); });
     bindFilter('specialistOrg', 'change', () => { state.filters.specialists.org = document.getElementById('specialistOrg').value; renderSpecialists(); });
     bindFilter('specialistBusinessLine', 'change', () => { state.filters.specialists.businessLine = document.getElementById('specialistBusinessLine').value; renderSpecialists(); });
@@ -328,11 +348,66 @@
           ${selectControl('managerBusinessLine', '项目', f.businessLine, optionValues(rows, 'business_line'))}
         </div>
       </div>
-      <div id="managerTable"></div>`;
+      <div class="split-layout">
+        <div><h3>管理职整体表现</h3><div id="managerTable"></div></div>
+        <div><h3>主管 / 经理历史团队表现</h3><div id="managerHistoryTable"></div></div>
+      </div>`;
     renderTable('managerTable', filtered, ['rank', 'dimension', 'business_line', 'tracked_headcount', 'member_count', 'member_rate', 'avg_diamond', 'monthly_gain_count', 'monthly_deduct_count', 'total_diamond']);
+    renderManagerHistory();
     bindFilter('managerKeyword', 'input', () => { state.filters.managers.keyword = document.getElementById('managerKeyword').value; renderManagers(); });
     bindFilter('managerRoleType', 'change', () => { state.filters.managers.roleType = document.getElementById('managerRoleType').value; renderManagers(); });
     bindFilter('managerBusinessLine', 'change', () => { state.filters.managers.businessLine = document.getElementById('managerBusinessLine').value; renderManagers(); });
+  }
+
+  function renderSpecialistHistory() {
+    const rows = state.dashboard?.specialistHistory || [];
+    const f = state.filters.specialistHistory;
+    const base = rows.filter(row => (
+      matchesKeyword(row, f.keyword, ['staff_code', 'staff_name', 'org'])
+      && (state.filters.specialists.org === 'all' || row.org === state.filters.specialists.org)
+      && (state.filters.specialists.businessLine === 'all' || row.business_line === state.filters.specialists.businessLine)
+      && (f.org === 'all' || row.org === f.org)
+      && (f.businessLine === 'all' || row.business_line === f.businessLine)
+    ));
+    const host = document.getElementById('specialistHistoryTable');
+    if (!host) return;
+    host.insertAdjacentHTML('beforebegin', `
+      <div class="filter-bar compact-history-filter">
+        ${searchControl('specialistHistoryKeyword', '人员', f.keyword, '代码/姓名/机构')}
+        ${selectControl('specialistHistoryOrg', '机构', f.org, optionValues(rows, 'org'))}
+        ${selectControl('specialistHistoryBusinessLine', '项目', f.businessLine, optionValues(rows, 'business_line'))}
+      </div>`);
+    renderTable('specialistHistoryTable', base, ['org', 'business_line', 'staff_code', 'staff_name', 'month', 'qj_premium', 'standard_premium', 'longterm_policy_count', 'monthly_qualified', 'diamond_delta', 'diamond_balance', 'membership_level']);
+    bindFilter('specialistHistoryKeyword', 'input', () => { state.filters.specialistHistory.keyword = document.getElementById('specialistHistoryKeyword').value; renderSpecialists(); });
+    bindFilter('specialistHistoryOrg', 'change', () => { state.filters.specialistHistory.org = document.getElementById('specialistHistoryOrg').value; renderSpecialists(); });
+    bindFilter('specialistHistoryBusinessLine', 'change', () => { state.filters.specialistHistory.businessLine = document.getElementById('specialistHistoryBusinessLine').value; renderSpecialists(); });
+  }
+
+  function renderManagerHistory() {
+    const rows = state.dashboard?.managerHistory || [];
+    const f = state.filters.managerHistory;
+    const base = rows.filter(row => (
+      matchesKeyword(row, f.keyword, ['manager_code', 'manager_name', 'org', 'team_code'])
+      && (state.filters.managers.roleType === 'all' || row.role_type === state.filters.managers.roleType)
+      && (state.filters.managers.businessLine === 'all' || row.business_line === state.filters.managers.businessLine)
+      && (f.org === 'all' || row.org === f.org)
+      && (f.businessLine === 'all' || row.business_line === f.businessLine)
+      && (f.roleType === 'all' || row.role_type === f.roleType)
+    ));
+    const host = document.getElementById('managerHistoryTable');
+    if (!host) return;
+    host.insertAdjacentHTML('beforebegin', `
+      <div class="filter-bar compact-history-filter">
+        ${searchControl('managerHistoryKeyword', '主管/经理', f.keyword, '代码/姓名/团队')}
+        ${selectControl('managerHistoryOrg', '机构', f.org, optionValues(rows, 'org'))}
+        ${selectControl('managerHistoryBusinessLine', '项目', f.businessLine, optionValues(rows, 'business_line'))}
+        ${selectControl('managerHistoryRoleType', '层级', f.roleType, optionValues(rows, 'role_type'))}
+      </div>`);
+    renderTable('managerHistoryTable', base, ['org', 'business_line', 'role_type', 'manager_code', 'manager_name', 'month', 'team_scope', 'team_code', 'team_tracked_headcount', 'star_manpower_count', 'team_qj_premium', 'team_standard_premium', 'team_diamond_balance', 'manager_diamond_balance', 'monthly_gain_count', 'monthly_deduct_count', 'data_note']);
+    bindFilter('managerHistoryKeyword', 'input', () => { state.filters.managerHistory.keyword = document.getElementById('managerHistoryKeyword').value; renderManagers(); });
+    bindFilter('managerHistoryOrg', 'change', () => { state.filters.managerHistory.org = document.getElementById('managerHistoryOrg').value; renderManagers(); });
+    bindFilter('managerHistoryBusinessLine', 'change', () => { state.filters.managerHistory.businessLine = document.getElementById('managerHistoryBusinessLine').value; renderManagers(); });
+    bindFilter('managerHistoryRoleType', 'change', () => { state.filters.managerHistory.roleType = document.getElementById('managerHistoryRoleType').value; renderManagers(); });
   }
 
   function renderWarnings() {

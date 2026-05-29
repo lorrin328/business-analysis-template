@@ -187,6 +187,21 @@ def test_honor_dashboard_returns_tracking_sections(auth_db):
                     "month": 5,
                     "org": "上海",
                     "business_line": "OTO",
+                    "staff_code": "1001",
+                    "staff_name": "张三",
+                    "role_type": "个人",
+                    "diamond_delta": 1,
+                    "diamond_balance": 3,
+                    "membership_level": "初级会员",
+                    "standard_premium": 20000,
+                    "longterm_policy_count": 1,
+                },
+                {
+                    "batch_id": batch_id,
+                    "year": 2026,
+                    "month": 5,
+                    "org": "上海",
+                    "business_line": "OTO",
                     "staff_code": "2001",
                     "staff_name": "李四",
                     "role_type": "主管",
@@ -199,8 +214,56 @@ def test_honor_dashboard_returns_tracking_sections(auth_db):
             ],
             "quarter_rewards": [],
             "exceptions": [],
-            "source_staff_month": [],
-            "source_policy": [],
+            "source_staff_month": [
+                {
+                    "batch_id": batch_id,
+                    "year": 2026,
+                    "month": 5,
+                    "org": "上海",
+                    "business_line": "OTO",
+                    "staff_code": "1001",
+                    "staff_name": "张三",
+                    "role_type": "个人",
+                    "group_code": "G1",
+                    "department_code": "D1",
+                },
+                {
+                    "batch_id": batch_id,
+                    "year": 2026,
+                    "month": 5,
+                    "org": "上海",
+                    "business_line": "OTO",
+                    "staff_code": "2001",
+                    "staff_name": "李四",
+                    "role_type": "主管",
+                    "group_code": "G1",
+                    "department_code": "D1",
+                },
+            ],
+            "source_policy": [
+                {
+                    "batch_id": batch_id,
+                    "year": 2026,
+                    "month": 5,
+                    "org": "上海",
+                    "business_line": "OTO",
+                    "staff_code": "1001",
+                    "policy_no": "P001",
+                    "qj_premium": 20000,
+                    "standard_premium": 20000,
+                },
+                {
+                    "batch_id": batch_id,
+                    "year": 2026,
+                    "month": 5,
+                    "org": "上海",
+                    "business_line": "OTO",
+                    "staff_code": "2001",
+                    "policy_no": "P002",
+                    "qj_premium": 10000,
+                    "standard_premium": 10000,
+                },
+            ],
         },
         0,
     )
@@ -212,4 +275,9 @@ def test_honor_dashboard_returns_tracking_sections(auth_db):
     assert data["projects"][0]["dimension"] == "OTO"
     assert data["specialists"][0]["dimension"] == "上海"
     assert data["managers"][0]["dimension"] == "主管"
+    assert data["specialistHistory"][0]["staff_code"] == "1001"
+    assert data["specialistHistory"][0]["qj_premium"] == 20000
+    assert data["managerHistory"][0]["manager_code"] == "2001"
+    assert data["managerHistory"][0]["star_manpower_count"] == 1
+    assert data["managerHistory"][0]["team_qj_premium"] == 30000
     assert data["warnings"][0]["warning_type"] == "月度扣减"

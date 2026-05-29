@@ -205,6 +205,20 @@ def fetch_dashboard(batch_id: int) -> dict[str, Any]:
                 (batch_id,),
             ).fetchall()
         ]
+        source_staff = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM honor_source_staff_month WHERE batch_id = ? ORDER BY year, month, org, business_line, staff_code",
+                (batch_id,),
+            ).fetchall()
+        ]
+        source_policy = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM honor_source_policy WHERE batch_id = ?",
+                (batch_id,),
+            ).fetchall()
+        ]
     person_index = {
         (str(row.get("staff_code") or ""), str(row.get("business_line") or "")): row
         for row in person_summary
@@ -228,6 +242,9 @@ def fetch_dashboard(batch_id: int) -> dict[str, Any]:
     warnings = _build_monthly_warnings(person_month, person_index, exceptions)
     levels = _level_distribution(person_summary)
     trend = _monthly_trend(person_month)
+    qj_index = _policy_qj_index(source_policy)
+    specialist_history = _specialist_history(person_month, qj_index)
+    manager_history = _manager_history(source_staff, person_month, qj_index)
 
     return {
         "batch": summary.get("batch"),
@@ -236,6 +253,8 @@ def fetch_dashboard(batch_id: int) -> dict[str, Any]:
         "projects": _rank_rows(project_rows, "member_rate", "total_diamond"),
         "specialists": _rank_rows(specialist_rows, "member_rate", "total_diamond"),
         "managers": _rank_rows(manager_rows, "member_rate", "total_diamond"),
+        "specialistHistory": specialist_history[:3000],
+        "managerHistory": manager_history[:3000],
         "warnings": warnings,
         "persons": person_summary[:1000],
         "levels": levels,
@@ -299,6 +318,124 @@ def _aggregate_rows(
         item["member_rate"] = item["member_count"] / tracked if tracked else 0
         item["avg_diamond"] = item["total_diamond"] / tracked if tracked else 0
     return list(grouped.values())
+
+
+def _policy_qj_index(source_policy: list[dict[str, Any]]) -> dict[tuple[int, str, str], dict[str, float]]:
+    index: dict[tuple[int, str, str], dict[str, float]] = {}
+    for row in source_policy:
+        key = (
+            int(row.get("month") or 0),
+            str(row.get("staff_code") or ""),
+            str(row.get("business_line") or ""),
+        )
+        item = index.setdefault(key, {"qj_premium": 0.0, "standard_premium": 0.0, "policy_count": 0.0})
+        item["qj_premium"] += float(row.get("qj_premium") or 0)
+        item["standard_premium"] += float(row.get("standard_premium") or 0)
+        item["policy_count"] += 1
+    return index
+
+
+def _clean_team_code(value: Any) -> str:
+    code = str(value or "").strip()
+    if code.lower() in {"none", "nan", "null"}:
+        return ""
+    return code
+
+
+def _specialist_history(
+    person_month: list[dict[str, Any]],
+    qj_index: dict[tuple[int, str, str], dict[str, float]],
+) -> list[dict[str, Any]]:
+    rows = []
+    for row in person_month:
+        if row.get("role_type") in {"主管", "经理"}:
+            continue
+        key = (int(row.get("month") or 0), str(row.get("staff_code") or ""), str(row.get("business_line") or ""))
+        premium = qj_index.get(key, {})
+        rows.append(
+            {
+                "org": row.get("org"),
+                "business_line": row.get("business_line"),
+                "staff_code": row.get("staff_code"),
+                "staff_name": row.get("staff_name"),
+                "month": row.get("month"),
+                "qj_premium": round(float(premium.get("qj_premium") or 0), 2),
+                "standard_premium": round(float(row.get("standard_premium") or 0), 2),
+                "longterm_policy_count": int(row.get("longterm_policy_count") or 0),
+                "monthly_qualified": int(row.get("monthly_qualified") or 0),
+                "diamond_delta": int(row.get("diamond_delta") or 0),
+                "diamond_balance": int(row.get("diamond_balance") or 0),
+                "membership_level": row.get("membership_level"),
+                "is_new_star": int(row.get("is_new_star") or 0),
+            }
+        )
+    return sorted(rows, key=lambda item: (str(item.get("org") or ""), str(item.get("business_line") or ""), str(item.get("staff_code") or ""), int(item.get("month") or 0)))
+
+
+def _manager_history(
+    source_staff: list[dict[str, Any]],
+    person_month: list[dict[str, Any]],
+    qj_index: dict[tuple[int, str, str], dict[str, float]],
+) -> list[dict[str, Any]]:
+    person_month_index = {
+        (int(row.get("month") or 0), str(row.get("staff_code") or ""), str(row.get("business_line") or "")): row
+        for row in person_month
+    }
+    staff_by_team: dict[tuple[int, str, str, str, str], list[dict[str, Any]]] = {}
+    for row in source_staff:
+        month = int(row.get("month") or 0)
+        line = str(row.get("business_line") or "")
+        org = str(row.get("org") or "")
+        for scope, code in (("主管", row.get("group_code")), ("经理", row.get("department_code"))):
+            team_code = _clean_team_code(code)
+            if not team_code:
+                continue
+            staff_by_team.setdefault((month, org, line, scope, team_code), []).append(row)
+
+    rows = []
+    for manager in source_staff:
+        role_type = str(manager.get("role_type") or "")
+        if role_type not in {"主管", "经理"}:
+            continue
+        month = int(manager.get("month") or 0)
+        line = str(manager.get("business_line") or "")
+        org = str(manager.get("org") or "")
+        team_code = _clean_team_code(manager.get("group_code") if role_type == "主管" else manager.get("department_code"))
+        team_rows = staff_by_team.get((month, org, line, role_type, team_code), []) if team_code else []
+        team_person_rows = [
+            person_month_index.get((month, str(staff.get("staff_code") or ""), line))
+            for staff in team_rows
+        ]
+        team_person_rows = [row for row in team_person_rows if row]
+        manager_person = person_month_index.get((month, str(manager.get("staff_code") or ""), line), {})
+        qj_total = 0.0
+        standard_total = 0.0
+        for staff in team_rows:
+            premium = qj_index.get((month, str(staff.get("staff_code") or ""), line), {})
+            qj_total += float(premium.get("qj_premium") or 0)
+            standard_total += float(premium.get("standard_premium") or 0)
+        rows.append(
+            {
+                "org": org,
+                "business_line": line,
+                "role_type": role_type,
+                "manager_code": manager.get("staff_code"),
+                "manager_name": manager.get("staff_name"),
+                "month": month,
+                "team_code": team_code,
+                "team_scope": "营业组" if role_type == "主管" else "营业部",
+                "team_tracked_headcount": len(team_rows),
+                "star_manpower_count": sum(1 for row in team_person_rows if row.get("membership_level") != "未入会"),
+                "monthly_gain_count": sum(1 for row in team_person_rows if int(row.get("diamond_delta") or 0) > 0),
+                "monthly_deduct_count": sum(1 for row in team_person_rows if int(row.get("diamond_delta") or 0) < 0),
+                "team_qj_premium": round(qj_total, 2),
+                "team_standard_premium": round(standard_total, 2),
+                "team_diamond_balance": sum(int(row.get("diamond_balance") or 0) for row in team_person_rows),
+                "manager_diamond_balance": int(manager_person.get("diamond_balance") or 0),
+                "data_note": "" if team_code else "缺团队编码，暂不归集团队",
+            }
+        )
+    return sorted(rows, key=lambda item: (str(item.get("org") or ""), str(item.get("business_line") or ""), str(item.get("manager_code") or ""), int(item.get("month") or 0)))
 
 
 def _reward_amount(level: str | None) -> int:
