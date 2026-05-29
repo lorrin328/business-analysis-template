@@ -8,7 +8,7 @@ from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
 from honor.config import DATA_SOURCE_MODE, RULE_VERSION
 from honor.exporter import build_honor_export_workbook
-from honor.repository import fetch_summary, fetch_table, latest_batch
+from honor.repository import fetch_dashboard, fetch_summary, fetch_table, latest_batch
 from honor.service import recalculate_honor, run_field_audit
 from services.audit_log import log_operation
 from services.response import success_response
@@ -76,6 +76,30 @@ def summary(
         "honor_view_batch",
         user=_user,
         detail={"year": data.get("batch", {}).get("year"), "month": data.get("batch", {}).get("month"), "batchId": batch["id"], "ruleVersion": data.get("batch", {}).get("rule_version"), "dataSourceMode": data.get("batch", {}).get("data_source_mode"), "userOrgScope": "all"},
+    )
+    return success_response(data, meta={"batchId": batch["id"], "ruleVersion": RULE_VERSION, "dataSourceMode": DATA_SOURCE_MODE})
+
+
+@router.get("/dashboard")
+def dashboard(
+    year: int = Query(DEFAULT_YEAR),
+    month: int | None = None,
+    batch_id: int | None = Query(None, alias="batchId"),
+    _user=Depends(require_permission("honor_view")),
+):
+    batch = _batch_or_404(batch_id, year, month)
+    data = fetch_dashboard(int(batch["id"]))
+    log_operation(
+        "honor_dashboard_view",
+        user=_user,
+        detail={
+            "year": data.get("batch", {}).get("year"),
+            "month": data.get("batch", {}).get("month"),
+            "batchId": batch["id"],
+            "ruleVersion": data.get("batch", {}).get("rule_version"),
+            "dataSourceMode": data.get("batch", {}).get("data_source_mode"),
+            "userOrgScope": "all",
+        },
     )
     return success_response(data, meta={"batchId": batch["id"], "ruleVersion": RULE_VERSION, "dataSourceMode": DATA_SOURCE_MODE})
 

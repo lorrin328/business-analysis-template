@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>星钻联盟荣誉体系</title>
-  <script src="/js/api-client.js?v=1.0.88"></script>
+  <script src="/js/api-client.js?v=1.0.89"></script>
   <style>
     :root {
       color-scheme: dark;
@@ -76,16 +76,17 @@
       display: inline-flex;
       align-items: center;
     }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px; }
-    .card {
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .metric-card {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 14px 16px;
-      min-height: 92px;
+      min-height: 104px;
     }
-    .card .label { color: var(--muted); font-size: 13px; }
-    .card .value { font-size: 26px; font-weight: 700; margin-top: 10px; color: #8bb8ff; }
+    .metric-label { color: var(--muted); font-size: 13px; }
+    .metric-value { font-size: 26px; font-weight: 700; margin-top: 8px; color: #8bb8ff; }
+    .metric-note { color: var(--muted); margin-top: 8px; font-size: 12px; }
     .summary-strip {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -127,8 +128,46 @@
       overflow: auto;
     }
     .panel.active { display: block; }
-    .panel-title { font-size: 16px; font-weight: 700; margin: 0 0 12px; }
-    .panel-note { color: var(--muted); margin: 0 0 12px; line-height: 1.55; }
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+    .panel-head h2, .panel-block h2, .panel-block h3 { margin: 0 0 8px; font-size: 16px; }
+    .panel-head p, .panel-note { color: var(--muted); margin: 0 0 12px; line-height: 1.55; }
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .panel-block {
+      background: rgba(13,24,41,.58);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .panel-block.wide { grid-column: span 2; }
+    .split-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(320px, .6fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .conclusion-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    .conclusion-list div {
+      background: rgba(32,51,77,.65);
+      border: 1px solid rgba(49,73,100,.7);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .conclusion-list span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+    .conclusion-list strong { color: #dceaff; font-size: 17px; }
     .filter-bar {
       display: flex;
       flex-wrap: wrap;
@@ -155,6 +194,18 @@
     .warn { color: var(--gold); }
     .bad { color: var(--red); }
     .empty { padding: 28px; text-align: center; color: var(--muted); }
+    .bar-row {
+      display: grid;
+      grid-template-columns: minmax(80px, 150px) 1fr 76px;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 0;
+      color: #dceaff;
+    }
+    .bar-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-row strong { text-align: right; font-variant-numeric: tabular-nums; }
+    .bar-track { height: 8px; background: rgba(79,140,255,.13); border-radius: 999px; overflow: hidden; }
+    .bar-track i { display: block; height: 100%; background: linear-gradient(90deg, #4f8cff, #25c285); border-radius: inherit; }
     @media (max-width: 760px) {
       header { padding: 0 14px; align-items: flex-start; flex-direction: column; justify-content: center; padding-top: 10px; padding-bottom: 10px; }
       main { padding: 14px; }
@@ -162,13 +213,17 @@
       button, input, select { width: 100%; }
       .toolbar label, .filter-bar label { width: 100%; }
       .filter-bar input, .filter-bar select { min-width: 0; }
-      .card .value { font-size: 22px; }
+      .metric-value { font-size: 22px; }
+      .dashboard-grid, .split-layout { grid-template-columns: 1fr; }
+      .panel-block.wide { grid-column: auto; }
+      .panel-head { display: block; }
+      .bar-row { grid-template-columns: 90px 1fr 64px; }
     }
   </style>
 </head>
 <body>
   <header>
-    <div><span class="page-title">星钻联盟荣誉体系</span><span class="version">v1.0.88</span></div>
+    <div><span class="page-title">星钻联盟荣誉体系</span><span class="version">v1.0.89</span></div>
     <div><a href="/">返回经营看板</a></div>
   </header>
   <main>
@@ -190,25 +245,25 @@
     <section class="cards" id="honorCards"></section>
 
     <nav class="tabs">
-      <div class="tab active" data-tab="overview">总览</div>
-      <div class="tab" data-tab="orgs">机构对比</div>
-      <div class="tab" data-tab="levels">等级分布</div>
-      <div class="tab" data-tab="trend">趋势分析</div>
-      <div class="tab" data-tab="warnings">预警清单</div>
+      <div class="tab active" data-tab="overview">总览驾驶舱</div>
+      <div class="tab" data-tab="orgs">机构追踪</div>
+      <div class="tab" data-tab="projects">项目分析</div>
+      <div class="tab" data-tab="specialists">专员级</div>
+      <div class="tab" data-tab="managers">管理职</div>
+      <div class="tab" data-tab="warnings">月度预警</div>
       <div class="tab" data-tab="persons">人员明细</div>
-      <div class="tab" data-tab="exceptions">异常清单</div>
-      <div class="tab" data-tab="audit">数据适配</div>
+      <div class="tab" data-tab="audit">数据审计</div>
     </nav>
 
     <section id="overview" class="panel active"><div class="empty">正在加载数据适配结果...</div></section>
     <section id="orgs" class="panel"></section>
-    <section id="levels" class="panel"></section>
-    <section id="trend" class="panel"></section>
+    <section id="projects" class="panel"></section>
+    <section id="specialists" class="panel"></section>
+    <section id="managers" class="panel"></section>
     <section id="warnings" class="panel"></section>
     <section id="persons" class="panel"></section>
-    <section id="exceptions" class="panel"></section>
     <section id="audit" class="panel"></section>
   </main>
-  <script src="/js/honor.js?v=1.0.88"></script>
+  <script src="/js/honor.js?v=1.0.89"></script>
 </body>
 </html>

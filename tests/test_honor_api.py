@@ -122,3 +122,94 @@ def test_honor_summary_prefers_latest_calculation_batch_over_audit_only_batch(au
 
     assert audit_only_batch > result_batch
     assert latest_batch(2026, 5)["id"] == result_batch
+
+
+def test_honor_dashboard_returns_tracking_sections(auth_db):
+    from honor.repository import create_batch, replace_calculation_results
+
+    client = TestClient(app)
+    token = _login(client)["token"]
+    batch_id = create_batch(year=2026, month=5, rule_version="2026-v1", created_by="pytest")
+    replace_calculation_results(
+        batch_id,
+        {
+            "org_summary": [
+                {
+                    "batch_id": batch_id,
+                    "year": 2026,
+                    "month": 5,
+                    "org": "上海",
+                    "business_line": "OTO",
+                    "tracked_headcount": 2,
+                    "member_count": 1,
+                    "member_rate": 0.5,
+                    "monthly_gain_count": 1,
+                    "monthly_deduct_count": 1,
+                    "total_diamond": 3,
+                }
+            ],
+            "person_summary": [
+                {
+                    "batch_id": batch_id,
+                    "year": 2026,
+                    "latest_month": 5,
+                    "org": "上海",
+                    "business_line": "OTO",
+                    "staff_code": "1001",
+                    "staff_name": "张三",
+                    "role_type": "个人",
+                    "diamond_balance": 3,
+                    "membership_level": "初级会员",
+                    "total_gain": 3,
+                    "total_deduct": 0,
+                    "qualified_months": 3,
+                },
+                {
+                    "batch_id": batch_id,
+                    "year": 2026,
+                    "latest_month": 5,
+                    "org": "上海",
+                    "business_line": "OTO",
+                    "staff_code": "2001",
+                    "staff_name": "李四",
+                    "role_type": "主管",
+                    "diamond_balance": 0,
+                    "membership_level": "未入会",
+                    "total_gain": 1,
+                    "total_deduct": 1,
+                    "qualified_months": 1,
+                },
+            ],
+            "person_month": [
+                {
+                    "batch_id": batch_id,
+                    "year": 2026,
+                    "month": 5,
+                    "org": "上海",
+                    "business_line": "OTO",
+                    "staff_code": "2001",
+                    "staff_name": "李四",
+                    "role_type": "主管",
+                    "diamond_delta": -1,
+                    "diamond_balance": 0,
+                    "membership_level": "未入会",
+                    "standard_premium": 0,
+                    "longterm_policy_count": 0,
+                }
+            ],
+            "quarter_rewards": [],
+            "exceptions": [],
+            "source_staff_month": [],
+            "source_policy": [],
+        },
+        0,
+    )
+
+    resp = client.get(f"/api/honor/dashboard?batchId={batch_id}", headers=_headers(token))
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["orgs"][0]["org"] == "上海"
+    assert data["projects"][0]["dimension"] == "OTO"
+    assert data["specialists"][0]["dimension"] == "上海"
+    assert data["managers"][0]["dimension"] == "主管"
+    assert data["warnings"][0]["warning_type"] == "月度扣减"
