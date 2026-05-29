@@ -6,6 +6,7 @@ from typing import Any
 
 from db.connection import get_db
 from db.schema import init_db
+from metrics.business_rules import standard_premium_for_manpower
 from services.raw_table_reader import quote_identifier, raw_table_columns, read_raw_table_rows
 
 
@@ -211,9 +212,12 @@ def _load_performance(conn, year: int, business_lines: set[str] | None, orgs: se
         if orgs and org not in orgs:
             continue
         key = (row_year, row_month, staff_id)
-        grouped[key]["qj_premium"] += _to_float(_row_value(row, ("期交保费",))) / 10000.0
+        qj_premium = _to_float(_row_value(row, ("期交保费",)))
+        source_standard_premium = _to_float(_row_value(row, ("折算保费", "标准保费", "标保")))
+        product_code = _row_value(row, ("产品代码",))
+        grouped[key]["qj_premium"] += qj_premium / 10000.0
         grouped[key]["standard_premium"] += (
-            _to_float(_row_value(row, ("折算保费", "标准保费", "标保"))) / 10000.0
+            standard_premium_for_manpower(qj_premium, source_standard_premium, product_code, row_year) / 10000.0
         )
         policy_no = _clean_text(_row_value(row, ("投保单号", "保单号")))
         if policy_no:
@@ -526,6 +530,7 @@ def _standard_manpower_analysis(
         "definitions": {
             "OTO": "月末在职且当月折算保费/标准保费大于等于2万元",
             "证保": "月末在职且当月折算保费/标准保费大于等于3万元",
+            "specialProductRules": "2026年产品代码4281按10年及以上交期处理，标准人力计算时标准保费按期交保费全额计入",
             "premiumContribution": "保费贡献按标准人力对应的期交保费计算",
             "periodAggregation": "季度/年度为所选月份的人月口径汇总，月度为当月人数口径",
         },

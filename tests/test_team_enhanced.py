@@ -341,3 +341,60 @@ def test_team_enhanced_standard_manpower_by_org_line_and_month(tmp_path, monkeyp
         "北京 / 证保",
     }
     assert any(row["month"] == 5 and row["label"] == "整体" and row["standardCount"] == 3 for row in standard["trend"])
+
+
+def test_team_enhanced_standard_manpower_2026_product_4281_uses_full_qj(tmp_path, monkeypatch):
+    from db import connection
+    import db as db_module
+    from db.repositories import team_enhanced
+    from db.repositories.team_enhanced import get_team_enhanced_analysis
+
+    db_path = tmp_path / "team_enhanced_4281.db"
+    monkeypatch.setattr(connection, "DB_PATH", str(db_path))
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    monkeypatch.setattr(team_enhanced, "init_db", lambda: None)
+
+    with connection.get_db() as conn:
+        conn.execute(
+            """CREATE TABLE hr_data (
+                "统计年" INTEGER, "统计月" INTEGER, "销售机构名称" TEXT,
+                "业务模式名称" TEXT, "职等" TEXT, "人员代码" TEXT,
+                "月末司龄区间" TEXT, "月初在职人力" INTEGER, "月末在职人力" INTEGER
+            )"""
+        )
+        conn.execute(
+            """CREATE TABLE performance (
+                "年" INTEGER, "年月" TEXT, "业务模式" TEXT, "销售机构名称" TEXT,
+                "人员工号" TEXT, "投保单号" TEXT, "产品代码" TEXT,
+                "期交保费" REAL, "折算保费" REAL
+            )"""
+        )
+        conn.executemany(
+            'INSERT INTO hr_data VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                (2026, 5, "上海", "OTO", "F1", "A001", "1年以内", 1, 1),
+                (2026, 5, "上海", "OTO", "F1", "A002", "1年以内", 1, 1),
+                (2027, 5, "上海", "OTO", "F1", "A003", "1年以内", 1, 1),
+            ],
+        )
+        conn.executemany(
+            'INSERT INTO performance VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                (2026, "202605", "OTO", "上海", "A001", "P1", "4281.0", 20000, 2000),
+                (2026, "202605", "OTO", "上海", "A002", "P2", "9999", 20000, 2000),
+                (2027, "202705", "OTO", "上海", "A003", "P3", "4281", 20000, 2000),
+            ],
+        )
+        conn.commit()
+
+    result_2026 = get_team_enhanced_analysis(2026, period_type="month", period_value=5, business_lines=["OTO"])
+    standard_2026 = result_2026["standardManpower"]["summary"][0]
+    assert standard_2026["trackedHeadcount"] == 2
+    assert standard_2026["standardCount"] == 1
+    assert standard_2026["standardQjPremium"] == 2.0
+    assert standard_2026["standardPremium"] == 2.0
+
+    result_2027 = get_team_enhanced_analysis(2027, period_type="month", period_value=5, business_lines=["OTO"])
+    standard_2027 = result_2027["standardManpower"]["summary"][0]
+    assert standard_2027["trackedHeadcount"] == 1
+    assert standard_2027["standardCount"] == 0

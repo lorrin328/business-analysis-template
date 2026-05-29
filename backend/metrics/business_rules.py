@@ -78,3 +78,33 @@ def is_tenyear_product(pay_years_value=None, product_code=None, year=None) -> bo
     except (TypeError, ValueError):
         return False
     return normalize_product_code(product_code) in TENYEAR_PRODUCT_CODES_BY_YEAR.get(rule_year, set())
+
+
+def standard_premium_for_manpower(
+    qj_premium_value=None,
+    source_standard_premium_value=None,
+    product_code=None,
+    year=None,
+) -> float:
+    """Standard premium used by team standard-manpower thresholds, in source currency unit.
+
+    2026 company rule: product 4281 is treated as 10-year-and-above payment period
+    for standard manpower, so its standard premium equals qj premium even if the
+    source file's calculated standard premium applied a 0.1 coefficient.
+    """
+    try:
+        rule_year = int(year)
+    except (TypeError, ValueError):
+        rule_year = None
+    if (
+        rule_year is not None
+        and normalize_product_code(product_code) in TENYEAR_PRODUCT_CODES_BY_YEAR.get(rule_year, set())
+    ):
+        try:
+            return float(qj_premium_value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    try:
+        return float(source_standard_premium_value or 0)
+    except (TypeError, ValueError):
+        return 0.0
