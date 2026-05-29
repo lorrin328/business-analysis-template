@@ -1,4 +1,14 @@
 # 经营分析看板 - 需求与开发文档
+## v1.0.85 更新说明（2026-05-29）
+**类型**：fix / audit-log / timezone
+
+**变更内容**：
+- 修复操作日志展示时间比北京时间少 8 小时的问题。
+- 经核验 Ubuntu 系统时间与时区正常，问题源于 SQLite `CURRENT_TIMESTAMP` 默认按 UTC 写入。
+- 后端操作日志查询接口返回时将 `created_at` 转换为北京时间，同时保留 `created_at_utc` 便于审计追溯。
+- 前端日志说明明确时间按北京时间展示。
+- 补充操作日志时区转换测试，统一版本号到 v1.0.85。
+
 ## v1.0.84 更新说明（2026-05-28）
 **类型**：feature / permission-admin / user-management
 

@@ -2,9 +2,27 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta
 from typing import Any
 
 from db.connection import get_db
+
+
+LOCAL_TIME_OFFSET = timedelta(hours=8)
+
+
+def _utc_text_to_local(value: Any) -> tuple[str | None, str | None]:
+    if not value:
+        return None, None
+    text = str(value)
+    try:
+        utc_dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if utc_dt.tzinfo is not None:
+            utc_dt = utc_dt.astimezone().replace(tzinfo=None)
+        local_dt = utc_dt + LOCAL_TIME_OFFSET
+        return local_dt.strftime("%Y-%m-%d %H:%M:%S"), utc_dt.strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return text, text
 
 
 def actor_from_user(user: dict | None) -> tuple[int | None, str]:
@@ -63,4 +81,11 @@ def list_operation_logs(limit: int = 200, action: str | None = None, username: s
     params.append(max(1, min(int(limit or 200), 500)))
     with get_db() as conn:
         rows = conn.execute(sql, params).fetchall()
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            item = dict(row)
+            local_time, utc_time = _utc_text_to_local(item.get("created_at"))
+            item["created_at"] = local_time
+            item["created_at_utc"] = utc_time
+            result.append(item)
+        return result

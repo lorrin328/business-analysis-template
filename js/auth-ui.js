@@ -281,7 +281,7 @@
       `).join('');
       body.innerHTML = `
         <div class="chart-note" style="margin-bottom:10px;color:#94a3b8;font-size:12px;">
-          记录用户注册、登录、重置密码、导入报表、设置目标、导出Excel、参数设置和权限管理等关键动作，按发生时间倒序展示。
+          记录用户注册、登录、重置密码、导入报表、设置目标、导出Excel、参数设置和权限管理等关键动作，时间按北京时间展示，按发生时间倒序排列。
         </div>
         <div class="structure-table-wrapper">
           <table class="structure-table">

@@ -92,14 +92,39 @@ def test_admin_operation_logs_capture_login_register_and_permission_changes(auth
 
     logs = client.get("/api/admin/operation-logs?limit=20", headers=admin_headers)
     assert logs.status_code == 200
-    actions = [row["action"] for row in logs.json()["data"]["logs"]]
+    log_rows = logs.json()["data"]["logs"]
+    actions = [row["action"] for row in log_rows]
     assert "login" in actions
     assert "register" in actions
     assert "password_reset" in actions
     assert "permission_admin" in actions
+    assert all("created_at_utc" in row for row in log_rows)
 
     normal_token = registered.json()["data"]["token"]
     assert client.get("/api/admin/operation-logs", headers=_auth_headers(normal_token)).status_code == 403
+
+
+def test_operation_logs_return_local_display_time(auth_db):
+    from db import get_db
+
+    client = TestClient(app)
+    admin = _login(client)
+    admin_headers = _auth_headers(admin["token"])
+
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO operation_logs (username, action, status, detail, created_at)
+            VALUES ('pytest', 'login', 'success', '{}', '2026-05-29 01:00:24')
+            """
+        )
+        conn.commit()
+
+    logs = client.get("/api/admin/operation-logs?limit=1", headers=admin_headers)
+    assert logs.status_code == 200
+    row = logs.json()["data"]["logs"][0]
+    assert row["created_at"] == "2026-05-29 09:00:24"
+    assert row["created_at_utc"] == "2026-05-29 01:00:24"
 
 
 def test_admin_can_create_senior_and_update_permissions(auth_db):
