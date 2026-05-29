@@ -1,4 +1,15 @@
 # 经营分析看板 - 需求与开发文档
+## v1.0.87 更新说明（2026-05-29）
+**类型**：feature / ai-readonly / api
+
+**变更内容**：
+- 新增 `/api/ai/*` 专用只读接口，支持外部 AI 工具读取 KPI、机构摘要、队伍摘要、指标口径和整屏快照。
+- AI 接口使用独立环境变量 `AI_READONLY_TOKEN` 鉴权，支持 `Authorization: Bearer <token>` 或 `X-AI-Token`，不复用管理员账号。
+- 新增 `/api/ai/openapi.json`，只暴露 AI 只读接口说明，便于配置 ChatGPT Actions 或自定义 GPT。
+- AI 读取动作写入操作日志，包括 `ai_kpi_read`、`ai_dashboard_snapshot_read` 等，便于管理员审计。
+- systemd 服务新增 `/opt/business-analysis/deploy/.ai_env` 环境文件入口，用于服务器单独配置 AI 只读令牌。
+- 补充 AI 只读接口鉴权、快照返回和日志记录测试，统一版本号到 v1.0.87。
+
 ## v1.0.86 更新说明（2026-05-29）
 **类型**：fix / metric-scope / product-config
 

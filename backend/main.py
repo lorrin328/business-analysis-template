@@ -24,6 +24,7 @@ from api.diagnostics import router as diagnostics_router
 from api.export import router as export_router
 from api.auth_routes import admin_router, router as auth_router
 from api.honor import router as honor_router
+from api.ai import router as ai_router
 from auth import get_current_user, require_permission
 from config.business_lines import DEFAULT_YEAR
 from db import (
@@ -180,13 +181,13 @@ if _cors_origins:
 # 初始化数据库
 init_db()
 
-for router in [auth_router, admin_router, kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, export_router, honor_router, legacy_router]:
+for router in [auth_router, admin_router, kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, export_router, honor_router, ai_router, legacy_router]:
     app.include_router(router)
 
 
 @app.middleware("http")
 async def require_login_for_api(request: Request, call_next):
-    public_prefixes = ("/api/auth/", "/api/health")
+    public_prefixes = ("/api/auth/", "/api/health", "/api/ai/")
     if request.url.path.startswith("/api/") and not request.url.path.startswith(public_prefixes):
         try:
             get_current_user(request.headers.get("authorization"))
