@@ -508,6 +508,11 @@ if os.path.exists(os.path.join(static_dir, '经营分析模板.html')):
     def honor_page():
         return FileResponse(os.path.join(static_dir, "honor.html"))
 
+    @app.get("/personnel-management")
+    @app.get("/personnel-management.html")
+    def personnel_management_page():
+        return FileResponse(os.path.join(static_dir, "personnel-management.html"))
+
 
 if __name__ == "__main__":
     import uvicorn

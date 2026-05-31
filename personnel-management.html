@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>人员管理</title>
+  <script src="/js/api-client.js?v=1.0.91"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1220;
+      --panel: #162235;
+      --panel-2: #1f3048;
+      --line: #30455f;
+      --text: #f4f8ff;
+      --muted: #9fb1c7;
+      --blue: #4f8cff;
+      --green: #26c281;
+      --orange: #f59e0b;
+      --red: #ef6461;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Microsoft YaHei", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+    }
+    header {
+      min-height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 28px;
+      background: #132137;
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+    main { max-width: 1480px; margin: 0 auto; padding: 24px; }
+    a { color: #a9c7ff; text-decoration: none; }
+    button, input, select {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #23344d;
+      color: var(--text);
+      padding: 8px 12px;
+      font: inherit;
+    }
+    button { cursor: pointer; }
+    button.primary { background: var(--blue); border-color: var(--blue); font-weight: 700; }
+    .title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .page-title { font-size: 18px; font-weight: 700; }
+    .version { color: var(--green); border: 1px solid rgba(38,194,129,.3); border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+    .header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .user-pill { color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; }
+    .tabs { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tab { border-color: var(--line); color: var(--muted); }
+    .tab.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+    .layout { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 16px; align-items: start; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .panel-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; }
+    .form-grid { display: grid; gap: 12px; }
+    .field label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+    .field input, .field select { width: 100%; }
+    .segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .segmented button.active { background: rgba(79,140,255,.24); border-color: var(--blue); color: #fff; }
+    .rate-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+    .rate-chip {
+      background: #20314a;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px;
+      min-height: 58px;
+    }
+    .rate-chip span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+    .rate-chip input { width: 100%; min-height: 30px; padding: 5px 6px; }
+    .result-grid { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 12px; }
+    .metric {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 94px;
+    }
+    .metric-label { color: var(--muted); font-size: 12px; }
+    .metric-value { color: #8db8ff; font-size: 24px; font-weight: 700; margin-top: 8px; word-break: break-all; }
+    .metric-note { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.5; }
+    .section-note {
+      margin-top: 14px;
+      color: var(--muted);
+      line-height: 1.7;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+    .hidden { display: none !important; }
+    .access-denied {
+      max-width: 680px;
+      margin: 80px auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+    }
+    .access-denied strong { display: block; font-size: 18px; margin-bottom: 10px; }
+    @media (max-width: 920px) {
+      header { align-items: flex-start; flex-direction: column; padding: 12px 16px; }
+      main { padding: 16px; }
+      .layout { grid-template-columns: 1fr; }
+      .result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .rate-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 560px) {
+      button, input, select { width: 100%; }
+      .header-actions, .tabs { width: 100%; }
+      .segmented, .result-grid, .rate-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">
+      <span class="page-title">人员管理</span>
+      <span class="version">v1.0.91</span>
+    </div>
+    <div class="header-actions">
+      <span class="user-pill" id="currentUserName">未登录</span>
+      <a href="/">返回经营看板</a>
+    </div>
+  </header>
+
+  <main id="pageMain">
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-calculator="oto" type="button">OTO 基本法测算</button>
+      <button class="tab" data-calculator="zhengbao" type="button">证保基本法测算</button>
+    </div>
+
+    <section class="layout" id="otoCalculator">
+      <div class="panel">
+        <div class="panel-title">OTO 测算条件</div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="otoProd">人产（万元）</label>
+            <input id="otoProd" type="number" min="0" step="0.01" placeholder="请输入人产">
+          </div>
+          <div class="field">
+            <label for="otoTerm">缴期</label>
+            <select id="otoTerm">
+              <option value="">请选择</option>
+              <option>趸交</option>
+              <option>3年</option>
+              <option>5年</option>
+              <option>6年</option>
+              <option>10年</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="otoInst">机构类型</label>
+            <select id="otoInst">
+              <option>A类</option>
+              <option>B类</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="otoCoeff">产品系数</label>
+            <input id="otoCoeff" type="number" min="0" step="0.01" value="1">
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">OTO 测算结果</div>
+        <div class="result-grid" id="otoResults"></div>
+        <div class="section-note">口径：NFYP = 人产 × 10000 × 缴期折算 × 产品系数；团队按个人 4 倍、UM 团队按个人 20 倍测算，团队和经理相关利益按原模块规则分摊。</div>
+      </div>
+    </section>
+
+    <section class="layout hidden" id="zhengbaoCalculator">
+      <div class="panel">
+        <div class="panel-title">证保测算条件</div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="zbProd">人产（万元）</label>
+            <input id="zbProd" type="number" min="0" step="0.01" placeholder="请输入人产">
+          </div>
+          <div class="field">
+            <label for="zbTerm">缴期</label>
+            <select id="zbTerm">
+              <option value="">请选择</option>
+              <option>趸交</option>
+              <option>3年</option>
+              <option>5年</option>
+              <option>6年</option>
+              <option>10年</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>费用版本</label>
+            <div class="segmented">
+              <button type="button" class="active" data-zb-type="standard">标准</button>
+              <button type="button" data-zb-type="favorable">费优</button>
+              <button type="button" data-zb-type="other">其他</button>
+            </div>
+          </div>
+          <div class="field" id="zbRateDisplay"></div>
+          <div class="field hidden" id="zbCustomRates">
+            <label>自定义 FYC 率（%）</label>
+            <div class="rate-grid">
+              <div class="rate-chip"><span>趸交</span><input data-term-rate="趸交" type="number" min="0" step="0.01"></div>
+              <div class="rate-chip"><span>3年</span><input data-term-rate="3年" type="number" min="0" step="0.01"></div>
+              <div class="rate-chip"><span>5年</span><input data-term-rate="5年" type="number" min="0" step="0.01"></div>
+              <div class="rate-chip"><span>6年</span><input data-term-rate="6年" type="number" min="0" step="0.01"></div>
+              <div class="rate-chip"><span>10年</span><input data-term-rate="10年" type="number" min="0" step="0.01"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">证保测算结果</div>
+        <div class="result-grid" id="zbResults"></div>
+        <div class="section-note">口径：FYC = 人产 × 10000 × FYC 率；标准和费优使用内置缴期费率，其他版本按当前缴期自定义费率测算。</div>
+      </div>
+    </section>
+  </main>
+
+  <div class="access-denied hidden" id="accessDenied">
+    <strong>当前账号暂无人员管理权限</strong>
+    <div>该页面默认仅对管理员组开放，可由管理员在权限管理中单独授权。</div>
+    <p><a href="/">返回经营看板</a></p>
+  </div>
+
+  <script src="/js/personnel-management.js?v=1.0.91"></script>
+</body>
+</html>

@@ -1,4 +1,14 @@
 # 经营分析看板 - 需求与开发文档
+## v1.0.91 更新说明（2026-05-31）
+**类型**：feature / personnel-management / calculator
+
+**变更内容**：
+- 主看板右上角新增“人员管理”入口，使用 `personnel_management` 权限控制，默认仅管理员组开放。
+- 新增 `personnel-management.html` 独立页面和 `js/personnel-management.js` 运行脚本，迁移外部人管小程序中的 OTO、证保基本法测算规则。
+- OTO 测算支持人产、缴期、机构类型和产品系数，输出 NFYP、固定收入、浮动收入、团队提奖、主管/经理分摊、成本合计和费用率。
+- 证保测算支持标准、费优和自定义 FYC 率，输出 FYC、职级、基本佣金、绩效佣金、管理津贴、育成津贴、成本合计和费用率。
+- 补充权限默认值和前端静态校验，统一版本号到 v1.0.91。
+
 ## v1.0.90 更新说明（2026-05-29）
 **类型**：feature / honor-history / manager-tracking
 

@@ -64,6 +64,7 @@ def test_register_creates_normal_user_with_restricted_permissions(auth_db):
     assert user["permissions"]["targets"] is False
     assert user["permissions"]["excel_export"] is False
     assert user["permissions"]["permission_admin"] is False
+    assert user["permissions"]["personnel_management"] is False
     assert user["permissions"]["recalculate"] is True
 
     headers = _auth_headers(token)
@@ -140,6 +141,7 @@ def test_admin_can_create_senior_and_update_permissions(auth_db):
     assert created.status_code == 200
     senior = created.json()["data"]
     assert senior["permissions"]["permission_admin"] is False
+    assert senior["permissions"]["personnel_management"] is False
     assert senior["permissions"]["upload"] is True
     assert senior["permissions"]["team_enhanced"] is True
     assert senior["permissions"]["excel_export"] is True

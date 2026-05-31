@@ -84,3 +84,9 @@ def test_js_static_mount_is_registered_when_assets_exist():
     from main import app
 
     assert any(getattr(route, "path", None) == "/js" for route in app.routes)
+
+
+def test_personnel_management_route_is_registered():
+    from main import app
+
+    assert any(getattr(route, "path", None) == "/personnel-management.html" for route in app.routes)

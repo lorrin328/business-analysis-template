@@ -14,6 +14,7 @@
     targets: '目标设置',
     excel_export: '导出Excel',
     permission_admin: '权限管理',
+    personnel_management: '人员管理',
     recalculate: '重新计算',
     honor_view: '星钻联盟查看',
     honor_audit: '星钻数据适配',
