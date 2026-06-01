@@ -1,4 +1,4 @@
-"""Read-only API surface for external AI assistants."""
+﻿"""Read-only API surface for external AI assistants."""
 from __future__ import annotations
 
 import hmac
@@ -120,7 +120,7 @@ def _org_overview(org_data: dict) -> dict:
 
 def _snapshot(kpi: dict, org_data: dict, *, include_org_detail: bool) -> dict:
     data = {
-        "version": "v1.0.91",
+        "version": "v1.0.92",
         "year": kpi.get("year"),
         "month": kpi.get("month"),
         "dataCutoff": kpi.get("data_cutoff"),
@@ -253,7 +253,7 @@ def ai_openapi(request: Request):
         "openapi": "3.1.0",
         "info": {
             "title": "Business Analysis AI Readonly API",
-            "version": "1.0.91",
+            "version": "1.0.92",
             "description": "Read-only KPI dashboard interface for external AI assistants.",
         },
         "servers": [{"url": base_url}],

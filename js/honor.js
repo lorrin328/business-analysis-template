@@ -150,7 +150,9 @@
 
   function renderMetricCards(overview = {}) {
     const cards = [
-      ['追踪人力', numberText(overview.tracked_headcount), '覆盖 OTO、证保'],
+      ['追踪人力', numberText(overview.tracked_headcount), '当月月末在职'],
+      ['累计追踪池', numberText(overview.annual_tracked_headcount), '含历史已离职'],
+      ['离职/非在职清零', numberText(overview.departed_headcount), '不计当月追踪人力'],
       ['会员人数', numberText(overview.member_count), `会员率 ${percentText(overview.member_rate)}`],
       ['资深及以上', numberText(overview.senior_plus_count), '重点荣誉人群'],
       ['本月获钻', numberText(overview.monthly_gain_count), '月度达标人力'],

@@ -99,6 +99,8 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
             else:
                 qualified, protected = monthly_result(business_line, premium, longterm_count)
                 flags = []
+            if not employed:
+                flags.append("月末非在职，按离职清零")
             delta, balance = diamond_delta(
                 balances[(staff_code, business_line)],
                 qualified=qualified,
@@ -137,9 +139,47 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
             person_month.append(row)
             latest[(staff_code, business_line)] = {**row, **staff}
 
+    current_month_keys = set(staff_rows.get((year, month), {}).keys())
+    for key, row in list(latest.items()):
+        if key in current_month_keys:
+            continue
+        staff_code, business_line = key
+        previous_balance = int(balances[key] or 0)
+        delta, balance = diamond_delta(
+            previous_balance,
+            qualified=False,
+            protected_month=False,
+            employed=False,
+        )
+        balances[key] = balance
+        if delta < 0:
+            totals[key]["deduct"] += abs(delta)
+        departure_row = {
+            "batch_id": batch_id,
+            "year": year,
+            "month": month,
+            "org": row.get("org"),
+            "business_line": business_line,
+            "staff_code": staff_code,
+            "staff_name": row.get("staff_name"),
+            "role_type": row.get("role_type"),
+            "is_employed_end_month": 0,
+            "standard_premium": 0,
+            "longterm_policy_count": 0,
+            "monthly_qualified": 0,
+            "protected_month": 0,
+            "diamond_delta": int(delta),
+            "diamond_balance": int(balance),
+            "membership_level": membership_level(balance, employed=False),
+            "is_new_star": 0,
+            "exception_flags": json.dumps(["当月人力基表不存在，按离职清零"], ensure_ascii=False),
+        }
+        person_month.append(departure_row)
+        latest[key] = {**row, **departure_row}
+
     for key, row in latest.items():
         staff_code, business_line = key
-        warning_tags = []
+        warning_tags = _json_list(row.get("exception_flags"))
         if business_line == "蚁桥":
             warning_tags.append("蚁桥/网服不涉及星钻")
         reward_amount, reward_label = reward_for_level(row["membership_level"])
@@ -215,6 +255,18 @@ def _load_staff(year: int, month: int) -> tuple[dict[tuple[int, int], dict[tuple
         staff_rows[(y, m)][(staff_code, business_line)] = item
         source_rows.append({"batch_id": 0, "year": y, "month": m, **item})
     return staff_rows, source_rows
+
+
+def _json_list(value: Any) -> list[str]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed if item]
 
 
 def _load_policies(year: int, month: int, batch_id: int) -> tuple[dict[tuple[int, int, str, str], tuple[float, int]], list[dict[str, Any]], list[dict[str, Any]]]:
@@ -313,16 +365,17 @@ def _build_org_summary(batch_id: int, year: int, month: int, summaries: list[dic
                 "estimated_reward": 0,
             },
         )
-        item["tracked_headcount"] += 1
-        item["member_count"] += 1 if row["membership_level"] != "未入会" else 0
-        item["senior_plus_count"] += 1 if row["membership_level"] in SENIOR_PLUS_LEVELS else 0
-        item["total_diamond"] += int(row["diamond_balance"] or 0)
         current = current_index.get((row["staff_code"], row["business_line"]))
+        current_employed = bool(current and int(current.get("is_employed_end_month") or 0) > 0)
+        item["tracked_headcount"] += 1 if current_employed else 0
+        item["member_count"] += 1 if current_employed and row["membership_level"] != "未入会" else 0
+        item["senior_plus_count"] += 1 if current_employed and row["membership_level"] in SENIOR_PLUS_LEVELS else 0
+        item["total_diamond"] += int(row["diamond_balance"] or 0)
         if current:
             item["monthly_gain_count"] += 1 if int(current["diamond_delta"] or 0) > 0 else 0
             item["monthly_deduct_count"] += 1 if int(current["diamond_delta"] or 0) < 0 else 0
         reward, _ = reward_for_level(row["membership_level"])
-        item["estimated_reward"] += reward
+        item["estimated_reward"] += reward if current_employed else 0
     for item in grouped.values():
         tracked = int(item["tracked_headcount"] or 0)
         item["member_rate"] = item["member_count"] / tracked if tracked else 0

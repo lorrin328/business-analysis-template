@@ -71,3 +71,9 @@ def test_honor_calculator_excludes_yiqiao_and_calculates_oto_zhengbao(tmp_path, 
     oto = next(row for row in result["person_summary"] if row["staff_code"] == "1001")
     assert oto["diamond_balance"] == 2
     assert oto["total_gain"] == 2
+    zhengbao = next(row for row in result["person_summary"] if row["staff_code"] == "2001")
+    assert zhengbao["diamond_balance"] == 0
+    assert zhengbao["total_deduct"] == 1
+    departure_month = next(row for row in result["person_month"] if row["staff_code"] == "2001" and row["month"] == 2)
+    assert departure_month["is_employed_end_month"] == 0
+    assert departure_month["diamond_delta"] == -1

@@ -1,4 +1,4 @@
-from fastapi.testclient import TestClient
+﻿from fastapi.testclient import TestClient
 
 from main import app
 
@@ -31,7 +31,7 @@ def test_ai_api_reads_kpi_snapshot_and_logs(auth_db, monkeypatch):
     snapshot = client.get("/api/ai/dashboard-snapshot?year=2026", headers=headers)
     assert snapshot.status_code == 200
     payload = snapshot.json()["data"]
-    assert payload["version"] == "v1.0.91"
+    assert payload["version"] == "v1.0.92"
     assert "kpi" in payload
     assert "orgOverview" in payload
     assert "metricDefinitions" in payload

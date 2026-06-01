@@ -164,10 +164,24 @@ def fetch_summary(batch_id: int) -> dict[str, Any]:
         ).fetchone()
         exceptions = conn.execute("SELECT COUNT(*) AS count FROM honor_exceptions WHERE batch_id = ?", (batch_id,)).fetchone()
         new_stars = conn.execute("SELECT COUNT(*) AS count FROM honor_person_summary WHERE batch_id = ? AND is_new_star = 1", (batch_id,)).fetchone()
+        annual = conn.execute("SELECT COUNT(*) AS count FROM honor_person_summary WHERE batch_id = ?", (batch_id,)).fetchone()
+        departed = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM honor_person_month
+            WHERE batch_id = ?
+              AND year = ?
+              AND month = ?
+              AND is_employed_end_month = 0
+            """,
+            (batch_id, int(batch["year"] or 0), int(batch["month"] or 0)),
+        ).fetchone()
         data = dict(overview) if overview else {}
         tracked = int(data.get("tracked_headcount") or 0)
         members = int(data.get("member_count") or 0)
         data["member_rate"] = members / tracked if tracked else 0
+        data["annual_tracked_headcount"] = int(annual["count"] if annual else 0)
+        data["departed_headcount"] = int(departed["count"] if departed else 0)
         data["new_star_count"] = int(new_stars["count"] if new_stars else 0)
         data["exception_count"] = int(exceptions["count"] if exceptions else 0)
         return {"batch": dict(batch) if batch else None, "overview": data}
@@ -226,18 +240,21 @@ def fetch_dashboard(batch_id: int) -> dict[str, Any]:
     for row in person_summary:
         row["warning_tags"] = _load_json_list(row.get("warning_tags"))
 
-    project_rows = _aggregate_rows(person_summary, person_month, "business_line")
+    current_month = int((summary.get("batch") or {}).get("month") or 0)
+    project_rows = _aggregate_rows(person_summary, person_month, "business_line", current_month=current_month)
     specialist_rows = _aggregate_rows(
         [row for row in person_summary if row.get("role_type") not in {"主管", "经理"}],
         person_month,
         "org",
         extra_key="business_line",
+        current_month=current_month,
     )
     manager_rows = _aggregate_rows(
         [row for row in person_summary if row.get("role_type") in {"主管", "经理"}],
         person_month,
         "role_type",
         extra_key="business_line",
+        current_month=current_month,
     )
     warnings = _build_monthly_warnings(person_month, person_index, exceptions)
     levels = _level_distribution(person_summary)
@@ -281,10 +298,14 @@ def _aggregate_rows(
     key: str,
     *,
     extra_key: str | None = None,
+    current_month: int | None = None,
 ) -> list[dict[str, Any]]:
+    if current_month is None:
+        current_month = max((int(row.get("month") or 0) for row in months), default=0)
     current_index = {
         (str(row.get("staff_code") or ""), str(row.get("business_line") or "")): row
         for row in months
+        if int(row.get("month") or 0) == int(current_month or 0)
     }
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
     for row in summaries:
@@ -305,11 +326,12 @@ def _aggregate_rows(
                 "avg_diamond": 0,
             },
         )
-        item["tracked_headcount"] += 1
-        item["member_count"] += 1 if row.get("membership_level") != "未入会" else 0
-        item["total_diamond"] += int(row.get("diamond_balance") or 0)
-        item["estimated_reward"] += _reward_amount(row.get("membership_level"))
         current = current_index.get((str(row.get("staff_code") or ""), str(row.get("business_line") or "")))
+        current_employed = bool(current and int(current.get("is_employed_end_month") or 0) > 0)
+        item["tracked_headcount"] += 1 if current_employed else 0
+        item["member_count"] += 1 if current_employed and row.get("membership_level") != "未入会" else 0
+        item["total_diamond"] += int(row.get("diamond_balance") or 0)
+        item["estimated_reward"] += _reward_amount(row.get("membership_level")) if current_employed else 0
         if current:
             item["monthly_gain_count"] += 1 if int(current.get("diamond_delta") or 0) > 0 else 0
             item["monthly_deduct_count"] += 1 if int(current.get("diamond_delta") or 0) < 0 else 0
@@ -534,8 +556,9 @@ def _monthly_trend(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             month,
             {"month": month, "tracked_headcount": 0, "member_count": 0, "gain_count": 0, "deduct_count": 0, "qualified_count": 0},
         )
-        item["tracked_headcount"] += 1
-        item["member_count"] += 1 if row.get("membership_level") != "未入会" else 0
+        employed = int(row.get("is_employed_end_month") or 0) > 0
+        item["tracked_headcount"] += 1 if employed else 0
+        item["member_count"] += 1 if employed and row.get("membership_level") != "未入会" else 0
         item["gain_count"] += 1 if int(row.get("diamond_delta") or 0) > 0 else 0
         item["deduct_count"] += 1 if int(row.get("diamond_delta") or 0) < 0 else 0
         item["qualified_count"] += 1 if int(row.get("monthly_qualified") or 0) > 0 else 0
