@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from db.connection import get_db
@@ -65,6 +66,15 @@ def _ym_from_value(value: Any) -> tuple[int | None, int | None]:
     return None, None
 
 
+def _as_of_date() -> datetime:
+    configured = os.getenv("HONOR_AS_OF_DATE")
+    if configured:
+        parsed = _parse_date(configured)
+        if parsed:
+            return parsed
+    return datetime.now()
+
+
 def normalize_business_line(value: Any) -> str:
     text = _text(value)
     if text in {"证券", "证保"}:
@@ -75,7 +85,7 @@ def normalize_business_line(value: Any) -> str:
 
 
 def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, list[dict[str, Any]]]:
-    staff_rows, source_staff = _load_staff(year, month)
+    staff_rows, source_staff, current_staff = _load_staff(year, month)
     for row in source_staff:
         row["batch_id"] = batch_id
     policy_index, source_policy, policy_exceptions = _load_policies(year, month, batch_id)
@@ -86,6 +96,8 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
     balances: dict[tuple[str, str], int] = defaultdict(int)
     totals: dict[tuple[str, str], dict[str, int]] = defaultdict(lambda: {"gain": 0, "deduct": 0, "qualified": 0})
     latest: dict[tuple[str, str], dict[str, Any]] = {}
+    balance_before_month: dict[tuple[tuple[str, str], int, int], int] = {}
+    person_month_index: dict[tuple[str, str, int, int], dict[str, Any]] = {}
 
     for ym in sorted(staff_rows):
         y, m = ym
@@ -93,6 +105,8 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
             staff_code, business_line = key
             premium, longterm_count = policy_index.get((y, m, staff_code, business_line), (0.0, 0))
             employed = bool(staff.get("is_employed_end_month"))
+            previous_balance = int(balances[(staff_code, business_line)] or 0)
+            balance_before_month[((staff_code, business_line), y, m)] = previous_balance
             if business_line not in {"OTO", "证保"}:
                 qualified, protected = False, False
                 flags = ["非星钻MVP计算业务线"]
@@ -102,7 +116,7 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
             if not employed:
                 flags.append("月末非在职，按离职清零")
             delta, balance = diamond_delta(
-                balances[(staff_code, business_line)],
+                previous_balance,
                 qualified=qualified,
                 protected_month=protected,
                 employed=employed,
@@ -137,14 +151,16 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
                 "exception_flags": json.dumps(flags, ensure_ascii=False),
             }
             person_month.append(row)
+            person_month_index[(staff_code, business_line, y, m)] = row
             latest[(staff_code, business_line)] = {**row, **staff}
 
-    current_month_keys = set(staff_rows.get((year, month), {}).keys())
+    current_month_keys = set(current_staff.keys())
     for key, row in list(latest.items()):
-        if key in current_month_keys:
+        current_status = current_staff.get(key)
+        if current_status and int(current_status.get("is_employed_end_month") or 0) > 0:
             continue
         staff_code, business_line = key
-        previous_balance = int(balances[key] or 0)
+        previous_balance = int(balance_before_month.get((key, year, month), balances[key]) or 0)
         delta, balance = diamond_delta(
             previous_balance,
             qualified=False,
@@ -154,6 +170,8 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
         balances[key] = balance
         if delta < 0:
             totals[key]["deduct"] += abs(delta)
+        flags = ["最新人力清单不存在，按离职清零"] if key not in current_month_keys else ["最新人力清单显示非在职，按离职清零"]
+        existing = person_month_index.get((staff_code, business_line, year, month))
         departure_row = {
             "batch_id": batch_id,
             "year": year,
@@ -164,17 +182,21 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
             "staff_name": row.get("staff_name"),
             "role_type": row.get("role_type"),
             "is_employed_end_month": 0,
-            "standard_premium": 0,
-            "longterm_policy_count": 0,
+            "standard_premium": round(float((existing or {}).get("standard_premium") or 0), 2),
+            "longterm_policy_count": int((existing or {}).get("longterm_policy_count") or 0),
             "monthly_qualified": 0,
             "protected_month": 0,
             "diamond_delta": int(delta),
             "diamond_balance": int(balance),
             "membership_level": membership_level(balance, employed=False),
             "is_new_star": 0,
-            "exception_flags": json.dumps(["当月人力基表不存在，按离职清零"], ensure_ascii=False),
+            "exception_flags": json.dumps(flags, ensure_ascii=False),
         }
-        person_month.append(departure_row)
+        if existing:
+            existing.update(departure_row)
+        else:
+            person_month.append(departure_row)
+            person_month_index[(staff_code, business_line, year, month)] = departure_row
         latest[key] = {**row, **departure_row}
 
     for key, row in latest.items():
@@ -216,10 +238,26 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
     }
 
 
-def _load_staff(year: int, month: int) -> tuple[dict[tuple[int, int], dict[tuple[str, str], dict[str, Any]]], list[dict[str, Any]]]:
+def _load_staff(year: int, month: int) -> tuple[
+    dict[tuple[int, int], dict[tuple[str, str], dict[str, Any]]],
+    list[dict[str, Any]],
+    dict[tuple[str, str], dict[str, Any]],
+]:
     staff_rows: dict[tuple[int, int], dict[tuple[str, str], dict[str, Any]]] = defaultdict(dict)
     source_rows: list[dict[str, Any]] = []
     with get_db() as conn:
+        latest = conn.execute(
+            """
+            SELECT CAST("统计年" AS INTEGER) AS year, CAST("统计月" AS INTEGER) AS month
+            FROM hr_data
+            WHERE CAST("统计年" AS INTEGER) = ?
+            ORDER BY CAST("统计年" AS INTEGER) DESC, CAST("统计月" AS INTEGER) DESC
+            LIMIT 1
+            """,
+            (year,),
+        ).fetchone()
+        status_month = int(latest["month"] if latest and latest["month"] else month)
+        load_until = max(int(month), status_month)
         rows = conn.execute(
             """
             SELECT "统计年", "统计月", "销售机构名称", "业务模式名称", "人员代码", "人员姓名",
@@ -227,8 +265,9 @@ def _load_staff(year: int, month: int) -> tuple[dict[tuple[int, int], dict[tuple
             FROM hr_data
             WHERE CAST("统计年" AS INTEGER) = ? AND CAST("统计月" AS INTEGER) <= ?
             """,
-            (year, month),
+            (year, load_until),
         ).fetchall()
+    current_staff: dict[tuple[str, str], dict[str, Any]] = {}
     for row in rows:
         y = _int(row["统计年"])
         m = _int(row["统计月"])
@@ -252,9 +291,12 @@ def _load_staff(year: int, month: int) -> tuple[dict[tuple[int, int], dict[tuple
             "department_code": _text(row["营业部CODE"]),
             "raw_payload": json.dumps(dict(row), ensure_ascii=False, default=str),
         }
-        staff_rows[(y, m)][(staff_code, business_line)] = item
-        source_rows.append({"batch_id": 0, "year": y, "month": m, **item})
-    return staff_rows, source_rows
+        if m <= month:
+            staff_rows[(y, m)][(staff_code, business_line)] = item
+            source_rows.append({"batch_id": 0, "year": y, "month": m, **item})
+        if m == status_month:
+            current_staff[(staff_code, business_line)] = item
+    return staff_rows, source_rows, current_staff
 
 
 def _json_list(value: Any) -> list[str]:
@@ -273,6 +315,7 @@ def _load_policies(year: int, month: int, batch_id: int) -> tuple[dict[tuple[int
     agg: dict[tuple[int, int, str, str], list[float]] = defaultdict(lambda: [0.0, 0])
     source_rows: list[dict[str, Any]] = []
     exceptions: list[dict[str, Any]] = []
+    as_of = _as_of_date()
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -301,17 +344,37 @@ def _load_policies(year: int, month: int, batch_id: int) -> tuple[dict[tuple[int
         annualized_premium = _num(row["年化规保"])
         is_longterm = _text(row["长短险"]) == "一年期以上"
         callback_dt = _parse_date(row["回销时间"])
-        valid_callback = True
-        if is_longterm and issue_dt and callback_dt and standard_premium > 0:
-            valid_callback = (callback_dt - issue_dt).days <= 30
+        valid_policy = True
+        if standard_premium > 0 and issue_dt:
+            deadline = issue_dt + timedelta(days=45)
+            if callback_dt:
+                valid_policy = 0 <= (callback_dt - issue_dt).days <= 45
+            elif as_of > deadline:
+                valid_policy = False
+            if not valid_policy:
+                exceptions.append(
+                    _exception(
+                        batch_id,
+                        "warning",
+                        "callback_overdue_or_missing",
+                        _text(row["销售机构名称"]),
+                        staff_code,
+                        policy_no,
+                        "承保满45个自然日后未回销成功，保费不计入星钻统计。",
+                    )
+                )
         if standard_premium < 0:
-            exceptions.append(_exception(batch_id, "warning", "negative_premium", _text(row["销售机构名称"]), staff_code, policy_no, "发现负数折算保费，MVP按原值计入并标记，后续需按正负冲减规则复核。"))
+            valid_policy = False
+            exceptions.append(_exception(batch_id, "warning", "negative_premium", _text(row["销售机构名称"]), staff_code, policy_no, "发现负数折算保费或退保冲减，保费不计入星钻统计。"))
         if fallback_date:
             exceptions.append(_exception(batch_id, "info", "date_fallback", _text(row["销售机构名称"]), staff_code, policy_no, "业绩归属使用年月字段降级口径。"))
         if not staff_code:
             exceptions.append(_exception(batch_id, "warning", "missing_staff_code", _text(row["销售机构名称"]), None, policy_no, "业绩明细缺人员工号，未纳入个人星钻计算。"))
             continue
-        if valid_callback:
+        counted_standard_premium = standard_premium if valid_policy else 0.0
+        counted_qj_premium = qj_premium if valid_policy else 0.0
+        counted_annualized_premium = annualized_premium if valid_policy else 0.0
+        if valid_policy:
             key = (int(y), int(m), staff_code, business_line)
             agg[key][0] += standard_premium
             if is_longterm:
@@ -325,11 +388,11 @@ def _load_policies(year: int, month: int, batch_id: int) -> tuple[dict[tuple[int
                 "business_line": business_line,
                 "staff_code": staff_code,
                 "policy_no": policy_no,
-                "is_longterm": 1 if is_longterm else 0,
+                "is_longterm": 1 if (is_longterm and valid_policy) else 0,
                 "payment_years": _num(row["缴费年限"]),
-                "standard_premium": round(standard_premium, 2),
-                "annualized_premium": round(annualized_premium, 2),
-                "qj_premium": round(qj_premium, 2),
+                "standard_premium": round(counted_standard_premium, 2),
+                "annualized_premium": round(counted_annualized_premium, 2),
+                "qj_premium": round(counted_qj_premium, 2),
                 "premium_source": "source_zs_premium",
                 "issue_date": str(row["承保时间"] or ""),
                 "callback_date": str(row["回销时间"] or ""),

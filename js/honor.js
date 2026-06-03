@@ -51,9 +51,14 @@
     team_standard_premium: '团队标保(万)',
     team_tracked_headcount: '团队人力',
     star_manpower_count: '星钻人力数',
+    specialist_member_count: '专员级会员',
+    manager_member_count: '管理职会员',
     team_diamond_balance: '团队钻石',
     manager_diamond_balance: '管理职钻石',
     longterm_policy_count: '长险件数',
+    previous_level: '上月等级',
+    current_level: '本月等级',
+    standard_premium_gap: '标保差额(万)',
     suggested_action: '建议动作',
     level: '会员等级',
     count: '人数',
@@ -70,7 +75,8 @@
     'diamond_balance', 'total_gain', 'total_deduct', 'qualified_months',
     'month', 'diamond_delta', 'standard_premium', 'qj_premium', 'team_qj_premium',
     'team_standard_premium', 'team_tracked_headcount', 'star_manpower_count',
-    'team_diamond_balance', 'manager_diamond_balance', 'longterm_policy_count',
+    'specialist_member_count', 'manager_member_count', 'team_diamond_balance',
+    'manager_diamond_balance', 'longterm_policy_count', 'standard_premium_gap',
     'count', 'gain_count', 'deduct_count', 'qualified_count',
   ]);
 
@@ -132,7 +138,7 @@
     if (key === 'is_new_star') return Number(value) ? '是' : '否';
     if (PERCENT_COLUMNS.has(key)) return percentText(value);
     if (key === 'avg_diamond') return numberText(value, 1);
-    if (['standard_premium', 'qj_premium', 'team_qj_premium', 'team_standard_premium'].includes(key)) return numberText(Number(value || 0) / 10000, 2);
+    if (['standard_premium', 'qj_premium', 'team_qj_premium', 'team_standard_premium', 'standard_premium_gap'].includes(key)) return value === '' ? '-' : numberText(Number(value || 0) / 10000, 2);
     if (NUMBER_COLUMNS.has(key)) return numberText(value, 0);
     return value ?? '-';
   }
@@ -234,6 +240,7 @@
     const overview = data.overview || {};
     const orgs = data.orgs || [];
     const projects = data.projects || [];
+    const orgMemberStructure = data.orgMemberStructure || [];
     const warnings = data.warnings || [];
     const bestOrg = orgs[0];
     const riskOrg = [...orgs].sort((a, b) => Number(b.monthly_deduct_count || 0) - Number(a.monthly_deduct_count || 0))[0];
@@ -253,17 +260,17 @@
           <div id="overviewProjects"></div>
         </section>
         <section class="panel-block wide">
-          <h2>机构会员率 Top</h2>
-          <div id="overviewOrgBars"></div>
+          <h2>各机构会员结构</h2>
+          <div id="overviewOrgMembers"></div>
         </section>
         <section class="panel-block wide">
-          <h2>月度预警优先处理</h2>
+          <h2>月度降级预警</h2>
           <div id="overviewWarnings"></div>
         </section>
       </div>`;
     renderMiniTable('overviewProjects', projects, ['rank', 'dimension', 'tracked_headcount', 'member_count', 'member_rate', 'monthly_gain_count', 'monthly_deduct_count']);
-    renderBarList('overviewOrgBars', orgs, 'org', 'member_rate', percentText);
-    renderMiniTable('overviewWarnings', warnings, ['warning_type', 'org', 'business_line', 'staff_name', 'membership_level', 'suggested_action']);
+    renderMiniTable('overviewOrgMembers', orgMemberStructure, ['rank', 'org', 'member_count', 'specialist_member_count', 'manager_member_count']);
+    renderMiniTable('overviewWarnings', warnings, ['warning_type', 'org', 'business_line', 'staff_name', 'previous_level', 'current_level', 'standard_premium_gap', 'suggested_action']);
   }
 
   function renderOrgs() {
@@ -289,19 +296,19 @@
 
   function renderProjects() {
     const rows = state.dashboard?.projects || [];
+    const orgRows = state.dashboard?.projectOrgs || [];
     const f = state.filters.projects;
     const filtered = rows.filter(row => f.businessLine === 'all' || row.dimension === f.businessLine || row.business_line === f.businessLine);
+    const orgFiltered = orgRows.filter(row => f.businessLine === 'all' || row.dimension === f.businessLine || row.business_line === f.businessLine);
     document.getElementById('projects').innerHTML = `
       <div class="panel-head">
-        <div><h2>项目分析</h2><p>项目口径聚焦 OTO、证保，展示会员转化、获钻、扣减和奖励测算。</p></div>
+        <div><h2>项目分析</h2><p>先看 OTO、证保整体表现，再下钻到项目下各机构的会员转化、获钻和扣减情况。</p></div>
         <div class="filter-bar">${selectControl('projectBusinessLine', '项目', f.businessLine, optionValues(rows, 'dimension'))}</div>
       </div>
-      <div class="split-layout">
-        <div id="projectTable"></div>
-        <div class="panel-block"><h3>项目会员率对比</h3><div id="projectBars"></div></div>
-      </div>`;
+      <div class="panel-block"><h3>项目整体表现</h3><div id="projectTable"></div></div>
+      <div class="panel-block detail-section"><h3>项目下机构表现</h3><div id="projectOrgTable"></div></div>`;
     renderTable('projectTable', filtered, ['rank', 'dimension', 'tracked_headcount', 'member_count', 'member_rate', 'avg_diamond', 'monthly_gain_count', 'monthly_deduct_count', 'estimated_reward']);
-    renderBarList('projectBars', filtered, 'dimension', 'member_rate', percentText);
+    renderTable('projectOrgTable', orgFiltered, ['rank', 'business_line', 'org', 'tracked_headcount', 'member_count', 'member_rate', 'avg_diamond', 'monthly_gain_count', 'monthly_deduct_count', 'total_diamond', 'estimated_reward']);
     bindFilter('projectBusinessLine', 'change', () => { state.filters.projects.businessLine = document.getElementById('projectBusinessLine').value; renderProjects(); });
   }
 
@@ -322,10 +329,8 @@
           ${selectControl('specialistBusinessLine', '项目', f.businessLine, optionValues(rows, 'business_line'))}
         </div>
       </div>
-      <div class="split-layout">
-        <div><h3>机构 / 项目整体表现</h3><div id="specialistTable"></div></div>
-        <div><h3>人员历史月度明细</h3><div id="specialistHistoryTable"></div></div>
-      </div>`;
+      <div class="panel-block"><h3>机构 / 项目整体表现</h3><div id="specialistTable"></div></div>
+      <div class="panel-block detail-section"><h3>人员历史月度明细</h3><div id="specialistHistoryFilters"></div><div id="specialistHistoryTable"></div></div>`;
     renderTable('specialistTable', filtered, ['rank', 'dimension', 'business_line', 'tracked_headcount', 'member_count', 'member_rate', 'monthly_gain_count', 'monthly_deduct_count', 'total_diamond']);
     renderSpecialistHistory();
     bindFilter('specialistKeyword', 'input', () => { state.filters.specialists.keyword = document.getElementById('specialistKeyword').value; renderSpecialists(); });
@@ -350,10 +355,8 @@
           ${selectControl('managerBusinessLine', '项目', f.businessLine, optionValues(rows, 'business_line'))}
         </div>
       </div>
-      <div class="split-layout">
-        <div><h3>管理职整体表现</h3><div id="managerTable"></div></div>
-        <div><h3>主管 / 经理历史团队表现</h3><div id="managerHistoryTable"></div></div>
-      </div>`;
+      <div class="panel-block"><h3>管理职整体表现</h3><div id="managerTable"></div></div>
+      <div class="panel-block detail-section"><h3>主管 / 经理历史团队表现</h3><div id="managerHistoryFilters"></div><div id="managerHistoryTable"></div></div>`;
     renderTable('managerTable', filtered, ['rank', 'dimension', 'business_line', 'tracked_headcount', 'member_count', 'member_rate', 'avg_diamond', 'monthly_gain_count', 'monthly_deduct_count', 'total_diamond']);
     renderManagerHistory();
     bindFilter('managerKeyword', 'input', () => { state.filters.managers.keyword = document.getElementById('managerKeyword').value; renderManagers(); });
@@ -373,12 +376,13 @@
     ));
     const host = document.getElementById('specialistHistoryTable');
     if (!host) return;
-    host.insertAdjacentHTML('beforebegin', `
+    const filters = document.getElementById('specialistHistoryFilters');
+    if (filters) filters.innerHTML = `
       <div class="filter-bar compact-history-filter">
         ${searchControl('specialistHistoryKeyword', '人员', f.keyword, '代码/姓名/机构')}
         ${selectControl('specialistHistoryOrg', '机构', f.org, optionValues(rows, 'org'))}
         ${selectControl('specialistHistoryBusinessLine', '项目', f.businessLine, optionValues(rows, 'business_line'))}
-      </div>`);
+      </div>`;
     renderTable('specialistHistoryTable', base, ['org', 'business_line', 'staff_code', 'staff_name', 'month', 'qj_premium', 'standard_premium', 'longterm_policy_count', 'monthly_qualified', 'diamond_delta', 'diamond_balance', 'membership_level']);
     bindFilter('specialistHistoryKeyword', 'input', () => { state.filters.specialistHistory.keyword = document.getElementById('specialistHistoryKeyword').value; renderSpecialists(); });
     bindFilter('specialistHistoryOrg', 'change', () => { state.filters.specialistHistory.org = document.getElementById('specialistHistoryOrg').value; renderSpecialists(); });
@@ -398,13 +402,14 @@
     ));
     const host = document.getElementById('managerHistoryTable');
     if (!host) return;
-    host.insertAdjacentHTML('beforebegin', `
+    const filters = document.getElementById('managerHistoryFilters');
+    if (filters) filters.innerHTML = `
       <div class="filter-bar compact-history-filter">
         ${searchControl('managerHistoryKeyword', '主管/经理', f.keyword, '代码/姓名/团队')}
         ${selectControl('managerHistoryOrg', '机构', f.org, optionValues(rows, 'org'))}
         ${selectControl('managerHistoryBusinessLine', '项目', f.businessLine, optionValues(rows, 'business_line'))}
         ${selectControl('managerHistoryRoleType', '层级', f.roleType, optionValues(rows, 'role_type'))}
-      </div>`);
+      </div>`;
     renderTable('managerHistoryTable', base, ['org', 'business_line', 'role_type', 'manager_code', 'manager_name', 'month', 'team_scope', 'team_code', 'team_tracked_headcount', 'star_manpower_count', 'team_qj_premium', 'team_standard_premium', 'team_diamond_balance', 'manager_diamond_balance', 'monthly_gain_count', 'monthly_deduct_count', 'data_note']);
     bindFilter('managerHistoryKeyword', 'input', () => { state.filters.managerHistory.keyword = document.getElementById('managerHistoryKeyword').value; renderManagers(); });
     bindFilter('managerHistoryOrg', 'change', () => { state.filters.managerHistory.org = document.getElementById('managerHistoryOrg').value; renderManagers(); });
@@ -423,7 +428,7 @@
     ));
     document.getElementById('warnings').innerHTML = `
       <div class="panel-head">
-        <div><h2>月度预警</h2><p>优先展示扣减、保号、未达标和数据异常，服务月度追踪和机构督导。</p></div>
+        <div><h2>月度预警</h2><p>优先展示本月较上月发生等级下降的人员，并列明降级原因和标保差额。</p></div>
         <div class="filter-bar">
           ${searchControl('warningKeyword', '筛选', f.keyword, '姓名/代码/机构/动作')}
           ${selectControl('warningOrg', '机构', f.org, optionValues(rows, 'org'))}
@@ -432,7 +437,7 @@
         </div>
       </div>
       <div id="warningTable"></div>`;
-    renderTable('warningTable', filtered, ['warning_type', 'month', 'org', 'business_line', 'staff_code', 'staff_name', 'role_type', 'membership_level', 'diamond_balance', 'diamond_delta', 'standard_premium', 'longterm_policy_count', 'suggested_action']);
+    renderTable('warningTable', filtered, ['warning_type', 'month', 'org', 'business_line', 'staff_code', 'staff_name', 'role_type', 'previous_level', 'current_level', 'diamond_balance', 'diamond_delta', 'standard_premium', 'standard_premium_gap', 'longterm_policy_count', 'suggested_action']);
     bindFilter('warningKeyword', 'input', () => { state.filters.warnings.keyword = document.getElementById('warningKeyword').value; renderWarnings(); });
     bindFilter('warningOrg', 'change', () => { state.filters.warnings.org = document.getElementById('warningOrg').value; renderWarnings(); });
     bindFilter('warningBusinessLine', 'change', () => { state.filters.warnings.businessLine = document.getElementById('warningBusinessLine').value; renderWarnings(); });

@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from db.connection import get_db
+from honor.config import MONTHLY_RULES
 
 
 def create_batch(
@@ -242,6 +243,8 @@ def fetch_dashboard(batch_id: int) -> dict[str, Any]:
 
     current_month = int((summary.get("batch") or {}).get("month") or 0)
     project_rows = _aggregate_rows(person_summary, person_month, "business_line", current_month=current_month)
+    project_org_rows = _project_org_rows(org_rows)
+    org_member_structure = _org_member_structure(person_summary, person_month, current_month)
     specialist_rows = _aggregate_rows(
         [row for row in person_summary if row.get("role_type") not in {"主管", "经理"}],
         person_month,
@@ -268,6 +271,8 @@ def fetch_dashboard(batch_id: int) -> dict[str, Any]:
         "overview": summary.get("overview") or {},
         "orgs": _rank_rows(org_rows, "member_rate", "total_diamond"),
         "projects": _rank_rows(project_rows, "member_rate", "total_diamond"),
+        "projectOrgs": project_org_rows,
+        "orgMemberStructure": org_member_structure,
         "specialists": _rank_rows(specialist_rows, "member_rate", "total_diamond"),
         "managers": _rank_rows(manager_rows, "member_rate", "total_diamond"),
         "specialistHistory": specialist_history[:3000],
@@ -340,6 +345,55 @@ def _aggregate_rows(
         item["member_rate"] = item["member_count"] / tracked if tracked else 0
         item["avg_diamond"] = item["total_diamond"] / tracked if tracked else 0
     return list(grouped.values())
+
+
+def _project_org_rows(org_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for row in org_rows:
+        rows.append(
+            {
+                "dimension": row.get("business_line"),
+                "org": row.get("org"),
+                "business_line": row.get("business_line"),
+                "tracked_headcount": int(row.get("tracked_headcount") or 0),
+                "member_count": int(row.get("member_count") or 0),
+                "member_rate": float(row.get("member_rate") or 0),
+                "avg_diamond": float(row.get("avg_diamond") or 0),
+                "monthly_gain_count": int(row.get("monthly_gain_count") or 0),
+                "monthly_deduct_count": int(row.get("monthly_deduct_count") or 0),
+                "total_diamond": int(row.get("total_diamond") or 0),
+                "estimated_reward": float(row.get("estimated_reward") or 0),
+            }
+        )
+    return _rank_rows(rows, "member_rate", "total_diamond")
+
+
+def _org_member_structure(
+    summaries: list[dict[str, Any]],
+    months: list[dict[str, Any]],
+    current_month: int,
+) -> list[dict[str, Any]]:
+    current_index = {
+        (str(row.get("staff_code") or ""), str(row.get("business_line") or "")): row
+        for row in months
+        if int(row.get("month") or 0) == int(current_month or 0)
+    }
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in summaries:
+        current = current_index.get((str(row.get("staff_code") or ""), str(row.get("business_line") or "")))
+        if not current or int(current.get("is_employed_end_month") or 0) <= 0 or row.get("membership_level") == "未入会":
+            continue
+        org = str(row.get("org") or "未归属")
+        item = grouped.setdefault(
+            org,
+            {"org": org, "member_count": 0, "specialist_member_count": 0, "manager_member_count": 0},
+        )
+        item["member_count"] += 1
+        if row.get("role_type") in {"主管", "经理"}:
+            item["manager_member_count"] += 1
+        else:
+            item["specialist_member_count"] += 1
+    return _rank_rows(list(grouped.values()), "member_count", "specialist_member_count")
 
 
 def _policy_qj_index(source_policy: list[dict[str, Any]]) -> dict[tuple[int, str, str], dict[str, float]]:
@@ -485,18 +539,23 @@ def _build_monthly_warnings(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     latest_month = max((int(row.get("month") or 0) for row in months), default=0)
+    previous_index = {
+        (str(row.get("staff_code") or ""), str(row.get("business_line") or "")): row
+        for row in months
+        if int(row.get("month") or 0) == latest_month - 1
+    }
     for row in [item for item in months if int(item.get("month") or 0) == latest_month]:
         staff_key = (str(row.get("staff_code") or ""), str(row.get("business_line") or ""))
         person = person_index.get(staff_key, {})
         delta = int(row.get("diamond_delta") or 0)
-        qualified = int(row.get("monthly_qualified") or 0)
-        protected = int(row.get("protected_month") or 0)
-        if delta < 0 or protected or not qualified:
-            warning_type = "月度扣减" if delta < 0 else ("证保保号" if protected else "本月未达标")
-            action = "本月已扣减，需跟进次月恢复达标" if delta < 0 else ("有长险件但标保未达标，需补足标保缺口" if protected else "无月度入围结果，需关注保单件数和标保")
+        previous = previous_index.get(staff_key)
+        previous_level = previous.get("membership_level") if previous else "未入会"
+        current_level = row.get("membership_level") or "未入会"
+        if _level_rank(current_level) < _level_rank(previous_level):
+            reason, gap = _downgrade_reason(row)
             rows.append(
                 {
-                    "warning_type": warning_type,
+                    "warning_type": "等级下降",
                     "month": row.get("month"),
                     "org": row.get("org"),
                     "business_line": row.get("business_line"),
@@ -504,12 +563,15 @@ def _build_monthly_warnings(
                     "staff_name": row.get("staff_name") or person.get("staff_name"),
                     "role_type": row.get("role_type") or person.get("role_type"),
                     "membership_level": row.get("membership_level"),
+                    "previous_level": previous_level,
+                    "current_level": current_level,
                     "diamond_balance": row.get("diamond_balance"),
                     "diamond_delta": delta,
                     "standard_premium": row.get("standard_premium"),
+                    "standard_premium_gap": gap,
                     "longterm_policy_count": row.get("longterm_policy_count"),
-                    "suggested_action": action,
-                    "priority": 1 if delta < 0 else (2 if protected else 3),
+                    "suggested_action": reason,
+                    "priority": 1,
                 }
             )
     for row in exceptions:
@@ -525,15 +587,52 @@ def _build_monthly_warnings(
                 "staff_name": person.get("staff_name"),
                 "role_type": person.get("role_type"),
                 "membership_level": person.get("membership_level"),
+                "previous_level": "",
+                "current_level": person.get("membership_level"),
                 "diamond_balance": person.get("diamond_balance"),
                 "diamond_delta": "",
                 "standard_premium": "",
+                "standard_premium_gap": "",
                 "longterm_policy_count": "",
                 "suggested_action": row.get("suggested_action") or row.get("message"),
                 "priority": 0 if row.get("severity") == "error" else 2,
             }
         )
     return sorted(rows, key=lambda row: (int(row.get("priority") or 9), str(row.get("org") or ""), str(row.get("staff_code") or "")))[:1000]
+
+
+def _level_rank(level: str | None) -> int:
+    order = {
+        "未入会": 0,
+        "初级会员": 1,
+        "中级会员": 2,
+        "高级会员": 3,
+        "资深会员": 4,
+        "黄金会员": 5,
+        "白金会员": 6,
+        "钻石会员": 7,
+        "至尊会员": 8,
+        "金星会员": 9,
+        "恒星会员": 10,
+        "星钻会员": 11,
+        "星曜会员": 12,
+    }
+    return order.get(str(level or "未入会"), 0)
+
+
+def _downgrade_reason(row: dict[str, Any]) -> tuple[str, float | str]:
+    if int(row.get("is_employed_end_month") or 0) <= 0:
+        return "离职/非在职清零", ""
+    business_line = str(row.get("business_line") or "")
+    premium = float(row.get("standard_premium") or 0)
+    longterm_count = int(row.get("longterm_policy_count") or 0)
+    threshold = float((MONTHLY_RULES.get(business_line) or {}).get("premium_threshold") or 0)
+    gap = max(0.0, threshold - premium) if threshold else ""
+    if longterm_count <= 0:
+        return "缺少长险件", gap
+    if gap:
+        return "标保不足", gap
+    return "未达成当月星钻条件", gap
 
 
 def _level_distribution(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -184,12 +184,29 @@ def test_honor_dashboard_returns_tracking_sections(auth_db):
                 {
                     "batch_id": batch_id,
                     "year": 2026,
+                    "month": 4,
+                    "org": "上海",
+                    "business_line": "OTO",
+                    "staff_code": "2001",
+                    "staff_name": "李四",
+                    "role_type": "主管",
+                    "is_employed_end_month": 1,
+                    "diamond_delta": 1,
+                    "diamond_balance": 1,
+                    "membership_level": "初级会员",
+                    "standard_premium": 20000,
+                    "longterm_policy_count": 1,
+                },
+                {
+                    "batch_id": batch_id,
+                    "year": 2026,
                     "month": 5,
                     "org": "上海",
                     "business_line": "OTO",
                     "staff_code": "1001",
                     "staff_name": "张三",
                     "role_type": "个人",
+                    "is_employed_end_month": 1,
                     "diamond_delta": 1,
                     "diamond_balance": 3,
                     "membership_level": "初级会员",
@@ -205,6 +222,7 @@ def test_honor_dashboard_returns_tracking_sections(auth_db):
                     "staff_code": "2001",
                     "staff_name": "李四",
                     "role_type": "主管",
+                    "is_employed_end_month": 1,
                     "diamond_delta": -1,
                     "diamond_balance": 0,
                     "membership_level": "未入会",
@@ -273,6 +291,10 @@ def test_honor_dashboard_returns_tracking_sections(auth_db):
     data = resp.json()["data"]
     assert data["orgs"][0]["org"] == "上海"
     assert data["projects"][0]["dimension"] == "OTO"
+    assert data["projectOrgs"][0]["org"] == "上海"
+    assert data["orgMemberStructure"][0]["member_count"] == 1
+    assert data["orgMemberStructure"][0]["specialist_member_count"] == 1
+    assert data["orgMemberStructure"][0]["manager_member_count"] == 0
     assert data["specialists"][0]["dimension"] == "上海"
     assert data["managers"][0]["dimension"] == "主管"
     assert data["specialistHistory"][0]["staff_code"] == "1001"
@@ -280,4 +302,7 @@ def test_honor_dashboard_returns_tracking_sections(auth_db):
     assert data["managerHistory"][0]["manager_code"] == "2001"
     assert data["managerHistory"][0]["star_manpower_count"] == 1
     assert data["managerHistory"][0]["team_qj_premium"] == 30000
-    assert data["warnings"][0]["warning_type"] == "月度扣减"
+    assert data["warnings"][0]["warning_type"] == "等级下降"
+    assert data["warnings"][0]["previous_level"] == "初级会员"
+    assert data["warnings"][0]["current_level"] == "未入会"
+    assert data["warnings"][0]["standard_premium_gap"] == 20000
