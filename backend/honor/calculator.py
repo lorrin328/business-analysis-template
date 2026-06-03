@@ -9,7 +9,7 @@ from typing import Any
 
 from db.connection import get_db
 
-from .config import RULE_VERSION, SENIOR_PLUS_LEVELS
+from .config import MONTHLY_RULES, RULE_VERSION, SENIOR_PLUS_LEVELS
 from .rules import diamond_delta, is_new_star, membership_level, monthly_result, reward_for_level
 
 
@@ -19,6 +19,15 @@ def _text(value: Any) -> str:
     text = str(value).strip()
     if text.endswith(".0"):
         text = text[:-2]
+    return text
+
+
+def _staff_code(value: Any) -> str:
+    text = _text(value)
+    if not text:
+        return ""
+    if text.isdigit():
+        return text.zfill(8)
     return text
 
 
@@ -93,25 +102,29 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
     person_month: list[dict[str, Any]] = []
     person_summary: list[dict[str, Any]] = []
     exceptions: list[dict[str, Any]] = policy_exceptions
-    balances: dict[tuple[str, str], int] = defaultdict(int)
-    totals: dict[tuple[str, str], dict[str, int]] = defaultdict(lambda: {"gain": 0, "deduct": 0, "qualified": 0})
+    balances: dict[str, int] = defaultdict(int)
+    totals: dict[str, dict[str, int]] = defaultdict(lambda: {"gain": 0, "deduct": 0, "qualified": 0})
     latest: dict[tuple[str, str], dict[str, Any]] = {}
-    balance_before_month: dict[tuple[tuple[str, str], int, int], int] = {}
+    latest_by_staff: dict[str, dict[str, Any]] = {}
+    balance_before_month: dict[tuple[str, int, int], int] = {}
     person_month_index: dict[tuple[str, str, int, int], dict[str, Any]] = {}
 
     for ym in sorted(staff_rows):
         y, m = ym
         for key, staff in sorted(staff_rows[ym].items()):
             staff_code, business_line = key
-            premium, longterm_count = policy_index.get((y, m, staff_code, business_line), (0.0, 0))
+            metric = _metric_for_staff(policy_index, y, m, staff_code, business_line, staff.get("role_type"))
+            premium = float(metric.get("premium") or 0)
+            longterm_count = int(metric.get("policy_count") or 0)
+            qualified = bool(metric.get("qualified"))
+            protected = bool(metric.get("protected"))
             employed = bool(staff.get("is_employed_end_month"))
-            previous_balance = int(balances[(staff_code, business_line)] or 0)
-            balance_before_month[((staff_code, business_line), y, m)] = previous_balance
+            previous_balance = int(balances[staff_code] or 0)
+            balance_before_month[(staff_code, y, m)] = previous_balance
             if business_line not in {"OTO", "证保"}:
                 qualified, protected = False, False
                 flags = ["非星钻MVP计算业务线"]
             else:
-                qualified, protected = monthly_result(business_line, premium, longterm_count)
                 flags = []
             if not employed:
                 flags.append("月末非在职，按离职清零")
@@ -121,15 +134,15 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
                 protected_month=protected,
                 employed=employed,
             )
-            balances[(staff_code, business_line)] = balance
+            balances[staff_code] = balance
             level = membership_level(balance, employed=employed)
             new_star = is_new_star(staff.get("entry_year"), staff.get("entry_month"), y, m, balance)
             if delta > 0:
-                totals[(staff_code, business_line)]["gain"] += delta
+                totals[staff_code]["gain"] += delta
             elif delta < 0:
-                totals[(staff_code, business_line)]["deduct"] += abs(delta)
+                totals[staff_code]["deduct"] += abs(delta)
             if qualified:
-                totals[(staff_code, business_line)]["qualified"] += 1
+                totals[staff_code]["qualified"] += 1
             row = {
                 "batch_id": batch_id,
                 "year": y,
@@ -153,24 +166,29 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
             person_month.append(row)
             person_month_index[(staff_code, business_line, y, m)] = row
             latest[(staff_code, business_line)] = {**row, **staff}
+            latest_by_staff[staff_code] = {**row, **staff}
 
-    current_month_keys = set(current_staff.keys())
-    for key, row in list(latest.items()):
-        current_status = current_staff.get(key)
+    current_staff_by_code: dict[str, dict[str, Any]] = {}
+    for (staff_code, _business_line), staff in current_staff.items():
+        if staff_code not in current_staff_by_code or int(staff.get("is_employed_end_month") or 0) > 0:
+            current_staff_by_code[staff_code] = staff
+    current_month_codes = set(current_staff_by_code.keys())
+    for staff_code, row in list(latest_by_staff.items()):
+        current_status = current_staff_by_code.get(staff_code)
         if current_status and int(current_status.get("is_employed_end_month") or 0) > 0:
             continue
-        staff_code, business_line = key
-        previous_balance = int(balance_before_month.get((key, year, month), balances[key]) or 0)
+        business_line = row.get("business_line")
+        previous_balance = int(balance_before_month.get((staff_code, year, month), balances[staff_code]) or 0)
         delta, balance = diamond_delta(
             previous_balance,
             qualified=False,
             protected_month=False,
             employed=False,
         )
-        balances[key] = balance
+        balances[staff_code] = balance
         if delta < 0:
-            totals[key]["deduct"] += abs(delta)
-        flags = ["最新人力清单不存在，按离职清零"] if key not in current_month_keys else ["最新人力清单显示非在职，按离职清零"]
+            totals[staff_code]["deduct"] += abs(delta)
+        flags = ["最新人力清单不存在，按离职清零"] if staff_code not in current_month_codes else ["最新人力清单显示非在职，按离职清零"]
         existing = person_month_index.get((staff_code, business_line, year, month))
         departure_row = {
             "batch_id": batch_id,
@@ -197,10 +215,10 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
         else:
             person_month.append(departure_row)
             person_month_index[(staff_code, business_line, year, month)] = departure_row
-        latest[key] = {**row, **departure_row}
+        latest_by_staff[staff_code] = {**row, **departure_row}
 
-    for key, row in latest.items():
-        staff_code, business_line = key
+    for staff_code, row in latest_by_staff.items():
+        business_line = row.get("business_line")
         warning_tags = _json_list(row.get("exception_flags"))
         if business_line == "蚁桥":
             warning_tags.append("蚁桥/网服不涉及星钻")
@@ -217,9 +235,9 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
                 "role_type": row.get("role_type"),
                 "diamond_balance": int(row["diamond_balance"]),
                 "membership_level": row["membership_level"],
-                "total_gain": int(totals[key]["gain"]),
-                "total_deduct": int(totals[key]["deduct"]),
-                "qualified_months": int(totals[key]["qualified"]),
+                "total_gain": int(totals[staff_code]["gain"]),
+                "total_deduct": int(totals[staff_code]["deduct"]),
+                "qualified_months": int(totals[staff_code]["qualified"]),
                 "is_new_star": int(row["is_new_star"]),
                 "warning_tags": json.dumps(warning_tags, ensure_ascii=False),
             }
@@ -271,7 +289,7 @@ def _load_staff(year: int, month: int) -> tuple[
     for row in rows:
         y = _int(row["统计年"])
         m = _int(row["统计月"])
-        staff_code = _text(row["人员代码"])
+        staff_code = _staff_code(row["人员代码"])
         if not y or not m or not staff_code:
             continue
         business_line = normalize_business_line(row["业务模式名称"])
@@ -311,21 +329,35 @@ def _json_list(value: Any) -> list[str]:
     return [str(item) for item in parsed if item]
 
 
-def _load_policies(year: int, month: int, batch_id: int) -> tuple[dict[tuple[int, int, str, str], tuple[float, int]], list[dict[str, Any]], list[dict[str, Any]]]:
-    agg: dict[tuple[int, int, str, str], list[float]] = defaultdict(lambda: [0.0, 0])
+def _metric_for_staff(policy_index: dict[str, dict[Any, dict[str, Any]]], year: int, month: int, staff_code: str, business_line: str, role_type: str | None) -> dict[str, Any]:
+    personal = policy_index["personal"].get((year, month, staff_code, business_line), {"premium": 0.0, "policy_count": 0, "qualified": False, "protected": False})
+    if role_type == "主管":
+        team = policy_index["supervisor"].get((year, month, staff_code), {"premium": 0.0, "policy_count": 0, "qualified": False, "protected": False})
+        return team if team.get("qualified") else personal
+    if role_type == "经理":
+        team = policy_index["manager"].get((year, month, staff_code), {"premium": 0.0, "policy_count": 0, "qualified": False, "protected": False})
+        return team if team.get("qualified") else personal
+    return personal
+
+
+def _load_policies(year: int, month: int, batch_id: int) -> tuple[dict[str, dict[Any, dict[str, Any]]], list[dict[str, Any]], list[dict[str, Any]]]:
+    personal_agg: dict[tuple[int, int, str, str], dict[str, float]] = defaultdict(lambda: {"premium": 0.0, "policy_count": 0.0})
+    supervisor_premium: dict[tuple[int, int, str], float] = defaultdict(float)
+    manager_premium: dict[tuple[int, int, str], float] = defaultdict(float)
+    supervisor_by_person: dict[tuple[int, int, str, str], str] = {}
+    manager_by_person: dict[tuple[int, int, str, str], str] = {}
     source_rows: list[dict[str, Any]] = []
     exceptions: list[dict[str, Any]] = []
     as_of = _as_of_date()
     with get_db() as conn:
         rows = conn.execute(
             """
-            SELECT "年月", "销售机构名称", "业务模式", "人员工号", "投保单号", "承保时间",
-                   "回销时间", "入账时间", "长短险", "缴费年限", "折算保费",
-                   "年化规保", "期交保费", "产品代码", "产品名称"
+            SELECT "年月", "销售机构名称", "业务模式", "人员工号",
+                   "主管工号" AS supervisor_code, "经理工号" AS manager_code,
+                   "投保单号", "承保时间", "回销时间", "入账时间", "长短险", "缴费年限", "折算保费",
+                   "年化规保", "期交保费", "承保件数" AS policy_count, "产品代码", "产品名称"
             FROM performance
-            WHERE CAST(substr("年月", 1, 4) AS INTEGER) = ?
             """,
-            (year,),
         ).fetchall()
     for row in rows:
         issue_dt = _parse_date(row["承保时间"])
@@ -334,7 +366,9 @@ def _load_policies(year: int, month: int, batch_id: int) -> tuple[dict[tuple[int
         if y != year or not m or m > month:
             continue
         fallback_date = not issue_dt and not account_dt
-        staff_code = _text(row["人员工号"])
+        staff_code = _staff_code(row["人员工号"])
+        supervisor_code = _staff_code(row["supervisor_code"])
+        manager_code = _staff_code(row["manager_code"])
         business_line = normalize_business_line(row["业务模式"])
         if business_line not in {"OTO", "证保"}:
             continue
@@ -342,7 +376,8 @@ def _load_policies(year: int, month: int, batch_id: int) -> tuple[dict[tuple[int
         standard_premium = _num(row["折算保费"])
         qj_premium = _num(row["期交保费"])
         annualized_premium = _num(row["年化规保"])
-        is_longterm = _text(row["长短险"]) == "一年期以上"
+        policy_count = _num(row["policy_count"]) or 1
+        is_longterm = policy_count > 0
         callback_dt = _parse_date(row["回销时间"])
         valid_policy = True
         if standard_premium > 0 and issue_dt:
@@ -376,9 +411,14 @@ def _load_policies(year: int, month: int, batch_id: int) -> tuple[dict[tuple[int
         counted_annualized_premium = annualized_premium if valid_policy else 0.0
         if valid_policy:
             key = (int(y), int(m), staff_code, business_line)
-            agg[key][0] += standard_premium
-            if is_longterm:
-                agg[key][1] += 1
+            personal_agg[key]["premium"] += standard_premium
+            personal_agg[key]["policy_count"] += policy_count
+            supervisor_by_person[key] = supervisor_code
+            manager_by_person[key] = manager_code
+            if supervisor_code:
+                supervisor_premium[(int(y), int(m), supervisor_code)] += standard_premium
+            if manager_code:
+                manager_premium[(int(y), int(m), manager_code)] += standard_premium
         source_rows.append(
             {
                 "batch_id": batch_id,
@@ -388,7 +428,7 @@ def _load_policies(year: int, month: int, batch_id: int) -> tuple[dict[tuple[int
                 "business_line": business_line,
                 "staff_code": staff_code,
                 "policy_no": policy_no,
-                "is_longterm": 1 if (is_longterm and valid_policy) else 0,
+                "is_longterm": int(policy_count) if valid_policy else 0,
                 "payment_years": _num(row["缴费年限"]),
                 "standard_premium": round(counted_standard_premium, 2),
                 "annualized_premium": round(counted_annualized_premium, 2),
@@ -400,7 +440,65 @@ def _load_policies(year: int, month: int, batch_id: int) -> tuple[dict[tuple[int
                 "raw_payload": json.dumps(dict(row), ensure_ascii=False, default=str),
             }
         )
-    return {k: (v[0], int(v[1])) for k, v in agg.items()}, source_rows, exceptions
+    personal_metrics: dict[tuple[int, int, str, str], dict[str, Any]] = {}
+    personal_qualified_by_key: dict[tuple[int, int, str, str], bool] = {}
+    for key, values in personal_agg.items():
+        y, m, staff_code, business_line = key
+        premium = float(values["premium"] or 0)
+        count = int(values["policy_count"] or 0)
+        quarter_protected = False
+        qualified, protected = monthly_result(business_line, premium, count)
+        if business_line == "证保":
+            quarter = ((m - 1) // 3) + 1
+            months = list(range((quarter - 1) * 3 + 1, quarter * 3 + 1))
+            quarter_premium = sum(float(personal_agg.get((y, qm, staff_code, business_line), {}).get("premium") or 0) for qm in months)
+            every_month_has_policy = all(float(personal_agg.get((y, qm, staff_code, business_line), {}).get("policy_count") or 0) > 0 for qm in months)
+            quarter_protected = every_month_has_policy and quarter_premium >= float(MONTHLY_RULES["证保"]["premium_threshold"] * 3)
+            if quarter_protected:
+                qualified, protected = True, False
+        personal_metrics[key] = {
+            "premium": premium,
+            "policy_count": count,
+            "qualified": qualified,
+            "protected": protected,
+            "quarter_protected": quarter_protected,
+        }
+        personal_qualified_by_key[key] = bool(qualified)
+
+    supervisor_star_count: dict[tuple[int, int, str], int] = defaultdict(int)
+    manager_star_count: dict[tuple[int, int, str], int] = defaultdict(int)
+    for key, qualified in personal_qualified_by_key.items():
+        if not qualified:
+            continue
+        y, m, person_code, _business_line = key
+        supervisor_code = supervisor_by_person.get(key)
+        manager_code = manager_by_person.get(key)
+        if supervisor_code:
+            supervisor_star_count[(y, m, supervisor_code)] += 1
+        if manager_code:
+            manager_star_count[(y, m, manager_code)] += 1
+
+    supervisor_metrics: dict[tuple[int, int, str], dict[str, Any]] = {}
+    for key, premium in supervisor_premium.items():
+        star_count = int(supervisor_star_count.get(key) or 0)
+        supervisor_metrics[key] = {
+            "premium": float(premium or 0),
+            "policy_count": star_count,
+            "qualified": float(premium or 0) >= 100_000 and star_count >= 4,
+            "protected": False,
+        }
+
+    manager_metrics: dict[tuple[int, int, str], dict[str, Any]] = {}
+    for key, premium in manager_premium.items():
+        star_count = int(manager_star_count.get(key) or 0)
+        manager_metrics[key] = {
+            "premium": float(premium or 0),
+            "policy_count": star_count,
+            "qualified": float(premium or 0) >= 320_000 and star_count >= 12,
+            "protected": False,
+        }
+
+    return {"personal": personal_metrics, "supervisor": supervisor_metrics, "manager": manager_metrics}, source_rows, exceptions
 
 
 def _build_org_summary(batch_id: int, year: int, month: int, summaries: list[dict[str, Any]], months: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -470,9 +568,9 @@ def _build_rewards(batch_id: int, year: int, month: int, summaries: list[dict[st
 
 def _role_type(rank_name: Any) -> str:
     text = _text(rank_name)
-    if "经理" in text:
+    if "创新经理" in text:
         return "经理"
-    if "主管" in text or "服务经理" in text:
+    if "创新主管" in text or "主管" in text or "服务经理" in text:
         return "主管"
     return "个人"
 
