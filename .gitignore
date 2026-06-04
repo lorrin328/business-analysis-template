@@ -20,6 +20,9 @@ AI-经营分析价值基表*.xlsx
 data_agg.json
 data.json
 *.db
+*.lock
+*.import.lock
+_external_materials/
 _cleanup_backup_*/
 bak/
 .pytest_cache/

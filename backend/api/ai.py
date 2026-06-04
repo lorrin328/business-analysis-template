@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import DASHBOARD_KPI_CARDS, DISPLAY_CONSTRAINTS, METRICS
+from config.version import get_app_version, get_semver
 from db import get_kpi_data, get_org_kpi_data
 from db.repositories.target import get_target_config
 from db.repositories.team_enhanced import get_team_enhanced_analysis
@@ -120,7 +121,7 @@ def _org_overview(org_data: dict) -> dict:
 
 def _snapshot(kpi: dict, org_data: dict, *, include_org_detail: bool) -> dict:
     data = {
-        "version": "v1.0.92",
+        "version": get_app_version(),
         "year": kpi.get("year"),
         "month": kpi.get("month"),
         "dataCutoff": kpi.get("data_cutoff"),
@@ -253,7 +254,7 @@ def ai_openapi(request: Request):
         "openapi": "3.1.0",
         "info": {
             "title": "Business Analysis AI Readonly API",
-            "version": "1.0.92",
+            "version": get_semver(),
             "description": "Read-only KPI dashboard interface for external AI assistants.",
         },
         "servers": [{"url": base_url}],

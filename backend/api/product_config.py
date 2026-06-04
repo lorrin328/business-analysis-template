@@ -11,6 +11,7 @@ from etl.aggregates.org import aggregate_org_performance
 from metrics.business_rules import normalize_product_code
 from services.product_config_service import normalize_product_config_table, normalize_product_name
 from services.audit_log import log_operation
+from services.operation_lock import OperationLockError, operation_lock
 from services.raw_table_reader import read_raw_table_dataframe
 from services.response import success_response
 
@@ -205,6 +206,20 @@ def save_product_config(
     保存后自动从 performance 原始表重新计算 agg_org_performance，使配置立即生效。
     Payload: {"products": [{"product_code": "...", "is_annuity": "Y/N", "is_protection": "Y/N"}]}
     """
+    try:
+        with operation_lock("product-config", timeout=1.0):
+            return _save_product_config_locked(payload, _user)
+    except OperationLockError as exc:
+        log_operation(
+            "product_config",
+            user=_user,
+            status="failed",
+            detail={"reason": "operation_locked"},
+        )
+        raise HTTPException(status_code=409, detail="已有导入、重建或参数重算任务正在执行，请稍后再试。") from exc
+
+
+def _save_product_config_locked(payload: dict, _user: dict):
     products = payload.get("products", [])
     if not isinstance(products, list):
         raise HTTPException(status_code=400, detail="products must be a list")

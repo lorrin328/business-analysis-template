@@ -214,7 +214,7 @@ async def upload_files(
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
     allow_partial: bool = Query(False),
-    force: bool = Query(True),
+    force: bool = Query(False),
     _user=Depends(require_permission("upload")),
 ):
     """上传Excel文件并聚合到SQLite"""
@@ -252,7 +252,7 @@ async def _upload_files_locked(
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
     allow_partial: bool = Query(False),
-    force: bool = Query(True),
+    force: bool = Query(False),
 ):
     """上传Excel文件并聚合到SQLite。调用方必须先获得 operation_lock。"""
     # 单文件最大 20MB
@@ -486,7 +486,7 @@ async def import_files(
     hr: UploadFile = File(None),
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
-    force: bool = Query(True),
+    force: bool = Query(False),
     _user=Depends(require_permission("upload")),
 ):
     return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year, force=force, _user=_user)

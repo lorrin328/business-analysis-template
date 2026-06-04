@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -43,7 +43,7 @@
     }
     main { max-width: 1480px; margin: 0 auto; padding: 24px; }
     a { color: #a9c7ff; text-decoration: none; }
-    button, input, select {
+    button, input, select, textarea {
       min-height: 36px;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -52,8 +52,10 @@
       padding: 8px 12px;
       font: inherit;
     }
+    textarea { width: 100%; min-height: 64px; resize: vertical; line-height: 1.6; }
     button { cursor: pointer; }
     button.primary { background: var(--blue); border-color: var(--blue); font-weight: 700; }
+    button.secondary { background: #20314a; }
     .title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .page-title { font-size: 18px; font-weight: 700; }
     .version { color: var(--green); border: 1px solid rgba(38,194,129,.3); border-radius: 999px; padding: 2px 8px; font-size: 12px; }
@@ -62,7 +64,7 @@
     .tabs { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
     .tab { border-color: var(--line); color: var(--muted); }
     .tab.active { background: var(--blue); border-color: var(--blue); color: #fff; }
-    .layout { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 16px; align-items: start; }
+    .calculator { display: grid; gap: 16px; }
     .panel {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -70,9 +72,10 @@
       padding: 16px;
     }
     .panel-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; }
-    .form-grid { display: grid; gap: 12px; }
+    .form-grid { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 12px; }
     .field label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
     .field input, .field select { width: 100%; }
+    .wide { grid-column: 1 / -1; }
     .segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .segmented button.active { background: rgba(79,140,255,.24); border-color: var(--blue); color: #fff; }
     .rate-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
@@ -85,19 +88,18 @@
     }
     .rate-chip span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
     .rate-chip input { width: 100%; min-height: 30px; padding: 5px 6px; }
-    .result-grid { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 12px; }
-    .metric {
-      background: var(--panel-2);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 14px;
-      min-height: 94px;
-    }
-    .metric-label { color: var(--muted); font-size: 12px; }
-    .metric-value { color: #8db8ff; font-size: 24px; font-weight: 700; margin-top: 8px; word-break: break-all; }
-    .metric-note { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.5; }
+    .toolbar { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+    .toolbar-note { color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .table-section { display: grid; gap: 14px; }
+    .table-wrap { width: 100%; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; min-width: 980px; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    th { color: #c7d7ee; background: #20314a; font-weight: 700; position: sticky; top: 0; }
+    th:first-child, td:first-child { text-align: left; }
+    tr:last-child td { border-bottom: 0; }
+    .muted { color: var(--muted); }
     .section-note {
-      margin-top: 14px;
+      margin-top: 12px;
       color: var(--muted);
       line-height: 1.7;
       border-top: 1px solid var(--line);
@@ -114,17 +116,16 @@
       text-align: center;
     }
     .access-denied strong { display: block; font-size: 18px; margin-bottom: 10px; }
-    @media (max-width: 920px) {
+    @media (max-width: 980px) {
       header { align-items: flex-start; flex-direction: column; padding: 12px 16px; }
       main { padding: 16px; }
-      .layout { grid-template-columns: 1fr; }
-      .result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .rate-grid { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 560px) {
       button, input, select { width: 100%; }
-      .header-actions, .tabs { width: 100%; }
-      .segmented, .result-grid, .rate-grid { grid-template-columns: 1fr; }
+      .header-actions, .tabs, .toolbar { width: 100%; }
+      .form-grid, .segmented, .rate-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -146,23 +147,21 @@
       <button class="tab" data-calculator="zhengbao" type="button">证保基本法测算</button>
     </div>
 
-    <section class="layout" id="otoCalculator">
+    <section class="calculator" id="otoCalculator">
       <div class="panel">
-        <div class="panel-title">OTO 测算条件</div>
+        <div class="toolbar">
+          <div class="panel-title">OTO 参数设置</div>
+          <button class="secondary" type="button" data-export="oto">导出当前测算</button>
+        </div>
         <div class="form-grid">
-          <div class="field">
-            <label for="otoProd">人产（万元）</label>
-            <input id="otoProd" type="number" min="0" step="0.01" placeholder="请输入人产">
-          </div>
           <div class="field">
             <label for="otoTerm">缴期</label>
             <select id="otoTerm">
-              <option value="">请选择</option>
               <option>趸交</option>
               <option>3年</option>
               <option>5年</option>
               <option>6年</option>
-              <option>10年</option>
+              <option selected>10年</option>
             </select>
           </div>
           <div class="field">
@@ -176,32 +175,53 @@
             <label for="otoCoeff">产品系数</label>
             <input id="otoCoeff" type="number" min="0" step="0.01" value="1">
           </div>
+          <div class="field">
+            <label for="otoTeamSize">团队人数</label>
+            <input id="otoTeamSize" type="number" min="1" step="1" value="4">
+          </div>
+          <div class="field">
+            <label for="otoUmSize">UM 团队人数</label>
+            <input id="otoUmSize" type="number" min="1" step="1" value="20">
+          </div>
+          <div class="field wide">
+            <label for="otoScenarios">产能档位（万元/人/月，逗号或空格分隔）</label>
+            <textarea id="otoScenarios">1, 5, 10, 20, 30, 50</textarea>
+          </div>
         </div>
+        <div class="section-note">口径：NFYP = 人产 × 10000 × 缴期折算 × 产品系数；团队和 UM 相关利益按设置人数分摊，默认沿用原模块 4 人团队、20 人 UM 团队。</div>
       </div>
-      <div class="panel">
-        <div class="panel-title">OTO 测算结果</div>
-        <div class="result-grid" id="otoResults"></div>
-        <div class="section-note">口径：NFYP = 人产 × 10000 × 缴期折算 × 产品系数；团队按个人 4 倍、UM 团队按个人 20 倍测算，团队和经理相关利益按原模块规则分摊。</div>
+
+      <div class="table-section">
+        <div class="panel">
+          <div class="panel-title">整体基本法成本</div>
+          <div class="table-wrap"><table id="otoOverallTable"></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">专员成本明细</div>
+          <div class="table-wrap"><table id="otoSpecialistTable"></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">管理职成本明细</div>
+          <div class="table-wrap"><table id="otoManagementTable"></table></div>
+        </div>
       </div>
     </section>
 
-    <section class="layout hidden" id="zhengbaoCalculator">
+    <section class="calculator hidden" id="zhengbaoCalculator">
       <div class="panel">
-        <div class="panel-title">证保测算条件</div>
+        <div class="toolbar">
+          <div class="panel-title">证保参数设置</div>
+          <button class="secondary" type="button" data-export="zhengbao">导出当前测算</button>
+        </div>
         <div class="form-grid">
-          <div class="field">
-            <label for="zbProd">人产（万元）</label>
-            <input id="zbProd" type="number" min="0" step="0.01" placeholder="请输入人产">
-          </div>
           <div class="field">
             <label for="zbTerm">缴期</label>
             <select id="zbTerm">
-              <option value="">请选择</option>
               <option>趸交</option>
               <option>3年</option>
               <option>5年</option>
               <option>6年</option>
-              <option>10年</option>
+              <option selected>10年</option>
             </select>
           </div>
           <div class="field">
@@ -212,8 +232,12 @@
               <button type="button" data-zb-type="other">其他</button>
             </div>
           </div>
-          <div class="field" id="zbRateDisplay"></div>
-          <div class="field hidden" id="zbCustomRates">
+          <div class="field">
+            <label for="zbTeamSize">团队人数</label>
+            <input id="zbTeamSize" type="number" min="1" step="1" value="4">
+          </div>
+          <div class="field wide" id="zbRateDisplay"></div>
+          <div class="field wide hidden" id="zbCustomRates">
             <label>自定义 FYC 率（%）</label>
             <div class="rate-grid">
               <div class="rate-chip"><span>趸交</span><input data-term-rate="趸交" type="number" min="0" step="0.01"></div>
@@ -223,12 +247,27 @@
               <div class="rate-chip"><span>10年</span><input data-term-rate="10年" type="number" min="0" step="0.01"></div>
             </div>
           </div>
+          <div class="field wide">
+            <label for="zbScenarios">产能档位（万元/人/月，逗号或空格分隔）</label>
+            <textarea id="zbScenarios">1, 5, 10, 20, 30, 50</textarea>
+          </div>
         </div>
-      </div>
-      <div class="panel">
-        <div class="panel-title">证保测算结果</div>
-        <div class="result-grid" id="zbResults"></div>
         <div class="section-note">口径：FYC = 人产 × 10000 × FYC 率；标准和费优使用内置缴期费率，其他版本按当前缴期自定义费率测算。</div>
+      </div>
+
+      <div class="table-section">
+        <div class="panel">
+          <div class="panel-title">整体基本法成本</div>
+          <div class="table-wrap"><table id="zbOverallTable"></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">专员成本明细</div>
+          <div class="table-wrap"><table id="zbSpecialistTable"></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">管理职成本明细</div>
+          <div class="table-wrap"><table id="zbManagementTable"></table></div>
+        </div>
       </div>
     </section>
   </main>

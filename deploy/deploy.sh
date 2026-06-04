@@ -28,20 +28,42 @@ if [ "$PYTHON_VERSION_OK" != "1" ]; then
 fi
 
 mkdir -p "$APP_DIR" "$BACKUP_DIR"
-# 仅当数据库有目标数据时才备份（避免空库覆盖有效备份）
+# 只要生产数据库存在就备份，避免有经营数据/权限数据但目标配置为空时漏备份。
 if [ -f "$DB_PATH" ]; then
-  HAS_TARGETS=$(python3 -c "
+  BACKUP_TS="$(date +%Y%m%d_%H%M%S)"
+  BACKUP_FILE="$BACKUP_DIR/business_data.db.$BACKUP_TS"
+  cp "$DB_PATH" "$BACKUP_FILE"
+  python3 - <<PY > "$BACKUP_FILE.meta" 2>/dev/null || true
+import hashlib
+import os
 import sqlite3
+
+db = "$DB_PATH"
+backup = "$BACKUP_FILE"
+print(f"backup_file={backup}")
+print(f"source_db={db}")
+print(f"size_bytes={os.path.getsize(backup)}")
 try:
-    c=sqlite3.connect('$DB_PATH')
-    n=c.execute('SELECT COUNT(*) FROM target_config').fetchone()[0]
-    print(n)
-except: print(0)
-" 2>/dev/null || echo "0")
-  if [ "$HAS_TARGETS" -gt 0 ] 2>/dev/null; then
-    cp "$DB_PATH" "$BACKUP_DIR/business_data.db.$(date +%Y%m%d_%H%M%S)"
-    echo "已备份数据库（含 $HAS_TARGETS 条目标配置）"
-  fi
+    with open(backup, "rb") as f:
+        print("sha256=" + hashlib.sha256(f.read()).hexdigest())
+    c = sqlite3.connect(backup)
+    tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    print(f"table_count={len(tables)}")
+    for table in ["target_config", "users", "data_imports", "agg_performance", "agg_jingdai"]:
+        if table in tables:
+            count = c.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            print(f"{table}_count={count}")
+    periods = []
+    for table in ["agg_daily_performance", "agg_jingdai_daily", "agg_performance", "agg_jingdai"]:
+        if table in tables:
+            row = c.execute(f"SELECT MAX(year * 100 + month) FROM {table}").fetchone()
+            if row and row[0]:
+                periods.append(int(row[0]))
+    print(f"latest_period={max(periods) if periods else ''}")
+except Exception as exc:
+    print(f"meta_error={exc}")
+PY
+  echo "已备份数据库: $BACKUP_FILE"
 fi
 
 rsync -a --delete \

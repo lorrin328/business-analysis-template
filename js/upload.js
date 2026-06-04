@@ -84,6 +84,11 @@
     return normalized[normalized.length - 1];
   }
 
+  function _forceUploadEnabled() {
+    var input = document.getElementById('forceUploadRewrite');
+    return !!(input && input.checked);
+  }
+
   async function handleFile(input, infoId) {
     if (!input.files || !input.files[0]) return;
     var file = input.files[0];
@@ -113,7 +118,8 @@
       fd.append('jingdai', document.getElementById('file3').files[0]);
       fd.append('value', document.getElementById('file4').files[0]);
 
-      var uploadUrl = window.apiUrl ? window.apiUrl('/api/upload?force=true') : (window.API_BASE || '') + '/api/upload?force=true';
+      var force = _forceUploadEnabled() ? 'true' : 'false';
+      var uploadUrl = window.apiUrl ? window.apiUrl('/api/upload?force=' + force) : (window.API_BASE || '') + '/api/upload?force=' + force;
       var fetchFn = window.adminFetch || window.fetch;
 
       var resp = await fetchFn(uploadUrl, { method: 'POST', body: fd });
@@ -174,4 +180,5 @@
   window._setAllInfos = _setAllInfos;
   window._resetAllCards = _resetAllCards;
   window._pickUploadRefreshYear = _pickRefreshYear;
+  window._forceUploadEnabled = _forceUploadEnabled;
 })(window);

@@ -6,6 +6,7 @@ import re
 import sqlite3
 from pathlib import Path
 
+from config.version import get_app_version
 from db import AGG_TABLES, DB_PATH, get_db
 
 
@@ -46,6 +47,7 @@ def run_health_check() -> dict:
     checks: dict[str, object] = {
         "database_exists": os.path.exists(DB_PATH),
         "account_auth_enabled": True,
+        "app_version": get_app_version(),
         "page_exists": HTML_PATH.exists(),
         "page_version": _page_version(),
     }

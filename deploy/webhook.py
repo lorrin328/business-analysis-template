@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GitHub webhook receiver — 收到 master push 后自动执行 deploy.sh。
+"""GitHub webhook receiver — 收到默认分支 push 后异步执行 deploy.sh。
 
 启动方式（systemd）：
     sudo systemctl start webhook-deploy
@@ -14,33 +14,54 @@ import json
 import os
 import subprocess
 import sys
+import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 
 LISTEN_HOST = os.getenv("WEBHOOK_HOST", "127.0.0.1")
 LISTEN_PORT = int(os.getenv("WEBHOOK_PORT", "9000"))
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "").encode()
 DEPLOY_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deploy.sh")
+MAX_PAYLOAD_BYTES = int(os.getenv("WEBHOOK_MAX_PAYLOAD_BYTES", "1048576"))
+LOG_DIR = Path(os.getenv("WEBHOOK_LOG_DIR", "/opt/business-analysis/backend/logs"))
 
 
-def run_deploy():
-    """执行一键部署脚本，返回 (ok: bool, output: str)。"""
-    try:
-        result = subprocess.run(
+def _deploy_already_running() -> bool:
+    result = subprocess.run(
+        ["pgrep", "-f", f"bash {DEPLOY_SCRIPT}"],
+        capture_output=True,
+        text=True,
+    )
+    current_pid = str(os.getpid())
+    pids = [pid for pid in result.stdout.split() if pid != current_pid]
+    return bool(pids)
+
+
+def start_deploy() -> tuple[bool, str]:
+    """Start deploy.sh in the background and return (started, log_path)."""
+    if _deploy_already_running():
+        return False, ""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = LOG_DIR / f"webhook-deploy-{time.strftime('%Y%m%d_%H%M%S')}.log"
+    with open(log_path, "ab", buffering=0) as log_file:
+        subprocess.Popen(
             ["sudo", "/usr/bin/env", "bash", DEPLOY_SCRIPT],
-            capture_output=True, text=True, timeout=300,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
         )
-        output = result.stdout.strip() + "\n" + result.stderr.strip()
-        return result.returncode == 0, output
-    except subprocess.TimeoutExpired:
-        return False, "DEPLOY TIMEOUT after 300s"
-    except Exception as exc:
-        return False, f"DEPLOY ERROR: {exc}"
+    return True, str(log_path)
 
 
 class WebhookHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
+        if content_length > MAX_PAYLOAD_BYTES:
+            self.send_response(413)
+            self.end_headers()
+            self.wfile.write(b"payload too large")
+            return
         body = self.rfile.read(content_length)
 
         # 验证签名
@@ -76,15 +97,18 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b"skipped (not default branch)")
                 return
 
-            print(f"[webhook] push to {default_branch}, deploying...", flush=True)
-            ok, output = run_deploy()
-            status = "OK" if ok else "FAIL"
-            print(f"[webhook] deploy {status}", flush=True)
-            print(output, flush=True)
+            started, log_path = start_deploy()
+            if not started:
+                print("[webhook] deploy skipped: deployment already running", flush=True)
+                self.send_response(202)
+                self.end_headers()
+                self.wfile.write(b"deployment already running")
+                return
 
-            self.send_response(200 if ok else 500)
+            print(f"[webhook] push to {default_branch}, deploy started: {log_path}", flush=True)
+            self.send_response(202)
             self.end_headers()
-            self.wfile.write(f"deploy {status}\n{output}".encode())
+            self.wfile.write(f"deploy accepted\nlog: {log_path}".encode())
             return
 
         # 其他事件忽略

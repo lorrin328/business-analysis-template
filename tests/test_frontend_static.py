@@ -104,11 +104,11 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/format-utils.js"></script>' in html
     assert '<script src="js/api-client.js?v=1.0.92"></script>' in html
     assert '<script src="js/auth-ui.js?v=1.0.92"></script>' in html
-    assert '<script src="js/export-excel.js"></script>' in html
+    assert '<script src="js/export-excel.js?v=1.0.92"></script>' in html
     assert '<script src="js/upload.js?v=1.0.92"></script>' in html
-    assert '<script src="js/target-modal.js"></script>' in html
-    assert '<script src="js/kpi-cards.js?v=1.0.57"></script>' in html
-    assert '<script src="js/platform-trend.js"></script>' in html
+    assert '<script src="js/target-modal.js?v=1.0.92"></script>' in html
+    assert '<script src="js/kpi-cards.js?v=1.0.92"></script>' in html
+    assert '<script src="js/platform-trend.js?v=1.0.92"></script>' in html
     assert '<script src="js/team-analysis.js?v=1.0.92"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
@@ -186,7 +186,8 @@ def test_upload_js_no_duplicate_vars():
     import re
     declarations = re.findall(r'(?:const|let|var)\s+_uploading', upload)
     assert len(declarations) <= 1, f"Duplicate _uploading: {declarations}"
-    assert "/api/upload?force=true" in upload
+    assert "/api/upload?force=' + force" in upload
+    assert "forceUploadRewrite" in upload
     assert "已重新写入并刷新看板数据" in upload
     assert "未写入数据" in upload
     assert "var uploadYear = _pickRefreshYear(years)" in upload
@@ -249,7 +250,7 @@ def test_dashboard_config_is_loaded_before_kpi_cards():
     html = read_html()
     config = read_js("dashboard-config.js")
 
-    assert '<script src="js/dashboard-config.js"></script>' in html
+    assert '<script src="js/dashboard-config.js?v=1.0.92"></script>' in html
     assert html.index('js/dashboard-config.js') < html.index('js/kpi-cards.js')
     assert "await loadDashboardConfig();" in html
     assert "/api/config/metrics" in config
@@ -271,7 +272,7 @@ def test_excel_export_is_runtime_module():
     html = read_html()
     exporter = read_js("export-excel.js")
 
-    assert '<script src="js/export-excel.js"></script>' in html
+    assert '<script src="js/export-excel.js?v=1.0.92"></script>' in html
     assert 'id="exportExcelBtn"' in html
     assert "function exportDashboardExcel()" not in html
     assert "function exportDashboardExcel()" in exporter
@@ -319,10 +320,29 @@ def test_personnel_management_page_is_admin_only_calculator_runtime():
     assert '<script src="/js/personnel-management.js?v=1.0.92"></script>' in page
     assert "OTO 基本法测算" in page
     assert "证保基本法测算" in page
+    assert "OTO 参数设置" in page
+    assert "证保参数设置" in page
+    assert "整体基本法成本" in page
+    assert "专员成本明细" in page
+    assert "管理职成本明细" in page
+    assert 'id="otoOverallTable"' in page
+    assert 'id="otoSpecialistTable"' in page
+    assert 'id="otoManagementTable"' in page
+    assert 'id="zbOverallTable"' in page
+    assert 'id="zbSpecialistTable"' in page
+    assert 'id="zbManagementTable"' in page
+    assert 'data-export="oto"' in page
+    assert 'data-export="zhengbao"' in page
     assert "requirePersonnelAccess" in js
     assert "hasPermission('personnel_management')" in js
     assert "function calculateOto()" in js
     assert "function calculateZhengbao()" in js
+    assert "function calculateOtoScenario" in js
+    assert "function calculateZhengbaoScenario" in js
+    assert "function renderOtoTables" in js
+    assert "function renderZhengbaoTables" in js
+    assert "function exportRows" in js
+    assert "DEFAULT_SCENARIOS" in js
     assert "ZB_RATE_DICT" in js
     assert '"personnel_management"' in auth
     assert '{"permission_admin", "personnel_management", "honor_admin", "honor_upload"}' in auth
@@ -392,7 +412,7 @@ def test_kpi_modal_content_is_outside_html_shell():
     html = read_html()
     modal_content = read_js("kpi-modal-content.js")
 
-    assert '<script src="js/kpi-modal-content.js?v=1.0.57"></script>' in html
+    assert '<script src="js/kpi-modal-content.js?v=1.0.92"></script>' in html
     assert "function getModalContent(type)" not in html
     assert "function getModalContent(type)" in modal_content
 
@@ -411,7 +431,7 @@ def test_org_analysis_has_expand_mode_and_colored_indicators():
     org = read_js("org-analysis.js")
     combined = html + "\n" + org
 
-    assert 'src="js/org-analysis.js?v=1.0.53"' in html
+    assert 'src="js/org-analysis.js?v=1.0.92"' in html
     assert 'id="orgExpandBtn"' in html
     assert 'id="orgExpandBtn" type="button" aria-expanded="false"' in html
     assert 'id="orgExpandBtn" onclick=' not in html
@@ -474,7 +494,7 @@ def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
     kpi = read_js("kpi-cards.js")
 
     assert "function updateKPICards()" not in html
-    assert 'src="js/kpi-cards.js?v=1.0.57"' in html
+    assert 'src="js/kpi-cards.js?v=1.0.92"' in html
     assert "function updateKPICards()" in kpi
     assert "window.updateKPICards = updateKPICards" in kpi
     assert "KPI card rendering lives in js/kpi-cards.js" in html
