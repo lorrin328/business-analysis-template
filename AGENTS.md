@@ -164,3 +164,19 @@ curl -X POST http://127.0.0.1:9000 -H "X-GitHub-Event: ping"
 ## 版本
 
 当前版本见 `经营分析模板.html` 顶部 tag 标签。
+
+## Docker 镜像部署
+
+本项目已补充容器化部署路径，作为 Ubuntu systemd + nginx 部署方式的补充。
+
+- 镜像发布目标：`ghcr.io/lorrin328/business-analysis-template:latest`
+- 构建发布方式：推送到 `master`、推送 `v*` tag 或手动触发 GitHub Actions `Build Docker image`
+- 本地编排文件：`docker-compose.yml`
+- 详细说明：`docs/DOCKER.md`
+
+容器化部署原则：
+
+- 不将 Excel 源文件、SQLite 运行库、日志、真实密钥或 Token 打入镜像；
+- SQLite 数据库通过 `BUSINESS_ANALYSIS_DB=/data/business_data.db` 写入 Docker volume；
+- 日志通过 `/app/backend/logs` volume 持久化；
+- 生产密钥只允许通过 `.env`、宿主机环境变量或平台 Secret 注入。

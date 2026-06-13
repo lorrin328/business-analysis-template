@@ -716,3 +716,32 @@ Excel 原始口径 → 看板口径：
 1. **每次更改必须同步到 GitHub**：`git add` + `git commit` + `git push`
 2. **Commit message 必须说明「改了什么」和「为什么改」**
 3. **README 修改历史章节必须同步更新**
+
+## Docker 镜像
+
+项目已支持构建可部署 Docker 镜像，并通过 GitHub Actions 发布到 GitHub Container Registry：
+
+```bash
+ghcr.io/lorrin328/business-analysis-template:latest
+```
+
+运行示例：
+
+```bash
+docker run -d \
+  --name business-analysis \
+  --restart unless-stopped \
+  -p 45679:45679 \
+  -e BUSINESS_ANALYSIS_DB=/data/business_data.db \
+  -v business-analysis-data:/data \
+  -v business-analysis-logs:/app/backend/logs \
+  ghcr.io/lorrin328/business-analysis-template:latest
+```
+
+详细部署、环境变量、数据持久化和回滚说明见 [docs/DOCKER.md](./docs/DOCKER.md)。
+
+### 2026-06-13 chore: Docker 镜像发布链路
+
+- 新增 `Dockerfile`、`.dockerignore`、`docker-compose.yml`，支持以容器方式运行 FastAPI 看板。
+- 新增 GitHub Actions `Build Docker image`，推送 `master`、`v*` tag 或手动触发时构建并推送 GHCR 镜像。
+- 新增 `docs/DOCKER.md` 和 `docs/ai-context/` 项目记忆，明确镜像不内置业务数据、密钥、SQLite 运行库和日志。

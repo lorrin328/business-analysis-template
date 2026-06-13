@@ -1,0 +1,26 @@
+services:
+  business-analysis:
+    image: ghcr.io/lorrin328/business-analysis-template:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: business-analysis
+    restart: unless-stopped
+    ports:
+      - "45679:45679"
+    environment:
+      APP_ENV: production
+      PORT: 45679
+      BUSINESS_ANALYSIS_DB: /data/business_data.db
+      MAX_UPLOAD_SIZE_MB: 100
+      # Set these in .env or in the deployment platform secret manager.
+      # ADMIN_TOKEN:
+      # AI_READONLY_TOKEN:
+      # CORS_ORIGINS:
+    volumes:
+      - business-analysis-data:/data
+      - business-analysis-logs:/app/backend/logs
+
+volumes:
+  business-analysis-data:
+  business-analysis-logs:
