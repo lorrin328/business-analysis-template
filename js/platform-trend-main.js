@@ -16505,8 +16505,7 @@
 
     function platformTrendCacheKey(year, premiumType, selectedKeys, periodType, periodValue) {
       const orgKey = ORG_LIST_PLATFORM.filter(o => selectedPlatformOrgs[o]).join('|');
-      const asOfKey = typeof window.getDashboardAsOf === 'function' ? (window.getDashboardAsOf() || '') : '';
-      return [year, premiumType, selectedKeys.slice().sort().join('|'), periodType, periodValue || 0, orgKey, asOfKey].join('::');
+      return [year, premiumType, selectedKeys.slice().sort().join('|'), periodType, periodValue || 0, orgKey].join('::');
     }
 
     function getTrendDataFromCache(year, periodType, periodValue, monthList) {
@@ -16531,8 +16530,6 @@
       params.set('periodType', periodType);
       params.set('periodValue', String(periodValue));
       params.set('metric', currentPremiumType);
-      const asOf = typeof window.getDashboardAsOf === 'function' ? window.getDashboardAsOf() : null;
-      if (asOf) params.set('asOf', asOf);
       if (selectedKeys.length > 0) params.set('businessLines', selectedKeys.join(','));
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const timer = controller ? setTimeout(() => controller.abort(), 2500) : null;
@@ -16885,8 +16882,6 @@
         if (!apiCache[prevCacheKey]) {
           try {
             const prevParams = new URLSearchParams({ year: String(prevYearNum) });
-            const asOf = typeof window.getDashboardAsOf === 'function' ? window.getDashboardAsOf() : null;
-            if (asOf) prevParams.set('asOf', asOf);
             const prevPlatform = unwrapApiResponse(await fetchJson(`/api/platform-data?${prevParams.toString()}`, { method: 'GET' }));
             apiCache[prevCacheKey] = { platform: prevPlatform };
           } catch(e) {}

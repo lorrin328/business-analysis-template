@@ -134,8 +134,7 @@
           kpi = null;
         }
 
-        const platform = unwrapApiResponse(await fetchJson(`/api/platform-data?year=${year}${dashboardAsOfQuery()}`, { method: 'GET' }));
-        syncDashboardAsOf(platform?.as_of);
+        const platform = unwrapApiResponse(await fetchJson(`/api/platform-data?year=${year}`, { method: 'GET' }));
 
         let product = null;
         try {
@@ -176,7 +175,7 @@
       const select = document.getElementById('dataCutoffSelect');
       const note = document.getElementById('dataCutoffNote');
       if (!el && !select) return;
-      const asOfContext = apiData?.kpi?.as_of || apiData?.platform?.as_of;
+      const asOfContext = apiData?.kpi?.as_of;
       if (asOfContext) syncDashboardAsOf(asOfContext);
       if (select) {
         const selected = selectedAsOf || asOfContext?.selectedDate || '';

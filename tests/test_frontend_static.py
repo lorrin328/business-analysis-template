@@ -102,14 +102,14 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.94"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.94"></script>' in html
-    assert '<script src="js/export-excel.js?v=1.0.94"></script>' in html
-    assert '<script src="js/upload.js?v=1.0.94"></script>' in html
-    assert '<script src="js/target-modal.js?v=1.0.94"></script>' in html
-    assert '<script src="js/kpi-cards.js?v=1.0.94"></script>' in html
-    assert '<script src="js/platform-trend.js?v=1.0.94"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.94"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.95"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.95"></script>' in html
+    assert '<script src="js/export-excel.js?v=1.0.95"></script>' in html
+    assert '<script src="js/upload.js?v=1.0.95"></script>' in html
+    assert '<script src="js/target-modal.js?v=1.0.95"></script>' in html
+    assert '<script src="js/kpi-cards.js?v=1.0.95"></script>' in html
+    assert '<script src="js/platform-trend.js?v=1.0.95"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.95"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -250,7 +250,7 @@ def test_dashboard_config_is_loaded_before_kpi_cards():
     html = read_html()
     config = read_js("dashboard-config.js")
 
-    assert '<script src="js/dashboard-config.js?v=1.0.94"></script>' in html
+    assert '<script src="js/dashboard-config.js?v=1.0.95"></script>' in html
     assert html.index('js/dashboard-config.js') < html.index('js/kpi-cards.js')
     assert "await loadDashboardConfig();" in html
     assert "/api/config/metrics" in config
@@ -261,7 +261,7 @@ def test_product_config_modal_is_outside_html_shell():
     html = read_html()
     modal = read_js("product-config-modal.js")
 
-    assert '<script src="js/product-config-modal.js?v=1.0.94"></script>' in html
+    assert '<script src="js/product-config-modal.js?v=1.0.95"></script>' in html
     assert "async function openProductConfigModal()" not in html
     assert "async function saveProductConfig()" not in html
     assert "async function openProductConfigModal()" in modal
@@ -272,7 +272,7 @@ def test_excel_export_is_runtime_module():
     html = read_html()
     exporter = read_js("export-excel.js")
 
-    assert '<script src="js/export-excel.js?v=1.0.94"></script>' in html
+    assert '<script src="js/export-excel.js?v=1.0.95"></script>' in html
     assert 'id="exportExcelBtn"' in html
     assert "function exportDashboardExcel()" not in html
     assert "function exportDashboardExcel()" in exporter
@@ -317,7 +317,7 @@ def test_personnel_management_page_is_admin_only_calculator_runtime():
 
     assert "人员管理</button>" in html
     assert 'data-permission="personnel_management"' in html
-    assert '<script src="/js/personnel-management.js?v=1.0.94"></script>' in page
+    assert '<script src="/js/personnel-management.js?v=1.0.95"></script>' in page
     assert "OTO 基本法测算" in page
     assert "证保基本法测算" in page
     assert "OTO 参数设置" in page
@@ -359,7 +359,7 @@ def test_honor_page_is_separate_runtime():
     assert 'data-permission="honor_view" onclick="window.location.href=\'/honor\'" style="margin-right:8px;">荣誉体系</button>' in html
     assert "????" not in html
     assert "星钻联盟荣誉体系" in honor_html
-    assert '<script src="/js/honor.js?v=1.0.94"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.95"></script>' in honor_html
     assert "数据适配检查" in honor_html
     assert "数据审计" in honor_html
     assert "总览驾驶舱" in honor_html
@@ -418,7 +418,7 @@ def test_kpi_modal_content_is_outside_html_shell():
     html = read_html()
     modal_content = read_js("kpi-modal-content.js")
 
-    assert '<script src="js/kpi-modal-content.js?v=1.0.94"></script>' in html
+    assert '<script src="js/kpi-modal-content.js?v=1.0.95"></script>' in html
     assert "function getModalContent(type)" not in html
     assert "function getModalContent(type)" in modal_content
 
@@ -437,7 +437,7 @@ def test_org_analysis_has_expand_mode_and_colored_indicators():
     org = read_js("org-analysis.js")
     combined = html + "\n" + org
 
-    assert 'src="js/org-analysis.js?v=1.0.94"' in html
+    assert 'src="js/org-analysis.js?v=1.0.95"' in html
     assert 'id="orgExpandBtn"' in html
     assert 'id="orgExpandBtn" type="button" aria-expanded="false"' in html
     assert 'id="orgExpandBtn" onclick=' not in html
@@ -500,7 +500,7 @@ def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
     kpi = read_js("kpi-cards.js")
 
     assert "function updateKPICards()" not in html
-    assert 'src="js/kpi-cards.js?v=1.0.94"' in html
+    assert 'src="js/kpi-cards.js?v=1.0.95"' in html
     assert "function updateKPICards()" in kpi
     assert "window.updateKPICards = updateKPICards" in kpi
     assert "KPI card rendering lives in js/kpi-cards.js" in html
@@ -669,7 +669,7 @@ def test_platform_trend_uses_calendar_days_for_daily_series():
     assert "function dailyDisplayEndDay(year, month)" in platform
     assert "function completeDailySeries(values, year, month)" in platform
     assert "new Date(Number(year), Number(month), 0).getDate()" in platform
-    assert "window.getDashboardAsOf" in platform
+    assert "window.getDashboardAsOf" not in platform
     assert "m === now.getMonth() + 1" in platform
     assert "window.completeDailySeries = completeDailySeries" in platform
     assert "daysInMonthArr" not in html
@@ -683,19 +683,35 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
 
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
-    assert '<script src="js/platform-trend-main.js?v=1.0.94"></script>' in html
+    assert '<script src="js/platform-trend-main.js?v=1.0.95"></script>' in html
     assert "Object.keys(platformMock).forEach(year => delete platformMock[year])" in platform_main
     assert "function refreshPlatformChart()" in platform_main
     assert "function switchYear(value)" in platform_main
     assert "let selectedMonth = String(new Date().getMonth() + 1)" in platform_main
     assert "value === defaultMonth ? ' selected' : ''" in platform_main
     assert 'value="4" selected' not in platform_main
-    assert "params.set('asOf', asOf)" in platform_main
+    assert "params.set('asOf', asOf)" not in platform_main
     assert "const cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(yearNum) : yearLabel" in platform_main
     assert "await fetchProductData(yearLabel)" in platform_main
     assert "convertApiToPlatformMock(cached.platform, yearLabel)" in platform_main
     assert "fetchProductData(yearKey)" not in platform_main
     assert "convertApiToPlatformMock(cached.platform, yearKey)" not in platform_main
+
+
+def test_dashboard_asof_only_drives_precise_kpi_and_org_yoy_not_trend_series():
+    integration = read_js("data-integration.js")
+    platform_main = read_js("platform-trend-main.js")
+    org = read_js("org-analysis.js")
+
+    assert "`/api/kpi?year=${year}${dashboardAsOfQuery()}`" in integration
+    assert "`/api/platform-data?year=${year}`" in integration
+    assert "`/api/platform-data?year=${year}${dashboardAsOfQuery()}`" not in integration
+    assert "const asOfContext = apiData?.kpi?.as_of;" in integration
+    assert "const asOfContext = apiData?.kpi?.as_of || apiData?.platform?.as_of" not in integration
+    assert "params.set('asOf', asOf)" in org
+    assert "platformTrendCacheKey(year, premiumType, selectedKeys, periodType, periodValue)" in platform_main
+    assert "params.set('asOf', asOf)" not in platform_main
+    assert "window.getDashboardAsOf" not in platform_main
 
 
 def test_per_capita_metrics_use_average_headcount_denominators():
