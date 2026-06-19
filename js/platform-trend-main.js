@@ -16855,18 +16855,20 @@
     async function loadYearFromApi(year, options = {}) {
       const updateKpi = options.updateKpi !== false;
       const updateProduct = options.updateProduct !== false;
-      const yearKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(year) : String(year);
-      if (!apiCache[yearKey]) {
-        const ok = await fetchAPIData(parseInt(year));
+      const yearNum = parseInt(year);
+      const yearLabel = String(yearNum);
+      const cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(yearNum) : yearLabel;
+      if (!apiCache[cacheKey]) {
+        const ok = await fetchAPIData(yearNum);
         if (!ok) {
           clearRuntimeFallbackYear(year);
           return false;
         }
       }
-      const cached = apiCache[yearKey];
+      const cached = apiCache[cacheKey];
       if (cached && cached.platform && hasValidApiData(cached.platform)) {
-        const apiPM = convertApiToPlatformMock(cached.platform, yearKey);
-        const apiTM = convertApiToTeamMock(cached.platform, yearKey);
+        const apiPM = convertApiToPlatformMock(cached.platform, yearLabel);
+        const apiTM = convertApiToTeamMock(cached.platform, yearLabel);
         Object.assign(platformMock, apiPM);
         Object.assign(teamMock, apiTM);
         if (updateKpi) {
@@ -16874,24 +16876,25 @@
           apiData.kpi = cached.kpi;
         }
         if (updateProduct) {
-          await fetchProductData(yearKey);
+          await fetchProductData(yearLabel);
         }
         // 同时加载上一年数据到 platformMock，用于季度/月度同比趋势线
-        const prevYearNum = parseInt(year) - 1;
-        const prevYearKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(prevYearNum) : String(prevYearNum);
-        if (!apiCache[prevYearKey]) {
+        const prevYearNum = yearNum - 1;
+        const prevYearLabel = String(prevYearNum);
+        const prevCacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(prevYearNum) : prevYearLabel;
+        if (!apiCache[prevCacheKey]) {
           try {
             const prevParams = new URLSearchParams({ year: String(prevYearNum) });
             const asOf = typeof window.getDashboardAsOf === 'function' ? window.getDashboardAsOf() : null;
             if (asOf) prevParams.set('asOf', asOf);
             const prevPlatform = unwrapApiResponse(await fetchJson(`/api/platform-data?${prevParams.toString()}`, { method: 'GET' }));
-            apiCache[prevYearKey] = { platform: prevPlatform };
+            apiCache[prevCacheKey] = { platform: prevPlatform };
           } catch(e) {}
         }
-        if (apiCache[prevYearKey] && apiCache[prevYearKey].platform && hasValidApiData(apiCache[prevYearKey].platform)) {
-          const prevPM = convertApiToPlatformMock(apiCache[prevYearKey].platform, prevYearKey);
+        if (apiCache[prevCacheKey] && apiCache[prevCacheKey].platform && hasValidApiData(apiCache[prevCacheKey].platform)) {
+          const prevPM = convertApiToPlatformMock(apiCache[prevCacheKey].platform, prevYearLabel);
           Object.assign(platformMock, prevPM);
-          const prevTM = convertApiToTeamMock(apiCache[prevYearKey].platform, prevYearKey);
+          const prevTM = convertApiToTeamMock(apiCache[prevCacheKey].platform, prevYearLabel);
           Object.assign(teamMock, prevTM);
         }
         return true;

@@ -691,6 +691,11 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
     assert "value === defaultMonth ? ' selected' : ''" in platform_main
     assert 'value="4" selected' not in platform_main
     assert "params.set('asOf', asOf)" in platform_main
+    assert "const cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(yearNum) : yearLabel" in platform_main
+    assert "await fetchProductData(yearLabel)" in platform_main
+    assert "convertApiToPlatformMock(cached.platform, yearLabel)" in platform_main
+    assert "fetchProductData(yearKey)" not in platform_main
+    assert "convertApiToPlatformMock(cached.platform, yearKey)" not in platform_main
 
 
 def test_per_capita_metrics_use_average_headcount_denominators():
