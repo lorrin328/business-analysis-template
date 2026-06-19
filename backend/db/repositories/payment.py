@@ -3,6 +3,7 @@ import json
 import sqlite3
 from db.connection import get_db
 from db.schema import init_db
+from services.cutoff_policy import build_as_of_context
 
 
 def get_payment_period_structure(
@@ -14,24 +15,38 @@ def get_payment_period_structure(
     orgs: list[str] | None = None,
     jingdai_orgs: list[str] | None = None,
     metric: str = 'qj',
+    as_of: str | None = None,
 ):
     """获取交期结构数据，按交期分类聚合保费/件数"""
     init_db()
     premium_field = 'gm_premium' if metric == 'gm' else 'qj_premium'
     with get_db() as conn:
         c = conn.cursor()
+        as_of_context = build_as_of_context(conn, year, as_of)
+        selected_cutoff = as_of_context.get("selectedCutoff") or {}
+        cutoff_month = int(selected_cutoff["month"]) if selected_cutoff else 12
 
         conditions = ['year = ?']
         params = [year]
 
         month_list = [int(m) for m in (months or []) if 1 <= int(m) <= 12]
         if month_list:
+            month_list = [m for m in month_list if m <= cutoff_month]
             placeholders = ','.join(['?'] * len(month_list))
-            conditions.append(f'month IN ({placeholders})')
-            params.extend(month_list)
+            if month_list:
+                conditions.append(f'month IN ({placeholders})')
+                params.extend(month_list)
+            else:
+                conditions.append('1 = 0')
         elif month is not None:
-            conditions.append('month = ?')
-            params.append(month)
+            if int(month) <= cutoff_month:
+                conditions.append('month = ?')
+                params.append(month)
+            else:
+                conditions.append('1 = 0')
+        else:
+            conditions.append('month <= ?')
+            params.append(cutoff_month)
 
         if business_types:
             placeholders = ','.join(['?'] * len(business_types))
@@ -84,6 +99,7 @@ def get_payment_period_structure(
 
         return {
             'year': year,
+            'as_of': as_of_context,
             'premium': premium_rows,
             'count': count_rows,
             'jingdai_orgs': jd_orgs,

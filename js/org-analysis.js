@@ -11,7 +11,10 @@ let orgKpiData = null;
 
     async function fetchOrgKpiData(year) {
       try {
-        orgKpiData = unwrapApiResponse(await fetchJson(`/api/org-analysis?year=${year}`));
+        const params = new URLSearchParams({ year: String(year) });
+        const asOf = typeof window.getDashboardAsOf === 'function' ? window.getDashboardAsOf() : null;
+        if (asOf) params.set('asOf', asOf);
+        orgKpiData = unwrapApiResponse(await fetchJson(`/api/org-analysis?${params.toString()}`));
         renderOrgTable();
       } catch (e) {
         console.error('fetchOrgKpiData error:', e);

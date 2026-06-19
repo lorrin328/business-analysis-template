@@ -5,6 +5,7 @@ from datetime import date
 from config.business_lines import BUSINESS_LINES
 from db import get_platform_data
 from services.data_transform import normalize_month
+from services.cutoff_policy import parse_as_of
 
 
 def _metric_col(metric: str) -> str:
@@ -305,11 +306,13 @@ def get_platform_trend(
     metric: str = "qj",
     period_type: str = "year",
     period_value: int | None = None,
+    as_of: str | None = None,
 ) -> dict:
-    data = get_platform_data(year)
+    data = get_platform_data(year, as_of=as_of)
     channels = channels or DEFAULT_TREND_LINES
     period_type = period_type if period_type in {"year", "quarter", "month"} else "year"
     selected_month = month or (period_value if period_type == "month" else None)
+    as_of_date = parse_as_of(data.get("as_of", {}).get("selectedDate") or as_of)
 
     result = {
         "year": year,
@@ -320,7 +323,7 @@ def get_platform_trend(
         "raw": data,
     }
     if period_type == "month" and selected_month:
-        result["daily"] = build_month_daily_cumulative(data, year, selected_month, channels, metric)
+        result["daily"] = build_month_daily_cumulative(data, year, selected_month, channels, metric, as_of_date=as_of_date)
     elif period_type == "quarter" and period_value:
-        result["daily"] = build_quarter_daily_cumulative(data, year, period_value, channels, metric)
+        result["daily"] = build_quarter_daily_cumulative(data, year, period_value, channels, metric, as_of_date=as_of_date)
     return result

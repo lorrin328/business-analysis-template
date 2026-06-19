@@ -15,7 +15,7 @@ def test_product_analysis_forwards_filter_params(monkeypatch):
 
     captured = {}
 
-    def fake_get_product_structure(year, dimension, transform_lines, jingdai_orgs, include_transform, include_jingdai, orgs, months, metric):
+    def fake_get_product_structure(year, dimension, transform_lines, jingdai_orgs, include_transform, include_jingdai, orgs, months, metric, as_of=None):
         captured.update(
             {
                 "year": year,
@@ -27,6 +27,7 @@ def test_product_analysis_forwards_filter_params(monkeypatch):
                 "orgs": orgs,
                 "months": months,
                 "metric": metric,
+                "as_of": as_of,
             }
         )
         return {"premium": [], "count": []}
@@ -42,6 +43,7 @@ def test_product_analysis_forwards_filter_params(monkeypatch):
         orgs="上海",
         months="4,5,6",
         metric="gm",
+        asOf="2026-06-18",
     )
 
     assert response["success"] is True
@@ -55,17 +57,18 @@ def test_product_analysis_forwards_filter_params(monkeypatch):
         "orgs": "上海",
         "months": "4,5,6",
         "metric": "gm",
+        "as_of": "2026-06-18",
     }
 
 
 def test_platform_data_route_returns_success_response(monkeypatch):
     from api import trend as trend_api
 
-    monkeypatch.setattr(trend_api, "get_platform_data", lambda year: {"year": year, "performance": []})
-    response = trend_api.platform_data(year=2026)
+    monkeypatch.setattr(trend_api, "get_platform_data", lambda year, as_of=None: {"year": year, "as_of": as_of, "performance": []})
+    response = trend_api.platform_data(year=2026, asOf="2026-06-18")
 
     assert response["success"] is True
-    assert response["data"] == {"year": 2026, "performance": []}
+    assert response["data"] == {"year": 2026, "as_of": "2026-06-18", "performance": []}
     assert response["meta"]["metric"] == "platform-data"
 
 

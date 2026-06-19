@@ -5,7 +5,7 @@
     let currentPremiumType = 'qj';
     let selectedYear = DEFAULT_DASHBOARD_YEAR;
     let selectedQuarter = 'Q2';
-    let selectedMonth = '4';
+    let selectedMonth = String(new Date().getMonth() + 1);
     const selectedSeries = { '经代': true, 'OTO': true, '证保': true, '蚁桥': true };
     const seriesColors = { '经代': '#8b5cf6', 'OTO': '#3b82f6', '证保': '#10b981', '蚁桥': '#f59e0b' };
     const ORG_LIST_PLATFORM = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
@@ -14,6 +14,9 @@
     // 机构级保费索引：platformOrgPerfData[year][premiumType][channel][monthIndex] = { total, orgs: { [org]: value } }
     const platformOrgPerfData = {};
     const platformTrendDailyCache = {};
+    window.clearPlatformTrendDailyCache = function() {
+      Object.keys(platformTrendDailyCache).forEach(key => delete platformTrendDailyCache[key]);
+    };
 
     function normalizeMonth(value) {
       const n = Number(value);
@@ -16361,12 +16364,13 @@
       const useOrgDaily = hasPlatformOrgFilter();
       const daily = [];
       let hasDailyRows = false;
+      const cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(year) : String(year);
       if (useOrgDaily) {
         const selected = selectedPlatformOrgNames();
-        const orgDaily = apiCache[String(year)]?.platform?.org_daily_performance || [];
-        const rawDaily = apiCache[String(year)]?.platform?.daily_performance || [];
+        const orgDaily = apiCache[cacheKey]?.platform?.org_daily_performance || [];
+        const rawDaily = apiCache[cacheKey]?.platform?.daily_performance || [];
         const rawDailyHasJd = dailyRowsContainJingdai(rawDaily, month);
-        const jdDaily = apiCache[String(year)]?.platform?.jingdai_daily || [];
+        const jdDaily = apiCache[cacheKey]?.platform?.jingdai_daily || [];
         orgDaily.forEach(r => {
           if (normalizeMonth(r.month) === Number(month) && selectedKeys.includes(r.channel) && selected.includes(r.org)) {
             const idx = (r.day || 1) - 1;
@@ -16407,7 +16411,7 @@
         return [];
       }
 
-      const rawDaily = apiCache[String(year)]?.platform?.daily_performance || [];
+      const rawDaily = apiCache[cacheKey]?.platform?.daily_performance || [];
       const rawDailyHasJd = dailyRowsContainJingdai(rawDaily, month);
       rawDaily.forEach(r => {
         if (normalizeMonth(r.month) === Number(month) && selectedKeys.includes(r.channel)) {
@@ -16418,7 +16422,7 @@
       });
 
       if (selectedKeys.includes('经代') && !rawDailyHasJd) {
-        const jdDaily = apiCache[String(year)]?.platform?.jingdai_daily || [];
+        const jdDaily = apiCache[cacheKey]?.platform?.jingdai_daily || [];
         jdDaily.forEach(r => {
           if (normalizeMonth(r.month) === Number(month)) {
             const idx = (r.day || 1) - 1;
@@ -16501,7 +16505,8 @@
 
     function platformTrendCacheKey(year, premiumType, selectedKeys, periodType, periodValue) {
       const orgKey = ORG_LIST_PLATFORM.filter(o => selectedPlatformOrgs[o]).join('|');
-      return [year, premiumType, selectedKeys.slice().sort().join('|'), periodType, periodValue || 0, orgKey].join('::');
+      const asOfKey = typeof window.getDashboardAsOf === 'function' ? (window.getDashboardAsOf() || '') : '';
+      return [year, premiumType, selectedKeys.slice().sort().join('|'), periodType, periodValue || 0, orgKey, asOfKey].join('::');
     }
 
     function getTrendDataFromCache(year, periodType, periodValue, monthList) {
@@ -16526,6 +16531,8 @@
       params.set('periodType', periodType);
       params.set('periodValue', String(periodValue));
       params.set('metric', currentPremiumType);
+      const asOf = typeof window.getDashboardAsOf === 'function' ? window.getDashboardAsOf() : null;
+      if (asOf) params.set('asOf', asOf);
       if (selectedKeys.length > 0) params.set('businessLines', selectedKeys.join(','));
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const timer = controller ? setTimeout(() => controller.abort(), 2500) : null;
@@ -16848,7 +16855,7 @@
     async function loadYearFromApi(year, options = {}) {
       const updateKpi = options.updateKpi !== false;
       const updateProduct = options.updateProduct !== false;
-      const yearKey = String(year);
+      const yearKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(year) : String(year);
       if (!apiCache[yearKey]) {
         const ok = await fetchAPIData(parseInt(year));
         if (!ok) {
@@ -16871,10 +16878,13 @@
         }
         // 同时加载上一年数据到 platformMock，用于季度/月度同比趋势线
         const prevYearNum = parseInt(year) - 1;
-        const prevYearKey = String(prevYearNum);
+        const prevYearKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(prevYearNum) : String(prevYearNum);
         if (!apiCache[prevYearKey]) {
           try {
-            const prevPlatform = unwrapApiResponse(await fetchJson(`/api/platform-data?year=${prevYearNum}`, { method: 'GET' }));
+            const prevParams = new URLSearchParams({ year: String(prevYearNum) });
+            const asOf = typeof window.getDashboardAsOf === 'function' ? window.getDashboardAsOf() : null;
+            if (asOf) prevParams.set('asOf', asOf);
+            const prevPlatform = unwrapApiResponse(await fetchJson(`/api/platform-data?${prevParams.toString()}`, { method: 'GET' }));
             apiCache[prevYearKey] = { platform: prevPlatform };
           } catch(e) {}
         }
@@ -16915,7 +16925,12 @@
         subSelect.innerHTML = '<option value="Q1">Q1</option><option value="Q2" selected>Q2</option><option value="Q3">Q3</option><option value="Q4">Q4</option>';
         subSelect.style.display = 'inline-block';
       } else if (dim === 'month') {
-        subSelect.innerHTML = '<option value="1">1月</option><option value="2">2月</option><option value="3">3月</option><option value="4" selected>4月</option><option value="5">5月</option><option value="6">6月</option><option value="7">7月</option><option value="8">8月</option><option value="9">9月</option><option value="10">10月</option><option value="11">11月</option><option value="12">12月</option>';
+        const defaultMonth = selectedMonth || String(new Date().getMonth() + 1);
+        selectedMonth = defaultMonth;
+        subSelect.innerHTML = Array.from({ length: 12 }, (_, i) => {
+          const value = String(i + 1);
+          return `<option value="${value}"${value === defaultMonth ? ' selected' : ''}>${value}月</option>`;
+        }).join('');
         subSelect.style.display = 'inline-block';
       }
 

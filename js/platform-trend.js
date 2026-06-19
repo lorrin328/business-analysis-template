@@ -8,6 +8,16 @@
     const y = Number(year);
     const m = Number(month);
     const dim = daysInMonth(y, m);
+    const asOf = typeof window.getDashboardAsOf === 'function' ? window.getDashboardAsOf() : null;
+    if (asOf) {
+      const parts = String(asOf).split('-').map(Number);
+      const cutoffMonth = parts[1];
+      const cutoffDay = parts[2];
+      if (Number.isFinite(cutoffMonth) && Number.isFinite(cutoffDay)) {
+        if (m > cutoffMonth) return 0;
+        if (m === cutoffMonth) return Math.min(cutoffDay, dim);
+      }
+    }
     const now = new Date();
     if (y === now.getFullYear() && m > now.getMonth() + 1) return 0;
     if (y === now.getFullYear() && m === now.getMonth() + 1) {

@@ -11,11 +11,16 @@ router = APIRouter(prefix="/api", tags=["trend"])
 
 
 @router.get("/platform-data")
-def platform_data(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100), _user=Depends(require_permission("platform_trend"))):
+def platform_data(
+    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
+    asOf: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    _user=Depends(require_permission("platform_trend")),
+):
     return success_response(
-        get_platform_data(year),
+        get_platform_data(year, as_of=asOf),
         meta={
             "year": year,
+            "asOf": asOf,
             "metric": "platform-data",
             "unit": "万元/人",
             "dataSource": "SQLite aggregate tables",
@@ -37,6 +42,7 @@ def platform_trend(
     periodValue: int | None = Query(None, ge=0, le=12),
     businessLines: str | None = None,
     metric: str = Query("qj", pattern="^(qj|gm|zs)$"),
+    asOf: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
     _user=Depends(require_permission("platform_trend")),
 ):
     channels = [x.strip() for x in businessLines.split(",") if x.strip()] if businessLines else None
@@ -54,6 +60,7 @@ def platform_trend(
         metric=metric,
         period_type=periodType,
         period_value=periodValue,
+        as_of=asOf,
     )
     return success_response(
         data,
@@ -62,6 +69,7 @@ def platform_trend(
             "periodType": data.get("periodType", periodType),
             "periodValue": data.get("periodValue", periodValue or 0),
             "businessLines": data.get("businessLines", []),
+            "asOf": asOf,
             "metric": metric,
             "unit": "万元",
             "dataSource": "agg_performance / agg_jingdai / agg_daily_performance / agg_jingdai_daily",

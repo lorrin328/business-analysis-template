@@ -15,6 +15,43 @@
       new URLSearchParams(window.location.search).get('localFallback') === '1'
     );
     window.ALLOW_LOCAL_FALLBACK = ALLOW_LOCAL_FALLBACK;
+    let selectedAsOf = null;
+    let cutoffOptions = [];
+    window.getDashboardAsOf = () => selectedAsOf;
+
+    function dashboardAsOfQuery(prefix = '&') {
+      return selectedAsOf ? `${prefix}asOf=${encodeURIComponent(selectedAsOf)}` : '';
+    }
+
+    function appendDashboardAsOf(params) {
+      if (selectedAsOf) params.set('asOf', selectedAsOf);
+      return params;
+    }
+
+    function dashboardCacheKey(year) {
+      return `${year}::${selectedAsOf || 'default'}`;
+    }
+
+    function clearDashboardApiCache() {
+      Object.keys(apiCache).forEach(key => delete apiCache[key]);
+      if (typeof window.clearPlatformTrendDailyCache === 'function') {
+        window.clearPlatformTrendDailyCache();
+      }
+    }
+
+    function syncDashboardAsOf(context) {
+      if (!context) return;
+      if (Array.isArray(context.options)) cutoffOptions = context.options.slice();
+      if (context.selectedDate) selectedAsOf = context.selectedDate;
+      window.selectedAsOf = selectedAsOf;
+    }
+
+    function formatAsOfDate(value) {
+      if (!value) return '--';
+      const parts = String(value).split('-');
+      if (parts.length !== 3) return value;
+      return `${parts[0]}年${Number(parts[1])}月${Number(parts[2])}日`;
+    }
 
     function setDataSourceStatus(kind, message) {
       let el = document.getElementById('dataSourceStatus');
@@ -83,19 +120,22 @@
       }
       if (productFilters.metric && productFilters.metric !== 'qj') params.set('metric', productFilters.metric);
       params.set('year', String(year));
+      appendDashboardAsOf(params);
       return `/api/product-analysis?${params.toString()}`;
     }
 
     async function fetchAPIData(year) {
       try {
-        const platform = unwrapApiResponse(await fetchJson(`/api/platform-data?year=${year}`, { method: 'GET' }));
-
         let kpi = null;
         try {
-          kpi = unwrapApiResponse(await fetchJson(`/api/kpi?year=${year}`, { method: 'GET' }));
+          kpi = unwrapApiResponse(await fetchJson(`/api/kpi?year=${year}${dashboardAsOfQuery()}`, { method: 'GET' }));
+          syncDashboardAsOf(kpi?.as_of);
         } catch (e) {
           kpi = null;
         }
+
+        const platform = unwrapApiResponse(await fetchJson(`/api/platform-data?year=${year}${dashboardAsOfQuery()}`, { method: 'GET' }));
+        syncDashboardAsOf(platform?.as_of);
 
         let product = null;
         try {
@@ -104,7 +144,7 @@
           product = null;
         }
 
-        apiCache[String(year)] = { platform, kpi, product };
+        apiCache[dashboardCacheKey(year)] = { platform, kpi, product };
         apiData.platform = platform;
         apiData.kpi = kpi;
         apiData.product = product;
@@ -133,7 +173,29 @@
 
     function updateCutoffLabel(year) {
       const el = document.getElementById('dataCutoff');
+      const select = document.getElementById('dataCutoffSelect');
+      const note = document.getElementById('dataCutoffNote');
+      if (!el && !select) return;
+      const asOfContext = apiData?.kpi?.as_of || apiData?.platform?.as_of;
+      if (asOfContext) syncDashboardAsOf(asOfContext);
+      if (select) {
+        const selected = selectedAsOf || asOfContext?.selectedDate || '';
+        const options = cutoffOptions.length > 0 ? cutoffOptions.slice() : (selected ? [selected] : []);
+        select.innerHTML = options.map(value => (
+          `<option value="${value}"${value === selected ? ' selected' : ''}>${formatAsOfDate(value)}</option>`
+        )).join('');
+        select.style.display = options.length > 0 ? '' : 'none';
+      }
+      if (note) {
+        const warningText = asOfContext?.warningText || '';
+        note.textContent = warningText;
+        note.style.display = warningText ? '' : 'none';
+      }
       if (!el) return;
+      if (selectedAsOf) {
+        el.textContent = '数据截止：';
+        return;
+      }
       const cutoff = apiData?.kpi?.daily_cutoff;
       if (cutoff?.use_daily && cutoff.month && cutoff.day) {
         el.textContent = `数据截止：${year}年${cutoff.month}月${cutoff.day}日`;
@@ -146,6 +208,28 @@
       }
       el.textContent = '数据截止：--';
     }
+
+    async function switchDashboardAsOf(value) {
+      if (!value || value === selectedAsOf) return;
+      selectedAsOf = value;
+      window.selectedAsOf = selectedAsOf;
+      clearDashboardApiCache();
+      const platformYear = selectedYear || DEFAULT_DASHBOARD_YEAR;
+      await fetchTargetData(platformYear);
+      if (selectedTeamYear && selectedTeamYear !== platformYear) {
+        await loadYearFromApi(selectedTeamYear, { updateKpi: false, updateProduct: false });
+      }
+      await loadYearFromApi(platformYear, { updateKpi: true, updateProduct: true });
+      updateCutoffLabel(platformYear);
+      await refreshPlatformChart();
+      productChart.setOption(getPieOption(currentPieType), true);
+      teamChart.setOption(getTeamOption(), true);
+      if (typeof refreshTeamEnhancedPanel === 'function') refreshTeamEnhancedPanel();
+      await fetchPayPeriodData(platformYear);
+      await fetchOrgKpiData(platformYear);
+      updateKPICards();
+    }
+    window.switchDashboardAsOf = switchDashboardAsOf;
 
     // 检查API数据是否包含有效记录（非空）
     function hasValidApiData(apiPlatform) {
@@ -419,6 +503,7 @@
       }
       try {
         const platformYear = selectedYear || DEFAULT_DASHBOARD_YEAR;
+        clearDashboardApiCache();
         await fetchTargetData(platformYear);
         if (selectedTeamYear && selectedTeamYear !== platformYear) {
           await loadYearFromApi(selectedTeamYear, { updateKpi: false, updateProduct: false });

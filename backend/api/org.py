@@ -10,11 +10,16 @@ router = APIRouter(prefix="/api", tags=["org"])
 
 
 @router.get("/org-analysis")
-def org_analysis(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100), _user=Depends(require_permission("org"))):
+def org_analysis(
+    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
+    asOf: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    _user=Depends(require_permission("org")),
+):
     return success_response(
-        get_org_kpi_data(year),
+        get_org_kpi_data(year, as_of=asOf),
         meta={
             "year": year,
+            "asOf": asOf,
             "metric": "org-analysis",
             "unit": "万元",
             "dataSource": "agg_org_*, agg_longterm_qj",

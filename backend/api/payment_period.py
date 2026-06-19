@@ -20,6 +20,7 @@ def payment_period_analysis(
     orgs: Optional[str] = Query(None),
     jingdaiOrgs: Optional[str] = Query(None),
     metric: str = Query("qj"),
+    asOf: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
     _user=Depends(require_permission("payment_period")),
 ):
     """获取交期结构数据。
@@ -50,11 +51,13 @@ def payment_period_analysis(
         orgs=_split_csv(orgs) if orgs else None,
         jingdai_orgs=_split_csv(jingdaiOrgs) if jingdaiOrgs else None,
         metric=metric or "qj",
+        as_of=asOf,
     )
     return success_response(
         data,
         meta={
             "year": str(year),
+            "asOf": asOf,
             "metric": metric or "qj",
             "unit": "万元/件",
             "dataSource": "agg_payment_period",

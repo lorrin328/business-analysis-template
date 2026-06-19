@@ -10,11 +10,16 @@ router = APIRouter(prefix="/api", tags=["kpi"])
 
 
 @router.get("/kpi")
-def kpi(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100), _user=Depends(require_permission("kpi"))):
+def kpi(
+    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
+    asOf: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    _user=Depends(require_permission("kpi")),
+):
     return success_response(
-        get_kpi_data(year),
+        get_kpi_data(year, as_of=asOf),
         meta={
             "year": year,
+            "asOf": asOf,
             "metric": "kpi",
             "unit": "万元/%",
             "dataSource": "SQLite aggregate tables",

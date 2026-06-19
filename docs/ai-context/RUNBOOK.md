@@ -1,4 +1,37 @@
-# RUNBOOK
+# 运行手册
+
+## Windows 本地开发环境
+
+### 前置工具
+
+- Python 3.10+
+- Git
+- uv
+
+### 推荐检查命令
+
+```powershell
+python --version
+uv --version
+git --version
+```
+
+### 安装依赖并运行测试
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r backend\requirements.txt
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+### Windows 预检
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\preflight.ps1
+```
+
+若当前进程尚未继承新 PATH，可重启 PowerShell 后重试。
 
 ## Docker 镜像构建与发布
 
@@ -27,11 +60,6 @@ http://<server-ip>:45679
 curl http://127.0.0.1:45679/api/health
 ```
 
-## 数据与日志
-
-- SQLite 数据库：`business-analysis-data` volume，对应容器内 `/data/business_data.db`。
-- 应用日志：`business-analysis-logs` volume，对应容器内 `/app/backend/logs`。
-
 ## Ubuntu systemd 部署
 
 当前非 Docker 部署路径：
@@ -56,12 +84,6 @@ sudo systemctl reload nginx
 sudo systemctl status nginx
 ```
 
-访问：
-
-```text
-http://192.168.50.8/
-```
-
 健康检查：
 
 ```bash
@@ -74,13 +96,12 @@ curl http://127.0.0.1:45679/api/health
 - 初始密码应仅通过临时环境变量或安全配置注入，不得写入仓库、日志或项目记忆。
 - 首次登录后建议立即修改管理员密码。
 
+## 数据与日志
+
+- Docker SQLite 数据库：`business-analysis-data` volume，对应容器内 `/data/business_data.db`。
+- Docker 应用日志：`business-analysis-logs` volume，对应容器内 `/app/backend/logs`。
+- systemd 部署数据库：`/opt/business-analysis/backend/business_data.db`。
+
 ## 回滚
 
-如某次镜像异常，优先回滚到上一个 tag 或 sha 镜像：
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-如果使用固定 tag，请先修改 `docker-compose.yml` 中的镜像 tag，再执行上述命令。
+如某次镜像异常，优先回滚到上一个 tag 或 sha 镜像；systemd 部署优先恢复 `/opt/business-analysis-backups/` 中的数据库备份，再回退代码版本并重启服务。

@@ -83,7 +83,7 @@ def test_platform_trend_supports_year_quarter_and_month(monkeypatch):
             {"month": 4, "day": 1, "qj_premium": 20},
         ],
     }
-    monkeypatch.setattr("services.query_service.get_platform_data", lambda year: data)
+    monkeypatch.setattr("services.query_service.get_platform_data", lambda year, as_of=None: data)
 
     yearly = get_platform_trend(2026, channels=[JINGDAI, "OTO"], period_type="year")
     quarterly = get_platform_trend(2026, channels=[JINGDAI, "OTO"], period_type="quarter")
@@ -94,6 +94,67 @@ def test_platform_trend_supports_year_quarter_and_month(monkeypatch):
     assert len(monthly["daily"]["values"]) == 31
     assert monthly["daily"]["values"][0] == 15
     assert monthly["daily"]["values"][-1] == 15
+
+
+def test_as_of_cutoff_filters_platform_and_trend_daily_rows(tmp_path, monkeypatch):
+    import db.connection as connection
+    from db.schema import init_db
+
+    db_path = tmp_path / "as_of_cutoff.db"
+    monkeypatch.setattr(connection, "DB_PATH", str(db_path))
+    init_db()
+
+    with sqlite3.connect(db_path) as conn:
+        conn.executemany(
+            """
+            INSERT INTO agg_daily_performance
+            (year, month, day, channel, qj_premium, gm_premium, zs_premium)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (2026, 6, 18, "OTO", 10, 10, 10),
+                (2026, 6, 19, "OTO", 20, 20, 20),
+                (2025, 6, 18, "OTO", 100, 100, 100),
+                (2025, 6, 19, "OTO", 200, 200, 200),
+            ],
+        )
+        conn.executemany(
+            """
+            INSERT INTO agg_jingdai_daily
+            (year, month, day, ymd, qj_premium, gm_premium, zs_premium)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (2026, 6, 18, "2026-06-18", 30, 30, 30),
+                (2026, 6, 19, "2026-06-19", 40, 40, 40),
+                (2025, 6, 18, "2025-06-18", 300, 300, 300),
+                (2025, 6, 19, "2025-06-19", 400, 400, 400),
+            ],
+        )
+
+    current = get_platform_data(2026, as_of="2026-06-18")
+    curr_oto = {r["month"]: r["qj_premium"] for r in current["performance"] if r["channel"] == "OTO"}
+    curr_jd = {r["month"]: r["qj_premium"] for r in current["jingdai"]}
+    assert current["as_of"]["selectedDate"] == "2026-06-18"
+    assert curr_oto[6] == 10
+    assert curr_jd[6] == 30
+    assert max(r["day"] for r in current["daily_performance"]) == 18
+    assert max(r["day"] for r in current["jingdai_daily"]) == 18
+
+    previous = get_platform_data(2025, as_of="2026-06-18")
+    prev_jd = {r["month"]: r["qj_premium"] for r in previous["jingdai"]}
+    assert previous["as_of"]["selectedDate"] == "2025-06-18"
+    assert prev_jd[6] == 300
+
+    monthly = get_platform_trend(
+        2026,
+        channels=[JINGDAI, "OTO"],
+        period_type="month",
+        period_value=6,
+        as_of="2026-06-18",
+    )
+    assert len(monthly["daily"]["values"]) == 18
+    assert monthly["daily"]["values"][-1] == 40
 
 
 def test_jingdai_org_filter_note():
@@ -155,7 +216,7 @@ def test_monthly_daily_generated_without_explicit_month_param(monkeypatch):
         "daily_performance": [],
         "jingdai_daily": [{"month": 4, "day": 1, "qj_premium": 30}],
     }
-    monkeypatch.setattr("services.query_service.get_platform_data", lambda year: data)
+    monkeypatch.setattr("services.query_service.get_platform_data", lambda year, as_of=None: data)
     result = get_platform_trend(
         2026, channels=[JINGDAI], metric="qj",
         period_type="month", period_value=4,
@@ -324,7 +385,7 @@ def test_platform_trend_jingdai_quarter_has_current_and_prev_year(monkeypatch):
         "daily_performance": [],
         "jingdai_daily": [],
     }
-    monkeypatch.setattr("services.query_service.get_platform_data", lambda year: data_2026)
+    monkeypatch.setattr("services.query_service.get_platform_data", lambda year, as_of=None: data_2026)
     result = get_platform_trend(
         2026, channels=[JINGDAI], metric="qj", period_type="quarter",
     )
@@ -391,7 +452,7 @@ def test_period_type_month_with_period_value_generates_daily(monkeypatch):
             {"month": 4, "day": 2, "qj_premium": 25},
         ],
     }
-    monkeypatch.setattr("services.query_service.get_platform_data", lambda year: data)
+    monkeypatch.setattr("services.query_service.get_platform_data", lambda year, as_of=None: data)
     # Simulate API call with periodType=month&periodValue=4 (no month param)
     result = get_platform_trend(
         2026, channels=[JINGDAI], metric="qj",
@@ -509,7 +570,7 @@ def test_get_platform_trend_quarter_returns_daily(monkeypatch):
             {"month": 4, "day": 2, "qj_premium": 30},
         ],
     }
-    monkeypatch.setattr("services.query_service.get_platform_data", lambda year: data)
+    monkeypatch.setattr("services.query_service.get_platform_data", lambda year, as_of=None: data)
     result = get_platform_trend(
         2025, channels=[JINGDAI], metric="qj",
         period_type="quarter", period_value=2,
@@ -527,7 +588,7 @@ def test_get_platform_trend_quarter_returns_daily(monkeypatch):
 def test_get_platform_trend_quarter_no_period_value_omits_daily(monkeypatch):
     """平台趋势API：季度无 periodValue 时不返回 daily"""
     data = {"performance": [], "jingdai": [], "daily_performance": [], "jingdai_daily": []}
-    monkeypatch.setattr("services.query_service.get_platform_data", lambda year: data)
+    monkeypatch.setattr("services.query_service.get_platform_data", lambda year, as_of=None: data)
     result = get_platform_trend(
         2026, channels=[JINGDAI], metric="qj",
         period_type="quarter", period_value=None,

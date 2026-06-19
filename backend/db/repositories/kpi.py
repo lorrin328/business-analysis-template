@@ -3,68 +3,137 @@ import json
 import sqlite3
 from db.connection import get_db
 from db.schema import init_db
-from services.cutoff_policy import build_source_cutoff_policy, date_filter_sql, latest_daily_cutoff
+from services.cutoff_policy import (
+    build_as_of_context,
+    build_source_cutoff_policy,
+    cutoff_min,
+    date_filter_sql,
+    latest_daily_cutoff,
+)
 
 
-def get_platform_data(year: int):
+def get_platform_data(year: int, as_of: str | None = None):
     with get_db() as conn:
         c = conn.cursor()
+        as_of_context = build_as_of_context(conn, year, as_of)
+        selected_cutoff = as_of_context.get("selectedCutoff")
+        cutoff_month = int(selected_cutoff["month"]) if selected_cutoff else 12
 
         c.execute('''
             SELECT month, channel, qj_premium, gm_premium, zs_premium
-            FROM agg_performance WHERE year = ? ORDER BY month, channel
-        ''', (year,))
+            FROM agg_performance WHERE year = ? AND month <= ? ORDER BY month, channel
+        ''', (year, cutoff_month))
         perf_rows = c.fetchall()
+        if selected_cutoff:
+            date_sql, date_params = date_filter_sql(selected_cutoff)
+            c.execute('''
+                SELECT month, channel, SUM(qj_premium) AS qj_premium,
+                       SUM(gm_premium) AS gm_premium, SUM(zs_premium) AS zs_premium
+                FROM agg_daily_performance
+                WHERE year = ? AND ''' + date_sql + '''
+                GROUP BY month, channel
+                ORDER BY month, channel
+            ''', [year, *date_params])
+            daily_perf_rows = c.fetchall()
+            if daily_perf_rows:
+                perf_rows = daily_perf_rows
 
         c.execute('''
             SELECT month, qj_premium, gm_premium, zs_premium
-            FROM agg_jingdai WHERE year = ? ORDER BY month
-        ''', (year,))
+            FROM agg_jingdai WHERE year = ? AND month <= ? ORDER BY month
+        ''', (year, cutoff_month))
         jingdai_rows = c.fetchall()
+        if selected_cutoff:
+            date_sql, date_params = date_filter_sql(selected_cutoff)
+            c.execute('''
+                SELECT month, SUM(qj_premium) AS qj_premium,
+                       SUM(gm_premium) AS gm_premium, SUM(zs_premium) AS zs_premium
+                FROM agg_jingdai_daily
+                WHERE year = ? AND ''' + date_sql + '''
+                GROUP BY month
+                ORDER BY month
+            ''', [year, *date_params])
+            daily_jingdai_rows = c.fetchall()
+            if daily_jingdai_rows:
+                jingdai_rows = daily_jingdai_rows
 
-        c.execute('''
-            SELECT year, month, day, ymd, qj_premium, gm_premium, zs_premium
-            FROM agg_jingdai_daily WHERE year = ? ORDER BY month, day
-        ''', (year,))
+        if selected_cutoff:
+            date_sql, date_params = date_filter_sql(selected_cutoff)
+            c.execute('''
+                SELECT year, month, day, ymd, qj_premium, gm_premium, zs_premium
+                FROM agg_jingdai_daily WHERE year = ? AND ''' + date_sql + ''' ORDER BY month, day
+            ''', [year, *date_params])
+        else:
+            c.execute('''
+                SELECT year, month, day, ymd, qj_premium, gm_premium, zs_premium
+                FROM agg_jingdai_daily WHERE year = ? ORDER BY month, day
+            ''', (year,))
         jingdai_daily_rows = c.fetchall()
 
         c.execute('''
             SELECT month, channel, start_headcount, end_headcount, active_headcount
-            FROM agg_hr_data WHERE year = ? ORDER BY month, channel
-        ''', (year,))
+            FROM agg_hr_data WHERE year = ? AND month <= ? ORDER BY month, channel
+        ''', (year, cutoff_month))
         hr_rows = c.fetchall()
 
         try:
             c.execute('''
                 SELECT month, org, channel, start_headcount, end_headcount, active_headcount
-                FROM agg_org_hr_data WHERE year = ? ORDER BY month, org, channel
-            ''', (year,))
+                FROM agg_org_hr_data WHERE year = ? AND month <= ? ORDER BY month, org, channel
+            ''', (year, cutoff_month))
             org_hr_rows = c.fetchall()
         except sqlite3.OperationalError:
             org_hr_rows = []
 
         c.execute('''
             SELECT month, channel, value_premium
-            FROM agg_value_data WHERE year = ? ORDER BY month, channel
-        ''', (year,))
+            FROM agg_value_data WHERE year = ? AND month <= ? ORDER BY month, channel
+        ''', (year, cutoff_month))
         value_rows = c.fetchall()
 
         c.execute('''
             SELECT month, org, channel, qj_premium, gm_premium, zs_premium
-            FROM agg_org_performance WHERE year = ? ORDER BY month, org, channel
-        ''', (year,))
+            FROM agg_org_performance WHERE year = ? AND month <= ? ORDER BY month, org, channel
+        ''', (year, cutoff_month))
         org_perf_rows = c.fetchall()
+        if selected_cutoff:
+            date_sql, date_params = date_filter_sql(selected_cutoff)
+            c.execute('''
+                SELECT month, org, channel, SUM(qj_premium) AS qj_premium,
+                       SUM(gm_premium) AS gm_premium, SUM(zs_premium) AS zs_premium
+                FROM agg_org_daily_performance
+                WHERE year = ? AND ''' + date_sql + '''
+                GROUP BY month, org, channel
+                ORDER BY month, org, channel
+            ''', [year, *date_params])
+            org_daily_perf_rows = c.fetchall()
+            if org_daily_perf_rows:
+                org_perf_rows = org_daily_perf_rows
 
-        c.execute('''
-            SELECT month, day, channel, qj_premium, gm_premium, zs_premium
-            FROM agg_daily_performance WHERE year = ? ORDER BY month, day, channel
-        ''', (year,))
+        if selected_cutoff:
+            date_sql, date_params = date_filter_sql(selected_cutoff)
+            c.execute('''
+                SELECT month, day, channel, qj_premium, gm_premium, zs_premium
+                FROM agg_daily_performance WHERE year = ? AND ''' + date_sql + ''' ORDER BY month, day, channel
+            ''', [year, *date_params])
+        else:
+            c.execute('''
+                SELECT month, day, channel, qj_premium, gm_premium, zs_premium
+                FROM agg_daily_performance WHERE year = ? ORDER BY month, day, channel
+            ''', (year,))
         daily_rows = c.fetchall()
 
-        c.execute('''
-            SELECT month, day, org, channel, qj_premium, gm_premium, zs_premium
-            FROM agg_org_daily_performance WHERE year = ? ORDER BY month, day, org, channel
-        ''', (year,))
+        if selected_cutoff:
+            date_sql, date_params = date_filter_sql(selected_cutoff)
+            c.execute('''
+                SELECT month, day, org, channel, qj_premium, gm_premium, zs_premium
+                FROM agg_org_daily_performance WHERE year = ? AND ''' + date_sql + ''' ORDER BY month, day, org, channel
+            ''', [year, *date_params])
+        else:
+            c.execute('''
+                SELECT month, day, org, channel, qj_premium, gm_premium, zs_premium
+                FROM agg_org_daily_performance WHERE year = ? ORDER BY month, day, org, channel
+            ''', (year,))
         org_daily_rows = c.fetchall()
 
         c.execute('''
@@ -89,11 +158,12 @@ def get_platform_data(year: int):
             'daily_performance': [dict(r) for r in daily_rows],
             'org_daily_performance': [dict(r) for r in org_daily_rows],
             'latest_period': latest,
+            'as_of': as_of_context,
         }
 
 
 
-def get_kpi_data(year: int):
+def get_kpi_data(year: int, as_of: str | None = None):
     """获取 KPI 概览数据。
 
     期交保费 YTD 优先使用日累计表（agg_daily_performance / agg_jingdai_daily），
@@ -102,6 +172,8 @@ def get_kpi_data(year: int):
     """
     with get_db() as conn:
         c = conn.cursor()
+        as_of_context = build_as_of_context(conn, year, as_of)
+        selected_cutoff = as_of_context.get("selectedCutoff")
 
         # Use the smallest available source cutoff to avoid mixing data through different months.
         def _max_month(table: str):
@@ -117,12 +189,20 @@ def get_kpi_data(year: int):
         }
         available_cutoffs = [month for month in data_cutoff.values() if month]
         query_month = min(available_cutoffs) if available_cutoffs else 1
+        if selected_cutoff:
+            query_month = min(query_month, int(selected_cutoff["month"]))
 
         # ── 日级统计截止日（用于期交保费同比同口径截取） ──
         # 转型业务与经代业务来自不同报表：转型更新到拉取当天，经代截至前一日。
         # KPI 按各自真实截止日取数；共同截止日仅暴露给需要同日对比的展示。
-        transform_daily_cutoff = latest_daily_cutoff(conn, 'agg_daily_performance', year)
-        jingdai_daily_cutoff = latest_daily_cutoff(conn, 'agg_jingdai_daily', year)
+        transform_daily_cutoff = cutoff_min(
+            latest_daily_cutoff(conn, 'agg_daily_performance', year),
+            selected_cutoff,
+        )
+        jingdai_daily_cutoff = cutoff_min(
+            latest_daily_cutoff(conn, 'agg_jingdai_daily', year),
+            selected_cutoff,
+        )
         daily_policy = build_source_cutoff_policy(transform_daily_cutoff, jingdai_daily_cutoff)
         use_daily = daily_policy['use_daily']
         common_daily_cutoff = daily_policy['common']
@@ -340,6 +420,7 @@ def get_kpi_data(year: int):
                 'jingdai': jingdai_daily_cutoff,
                 'policy': daily_policy,
             },
+            'as_of': as_of_context,
             'qj_premium': {
                 'jingdai': round(jingdai_qj, 2),
                 'oto': round(perf.get('OTO', 0), 2),
@@ -377,4 +458,3 @@ def get_kpi_data(year: int):
             'hr_prev': hr_prev,
             'value': value,
         }
-

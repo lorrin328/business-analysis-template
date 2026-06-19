@@ -3,9 +3,10 @@ import json
 import sqlite3
 from db.connection import get_db
 from db.schema import init_db
+from services.cutoff_policy import build_as_of_context, cutoff_min, latest_daily_cutoff
 
 
-def get_org_kpi_data(year: int):
+def get_org_kpi_data(year: int, as_of: str | None = None):
     """获取机构维度KPI数据。
 
     年度同比使用日累计至统计日截止：
@@ -15,26 +16,22 @@ def get_org_kpi_data(year: int):
     """
     with get_db() as conn:
         c = conn.cursor()
+        as_of_context = build_as_of_context(conn, year, as_of)
+        selected_cutoff = as_of_context.get("selectedCutoff")
 
         # 找到当前年度统计截止日（日表最新日期），用于截断同比基准
-        c.execute('''
-            SELECT month, MAX(day) as max_day
-            FROM agg_org_daily_performance
-            WHERE year = ?
-            GROUP BY month
-            ORDER BY month DESC
-            LIMIT 1
-        ''', (year,))
-        cutoff = c.fetchone()
-        if cutoff and cutoff['month']:
-            ytd_end_month = cutoff['month']
-            ytd_end_day = cutoff['max_day'] or 31
+        org_daily_cutoff = cutoff_min(latest_daily_cutoff(conn, 'agg_org_daily_performance', year), selected_cutoff)
+        if org_daily_cutoff:
+            ytd_end_month = int(org_daily_cutoff['month'])
+            ytd_end_day = int(org_daily_cutoff['day'] or 31)
             use_daily = True
         else:
             # 无日数据时回退：当月表最新月份截断
             c.execute('SELECT MAX(month) FROM agg_org_performance WHERE year = ?', (year,))
             row = c.fetchone()
             ytd_end_month = row[0] if row and row[0] else 12
+            if selected_cutoff:
+                ytd_end_month = min(int(ytd_end_month), int(selected_cutoff['month']))
             ytd_end_day = 31
             use_daily = False
 
@@ -54,10 +51,13 @@ def get_org_kpi_data(year: int):
                 WHERE d.year = ?
                 GROUP BY d.channel, d.month
             ''', (year, year))
-            channel_cutoffs = {
-                r['channel']: (int(r['month']), int(r['max_day'] or 31))
-                for r in c.fetchall()
-            }
+            for r in c.fetchall():
+                capped = cutoff_min(
+                    {'month': int(r['month']), 'day': int(r['max_day'] or 31)},
+                    selected_cutoff,
+                )
+                if capped:
+                    channel_cutoffs[r['channel']] = (int(capped['month']), int(capped['day']))
 
         def _ytd_premiums(query_year: int):
             """从日表取截至统计日的期交保费累计，无数据则回退None"""
@@ -90,9 +90,9 @@ def get_org_kpi_data(year: int):
                        SUM(product_annuity) AS annuity_total,
                        SUM(product_protection) AS protection_total
                 FROM agg_org_performance
-                WHERE year = ?
+                WHERE year = ? AND month <= ?
                 GROUP BY org, channel, month
-            ''', (query_year,))
+            ''', (query_year, ytd_end_month))
             for r in c.fetchall():
                 key = f"{r['org']}|{r['channel']}"
                 month = int(r['month'])
@@ -137,9 +137,9 @@ def get_org_kpi_data(year: int):
             c.execute('''
                 SELECT org, channel, month, SUM(value_premium) AS value_total
                 FROM agg_org_value
-                WHERE year = ?
+                WHERE year = ? AND month <= ?
                 GROUP BY org, channel, month
-            ''', (query_year,))
+            ''', (query_year, ytd_end_month))
             result = {}
             for r in c.fetchall():
                 key = f"{r['org']}|{r['channel']}"
@@ -198,5 +198,5 @@ def get_org_kpi_data(year: int):
             'longterm': org_longterm,
             'perf_prev': org_perf_prev,
             'value_prev': org_value_prev,
+            'as_of': as_of_context,
         }
-

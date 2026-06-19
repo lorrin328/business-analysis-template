@@ -20,12 +20,25 @@ def product_analysis(
     orgs: str | None = None,
     months: str | None = None,
     metric: str = Query("qj", pattern="^(qj|gm)$"),
+    asOf: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
     _user=Depends(require_permission("product_structure")),
 ):
     return success_response(
-        get_product_structure(year, dimension, transformLines, jingdaiOrgs, includeTransform, includeJingdai, orgs, months, metric),
+        get_product_structure(
+            year,
+            dimension,
+            transformLines,
+            jingdaiOrgs,
+            includeTransform,
+            includeJingdai,
+            orgs,
+            months,
+            metric,
+            as_of=asOf,
+        ),
         meta={
             "year": year,
+            "asOf": asOf,
             "metric": "product-analysis",
             "unit": "万元/件",
             "dataSource": "performance / jingdai",

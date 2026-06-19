@@ -322,7 +322,8 @@ function getModalContent(type) {
         case 'percapita': {
           const kpiData = apiData.kpi || {};
           const year = kpiData.year || new Date().getFullYear();
-          const platform = apiCache[String(year)]?.platform || {};
+          const currentCacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(year) : String(year);
+          const platform = apiCache[currentCacheKey]?.platform || {};
           const perfRows = platform.performance || [];
           const hrRows = platform.hr || [];
           if (!perfRows.length || !hrRows.length) {
@@ -376,7 +377,8 @@ function getModalContent(type) {
           const qIdx = Math.ceil(maxMonth / 3);
           const q = calcRange((qIdx - 1) * 3 + 1, Math.min(qIdx * 3, maxMonth));
           const curr = calcRange(maxMonth, maxMonth);
-          const prevPlat = apiCache[String(year - 1)]?.platform || {};
+          const prevCacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(year - 1) : String(year - 1);
+          const prevPlat = apiCache[prevCacheKey]?.platform || {};
           const prevPrem = buildMaps(prevPlat.performance || [], 'channel', r => r.qj_premium || 0);
           const prevAvg = buildMaps(prevPlat.hr || [], 'channel', r => ((r.start_headcount || 0) + (r.end_headcount || 0)) / 2);
           function calcPrev(endM) {
