@@ -1,5 +1,13 @@
 # 工作日志
 
+## 2026-06-29 部署推送与 webhook 阻塞
+
+- 任务：将 `v1.0.97` 产品分类口径调整部署到服务器。
+- 已完成：本地 `master` 提交 `1a00695 fix product config scope and deploy v1.0.97`，并成功推送到 GitHub `origin/master`。
+- 部署验证：线上健康检查 `http://192.168.50.6/api/health` 仍返回 `app_version=v1.0.95`、`page_version=v1.0.95`、数据库路径 `/opt/business-analysis/backend/business_data.db`、最新期间 `202606`。
+- 阻塞原因：`http://192.168.50.6/webhook/deploy` 返回 `502 Bad Gateway`，说明 nginx webhook 入口存在但后端 `webhook-deploy` 服务未正常响应；SSH 尝试 `yinli/root/ubuntu/www-data/codex@192.168.50.6` 均因无可用凭据失败，无法远程重启 webhook 服务或手工执行部署脚本。
+- 当前状态：代码已到 GitHub，服务器未完成部署；需要服务器 SSH 凭据或在服务器本机执行 `sudo systemctl status webhook-deploy`、`sudo systemctl restart webhook-deploy` 后重新触发部署。
+
 ## 2026-06-29 v1.0.97 转型产品分类标识改为读取业绩基表
 
 - 任务：根目录 2026-06-29 新业绩基表已包含转型业务 `是否个人养老金`、`是否商保年金产品`、`是否社会保障型产品` 标识，需取消转型产品分类在参数设置中的手工维护，仅保留经代手工配置。

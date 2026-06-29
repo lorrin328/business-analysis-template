@@ -1,5 +1,11 @@
 # 待办事项
 
+## 2026-06-29 部署阻塞
+
+- 【高】修复服务器 `192.168.50.6` 的 `webhook-deploy` 服务：当前 `/webhook/deploy` 返回 `502 Bad Gateway`，GitHub push 不能触发自动部署。
+- 【高】获取或恢复服务器 SSH 登录方式；当前本机无可用免密凭据，无法手工执行 `/opt/business-analysis/deploy/deploy.sh`。
+- 【高】webhook 修复后重新部署 `master` 最新提交 `1a00695`，并验证 `/api/health` 返回 `app_version=v1.0.97`、`page_version=v1.0.97`。
+
 ## 2026-06-20 审计整改建议
 
 - 【已完成 2026-06-24】生产环境默认关闭公开自助注册，保留 `AUTH_ALLOW_PUBLIC_REGISTRATION=1` 作为显式开关；普通用户默认只读经营数据的范围仍需按实际保密要求确认。
