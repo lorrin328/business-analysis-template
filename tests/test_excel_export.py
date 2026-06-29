@@ -37,7 +37,7 @@ def test_excel_export_returns_workbook_with_module_sheets():
         "产品明细",
         "交期结构",
         "队伍分析",
-        "产品参数",
+        "经代产品参数",
     ]
     assert wb.sheetnames == expected_sheets
     assert wb["KPI概览"]["A2"].value == "指标"

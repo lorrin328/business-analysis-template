@@ -11,8 +11,14 @@ from etl.normalize import (
 from etl.columns import _pick_col
 from config.business_lines import TRANSFORM_CHANNELS
 from config.orgs import ORG_SCOPE
-from db import get_db
 from metrics.business_rules import is_tenyear_product, normalize_product_code
+
+
+def _is_yes_flag(value) -> bool:
+    if pd.isna(value):
+        return False
+    text = str(value).strip().upper()
+    return text in {'Y', 'YES', 'TRUE', '1', '是'}
 
 def aggregate_org_daily_performance(df: pd.DataFrame) -> List[Dict]:
     """按日、机构、业务模式聚合保费，用于机构筛选后的同口径日累计趋势。"""
@@ -57,7 +63,7 @@ def aggregate_org_daily_performance(df: pd.DataFrame) -> List[Dict]:
 def aggregate_org_performance(df: pd.DataFrame) -> List[Dict]:
     """按机构+业务模式聚合业绩数据，含产品分类明细。
 
-    产品分类（商保年金 / 保障类）从 product_config 表读取配置，不再依赖 Excel 列。
+    转型业务产品分类（商保年金 / 社会保障型产品）直接读取业绩基表标识列。
     10年期产品仍按缴费年限 >= 10 判断。
     """
     year_col = _pick_col(df, ['年'])
@@ -69,6 +75,13 @@ def aggregate_org_performance(df: pd.DataFrame) -> List[Dict]:
     zs_col = _pick_col(df, ['折算保费'], ['折算', '标准'])
     pay_years_col = _pick_col(df, ['缴费年限'])
     product_code_col = _pick_col(df, ['产品代码'])
+    annuity_col = _pick_col(df, ['是否商保年金产品', '是否商保年金', '商保年金标识'])
+    protection_col = _pick_col(df, [
+        '是否社会保障型产品',
+        '是否社会保障类产品',
+        '社会保障类产品标识',
+        '是否保障类产品',
+    ])
 
     if not all([year_col, month_col, channel_col, qj_col]):
         raise ValueError(f"无法识别机构业绩必要列。当前列: {list(df.columns)}")
@@ -100,45 +113,12 @@ def aggregate_org_performance(df: pd.DataFrame) -> List[Dict]:
             axis=1,
         )
 
-    # 从 product_config 表读取商保年金和保障类配置
     work['_is_annuity'] = False
     work['_is_protection'] = False
-    if product_code_col:
-        try:
-            with get_db() as conn:
-                c = conn.cursor()
-                c.execute('SELECT product_code, business_type, is_annuity, is_protection FROM product_config')
-                config_map = {}
-                for r in c.fetchall():
-                    key = (str(r['business_type'] or '').strip(), normalize_product_code(r['product_code']))
-                    item = config_map.setdefault(key, {'is_annuity': False, 'is_protection': False})
-                    item['is_annuity'] = item['is_annuity'] or str(r['is_annuity']).upper() == 'Y'
-                    item['is_protection'] = item['is_protection'] or str(r['is_protection']).upper() == 'Y'
-            work['_is_annuity'] = work['_product_code'].map(
-                lambda x: False
-            ).fillna(False)
-            work['_is_protection'] = work['_product_code'].map(
-                lambda x: False
-            ).fillna(False)
-            work['_is_annuity'] = work.apply(
-                lambda r: (
-                    config_map.get((r['_channel'], r['_product_code']))
-                    or config_map.get(('', r['_product_code']))
-                    or {}
-                ).get('is_annuity', False),
-                axis=1,
-            )
-            work['_is_protection'] = work.apply(
-                lambda r: (
-                    config_map.get((r['_channel'], r['_product_code']))
-                    or config_map.get(('', r['_product_code']))
-                    or {}
-                ).get('is_protection', False),
-                axis=1,
-            )
-        except Exception:
-            # product_config 表不存在或查询失败时，默认不计入
-            pass
+    if annuity_col:
+        work['_is_annuity'] = work[annuity_col].map(_is_yes_flag)
+    if protection_col:
+        work['_is_protection'] = work[protection_col].map(_is_yes_flag)
 
     work['_product_10year'] = work['_qj'].where(work['_is_10year'], 0)
     work['_product_annuity'] = work['_qj'].where(work['_is_annuity'], 0)

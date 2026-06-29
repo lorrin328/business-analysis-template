@@ -12,7 +12,7 @@ from etl import (
 )
 from db import clear_year_data, get_db, init_db, replace_rows
 from services.operation_lock import operation_lock
-from services.product_config_service import extract_jingdai_products_to_config, extract_products_to_config
+from services.product_config_service import extract_jingdai_products_to_config, purge_non_jingdai_product_config
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,6 +50,11 @@ def main():
 
 def _main_locked():
     init_db()
+    with get_db() as conn:
+        purged = purge_non_jingdai_product_config(conn)
+        conn.commit()
+        if purged:
+            print(f'product_config: purged {purged} non-jingdai rows')
 
     sources = find_excel_sources(required=True)
     performance_file = sources['performance']
@@ -67,7 +72,6 @@ def _main_locked():
     if performance_file:
         df = parse_performance_excel(performance_file.read_bytes())
         raw_tables['performance'] = df
-        extract_products_to_config(df)
         perf_rows = aggregate_performance(df)
         daily_rows = aggregate_daily_performance(df)
         org_daily_rows = aggregate_org_daily_performance(df)

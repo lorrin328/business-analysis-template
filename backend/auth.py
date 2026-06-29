@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import os
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Callable
@@ -75,6 +76,7 @@ DEFAULT_ADMIN_USERNAME = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
 DEFAULT_ADMIN_PASSWORD = os.getenv("DEFAULT_ADMIN_PASSWORD", "")
 SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
 PBKDF2_ITERATIONS = 200_000
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.@\-\u4e00-\u9fff]+$")
 
 
 def _utc_now() -> datetime:
@@ -108,6 +110,25 @@ def normalize_role(role: str | None) -> str:
     value = (role or ROLE_NORMAL).strip().lower()
     if value not in ROLES:
         raise HTTPException(status_code=400, detail="Invalid role")
+    return value
+
+
+def public_registration_enabled() -> bool:
+    """Public self-registration is opt-in in production."""
+    setting = os.getenv("AUTH_ALLOW_PUBLIC_REGISTRATION", "").strip().lower()
+    if setting in {"1", "true", "yes", "on"}:
+        return True
+    if setting in {"0", "false", "no", "off"}:
+        return False
+    return os.getenv("APP_ENV", "").strip().lower() != "production"
+
+
+def validate_username(username: str | None) -> str:
+    value = (username or "").strip()
+    if not 3 <= len(value) <= 64:
+        raise HTTPException(status_code=400, detail="用户名长度需为3-64个字符")
+    if not USERNAME_PATTERN.fullmatch(value):
+        raise HTTPException(status_code=400, detail="用户名仅支持中文、字母、数字、下划线、点、@和短横线")
     return value
 
 
@@ -213,9 +234,9 @@ def authenticate_user(username: str, password: str) -> dict | None:
 
 
 def register_user(username: str, password: str) -> dict:
-    username = (username or "").strip()
-    if len(username) < 3:
-        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+    if not public_registration_enabled():
+        raise HTTPException(status_code=403, detail="当前环境已关闭自助注册，请联系管理员开通账号")
+    username = validate_username(username)
     if len(password or "") < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     salt, password_hash = _hash_password(password)

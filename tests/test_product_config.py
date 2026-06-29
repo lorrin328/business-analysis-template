@@ -84,8 +84,8 @@ class TestProductConfig:
         assert data["success"] is True
         assert data["data"] == []
 
-    def test_auto_extract_from_performance(self, monkeypatch):
-        """product_config 为空时自动从 performance 表提取年份≥2026的产品。"""
+    def test_product_config_does_not_auto_extract_transform_products(self, monkeypatch):
+        """转型产品分类来自业绩基表标识，不再进入参数设置。"""
         monkeypatch.setenv("ADMIN_TOKEN", "test-token")
 
         from db import DB_PATH
@@ -102,19 +102,11 @@ class TestProductConfig:
         conn.commit()
         conn.close()
 
-        # GET 应自动提取
         resp = client.get("/api/product-config")
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
-        products = data["data"]
-        assert len(products) >= 1
-        auto_product = next((p for p in products if p["product_code"] == "AUTO999"), None)
-        assert auto_product is not None
-        assert auto_product["product_name"] == "自动提取产品"
-        assert auto_product["business_type"] == "OTO"
-        assert auto_product["is_annuity"] == "N"
-        assert auto_product["is_protection"] == "N"
+        assert data["data"] == []
 
         # 清理
         conn = sqlite3.connect(DB_PATH)
@@ -124,8 +116,8 @@ class TestProductConfig:
         conn.commit()
         conn.close()
 
-    def test_auto_extract_accepts_compact_yyyymm_period(self, monkeypatch):
-        """年月为 202605 这类紧凑文本时，也应能自动提取产品配置。"""
+    def test_product_config_ignores_compact_yyyymm_transform_products(self, monkeypatch):
+        """即使转型年月可识别，也不自动进入经代参数设置。"""
         monkeypatch.setenv("ADMIN_TOKEN", "test-token")
 
         from db import DB_PATH
@@ -143,10 +135,7 @@ class TestProductConfig:
 
         resp = client.get("/api/product-config")
         assert resp.status_code == 200
-        products = resp.json()["data"]
-        auto_product = next((p for p in products if p["product_code"] == "AUTO998"), None)
-        assert auto_product is not None
-        assert auto_product["product_name"] == "紧凑年月产品"
+        assert resp.json()["data"] == []
 
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
@@ -181,8 +170,8 @@ class TestProductConfig:
         assert jd_product["is_annuity"] == "N"
         assert jd_product["is_protection"] == "N"
 
-    def test_post_triggers_recalc_when_performance_empty(self, monkeypatch):
-        """保存配置时若 performance 表为空，recalculated 为 0。"""
+    def test_post_triggers_recalc_when_jingdai_empty(self, monkeypatch):
+        """保存配置时若 jingdai 表为空，recalculated 为 0。"""
         monkeypatch.setenv("ADMIN_TOKEN", "test-token")
 
         from db import DB_PATH
@@ -190,11 +179,11 @@ class TestProductConfig:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute("DELETE FROM product_config")
-        c.execute("DELETE FROM performance")
+        c.execute("DELETE FROM jingdai")
         c.execute("""
             INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
             VALUES (?, ?, ?, ?, ?)
-        """, ("RECALC01", "测试产品", "OTO", "N", "N"))
+        """, ("RECALC01", "测试产品", "经代", "N", "N"))
         conn.commit()
         conn.close()
 
@@ -207,7 +196,7 @@ class TestProductConfig:
         data = resp.json()
         assert data["success"] is True
         assert data["data"]["updated"] == 1
-        # performance 表为空，无法重新聚合
+        # jingdai 表为空，无法重新聚合
         assert data["data"]["recalculated"] == 0
 
         # 清理
@@ -230,11 +219,7 @@ class TestProductConfig:
         c.execute("""
             INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
             VALUES (?, ?, ?, ?, ?)
-        """, ("TEST001", "测试产品A", "OTO", "N", "N"))
-        c.execute("""
-            INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
-            VALUES (?, ?, ?, ?, ?)
-        """, ("TEST002", "测试产品B", "证保", "Y", "N"))
+        """, ("TEST002", "测试产品B", "经代", "Y", "N"))
         conn.commit()
         conn.close()
 
@@ -242,17 +227,15 @@ class TestProductConfig:
         resp = client.get("/api/product-config")
         assert resp.status_code == 200
         data = resp.json()["data"]
-        assert len(data) == 2
-        assert data[0]["product_code"] == "TEST001"
-        assert data[0]["is_annuity"] == "N"
-        assert data[1]["product_code"] == "TEST002"
-        assert data[1]["is_annuity"] == "Y"
+        assert len(data) == 1
+        assert data[0]["product_code"] == "TEST002"
+        assert data[0]["business_type"] == "经代"
+        assert data[0]["is_annuity"] == "Y"
 
         # POST 修改配置
         resp = client.post(
             "/api/product-config",
             json={"products": [
-                {"product_code": "TEST001", "is_annuity": "Y", "is_protection": "Y"},
                 {"product_code": "TEST002", "is_annuity": "N", "is_protection": "N"},
             ]},
             headers={"X-Admin-Token": "test-token"},
@@ -263,10 +246,7 @@ class TestProductConfig:
         # 再次 GET 验证修改已生效
         resp = client.get("/api/product-config")
         data = resp.json()["data"]
-        test001 = next(p for p in data if p["product_code"] == "TEST001")
         test002 = next(p for p in data if p["product_code"] == "TEST002")
-        assert test001["is_annuity"] == "Y"
-        assert test001["is_protection"] == "Y"
         assert test002["is_annuity"] == "N"
         assert test002["is_protection"] == "N"
 
@@ -300,10 +280,8 @@ class TestProductConfig:
 
         resp = client.get("/api/product-config")
         rows = [p for p in resp.json()["data"] if p["product_code"] == "SAME001"]
-        assert len(rows) == 2
+        assert len(rows) == 1
         by_type = {p["business_type"]: p for p in rows}
-        assert by_type["OTO"]["is_annuity"] == "Y"
-        assert by_type["OTO"]["is_protection"] == "N"
         assert by_type["经代"]["is_annuity"] == "N"
         assert by_type["经代"]["is_protection"] == "Y"
 
@@ -522,26 +500,26 @@ class TestProductConfig:
                 INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                ("4281", "产品4281", "OTO", "N", "N"),
+                ("4281", "产品4281", "经代", "N", "N"),
             )
             c.execute(
                 """
                 INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                ("4281.0", "产品4281小数", "OTO", "Y", "Y"),
+                ("4281.0", "产品4281小数", "经代", "Y", "Y"),
             )
             conn.commit()
 
             resp = client.get("/api/product-config")
             assert resp.status_code == 200
-            rows = [r for r in resp.json()["data"] if r["business_type"] == "OTO" and r["product_code"] == "4281"]
+            rows = [r for r in resp.json()["data"] if r["business_type"] == "经代" and r["product_code"] == "4281"]
             assert len(rows) == 1
             assert rows[0]["is_annuity"] == "Y"
             assert rows[0]["is_protection"] == "Y"
 
             count = conn.execute(
-                "SELECT COUNT(*) FROM product_config WHERE business_type = 'OTO' AND product_code IN ('4281', '4281.0')"
+                "SELECT COUNT(*) FROM product_config WHERE business_type = '经代' AND product_code IN ('4281', '4281.0')"
             ).fetchone()[0]
             assert count == 1
         finally:
@@ -561,20 +539,20 @@ class TestProductConfig:
                 INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                ("4281", "产品4281", "OTO", "N", "N"),
+                ("4281", "产品4281", "经代", "N", "N"),
             )
             conn.commit()
 
             resp = client.post(
                 "/api/product-config",
-                json={"products": [{"product_code": "4281.0", "business_type": "OTO", "is_annuity": "Y", "is_protection": "N"}]},
+                json={"products": [{"product_code": "4281.0", "business_type": "经代", "is_annuity": "Y", "is_protection": "N"}]},
                 headers={"X-Admin-Token": "test-token"},
             )
             assert resp.status_code == 200
             assert resp.json()["data"]["normalized"] == 0
 
             row = conn.execute(
-                "SELECT product_code, is_annuity, is_protection FROM product_config WHERE business_type = 'OTO'"
+                "SELECT product_code, is_annuity, is_protection FROM product_config WHERE business_type = '经代'"
             ).fetchone()
             assert row[0] == "4281"
             assert row[1] == "Y"
@@ -597,14 +575,14 @@ class TestProductConfig:
                 INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                ("nan", "nan", "OTO", "N", "N"),
+                ("nan", "nan", "经代", "N", "N"),
             )
             conn.execute(
                 """
                 INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                ("NAN001", "nan", "OTO", "N", "N"),
+                ("NAN001", "nan", "经代", "N", "N"),
             )
             conn.commit()
 
@@ -619,8 +597,8 @@ class TestProductConfig:
             conn.commit()
             conn.close()
 
-    def test_aggregate_product_category_matches_normalized_code(self, monkeypatch):
-        """A legacy 4281.0 config must still match raw performance product code 4281."""
+    def test_aggregate_product_category_uses_transform_excel_flags(self, monkeypatch):
+        """转型商保年金和保障类产品直接读取业绩基表标识，不读取 product_config。"""
         monkeypatch.setenv("ADMIN_TOKEN", "test-token")
 
         import pandas as pd
@@ -635,7 +613,7 @@ class TestProductConfig:
                 INSERT INTO product_config (product_code, product_name, business_type, is_annuity, is_protection)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                ("4281.0", "产品4281", "OTO", "Y", "Y"),
+                ("4281.0", "产品4281", "OTO", "N", "N"),
             )
             conn.commit()
 
@@ -648,6 +626,8 @@ class TestProductConfig:
                 "产品名称": "产品4281",
                 "期交保费": 10000,
                 "缴费年限": 10,
+                "是否商保年金产品": "是",
+                "是否社会保障型产品": "是",
             }])
             rows = aggregate_org_performance(df)
             assert len(rows) == 1

@@ -26,6 +26,7 @@
   const ROLE_LABELS = { admin: '管理员组', senior: '高级用户组', normal: '普通用户组' };
   const ROLE_OPTIONS = ['normal', 'senior', 'admin'];
   let adminUsersCache = [];
+  let authConfig = { allowPublicRegistration: false };
 
   function ensureAuthClient() {
     if (typeof window.setAuthSession !== 'function') {
@@ -92,6 +93,29 @@
   function setAuthMessage(message) {
     const el = document.getElementById('authMessage');
     if (el) el.textContent = message || '';
+  }
+
+  function applyAuthConfig() {
+    const subtitle = document.getElementById('authSubtitle');
+    const registerBtn = document.getElementById('authRegisterBtn');
+    if (subtitle) {
+      subtitle.textContent = authConfig.allowPublicRegistration
+        ? '请登录或注册后进入系统。新注册账号默认为普通用户。'
+        : '请登录后进入系统。账号由管理员开通。';
+    }
+    if (registerBtn) registerBtn.style.display = authConfig.allowPublicRegistration ? '' : 'none';
+  }
+
+  async function loadAuthConfig() {
+    try {
+      const resp = await fetch(window.apiUrl('/api/auth/config'), { cache: 'no-store' });
+      const payload = await resp.json().catch(() => ({}));
+      const data = window.unwrapApiResponse ? window.unwrapApiResponse(payload) : payload;
+      authConfig.allowPublicRegistration = data?.allowPublicRegistration === true;
+    } catch (e) {
+      authConfig.allowPublicRegistration = false;
+    }
+    applyAuthConfig();
   }
 
   function showAuthGate(message) {
@@ -173,14 +197,14 @@
     gate.innerHTML = `
       <div class="auth-panel">
         <div class="auth-title">经营分析看板</div>
-        <div class="auth-subtitle">请登录或注册后进入系统。新注册账号默认为普通用户。</div>
+        <div class="auth-subtitle" id="authSubtitle">请登录后进入系统。账号由管理员开通。</div>
         <label class="auth-label">用户名</label>
         <input class="auth-input" id="authUsername" autocomplete="username" placeholder="请输入用户名">
         <label class="auth-label">密码</label>
         <input class="auth-input" id="authPassword" type="password" autocomplete="current-password" placeholder="请输入密码">
         <div class="auth-actions">
           <button class="chart-btn auth-primary" id="authLoginBtn">登录</button>
-          <button class="chart-btn" id="authRegisterBtn">注册</button>
+          <button class="chart-btn" id="authRegisterBtn" style="display:none;">注册</button>
         </div>
         <div class="auth-message" id="authMessage"></div>
       </div>`;
@@ -194,6 +218,10 @@
       }
     });
     document.getElementById('authRegisterBtn').addEventListener('click', async () => {
+      if (!authConfig.allowPublicRegistration) {
+        setAuthMessage('当前环境已关闭自助注册，请联系管理员开通账号');
+        return;
+      }
       await submitAuth('register');
       if (window.__authResolve && getUser()) {
         const resolve = window.__authResolve;
@@ -320,7 +348,7 @@
             return `<label><input type="checkbox" data-module="${key}" ${user.permissions?.[key] ? 'checked' : ''} ${locked ? 'disabled' : ''}>${MODULE_LABELS[key]}</label>`;
           }).join('')}
         </td>
-        <td class="permission-action-cell"><button class="chart-btn permission-delete-btn" onclick="deletePermissionUser(${user.id}, '${escapeHtml(user.username)}')" ${isCurrentUser ? 'disabled' : ''}>删除</button></td>
+        <td class="permission-action-cell"><button class="chart-btn permission-delete-btn" data-action="delete-user" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}" ${isCurrentUser ? 'disabled' : ''}>删除</button></td>
       </tr>
     `;
     }).join('');
@@ -331,7 +359,7 @@
         <select class="permission-input" id="newUserRole">
           ${ROLE_OPTIONS.map(role => `<option value="${role}">${ROLE_LABELS[role]}</option>`).join('')}
         </select>
-        <button class="chart-btn auth-primary" onclick="createPermissionUser()">新增用户</button>
+        <button class="chart-btn auth-primary" data-action="create-user">新增用户</button>
       </div>
       <div class="structure-table-wrapper">
         <table class="structure-table permission-table">
@@ -341,9 +369,20 @@
       </div>
       <div class="permission-footer">
         <div class="chart-note" style="color:#94a3b8;font-size:12px;">管理员账号拥有全部权限；密码只支持重置，不展示原密码。修改多个用户后，点击右侧按钮统一保存。</div>
-        <button class="chart-btn auth-primary permission-save-all-btn" onclick="saveAllUserPermissions()">统一保存</button>
+        <button class="chart-btn auth-primary permission-save-all-btn" data-action="save-all-users">统一保存</button>
       </div>
     `;
+    bindPermissionAdminActions(container);
+  }
+
+  function bindPermissionAdminActions(container) {
+    container.querySelector('[data-action="create-user"]')?.addEventListener('click', createPermissionUser);
+    container.querySelector('[data-action="save-all-users"]')?.addEventListener('click', saveAllUserPermissions);
+    container.querySelectorAll('[data-action="delete-user"]').forEach(button => {
+      button.addEventListener('click', () => {
+        deletePermissionUser(button.dataset.userId, button.dataset.username || '');
+      });
+    });
   }
 
   async function createPermissionUser() {
@@ -434,6 +473,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     createAuthGate();
+    loadAuthConfig();
     applyPermissionVisibility();
   });
 

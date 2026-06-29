@@ -188,8 +188,8 @@ def _kpi_rows(kpi: dict, target_payload: dict | None) -> list[list[Any]]:
         ["期交保费达成率", qj.get("total", 0), qj_target, _rate(qj.get("total", 0), qj_target), "经代+OTO+证保+蚁桥", cutoff],
         ["价值达成率", round(sum((_safe_float(v) or 0) for v in value.values()), 2), value_target, _rate(round(sum((_safe_float(v) or 0) for v in value.values()), 2), value_target), "经代+OTO+证保+蚁桥；经代价值数据未接入时实绩为0", f"{kpi.get('year')}年{kpi.get('month')}月"],
         ["长险活动率", activity_rate, None, None, "活动人力/月均在职人力", f"{kpi.get('year')}年{kpi.get('month')}月"],
-        ["商保年金达成率", kpi.get("annuity_total", 0), annuity_target, _rate(kpi.get("annuity_total", 0), annuity_target), "经代+转型参数打标产品", f"{kpi.get('year')}年{kpi.get('month')}月"],
-        ["保障类产品达成率", kpi.get("protection_total", 0), protection_target, _rate(kpi.get("protection_total", 0), protection_target), "经代+转型参数打标产品", f"{kpi.get('year')}年{kpi.get('month')}月"],
+        ["商保年金达成率", kpi.get("annuity_total", 0), annuity_target, _rate(kpi.get("annuity_total", 0), annuity_target), "转型读取业绩基表标识；经代读取参数设置", f"{kpi.get('year')}年{kpi.get('month')}月"],
+        ["保障类产品达成率", kpi.get("protection_total", 0), protection_target, _rate(kpi.get("protection_total", 0), protection_target), "转型读取业绩基表社会保障型产品标识；经代读取参数设置", f"{kpi.get('year')}年{kpi.get('month')}月"],
         ["10年期产品达成率", kpi.get("tenyear_total", 0), tenyear_target, _rate(kpi.get("tenyear_total", 0), tenyear_target), "转型10年及以上+经代10年及以上", f"{kpi.get('year')}年{kpi.get('month')}月"],
         ["长险期交达成率", kpi.get("longterm_qj", 0), qj_target, _rate(kpi.get("longterm_qj", 0), qj_target), "长险期交，目标沿用期交保费目标", cutoff],
         ["人均保费", None, None, None, "当前看板展示口径为转型业务，不含经代", cutoff],
@@ -273,6 +273,7 @@ def _product_config_rows() -> list[list[Any]]:
             """
             SELECT product_code, product_name, business_type, is_annuity, is_protection
             FROM product_config
+            WHERE business_type = '经代'
             ORDER BY COALESCE(business_type, ''), product_code
             """
         ).fetchall()
@@ -330,8 +331,8 @@ def build_dashboard_export_workbook(year: int) -> bytes:
     ws = wb.create_sheet("队伍分析")
     _sheet(ws, f"{year}年队伍分析", ["月份", "业务线", "月初人力", "月末人力", "月均人力", "活动人力", "活动率"], _team_rows(platform))
 
-    ws = wb.create_sheet("产品参数")
-    _sheet(ws, "产品参数配置", ["产品代码", "产品名称", "业务类型", "商保年金", "保障类"], _product_config_rows())
+    ws = wb.create_sheet("经代产品参数")
+    _sheet(ws, "经代产品参数配置", ["产品代码", "产品名称", "业务类型", "商保年金", "保障类"], _product_config_rows())
 
     percent_columns = {
         "KPI概览": {4},

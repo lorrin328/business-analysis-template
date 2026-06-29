@@ -45,7 +45,7 @@ from validators.data_validator import validate_rows
 from services.import_safety import RawIncrementalWriteError, write_raw_table_incremental
 from services.health_check import run_health_check
 from services.operation_lock import OperationLockError, operation_lock
-from services.product_config_service import extract_jingdai_products_to_config, extract_products_to_config
+from services.product_config_service import extract_jingdai_products_to_config, purge_non_jingdai_product_config
 from services.audit_log import log_operation
 
 
@@ -266,6 +266,11 @@ async def _upload_files_locked(
     file_sizes = {}   # file_name -> size
     table_row_counts = {}  # table -> count
     logger.info("import started year=%s force=%s", year, force)
+    with get_db() as conn:
+        purged = purge_non_jingdai_product_config(conn)
+        conn.commit()
+        if purged:
+            logger.info("purged %s non-jingdai product_config rows before import", purged)
 
     # 第一步：解析所有Excel文件，收集实际年份
     perf_rows = []
@@ -297,7 +302,6 @@ async def _upload_files_locked(
             file_sizes[performance.filename] = len(perf_bytes)
             df = parse_performance_excel(perf_bytes)
             raw_tables['performance'] = df
-            extract_products_to_config(df)
             perf_rows = aggregate_performance(df)
             daily_rows = aggregate_daily_performance(df)
             org_daily_rows = aggregate_org_daily_performance(df)

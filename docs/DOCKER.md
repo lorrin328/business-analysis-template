@@ -10,7 +10,7 @@ GitHub Actions publishes the image to GitHub Container Registry:
 ghcr.io/lorrin328/business-analysis-template:latest
 ```
 
-Version tags are also published when a Git tag such as `v1.0.93` is pushed.
+Version tags are also published when a Git tag such as `v1.0.96` is pushed.
 
 ## Run from GHCR
 
@@ -23,6 +23,7 @@ docker run -d \
   -e APP_ENV=production \
   -e MAX_UPLOAD_SIZE_MB=100 \
   -e BUSINESS_ANALYSIS_DB=/data/business_data.db \
+  -e AUTH_ALLOW_PUBLIC_REGISTRATION=0 \
   -v business-analysis-data:/data \
   -v business-analysis-logs:/app/backend/logs \
   ghcr.io/lorrin328/business-analysis-template:latest
@@ -48,8 +49,8 @@ The image does not include Excel source files, SQLite runtime databases, logs, o
 | `PORT` | Uvicorn listen port inside the container. | `45679` |
 | `BUSINESS_ANALYSIS_DB` | SQLite database path. | `/data/business_data.db` |
 | `MAX_UPLOAD_SIZE_MB` | Upload size limit. | `100` in Compose |
+| `AUTH_ALLOW_PUBLIC_REGISTRATION` | Whether public self-registration is enabled. Production should keep this `0` unless an explicit onboarding window is needed. | disabled when `APP_ENV=production` |
 | `CORS_ORIGINS` | Optional comma-separated allowed origins. | empty |
-| `ADMIN_TOKEN` | Optional admin token if enabled by the app. | unset |
 | `AI_READONLY_TOKEN` | Optional token for read-only AI APIs. | unset |
 
 Secrets must be provided by `.env`, the server secret manager, or the container platform. Do not commit real tokens or passwords.

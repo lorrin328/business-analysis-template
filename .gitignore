@@ -26,6 +26,7 @@ _external_materials/
 _cleanup_backup_*/
 bak/
 .pytest_cache/
+.venv/
 .uv-cache/
 .uv-python/
 

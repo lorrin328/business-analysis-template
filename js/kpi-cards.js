@@ -64,6 +64,63 @@
           const transform = oto + zhengbao + yiqiao;
           return { oto, zhengbao, yiqiao, jingdai, transform, total: jingdai + transform };
         }
+        function fmtPct(value) {
+          if (value == null || !Number.isFinite(Number(value))) return '--';
+          return `${Number(value).toFixed(1)}%`;
+        }
+        function fmtWan(value) {
+          const num = Number(value || 0);
+          if (Math.abs(num) >= 10000) return `${(num / 10000).toFixed(2)}亿`;
+          return `${Math.round(num).toLocaleString('zh-CN')}万`;
+        }
+        function formatAsOfLabel(value) {
+          if (!value) return '当前可用数据';
+          const parts = String(value).split('-');
+          if (parts.length !== 3) return value;
+          return `${parts[0]}年${Number(parts[1])}月${Number(parts[2])}日`;
+        }
+        function calcTimeProgress(asOf, yearValue) {
+          const yearNum = Number(yearValue);
+          const date = asOf ? new Date(`${asOf}T00:00:00`) : new Date(yearNum, new Date().getMonth(), new Date().getDate());
+          if (!Number.isFinite(date.getTime()) || date.getFullYear() !== yearNum) return null;
+          const start = new Date(yearNum, 0, 1);
+          const end = new Date(yearNum + 1, 0, 1);
+          return Math.round(((date - start + 86400000) / (end - start)) * 1000) / 10;
+        }
+        function renderKpiInsight({ overallRate, jdRate, tfRate, overallYoy, jdYoy, tfYoy, overallActual, jdActual, tfActual }) {
+          const panel = document.getElementById('kpiInsightPanel');
+          if (!panel) return;
+          const texts = panel.querySelectorAll('.kpi-insight-text');
+          if (texts.length < 3) return;
+          if (!hasApiKpi) {
+            texts[0].textContent = '当前未取得服务端 KPI 数据，暂不形成经营研判。';
+            texts[1].textContent = '请先确认后端连接、登录权限和数据导入状态。';
+            texts[2].textContent = window.ALLOW_LOCAL_FALLBACK ? '当前允许开发环境本地兜底数据。' : '当前生产口径不展示本地兜底数据。';
+            return;
+          }
+          const asOf = kpi?.as_of?.selectedDate || window.selectedAsOf || '';
+          const progress = calcTimeProgress(asOf, year);
+          const gap = progress == null ? null : Math.round((overallRate - progress) * 10) / 10;
+          const progressText = gap == null
+            ? '暂无法计算时间进度'
+            : `时间进度${fmtPct(progress)}，达成${gap >= 0 ? '领先' : '落后'}${fmtPct(Math.abs(gap))}`;
+          const jdShare = overallActual > 0 ? Math.round(jdActual / overallActual * 1000) / 10 : 0;
+          const tfShare = overallActual > 0 ? Math.round(tfActual / overallActual * 1000) / 10 : 0;
+          const weakerLine = jdRate <= tfRate ? '经代' : '转型业务';
+          let focus = '';
+          if (gap != null && gap < -5) {
+            focus = `${weakerLine}达成率相对偏低，优先压实目标缺口、机构分层和有效人力转化。`;
+          } else if (overallYoy != null && overallYoy < 0) {
+            focus = `整体同比${yoyText(overallYoy)}，需区分去年同期基数、当前新增质量和渠道结构变化。`;
+          } else {
+            focus = `整体节奏可控，继续跟踪经代同比${yoyText(jdYoy)}、转型同比${yoyText(tfYoy)}及品质风险。`;
+          }
+          const targetLabel = typeof targetSourceLabel === 'function' ? targetSourceLabel() : '目标来源待确认';
+          const warningText = kpi?.as_of?.warningText ? `；${kpi.as_of.warningText}` : '';
+          texts[0].textContent = `整体期交${fmtWan(overallActual)}，达成${fmtPct(overallRate)}，同比${yoyText(overallYoy)}；${progressText}。`;
+          texts[1].textContent = `${focus} 经代贡献${fmtPct(jdShare)}、转型贡献${fmtPct(tfShare)}。`;
+          texts[2].textContent = `KPI 按${formatAsOfLabel(asOf)}同日口径统计，目标来源：${targetLabel}${warningText}。`;
+        }
 
         // 如果API数据可用且包含有效保费，优先使用
         const kpi = apiData.kpi;
@@ -107,6 +164,17 @@
           <span>整体 <span class="${yoyClass(整体同比)}">同比 ${yoyText(整体同比)}</span></span>
           <span>经代 <span class="${rateClass(经代达成率)}">${经代达成率}%</span> <span class="${yoyClass(经代同比)}">同比 ${yoyText(经代同比)}</span></span>
           <span>转型 <span class="${rateClass(转型达成率)}">${转型达成率}%</span> <span class="${yoyClass(转型同比)}">同比 ${yoyText(转型同比)}</span></span>`;
+        renderKpiInsight({
+          overallRate: 整体达成率,
+          jdRate: 经代达成率,
+          tfRate: 转型达成率,
+          overallYoy: 整体同比,
+          jdYoy: 经代同比,
+          tfYoy: 转型同比,
+          overallActual: 整体实际,
+          jdActual: 经代实际,
+          tfActual: 转型实际
+        });
       }
 
       // 2. 价值达成率
@@ -194,7 +262,7 @@
       const targetBaozhang = targetData?.categories?.baozhang?.metrics?.['整体']?.year || 0;
       const targetTenYear = targetData?.categories?.tenYear?.metrics?.['整体']?.year || 0;
 
-      // 4. 商保年金（参数设置覆盖转型 + 经代产品）
+      // 4. 商保年金（转型读取业绩基表标识，经代读取参数设置）
       if (hasApiKpi && kpi.annuity_total !== undefined) {
         const actual = kpi.annuity_total || 0;
         const jdActual = kpi.annuity_jd || 0;
@@ -213,7 +281,7 @@
           : '<span style="color:var(--text-secondary)">未配置商保年金目标</span>';
       }
 
-      // 5. 保障类产品（参数设置覆盖转型 + 经代产品）
+      // 5. 保障类产品（转型读取业绩基表标识，经代读取参数设置）
       if (hasApiKpi && kpi.protection_total !== undefined) {
         const actual = kpi.protection_total || 0;
         const jdActual = kpi.protection_jd || 0;

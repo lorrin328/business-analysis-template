@@ -1,5 +1,37 @@
 # 工作日志
 
+## 2026-06-29 v1.0.97 转型产品分类标识改为读取业绩基表
+
+- 任务：根目录 2026-06-29 新业绩基表已包含转型业务 `是否个人养老金`、`是否商保年金产品`、`是否社会保障型产品` 标识，需取消转型产品分类在参数设置中的手工维护，仅保留经代手工配置。
+- 已读取：`AGENTS.md`、`README.md`、`pyproject.toml`、`requirements.txt`、`backend/requirements.txt`、`backend/main.py`、`backend/rebuild_from_excels.py`、`backend/api/product_config.py`、`backend/services/product_config_service.py`、`backend/etl/aggregates/org.py`、`backend/etl/aggregates/jingdai.py`、`js/product-config-modal.js`、`js/kpi-cards.js`、相关测试和 `docs/ai-context/` 全量项目记忆。
+- 数据核验：读取根目录 `AI-经营分析业绩基表_20260629_09124457.xlsx`，确认字段包含 `是否商保年金产品`、`是否社会保障型产品`、`是否个人养老金`，其中商保年金/社会保障型字段值为“是/否”，个人养老金字段值为“个养/非个养”。
+- 逻辑调整：`aggregate_org_performance` 中转型业务 `product_annuity` 直接按 `是否商保年金产品=是` 汇总，`product_protection` 直接按 `是否社会保障型产品=是` 汇总，不再读取 `product_config`。
+- 参数设置调整：`/api/product-config` 仅返回和保存 `business_type='经代'` 的产品配置；保存时跳过非经代 payload，只重算 `agg_jingdai`；Web 上传、`rebuild_from_excels.py` 和参数设置接口都会清理 `product_config` 中非经代历史行。
+- 前端与导出：参数设置弹窗改为“经代产品分类”口径，导出说明改为“转型读取业绩基表标识；经代读取参数设置”，页面缓存版本提升到 `v1.0.97`。
+- 验证：执行 `.\.venv\Scripts\python.exe -m pytest tests\test_product_config.py -q`，结果 `16 passed`；执行 `.\.venv\Scripts\python.exe -m pytest tests\test_frontend_static.py -q`，结果 `42 passed`；执行 `.\.venv\Scripts\python.exe -m pytest -q`，结果 `234 passed, 1 warning`；执行 `.\.venv\Scripts\python.exe backend\rebuild_from_excels.py`，根目录 4 份 2026-06-29 Excel 成功重建，加载年份 `[2022, 2023, 2024, 2025, 2026]`，并清理非经代 `product_config` 历史行 28 条；执行 `powershell -ExecutionPolicy Bypass -File scripts\preflight.ps1`，结果 `preflight ok`。
+
+## 2026-06-24 v1.0.96 安全与展示审计整改
+
+- 任务：围绕数据准确、安全、高效、扩展性和经营分析展示口径继续审计并落地一批低风险改进。
+- 已读取：`AGENTS.md`、`README.md`、`pyproject.toml`、`docker-compose.yml`、`deploy/systemd.service`、`backend/auth.py`、`backend/api/auth_routes.py`、`js/auth-ui.js`、`js/kpi-cards.js`、`tests/` 相关用例和 `docs/ai-context/` 全量项目记忆。
+- 安全整改：新增 `AUTH_ALLOW_PUBLIC_REGISTRATION` 开关，生产环境默认关闭公开自助注册；保留非生产环境默认可注册，便于本地测试；公开注册关闭时前端登录框隐藏“注册”按钮。
+- 安全整改：新增用户名白名单校验，用户名仅支持中文、字母、数字、下划线、点、@ 和短横线；管理员创建、修改用户和公开注册均走同一校验。
+- 前端整改：权限管理页新增/删除/统一保存从内联 `onclick` 改为 `data-action` 事件绑定，避免把用户名等用户输入拼入事件属性。
+- 展示优化：KPI 概览下方新增经营摘要，基于整体期交达成率、同比、时间进度、经代/转型贡献、目标来源和 `asOf` 数据截止口径，输出“结论/关注/口径”三类可复核提示。
+- 版本治理：运行版本、页面脚本缓存参数、`VERSION`、`backend/config/version.py`、`pyproject.toml` 和测试断言同步到 `v1.0.96`。
+- 验证：执行 `.\.venv\Scripts\python.exe -m pytest -q`，结果 `234 passed, 1 warning`；执行 `backend\audit_data_quality.py --year 2026 --json`，结果 `status=ok, issue_count=0`；执行 `scripts\preflight.ps1`，结果 `preflight ok`。
+- 注意：本次未重建本地 `backend/business_data.db`，本地运行库新鲜度问题仍需按需处理；用户在对话中暴露过邮箱授权码和 GitHub Token，本次未使用、未写入文件，建议用户自行轮换。
+
+## 2026-06-20 项目整体审计
+
+- 任务：审计项目是否符合业务要求、框架是否可扩展、整体逻辑是否严谨、数据是否准确。
+- 已读取：`AGENTS.md`、`README.md`、`requirements.txt`、`pyproject.toml`、`Dockerfile`、`docker-compose.yml`、`deploy/`、`.github/workflows/docker-image.yml`、`backend/main.py`、`backend/auth.py`、`backend/db/`、`backend/services/`、`backend/metrics/`、主要 `backend/api/` 路由、前端 `js/` 关键脚本和 `docs/ai-context/` 全量项目记忆。
+- 验证：执行 `.\.venv\Scripts\python.exe -m pytest -q`，结果 `231 passed, 1 warning`；执行 `backend\audit_data_quality.py --year 2026 --json`，结果 `status=ok, issue_count=0`；执行 `scripts\preflight.ps1`，结果 `preflight ok`。
+- 业务口径判断：KPI、机构、趋势、交期、长险期交、标准人力等核心口径已集中在后端聚合、查询服务和指标配置中，`asOf` 精准同比与趋势完整展示的边界已有测试和项目记忆支撑。
+- 数据准确性边界：当前本地 `backend/business_data.db` 仍截至 2026-05-25，`target_config` 为历史测试态 `categories: null` 且 `target_values` 为空；本地库不能作为 2026-06-19 最新经营口径依据。服务器端此前已确认 2026-06-19 数据与正式目标正常。
+- 架构判断：现有 `api / services / db / etl / metrics / validators` 分层基本支持继续扩展，SQLite + 原生前端适合当前轻量看板，但后续并发写入、权限颗粒度、前端组件化和数据版本治理需要继续加强。
+- 风险发现：公开注册普通用户后默认可读取核心经营数据；权限管理页把用户名拼接进 `onclick` 字符串参数，若用户名允许特殊字符，存在前端注入风险；交期结构当前按月级聚合，不能支持同月内按日精确切换；外部访问仍需补充 HTTPS/注册审批/账号治理策略。
+
 ## 2026-06-19 v1.0.95 趋势图展示口径修正
 
 - 现象：业务平台趋势和队伍趋势在右上角选择截至日期后，被 `asOf` 截断，导致趋势数据不够完整，部分去年线出现下落或缺失。

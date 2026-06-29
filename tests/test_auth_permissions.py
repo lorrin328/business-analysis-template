@@ -75,6 +75,34 @@ def test_register_creates_normal_user_with_restricted_permissions(auth_db):
     assert client.get("/api/team-enhanced-analysis?year=2026", headers=headers).status_code == 200
 
 
+def test_public_registration_can_be_disabled_in_production(auth_db, monkeypatch):
+    client = TestClient(app)
+    monkeypatch.delenv("AUTH_ALLOW_PUBLIC_REGISTRATION", raising=False)
+    monkeypatch.setenv("APP_ENV", "production")
+
+    config = client.get("/api/auth/config")
+    assert config.status_code == 200
+    assert config.json()["data"]["allowPublicRegistration"] is False
+
+    resp = client.post("/api/auth/register", json={"username": "blocked_user", "password": "normal-pass-123"})
+    assert resp.status_code == 403
+
+
+def test_username_rejects_event_attribute_payloads(auth_db):
+    client = TestClient(app)
+    resp = client.post("/api/auth/register", json={"username": "bad'user", "password": "normal-pass-123"})
+    assert resp.status_code == 400
+
+    admin = _login(client)
+    admin_headers = _auth_headers(admin["token"])
+    created = client.post(
+        "/api/admin/users",
+        headers=admin_headers,
+        json={"username": 'bad"user', "password": "normal-pass-123", "role": "normal"},
+    )
+    assert created.status_code == 400
+
+
 def test_admin_operation_logs_capture_login_register_and_permission_changes(auth_db):
     client = TestClient(app)
     admin = _login(client)

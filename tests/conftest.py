@@ -20,6 +20,7 @@ def auth_db(tmp_path, monkeypatch):
     monkeypatch.setattr(connection, "DB_PATH", str(db_path))
     monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
     monkeypatch.setenv("AUTH_TEST_BYPASS", "0")
+    monkeypatch.setenv("AUTH_ALLOW_PUBLIC_REGISTRATION", "1")
     init_db()
     yield
     monkeypatch.setenv("AUTH_TEST_BYPASS", "1")

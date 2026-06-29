@@ -8,11 +8,13 @@ from auth import (
     authenticate_user,
     get_current_user,
     normalize_role,
+    public_registration_enabled,
     register_user,
     require_admin,
     revoke_session,
     serialize_user,
     set_user_permissions,
+    validate_username,
 )
 from db import get_db
 from services.audit_log import list_operation_logs, log_operation
@@ -46,6 +48,11 @@ def register(payload: dict = Body(...)):
     token = user.pop("token")
     expires_at = user.pop("expiresAt")
     return success_response({"token": token, "expiresAt": expires_at, "user": user})
+
+
+@router.get("/config")
+def auth_config():
+    return success_response({"allowPublicRegistration": public_registration_enabled()})
 
 
 @router.post("/logout")
@@ -108,11 +115,9 @@ def operation_logs(
 
 @admin_router.post("/users")
 def create_user(payload: dict = Body(...), admin=Depends(require_admin)):
-    username = (payload.get("username") or "").strip()
+    username = validate_username(payload.get("username"))
     password = payload.get("password") or ""
     role = normalize_role(payload.get("role") or ROLE_NORMAL)
-    if len(username) < 3:
-        raise HTTPException(status_code=400, detail="用户名至少需要3个字符")
     if len(password) < 8:
         raise HTTPException(status_code=400, detail="密码至少需要8个字符")
 
@@ -182,9 +187,7 @@ def update_user(user_id: int, payload: dict = Body(...), admin=Depends(require_a
             permissions["permission_admin"] = False
 
         if username is not None:
-            username = str(username).strip()
-            if len(username) < 3:
-                raise HTTPException(status_code=400, detail="用户名至少需要3个字符")
+            username = validate_username(username)
             conn.execute("UPDATE users SET username = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (username, user_id))
         conn.execute("UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (role, user_id))
         if is_active is not None:

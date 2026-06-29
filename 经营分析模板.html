@@ -7,14 +7,14 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/format-utils.js"></script>
-  <script src="js/api-client.js?v=1.0.95"></script>
-  <script src="js/auth-ui.js?v=1.0.95"></script>
-  <script src="js/export-excel.js?v=1.0.95"></script>
-  <script src="js/dashboard-config.js?v=1.0.95"></script>
-  <script src="js/upload.js?v=1.0.95"></script>
-  <script src="js/target-modal.js?v=1.0.95"></script>
-  <script src="js/kpi-cards.js?v=1.0.95"></script>
-  <script src="js/platform-trend.js?v=1.0.95"></script>
+  <script src="js/api-client.js?v=1.0.97"></script>
+  <script src="js/auth-ui.js?v=1.0.97"></script>
+  <script src="js/export-excel.js?v=1.0.97"></script>
+  <script src="js/dashboard-config.js?v=1.0.97"></script>
+  <script src="js/upload.js?v=1.0.97"></script>
+  <script src="js/target-modal.js?v=1.0.97"></script>
+  <script src="js/kpi-cards.js?v=1.0.97"></script>
+  <script src="js/platform-trend.js?v=1.0.97"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -174,6 +174,33 @@
       padding: 2px 7px;
       border-radius: 10px;
       border: 1px solid rgba(245,158,11,0.2);
+    }
+
+    .kpi-insight-panel {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.72);
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 1fr;
+      gap: 12px;
+    }
+    .kpi-insight-item {
+      min-width: 0;
+      border-left: 3px solid rgba(96, 165, 250, 0.75);
+      padding-left: 10px;
+    }
+    .kpi-insight-label {
+      color: var(--text-secondary);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    .kpi-insight-text {
+      color: var(--text-primary);
+      font-size: 13px;
+      line-height: 1.55;
+      word-break: break-word;
     }
 
     /* Modal */
@@ -570,6 +597,7 @@
     /* Responsive */
     @media (max-width: 1400px) {
       .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+      .kpi-insight-panel { grid-template-columns: 1fr; }
       .upload-grid { grid-template-columns: repeat(3, 1fr); }
     }
     @media (max-width: 1200px) {
@@ -638,6 +666,10 @@
       .kpi-top-label { font-size: 11px; }
       .kpi-big-value { font-size: 24px; }
       .kpi-bottom-meta { font-size: 11px; }
+      .kpi-insight-panel {
+        padding: 12px;
+        gap: 10px;
+      }
 
       /* 弹窗 */
       .modal-overlay { align-items: flex-end; }
@@ -952,7 +984,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.95</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.97</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" data-permission="permission_admin" onclick="openPermissionAdmin()" style="margin-right:8px;">权限管理</button>
@@ -1035,6 +1067,20 @@
           <div class="kpi-top-label">人均保费 <span style="font-size:10px;color:var(--text-secondary);">(月均)</span></div>
           <div class="kpi-big-value" id="kpi-percapita" style="color: #f97316;">--</div>
           <div class="kpi-bottom-meta" id="kpi-percapita-sub"></div>
+        </div>
+      </div>
+      <div class="kpi-insight-panel" id="kpiInsightPanel" aria-live="polite">
+        <div class="kpi-insight-item">
+          <div class="kpi-insight-label">结论</div>
+          <div class="kpi-insight-text">等待经营数据加载。</div>
+        </div>
+        <div class="kpi-insight-item">
+          <div class="kpi-insight-label">关注</div>
+          <div class="kpi-insight-text">--</div>
+        </div>
+        <div class="kpi-insight-item">
+          <div class="kpi-insight-label">口径</div>
+          <div class="kpi-insight-text">--</div>
         </div>
       </div>
     </div>
@@ -1451,7 +1497,7 @@
 
     // Product config modal lives in js/product-config-modal.js
   </script>
-  <script src="js/product-config-modal.js?v=1.0.95"></script>
+  <script src="js/product-config-modal.js?v=1.0.97"></script>
   <script>
     // KPI card rendering lives in js/kpi-cards.js
 
@@ -1460,23 +1506,23 @@
     // KPI detail modal content lives in js/kpi-modal-content.js
     // Local fallback seed data lives in js/seed-data.js
   </script>
-  <script src="js/kpi-modal-content.js?v=1.0.95"></script>
+  <script src="js/kpi-modal-content.js?v=1.0.97"></script>
   <script>
     // API integration lives in js/data-integration.js
   </script>
-  <script src="js/org-analysis.js?v=1.0.95"></script>
-  <script src="js/seed-data.js?v=1.0.95"></script>
-  <script src="js/data-integration.js?v=1.0.95"></script>
-  <script src="js/platform-trend-main.js?v=1.0.95"></script>
+  <script src="js/org-analysis.js?v=1.0.97"></script>
+  <script src="js/seed-data.js?v=1.0.97"></script>
+  <script src="js/data-integration.js?v=1.0.97"></script>
+  <script src="js/platform-trend-main.js?v=1.0.97"></script>
   <script>
   </script>
-  <script src="js/product-analysis.js?v=1.0.95"></script>
+  <script src="js/product-analysis.js?v=1.0.97"></script>
   <script>
   </script>
-  <script src="js/payperiod-chart.js?v=1.0.95"></script>
+  <script src="js/payperiod-chart.js?v=1.0.97"></script>
   <script>
   </script>
-  <script src="js/team-analysis.js?v=1.0.95"></script>
+  <script src="js/team-analysis.js?v=1.0.97"></script>
   <script>
     // ---------- Resize ----------
     window.addEventListener('resize', () => {

@@ -7,6 +7,7 @@
 | SQLite 数据库 | `BUSINESS_ANALYSIS_DB` | 默认 `/data/business_data.db`，由 Docker volume 持久化。 |
 | 应用日志 | `/app/backend/logs` | 由 Docker volume 持久化。 |
 | 上传文件限制 | `MAX_UPLOAD_SIZE_MB` | Compose 默认 `100`。 |
+| 公开自助注册 | `AUTH_ALLOW_PUBLIC_REGISTRATION` | 生产环境默认关闭；显式设置 `1` 才允许 `/api/auth/register`。 |
 
 ## 业务口径参考
 
@@ -16,6 +17,14 @@
 - `docs/数据流说明.md`
 - `docs/数据规范/保单数据规范.md`
 - `docs/数据规范/人力数据规范.md`
+
+## 2026-06-29 产品分类标识口径
+
+- 转型业务商保年金：来源为业绩基表 `是否商保年金产品`，值为“是”时计入 `agg_org_performance.product_annuity`。
+- 转型业务保障类产品：来源为业绩基表 `是否社会保障型产品`，值为“是”时计入 `agg_org_performance.product_protection`。
+- 转型业务个人养老金：业绩基表已包含 `是否个人养老金`，当前用于保留数据源字段，现有 KPI 暂无独立个人养老金达成率卡片。
+- 经代商保年金/保障类产品：继续来源于 `product_config`，按 `business_type='经代'`、`product_code=产品名称` 维护，保存后重算 `agg_jingdai.product_annuity` 与 `agg_jingdai.product_protection`。
+- 参数设置模块展示范围：仅经代产品；转型 OTO、证保、蚁桥不再在参数设置中展示或保存。
 
 ## 2026-06-19 全局截至日期口径
 

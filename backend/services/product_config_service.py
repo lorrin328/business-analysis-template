@@ -5,7 +5,7 @@ import pandas as pd
 
 from db import get_db
 from etl.columns import _pick_col
-from etl.normalize import _period_year_month, _normalize_channel
+from etl.normalize import _period_year_month
 from config.business_lines import DEFAULT_YEAR
 from metrics.business_rules import normalize_product_code
 
@@ -81,46 +81,10 @@ def normalize_product_config_table(conn) -> int:
     return len(rows) - len(merged)
 
 
-def extract_products_to_config(df):
-    """从 performance DataFrame 中提取当前数据年及以后产品列表到 product_config 表。"""
-    year_col = _pick_col(df, ['年'])
-    month_col = _pick_col(df, ['年月', '月', '月份'])
-    code_col = _pick_col(df, ['产品代码'])
-    name_col = _pick_col(df, ['产品名称'])
-    channel_col = _pick_col(df, ['业务模式', '业务模式名称', '渠道'])
-
-    if not code_col:
-        return
-
-    work = _period_year_month(df, year_col, month_col)
-    work['_product_code'] = work[code_col].map(normalize_product_code)
-    work = work[work['_product_code'].replace('', pd.NA).notna()]
-    work = work[work['_year'] >= DEFAULT_YEAR]
-    if work.empty:
-        return
-
-    if name_col:
-        work['_product_name'] = work[name_col].map(normalize_product_name)
-    else:
-        work['_product_name'] = ''
-    if channel_col:
-        work['_business_type'] = work[channel_col].map(_normalize_channel)
-    else:
-        work['_business_type'] = ''
-
-    products = work[['_product_code', '_product_name', '_business_type']].drop_duplicates(
-        subset=['_business_type', '_product_code']
-    )
-
-    with get_db() as conn:
-        for _, row in products.iterrows():
-            conn.execute('''
-                INSERT OR IGNORE INTO product_config (product_code, product_name, business_type)
-                VALUES (?, ?, ?)
-            ''', (row['_product_code'], row['_product_name'], row['_business_type']))
-        normalize_product_config_table(conn)
-        conn.commit()
-    logger.info("extracted %s products to product_config (year>=%s)", len(products), DEFAULT_YEAR)
+def purge_non_jingdai_product_config(conn) -> int:
+    """Remove legacy transform product settings; product_config is now jingdai-only."""
+    cursor = conn.execute("DELETE FROM product_config WHERE COALESCE(business_type, '') != '经代'")
+    return cursor.rowcount or 0
 
 
 def extract_jingdai_products_to_config(df):

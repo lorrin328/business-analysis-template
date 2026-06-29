@@ -30,10 +30,10 @@
           </tr>
         `).join('');
 
-        modalTitle.textContent = '参数设置 — 产品分类';
+        modalTitle.textContent = '参数设置 — 经代产品分类';
         modalBody.innerHTML = `
           <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
-            设置 Y 表示该产品计入对应分类统计，N 表示不计入。保存后系统会自动重算机构业绩并刷新看板。
+            经代产品仍通过本模块手工维护分类；转型业务商保年金和社会保障类产品直接读取业绩基表标识。保存后系统会自动重算经代业绩并刷新看板。
           </p>
           <div style="overflow-y: auto; max-height: 55vh;">
             <table class="product-config-table">
@@ -80,11 +80,11 @@
         if (!resp.ok) throw new Error('产品配置保存失败：' + resp.status);
         const result = unwrapApiResponse(await resp.json()) || {};
         if (result.recalculated > 0) {
-          alert(`产品配置已保存，已重新计算 ${result.recalculated} 条机构业绩数据。看板即将刷新。`);
+          alert(`经代产品配置已保存，已重新计算 ${result.recalculated} 条经代业绩数据。看板即将刷新。`);
           closeModal();
           await recalculateDashboard();
         } else {
-          alert('产品配置已保存。请重新导入数据或点击「重新计算」使配置生效。');
+          alert('经代产品配置已保存。请重新导入经代数据或点击「重新计算」使配置生效。');
           closeModal();
         }
       } catch (e) {

@@ -43,9 +43,16 @@ if ($nginx -notmatch "client_max_body_size\s+100m") {
 Write-Host "== preflight: tests =="
 $env:UV_CACHE_DIR = Join-Path $Root ".uv-cache"
 $env:UV_PYTHON_INSTALL_DIR = Join-Path $Root ".uv-python"
-Invoke-Checked -Name "pytest" -Command { uv run python -m pytest -q }
+$Python = Join-Path $Root ".venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $Python)) {
+  Invoke-Checked -Name "uv venv" -Command { uv venv }
+}
+Invoke-Checked -Name "uv pip install" -Command {
+  uv pip install -r requirements.txt -r backend\requirements.txt
+}
+Invoke-Checked -Name "pytest" -Command { & $Python -m pytest -q }
 
 Write-Host "== preflight: data quality =="
-Invoke-Checked -Name "data quality audit" -Command { uv run python backend\audit_data_quality.py --year 2026 }
+Invoke-Checked -Name "data quality audit" -Command { & $Python backend\audit_data_quality.py --year 2026 }
 
 Write-Host "preflight ok"
