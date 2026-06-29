@@ -1,5 +1,16 @@
 # 工作日志
 
+## 2026-06-29 v1.0.97 服务器手工部署与 20260629 Excel 重建
+
+- 部署对象：局域网服务器 `192.168.50.6`，应用目录 `/opt/business-analysis`。
+- 已完成：将本地 `master` 最新代码部署到服务器，线上健康接口返回 `app_version=v1.0.97`、`page_version=v1.0.97`。
+- 已完成：同步根目录四份最新源 Excel 到服务器，包括 `AI-经营分析业绩基表_20260629_09124457.xlsx`、`AI-经营分析价值基表_20260629_09030716.xlsx`、`N1AI-人力基表_20260629_09030310.xlsx`、`经代业绩分析 (39).xlsx`。
+- 已完成：服务器旧 Excel 已备份到 `/opt/business-analysis-backups/excels.20260629_*`，SQLite 数据库部署脚本备份到 `/opt/business-analysis-backups/business_data.db.20260629_101509`。
+- 已完成：以 `www-data` 运行 `backend/rebuild_from_excels.py` 重建数据库，确认读取 20260629 业绩、价值、人力和经代源文件；健康接口 `latest_period=202606`。
+- 验证：线上 `product_config` 仅保留 `经代` 19 条；2026 年转型商保年金/保障类汇总为 `8924.85` / `11741.69`，与本地源 Excel 复核一致。
+- 验证：服务器执行 `audit_data_quality.py --year 2026 --json` 返回 `status=ok`、`issue_count=0`。
+- 遗留：服务器 `/opt/business-analysis/deploy/.webhook_env` 缺失，`webhook-deploy` 服务处于 inactive，`/webhook/deploy` 仍返回 502；自动部署需恢复并与 GitHub Webhook Secret 保持一致后再启用。
+
 ## 2026-06-29 部署推送与 webhook 阻塞
 
 - 任务：将 `v1.0.97` 产品分类口径调整部署到服务器。

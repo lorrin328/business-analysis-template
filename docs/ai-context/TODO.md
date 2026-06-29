@@ -1,10 +1,10 @@
 # 待办事项
 
-## 2026-06-29 部署阻塞
+## 2026-06-29 自动部署待恢复
 
-- 【高】修复服务器 `192.168.50.6` 的 `webhook-deploy` 服务：当前 `/webhook/deploy` 返回 `502 Bad Gateway`，GitHub push 不能触发自动部署。
-- 【高】获取或恢复服务器 SSH 登录方式；当前本机无可用免密凭据，无法手工执行 `/opt/business-analysis/deploy/deploy.sh`。
-- 【高】webhook 修复后重新部署 `master` 最新提交 `1a00695`，并验证 `/api/health` 返回 `app_version=v1.0.97`、`page_version=v1.0.97`。
+- 【已完成 2026-06-29】已通过 SSH 手工部署 `v1.0.97` 到 `192.168.50.6`，并同步 20260629 四份源 Excel 后重建数据库；线上 `/api/health` 返回 `app_version=v1.0.97`、`page_version=v1.0.97`、`latest_period=202606`。
+- 【高】修复服务器 `192.168.50.6` 的 `webhook-deploy` 服务：当前 `/opt/business-analysis/deploy/.webhook_env` 缺失，服务 inactive，`/webhook/deploy` 返回 `502 Bad Gateway`，GitHub push 不能触发自动部署。
+- 【高】恢复 webhook 时必须同时处理服务器 `WEBHOOK_SECRET` 与 GitHub Webhook Secret 的一致性；不要只在服务器生成新密钥，否则 GitHub 签名会校验失败。
 
 ## 2026-06-20 审计整改建议
 
