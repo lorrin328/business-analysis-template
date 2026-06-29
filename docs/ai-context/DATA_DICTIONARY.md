@@ -25,6 +25,7 @@
 - 转型业务个人养老金：业绩基表已包含 `是否个人养老金`，当前用于保留数据源字段，现有 KPI 暂无独立个人养老金达成率卡片。
 - 经代商保年金/保障类产品：继续来源于 `product_config`，按 `business_type='经代'`、`product_code=产品名称` 维护，保存后重算 `agg_jingdai.product_annuity` 与 `agg_jingdai.product_protection`。
 - 参数设置模块展示范围：仅经代产品；转型 OTO、证保、蚁桥不再在参数设置中展示或保存。
+- 日级截止：`agg_org_daily_performance` 同步保存 `product_10year`、`product_annuity`、`product_protection`；`agg_jingdai_daily` 同步保存 `product_annuity`、`product_protection`。KPI 概览和机构维度年度累计在有日级数据时按 `asOf` 截止日读取这些日级字段，无日级数据时回退月表。
 
 ## 2026-06-19 全局截至日期口径
 

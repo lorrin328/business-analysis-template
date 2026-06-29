@@ -84,6 +84,7 @@ def aggregate_jingdai_daily(df: pd.DataFrame) -> List[Dict]:
     qj_col = _pick_col(df, ['期交保费'])
     gm_col = _pick_col(df, ['承保年化规保', '年化规保', '规模保费'])
     pay_col = _pick_col(df, ['缴费年限'])
+    product_name_col = _pick_col(df, ['产品名称'])
 
     if not all([time_col, qj_col, gm_col]):
         raise ValueError(f"无法识别经代日聚合必要列。当前列: {list(df.columns)}")
@@ -96,6 +97,19 @@ def aggregate_jingdai_daily(df: pd.DataFrame) -> List[Dict]:
         work['_zs'] = work['_qj'] * weights
     else:
         work['_zs'] = 0
+    work['_is_annuity'] = False
+    work['_is_protection'] = False
+    if product_name_col:
+        config_map = _load_jingdai_product_config()
+        work['_product_key'] = work[product_name_col].astype(str).str.strip()
+        work['_is_annuity'] = work['_product_key'].map(
+            lambda x: config_map.get(x, {}).get('is_annuity', False)
+        ).fillna(False)
+        work['_is_protection'] = work['_product_key'].map(
+            lambda x: config_map.get(x, {}).get('is_protection', False)
+        ).fillna(False)
+    work['_product_annuity'] = work['_qj'].where(work['_is_annuity'], 0)
+    work['_product_protection'] = work['_qj'].where(work['_is_protection'], 0)
 
     grouped = work.groupby(['_year', '_month', '_day'], dropna=False)
     rows = []
@@ -111,6 +125,8 @@ def aggregate_jingdai_daily(df: pd.DataFrame) -> List[Dict]:
             'qj_premium': _amount_to_wan(group['_qj'].sum()),
             'gm_premium': _amount_to_wan(group['_gm'].sum()),
             'zs_premium': _amount_to_wan(group['_zs'].sum()),
+            'product_annuity': _amount_to_wan(group['_product_annuity'].sum()),
+            'product_protection': _amount_to_wan(group['_product_protection'].sum()),
         })
     return rows
 

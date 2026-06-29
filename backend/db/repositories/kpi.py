@@ -195,14 +195,10 @@ def get_kpi_data(year: int, as_of: str | None = None):
         # ── 日级统计截止日（用于期交保费同比同口径截取） ──
         # 转型业务与经代业务来自不同报表：转型更新到拉取当天，经代截至前一日。
         # KPI 按各自真实截止日取数；共同截止日仅暴露给需要同日对比的展示。
-        transform_daily_cutoff = cutoff_min(
-            latest_daily_cutoff(conn, 'agg_daily_performance', year),
-            selected_cutoff,
-        )
-        jingdai_daily_cutoff = cutoff_min(
-            latest_daily_cutoff(conn, 'agg_jingdai_daily', year),
-            selected_cutoff,
-        )
+        transform_source_cutoff = latest_daily_cutoff(conn, 'agg_daily_performance', year)
+        jingdai_source_cutoff = latest_daily_cutoff(conn, 'agg_jingdai_daily', year)
+        transform_daily_cutoff = cutoff_min(transform_source_cutoff, selected_cutoff) if transform_source_cutoff else None
+        jingdai_daily_cutoff = cutoff_min(jingdai_source_cutoff, selected_cutoff) if jingdai_source_cutoff else None
         daily_policy = build_source_cutoff_policy(transform_daily_cutoff, jingdai_daily_cutoff)
         use_daily = daily_policy['use_daily']
         common_daily_cutoff = daily_policy['common']
@@ -250,6 +246,44 @@ def get_kpi_data(year: int, as_of: str | None = None):
             ''', [query_year, *date_params])
             row = c.fetchone()
             return round(row['total'] or 0, 2) if row else 0.0
+
+        def _ytd_transform_products_daily(query_year: int) -> dict:
+            """从转型机构日表取截至统计日的产品指标。"""
+            if not use_daily or not transform_daily_cutoff:
+                return {'annuity': 0.0, 'protection': 0.0, 'tenyear': 0.0}
+            date_sql, date_params = date_filter_sql(transform_daily_cutoff)
+            c.execute('''
+                SELECT SUM(product_annuity) AS annuity,
+                       SUM(product_protection) AS protection,
+                       SUM(product_10year) AS tenyear
+                FROM agg_org_daily_performance
+                WHERE year = ?
+                  AND ''' + date_sql + '''
+            ''', [query_year, *date_params])
+            row = c.fetchone()
+            return {
+                'annuity': round(row['annuity'] or 0, 2) if row else 0.0,
+                'protection': round(row['protection'] or 0, 2) if row else 0.0,
+                'tenyear': round(row['tenyear'] or 0, 2) if row else 0.0,
+            }
+
+        def _ytd_jingdai_products_daily(query_year: int) -> dict:
+            """从经代日表取截至统计日的商保年金 / 保障类指标。"""
+            if not use_daily or not jingdai_daily_cutoff:
+                return {'annuity': 0.0, 'protection': 0.0}
+            date_sql, date_params = date_filter_sql(jingdai_daily_cutoff)
+            c.execute('''
+                SELECT SUM(product_annuity) AS annuity,
+                       SUM(product_protection) AS protection
+                FROM agg_jingdai_daily
+                WHERE year = ?
+                  AND ''' + date_sql + '''
+            ''', [query_year, *date_params])
+            row = c.fetchone()
+            return {
+                'annuity': round(row['annuity'] or 0, 2) if row else 0.0,
+                'protection': round(row['protection'] or 0, 2) if row else 0.0,
+            }
 
         # ── YTD 保费（有日数据时用日累计，否则回退月表） ──
         daily_perf = _ytd_premiums_daily(year)
@@ -370,27 +404,31 @@ def get_kpi_data(year: int, as_of: str | None = None):
         # 在经代价值数据接入前显式返回 0，前端据此展示“经代”行并纳入整体目标口径。
         value.setdefault('经代', 0.0)
 
-        # 商保年金 / 保障类 / 10年期（月级精度）
-        c.execute('''
-            SELECT channel, SUM(product_annuity) AS a, SUM(product_protection) AS p, SUM(product_10year) AS t
-            FROM agg_org_performance WHERE year = ? AND month <= ? GROUP BY channel
-        ''', (year, query_month))
-        org_product_rows = c.fetchall()
-        annuity_tf = sum((r['a'] or 0) for r in org_product_rows)
-        protection_tf = sum((r['p'] or 0) for r in org_product_rows)
-        c.execute('''
-            SELECT SUM(product_annuity) AS a, SUM(product_protection) AS p
-            FROM agg_jingdai WHERE year = ? AND month <= ?
-        ''', (year, query_month))
-        jd_product_row = c.fetchone()
-        annuity_jd = (jd_product_row['a'] or 0) if jd_product_row else 0.0
-        protection_jd = (jd_product_row['p'] or 0) if jd_product_row else 0.0
-        c.execute('''
-            SELECT SUM(product_10year) AS t
-            FROM agg_org_performance WHERE year = ? AND month <= ?
-        ''', (year, query_month))
-        row = c.fetchone()
-        tenyear_tf = (row['t'] or 0) if row else 0.0
+        # 商保年金 / 保障类 / 10年期（有日表时按 asOf 日级截断）
+        if use_daily:
+            transform_products = _ytd_transform_products_daily(year)
+            jingdai_products = _ytd_jingdai_products_daily(year)
+            annuity_tf = transform_products['annuity']
+            protection_tf = transform_products['protection']
+            tenyear_tf = transform_products['tenyear']
+            annuity_jd = jingdai_products['annuity']
+            protection_jd = jingdai_products['protection']
+        else:
+            c.execute('''
+                SELECT channel, SUM(product_annuity) AS a, SUM(product_protection) AS p, SUM(product_10year) AS t
+                FROM agg_org_performance WHERE year = ? AND month <= ? GROUP BY channel
+            ''', (year, query_month))
+            org_product_rows = c.fetchall()
+            annuity_tf = sum((r['a'] or 0) for r in org_product_rows)
+            protection_tf = sum((r['p'] or 0) for r in org_product_rows)
+            tenyear_tf = sum((r['t'] or 0) for r in org_product_rows)
+            c.execute('''
+                SELECT SUM(product_annuity) AS a, SUM(product_protection) AS p
+                FROM agg_jingdai WHERE year = ? AND month <= ?
+            ''', (year, query_month))
+            jd_product_row = c.fetchone()
+            annuity_jd = (jd_product_row['a'] or 0) if jd_product_row else 0.0
+            protection_jd = (jd_product_row['p'] or 0) if jd_product_row else 0.0
         c.execute('''
             SELECT SUM(qj_premium) AS t
             FROM agg_payment_period

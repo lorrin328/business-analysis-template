@@ -30,6 +30,15 @@ def aggregate_org_daily_performance(df: pd.DataFrame) -> List[Dict]:
     qj_col = _pick_col(df, ['期交保费'])
     gm_col = _pick_col(df, ['年化规保', '规模保费', '规保'], ['规模', '规保'])
     zs_col = _pick_col(df, ['折算保费'], ['折算', '标准'])
+    pay_years_col = _pick_col(df, ['缴费年限'])
+    product_code_col = _pick_col(df, ['产品代码'])
+    annuity_col = _pick_col(df, ['是否商保年金产品', '是否商保年金', '商保年金标识'])
+    protection_col = _pick_col(df, [
+        '是否社会保障型产品',
+        '是否社会保障类产品',
+        '社会保障类产品标识',
+        '是否保障类产品',
+    ])
 
     time_col = date_col or month_col
     if not all([time_col, channel_col, org_col, qj_col]):
@@ -43,6 +52,26 @@ def aggregate_org_daily_performance(df: pd.DataFrame) -> List[Dict]:
     work['_qj'] = _to_number(work[qj_col])
     work['_gm'] = _to_number(work[gm_col]) if gm_col else 0
     work['_zs'] = _to_number(work[zs_col]) if zs_col else 0
+    work['_product_code'] = ""
+    if product_code_col:
+        work['_product_code'] = work[product_code_col].map(normalize_product_code)
+    work['_is_10year'] = False
+    if pay_years_col:
+        work['_pay_years_num'] = pd.to_numeric(work[pay_years_col], errors='coerce').fillna(0)
+        work['_is_10year'] = work.apply(
+            lambda r: is_tenyear_product(r['_pay_years_num'], r['_product_code'], r['_year']),
+            axis=1,
+        )
+    elif product_code_col:
+        work['_is_10year'] = work.apply(
+            lambda r: is_tenyear_product(None, r['_product_code'], r['_year']),
+            axis=1,
+        )
+    work['_is_annuity'] = work[annuity_col].map(_is_yes_flag) if annuity_col else False
+    work['_is_protection'] = work[protection_col].map(_is_yes_flag) if protection_col else False
+    work['_product_10year'] = work['_qj'].where(work['_is_10year'], 0)
+    work['_product_annuity'] = work['_qj'].where(work['_is_annuity'], 0)
+    work['_product_protection'] = work['_qj'].where(work['_is_protection'], 0)
 
     grouped = work.groupby(['_year', '_month', '_day', '_org', '_channel'], dropna=False)
     rows = []
@@ -56,6 +85,9 @@ def aggregate_org_daily_performance(df: pd.DataFrame) -> List[Dict]:
             'qj_premium': _amount_to_wan(group['_qj'].sum()),
             'gm_premium': _amount_to_wan(group['_gm'].sum()),
             'zs_premium': _amount_to_wan(group['_zs'].sum()),
+            'product_10year': _amount_to_wan(group['_product_10year'].sum()),
+            'product_annuity': _amount_to_wan(group['_product_annuity'].sum()),
+            'product_protection': _amount_to_wan(group['_product_protection'].sum()),
         })
     return rows
 

@@ -46,6 +46,8 @@ def init_db():
             gm_premium REAL NOT NULL DEFAULT 0, zs_premium REAL NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(year, month, day))''')
         _migrate(c, "ALTER TABLE agg_jingdai_daily ADD COLUMN ymd TEXT")
+        _migrate(c, "ALTER TABLE agg_jingdai_daily ADD COLUMN product_annuity REAL NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE agg_jingdai_daily ADD COLUMN product_protection REAL NOT NULL DEFAULT 0")
 
         c.execute('''CREATE TABLE IF NOT EXISTS agg_hr_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
@@ -108,8 +110,13 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
             day INTEGER NOT NULL DEFAULT 1, org TEXT NOT NULL, channel TEXT NOT NULL,
             qj_premium REAL NOT NULL DEFAULT 0, gm_premium REAL NOT NULL DEFAULT 0,
-            zs_premium REAL NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            zs_premium REAL NOT NULL DEFAULT 0,
+            product_10year REAL NOT NULL DEFAULT 0, product_annuity REAL NOT NULL DEFAULT 0,
+            product_protection REAL NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(year, month, day, org, channel))''')
+        _migrate(c, "ALTER TABLE agg_org_daily_performance ADD COLUMN product_10year REAL NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE agg_org_daily_performance ADD COLUMN product_annuity REAL NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE agg_org_daily_performance ADD COLUMN product_protection REAL NOT NULL DEFAULT 0")
 
         c.execute('''CREATE TABLE IF NOT EXISTS target_config (
             year INTEGER PRIMARY KEY, payload TEXT NOT NULL,

@@ -354,6 +354,84 @@ class TestProductConfig:
             conn.commit()
             conn.close()
 
+    def test_kpi_product_totals_follow_daily_as_of_cutoff(self):
+        from db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            c = conn.cursor()
+            for table in [
+                "agg_performance", "agg_daily_performance",
+                "agg_org_performance", "agg_org_daily_performance",
+                "agg_jingdai", "agg_jingdai_daily",
+            ]:
+                c.execute(f"DELETE FROM {table} WHERE year = 2098")
+            c.execute(
+                """
+                INSERT INTO agg_performance (year, month, channel, qj_premium, gm_premium, zs_premium)
+                VALUES (2098, 6, 'OTO', 300, 0, 0)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_daily_performance (year, month, day, channel, qj_premium, gm_premium, zs_premium)
+                VALUES
+                    (2098, 6, 18, 'OTO', 30, 0, 0),
+                    (2098, 6, 28, 'OTO', 60, 0, 0)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_org_performance
+                (year, month, org, channel, qj_premium, gm_premium, zs_premium, product_10year, product_annuity, product_protection)
+                VALUES (2098, 6, '上海', 'OTO', 300, 0, 0, 80, 100, 200)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_org_daily_performance
+                (year, month, day, org, channel, qj_premium, gm_premium, zs_premium, product_10year, product_annuity, product_protection)
+                VALUES
+                    (2098, 6, 18, '上海', 'OTO', 30, 0, 0, 8, 10, 20),
+                    (2098, 6, 28, '上海', 'OTO', 60, 0, 0, 18, 30, 40)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_jingdai
+                (year, month, qj_premium, gm_premium, zs_premium, product_annuity, product_protection)
+                VALUES (2098, 6, 50, 0, 0, 5, 6)
+                """
+            )
+            c.execute(
+                """
+                INSERT INTO agg_jingdai_daily
+                (year, month, day, qj_premium, gm_premium, zs_premium, product_annuity, product_protection)
+                VALUES
+                    (2098, 6, 18, 5, 0, 0, 1, 2),
+                    (2098, 6, 28, 9, 0, 0, 3, 4)
+                """
+            )
+            conn.commit()
+
+            data = get_kpi_data(2098, as_of="2098-06-18")
+
+            assert data["annuity_tf"] == 10
+            assert data["annuity_jd"] == 1
+            assert data["annuity_total"] == 11
+            assert data["protection_tf"] == 20
+            assert data["protection_jd"] == 2
+            assert data["protection_total"] == 22
+            assert data["tenyear_tf"] == 8
+        finally:
+            for table in [
+                "agg_performance", "agg_daily_performance",
+                "agg_org_performance", "agg_org_daily_performance",
+                "agg_jingdai", "agg_jingdai_daily",
+            ]:
+                conn.execute(f"DELETE FROM {table} WHERE year = 2098")
+            conn.commit()
+            conn.close()
+
     def test_kpi_uses_common_daily_cutoff_for_transform_and_jingdai(self):
         from db import DB_PATH
         conn = sqlite3.connect(DB_PATH)

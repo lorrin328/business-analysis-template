@@ -1,5 +1,16 @@
 # 工作日志
 
+## 2026-06-29 v1.0.98 产品指标日级截止口径修正
+
+- 任务：复核 v1.0.97 转型产品标识读取后的计算逻辑，确认源 Excel、ETL、SQLite 聚合、KPI 和机构维度展示是否一致。
+- 发现：`agg_org_performance` 月表中的商保年金/保障类与源 Excel 全年累计一致，但 KPI 概览在存在 `asOf` 日级截止时仍按整月读取 `agg_org_performance` / `agg_jingdai` 产品字段；例如默认 2026-06-28 截止时会把 2026-06-29 的少量商保/保障保费带入，选择 2026-06-18 时偏差更明显。
+- 修复：`agg_org_daily_performance` 增加 `product_10year`、`product_annuity`、`product_protection` 字段并由 `aggregate_org_daily_performance` 写入；`agg_jingdai_daily` 增加 `product_annuity`、`product_protection` 字段并由经代参数设置口径写入。
+- 修复：`get_kpi_data()` 在转型和经代日表均可用时，商保年金、保障类和转型 10 年期实绩按各自日级截止读取；无日表数据时回退月表，避免测试年份或旧库被 `selectedCutoff` 误判为日级可用。
+- 修复：`get_org_kpi_data()` 的年度产品分解在有机构日表时使用日级累计覆盖，月度/季度明细仍保留月表展示。
+- 数据核验：源 Excel 直算与本地日表一致，2026-06-18 截止商保年金 / 保障类为 `8435.09` / `10969.88`，2026-06-28 截止为 `8922.45` / `11741.52`；月表全年累计为 `8924.85` / `11741.69`，差额来自 2026-06-29 源表尾量。
+- 边界确认：`是否个人养老金` 当前无独立 KPI/目标字段；2026 年个养期交 `154.98` 万，源表中均同时标记为商保年金和社会保障型产品，当前仍随对应两类指标计入。
+- 验证：执行相关测试 `61 passed`；完整测试 `236 passed, 1 warning`；本地 `audit_data_quality.py --year 2026 --json` 返回 `status=ok`、`issue_count=0`。
+
 ## 2026-06-29 v1.0.97 服务器手工部署与 20260629 Excel 重建
 
 - 部署对象：局域网服务器 `192.168.50.6`，应用目录 `/opt/business-analysis`。
