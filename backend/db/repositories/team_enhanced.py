@@ -8,148 +8,23 @@ from db.connection import get_db
 from db.schema import init_db
 from metrics.business_rules import standard_premium_for_manpower
 from services.raw_table_reader import quote_identifier, raw_table_columns, read_raw_table_rows
-
-
-BUSINESS_LINE_MAP = {
-    "证券": "证保",
-    "证保": "证保",
-    "网服": "蚁桥",
-    "蚁桥": "蚁桥",
-    "OTO": "OTO",
-}
-
-STANDARD_MANPOWER_THRESHOLDS = {
-    "OTO": 2.0,
-    "证保": 3.0,
-}
-
-PRODUCTIVITY_BANDS = [
-    ("0及以下", None, 0),
-    ("0-0.5万", 0, 0.5),
-    ("0.5-1万", 0.5, 1),
-    ("1-3万", 1, 3),
-    ("3-5万", 3, 5),
-    ("5-10万", 5, 10),
-    ("10万以上", 10, None),
-]
-
-
-def _to_int(value: Any, default: int | None = 0) -> int | None:
-    if value is None or value == "":
-        return default
-    try:
-        return int(float(str(value).strip()))
-    except (TypeError, ValueError):
-        return default
-
-
-def _to_float(value: Any, default: float = 0.0) -> float:
-    if value is None or value == "":
-        return default
-    try:
-        return float(str(value).strip().replace(",", ""))
-    except (TypeError, ValueError):
-        return default
-
-
-def _clean_text(value: Any) -> str:
-    if value is None:
-        return ""
-    text = str(value).strip()
-    if text.lower() in {"nan", "none", "null"}:
-        return ""
-    return text
-
-
-def _clean_staff_id(value: Any) -> str:
-    text = _clean_text(value)
-    if not text:
-        return ""
-    try:
-        numeric = float(text)
-        if numeric.is_integer():
-            return str(int(numeric))
-    except (TypeError, ValueError):
-        pass
-    return text
-
-
-def _normalize_line(value: Any) -> str:
-    text = _clean_text(value)
-    return BUSINESS_LINE_MAP.get(text, text)
-
-
-def _compact_period(value: Any) -> str:
-    text = _clean_text(value)
-    for token in ("-", "/", ".", "年", "月", "日", " "):
-        text = text.replace(token, "")
-    return text
-
-
-def _performance_year_month(row: dict[str, Any]) -> tuple[int | None, int | None]:
-    year = _to_int(row.get("年"), None)
-    month = None
-    for key in ("年月日", "年月"):
-        compact = _compact_period(row.get(key))
-        if len(compact) >= 6 and compact[:6].isdigit():
-            if year is None:
-                year = int(compact[:4])
-            month = int(compact[4:6])
-            break
-    return year, month
-
-
-def _ratio(numerator: float, denominator: float) -> float | None:
-    if denominator <= 0:
-        return None
-    return numerator / denominator * 100
-
-
-def _round(value: float | None, digits: int = 2) -> float | None:
-    if value is None:
-        return None
-    return round(value, digits)
-
-
-def _percentile(values: list[float], p: float) -> float | None:
-    if not values:
-        return None
-    ordered = sorted(values)
-    if len(ordered) == 1:
-        return ordered[0]
-    pos = (len(ordered) - 1) * p
-    lower = int(pos)
-    upper = min(lower + 1, len(ordered) - 1)
-    weight = pos - lower
-    return ordered[lower] * (1 - weight) + ordered[upper] * weight
-
-
-def _threshold_count(values: list[float], threshold: float | None) -> int | None:
-    if threshold is None:
-        return None
-    return sum(1 for value in values if value >= threshold)
-
-
-def _row_value(row: dict[str, Any], names: tuple[str, ...]) -> Any:
-    for name in names:
-        if name in row:
-            return row.get(name)
-    return None
-
-
-def _is_subtotal(value: Any) -> bool:
-    return _clean_text(value) == "小计"
-
-
-def _band_label(value: float) -> str:
-    if value <= 0:
-        return PRODUCTIVITY_BANDS[0][0]
-    for label, low, high in PRODUCTIVITY_BANDS[1:]:
-        if low is not None and value <= low:
-            continue
-        if high is None or value <= high:
-            return label
-    return PRODUCTIVITY_BANDS[-1][0]
+from services.team_analysis_utils import (
+    PRODUCTIVITY_BANDS,
+    STANDARD_MANPOWER_THRESHOLDS,
+    band_label as _band_label,
+    clean_staff_id as _clean_staff_id,
+    clean_text as _clean_text,
+    normalize_line as _normalize_line,
+    performance_year_month as _performance_year_month,
+    percentile as _percentile,
+    ratio as _ratio,
+    round_optional as _round,
+    row_value as _row_value,
+    threshold_count as _threshold_count,
+    to_float as _to_float,
+    to_int as _to_int,
+    is_subtotal as _is_subtotal,
+)
 
 
 def _available_columns(conn, table: str) -> set[str]:
@@ -561,6 +436,42 @@ def _trend(
     return result
 
 
+def _empty_team_analysis_response(
+    *,
+    year: int,
+    month: int | None,
+    period_type: str,
+    period_value: int | None,
+    line_filter: set[str],
+    org_filter: set[str],
+    scope: str,
+) -> dict[str, Any]:
+    return {
+        "year": year,
+        "month": month,
+        "periodType": period_type,
+        "periodValue": period_value,
+        "months": [],
+        "summary": _percentile_summary("整体", []),
+        "tenureStructure": [],
+        "rankStructure": [],
+        "productivityBands": [],
+        "percentiles": [],
+        "orgPercentiles": [],
+        "standardManpower": {
+            "periodMonths": 0,
+            "summary": [],
+            "byBusinessLine": [],
+            "byOrg": [],
+            "byOrgBusinessLine": [],
+            "trend": [],
+            "definitions": {},
+        },
+        "trend": [],
+        "filters": {"businessLines": sorted(line_filter), "orgs": sorted(org_filter), "scope": scope},
+    }
+
+
 def get_team_enhanced_analysis(
     year: int,
     month: int | None = None,
@@ -590,56 +501,26 @@ def get_team_enhanced_analysis(
         if "hr_data" not in {
             row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }:
-            return {
-                "year": year,
-                "month": month,
-                "periodType": period_type,
-                "periodValue": period_value,
-                "months": [],
-                "summary": _percentile_summary("整体", []),
-                "tenureStructure": [],
-                "rankStructure": [],
-                "productivityBands": [],
-                "percentiles": [],
-                "orgPercentiles": [],
-                "standardManpower": {
-                    "periodMonths": 0,
-                    "summary": [],
-                    "byBusinessLine": [],
-                    "byOrg": [],
-                    "byOrgBusinessLine": [],
-                    "trend": [],
-                    "definitions": {},
-                },
-                "trend": [],
-                "filters": {"businessLines": sorted(line_filter), "orgs": sorted(org_filter), "scope": scope},
-            }
+            return _empty_team_analysis_response(
+                year=year,
+                month=month,
+                period_type=period_type,
+                period_value=period_value,
+                line_filter=line_filter,
+                org_filter=org_filter,
+                scope=scope,
+            )
         selected_months = _period_months(conn, year, period_type, period_value)
         if not selected_months:
-            return {
-                "year": year,
-                "month": None,
-                "periodType": period_type,
-                "periodValue": period_value,
-                "months": [],
-                "summary": _percentile_summary("整体", []),
-                "tenureStructure": [],
-                "rankStructure": [],
-                "productivityBands": [],
-                "percentiles": [],
-                "orgPercentiles": [],
-                "standardManpower": {
-                    "periodMonths": 0,
-                    "summary": [],
-                    "byBusinessLine": [],
-                    "byOrg": [],
-                    "byOrgBusinessLine": [],
-                    "trend": [],
-                    "definitions": {},
-                },
-                "trend": [],
-                "filters": {"businessLines": sorted(line_filter), "orgs": sorted(org_filter), "scope": scope},
-            }
+            return _empty_team_analysis_response(
+                year=year,
+                month=None,
+                period_type=period_type,
+                period_value=period_value,
+                line_filter=line_filter,
+                org_filter=org_filter,
+                scope=scope,
+            )
         perf_map = _load_performance(conn, year, line_filter or None, org_filter or None)
         sample = _sample_staff_period(conn, year, selected_months, perf_map, line_filter or None, org_filter or None, scope)
         standard_manpower = _standard_manpower_analysis(

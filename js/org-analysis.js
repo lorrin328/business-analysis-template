@@ -59,10 +59,11 @@ let orgKpiData = null;
       renderOrgTable();
     }
 
-    function switchOrgDim(dim) {
+    function switchOrgDim(dim, activeButton = null) {
       orgTimeDim = dim;
       document.querySelectorAll('#orgDimBtns button').forEach(b => b.classList.remove('active'));
-      event.target.classList.add('active');
+      const button = activeButton || document.querySelector(`#orgDimBtns [data-org-dim="${dim}"]`);
+      if (button) button.classList.add('active');
 
       const qSelect = document.getElementById('orgSubPeriod');
       const mSelect = document.getElementById('orgSubMonth');
@@ -79,6 +80,49 @@ let orgKpiData = null;
         orgSubMonth = parseInt(mSelect.value);
       }
       renderOrgTable();
+    }
+
+    function bindOrgFilterControls() {
+      const container = document.getElementById('orgFilterChecks');
+      if (!container || container.dataset.boundOrgFilters === 'true') return;
+      container.dataset.boundOrgFilters = 'true';
+      container.addEventListener('click', event => {
+        const label = event.target.closest('label[data-org-filter]');
+        if (!label || !container.contains(label)) return;
+        event.preventDefault();
+        toggleOrgFilter(label, label.dataset.orgFilter);
+      });
+    }
+
+    function bindOrgDimControls() {
+      const container = document.getElementById('orgDimBtns');
+      if (!container || container.dataset.boundOrgDims === 'true') return;
+      container.dataset.boundOrgDims = 'true';
+      container.addEventListener('click', event => {
+        const button = event.target.closest('button[data-org-dim]');
+        if (!button || !container.contains(button)) return;
+        event.preventDefault();
+        switchOrgDim(button.dataset.orgDim, button);
+      });
+    }
+
+    function bindOrgPeriodControls() {
+      const qSelect = document.getElementById('orgSubPeriod');
+      if (qSelect && qSelect.dataset.boundOrgPeriod !== 'true') {
+        qSelect.dataset.boundOrgPeriod = 'true';
+        qSelect.addEventListener('change', () => {
+          orgSubPeriod = parseInt(qSelect.value, 10);
+          renderOrgTable();
+        });
+      }
+      const mSelect = document.getElementById('orgSubMonth');
+      if (mSelect && mSelect.dataset.boundOrgMonth !== 'true') {
+        mSelect.dataset.boundOrgMonth = 'true';
+        mSelect.addEventListener('change', () => {
+          orgSubMonth = parseInt(mSelect.value, 10);
+          renderOrgTable();
+        });
+      }
     }
 
     function syncOrgExpandButton() {
@@ -468,6 +512,9 @@ let orgKpiData = null;
     }
 
     function initOrgAnalysisControls() {
+      bindOrgFilterControls();
+      bindOrgDimControls();
+      bindOrgPeriodControls();
       syncOrgExpandButton();
       const btn = document.getElementById('orgExpandBtn');
       if (btn && !btn.dataset.boundOrgExpand) {
@@ -485,6 +532,9 @@ let orgKpiData = null;
     window.fetchOrgKpiData = fetchOrgKpiData;
     window.toggleOrgFilter = toggleOrgFilter;
     window.switchOrgDim = switchOrgDim;
+    window.bindOrgFilterControls = bindOrgFilterControls;
+    window.bindOrgDimControls = bindOrgDimControls;
+    window.bindOrgPeriodControls = bindOrgPeriodControls;
     window.renderOrgTable = renderOrgTable;
     window.toggleOrgExpand = toggleOrgExpand;
     window.setOrgExpanded = setOrgExpanded;

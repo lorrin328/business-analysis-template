@@ -1,41 +1,42 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException
 
+from api.params import DashboardYearQuery
 from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_target_config, get_target_values, save_target_config
 from services.audit_log import log_operation
-from services.response import success_response
+from services.response import response_meta, success_response
 from validators.target_validator import validate_target_payload
 
 router = APIRouter(prefix="/api", tags=["targets"])
 
 
 @router.get("/targets")
-def targets(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100), mode: str = "config"):
+def targets(year: DashboardYearQuery = DEFAULT_YEAR, mode: str = "config"):
     if mode == "rows":
         data = {"year": year, "targets": get_target_values(year)}
     else:
         data = get_target_config(year) or {"year": year, "categories": None}
     return success_response(
         data,
-        meta={
-            "year": year,
-            "metric": "targets",
-            "unit": "万元",
-            "dataSource": "target_config/target_values",
-            "definitions": {
+        meta=response_meta(
+            metric="targets",
+            unit="万元",
+            data_source="target_config/target_values",
+            year=year,
+            definitions={
                 k: METRICS[k]
                 for k in ["achievement_rate", "time_progress", "progress_gap"]
                 if k in METRICS
             },
-        },
+        ),
     )
 
 
 @router.post("/targets")
 def save_targets(
-    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
+    year: DashboardYearQuery = DEFAULT_YEAR,
     payload: dict = Body(...),
     updatedBy: str = "admin",
     _user=Depends(require_permission("targets")),
@@ -48,14 +49,14 @@ def save_targets(
     return success_response(
         data,
         message="目标已保存",
-        meta={
-            "year": year,
-            "metric": "targets",
-            "unit": "万元",
-            "definitions": {
+        meta=response_meta(
+            metric="targets",
+            unit="万元",
+            year=year,
+            definitions={
                 k: METRICS[k]
                 for k in ["achievement_rate", "time_progress", "progress_gap"]
                 if k in METRICS
             },
-        },
+        ),
     )

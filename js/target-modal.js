@@ -181,18 +181,19 @@
       modalBody.innerHTML = `
         <div class="target-toolbar">
           <label>目标年份</label>
-          <select id="targetYearSelect" onchange="changeTargetYear(this.value)">
+          <select id="targetYearSelect" data-target-year>
             ${buildRecentYearOptions(targetData.year)}
           </select>
           <span id="targetSourceNote" style="color:var(--text-secondary);font-size:12px;">单位：万 · ${targetSourceLabel()}</span>
           <div style="flex:1;"></div>
-          <button class="chart-btn" onclick="exportTargetJSON()">导出 JSON</button>
-          <button class="chart-btn" onclick="document.getElementById('targetFileInput').click()">导入 JSON</button>
-          <input type="file" id="targetFileInput" accept=".json" style="display:none;" onchange="importTargetJSON(this)">
-          <button class="chart-btn active" onclick="saveTargetData(event)">保存</button>
+          <button class="chart-btn" data-target-action="export">导出 JSON</button>
+          <button class="chart-btn" data-target-action="import">导入 JSON</button>
+          <input type="file" id="targetFileInput" accept=".json" style="display:none;" data-target-import-file>
+          <button class="chart-btn active" data-target-action="save">保存</button>
         </div>
         <div class="target-grid" id="targetGrid"></div>
       `;
+      bindTargetModalControls();
       await fetchTargetData(targetData.year);
       const select = document.getElementById('targetYearSelect');
       if (select) select.value = targetData.year;
@@ -241,7 +242,7 @@
                 <td><input type="number" class="target-input"
                   value="${cat.metrics[m]?.year ?? 0}"
                   data-cat="${catKey}" data-metric="${m}" data-dim="year"
-                  onchange="updateTargetValue(this)"></td>
+                  data-target-value></td>
               </tr>
             `).join('')}
           </tbody>
@@ -261,7 +262,7 @@
                   <td><input type="number" class="target-input target-input-sm"
                     value="${cat.metrics[m]?.quarter?.[q] ?? 0}"
                     data-cat="${catKey}" data-metric="${m}" data-dim="quarter" data-idx="${q}"
-                    onchange="updateTargetValue(this)"></td>
+                    data-target-value></td>
                 `).join('')}
               </tr>
             `).join('')}
@@ -282,7 +283,7 @@
                   <td><input type="number" class="target-input target-input-sm"
                     value="${cat.metrics[m]?.month?.[mi] ?? 0}"
                     data-cat="${catKey}" data-metric="${m}" data-dim="month" data-idx="${mi}"
-                    onchange="updateTargetValue(this)"></td>
+                    data-target-value></td>
                 `).join('')}
               </tr>
             `).join('')}
@@ -303,7 +304,7 @@
                   <td><input type="number" class="target-input target-input-sm"
                     value="${cat.metrics[m]?.month?.[mi] ?? 0}"
                     data-cat="${catKey}" data-metric="${m}" data-dim="month" data-idx="${mi}"
-                    onchange="updateTargetValue(this)"></td>
+                    data-target-value></td>
                 `).join('')}
               </tr>
             `).join('')}
@@ -373,10 +374,10 @@
 
       let html = `
         <div style="display:flex;gap:6px;margin-bottom:12px;">
-          <button class="org-dim-btn ${isYear ? 'active' : ''}" onclick="switchOrgTargetDim('year')">年度</button>
-          <button class="org-dim-btn ${isQuarter ? 'active' : ''}" onclick="switchOrgTargetDim('quarter')">季度</button>
-          <button class="org-dim-btn ${isMonth1 ? 'active' : ''}" onclick="switchOrgTargetDim('month1')">月度（1-6月）</button>
-          <button class="org-dim-btn ${isMonth2 ? 'active' : ''}" onclick="switchOrgTargetDim('month2')">月度（7-12月）</button>
+          <button class="org-dim-btn ${isYear ? 'active' : ''}" data-org-target-dim="year">年度</button>
+          <button class="org-dim-btn ${isQuarter ? 'active' : ''}" data-org-target-dim="quarter">季度</button>
+          <button class="org-dim-btn ${isMonth1 ? 'active' : ''}" data-org-target-dim="month1">月度（1-6月）</button>
+          <button class="org-dim-btn ${isMonth2 ? 'active' : ''}" data-org-target-dim="month2">月度（7-12月）</button>
         </div>
         <div style="overflow-x:auto;">
           <table class="target-table org-target-table">
@@ -431,24 +432,24 @@
             if (isYear) {
               html += `<td style="text-align:center;"><input type="number" class="target-input"
                 value="${t.year}" data-org="${org}" data-ch="${ch}" data-cat="${cat.key}" data-dim="year"
-                onchange="updateOrgTargetValue(this)" style="width:80px;"></td>`;
+                data-org-target-value style="width:80px;"></td>`;
             } else if (isQuarter) {
               [0,1,2,3].forEach(qi => {
                 html += `<td style="text-align:center;"><input type="number" class="target-input target-input-sm"
                   value="${t.quarter[qi]}" data-org="${org}" data-ch="${ch}" data-cat="${cat.key}" data-dim="quarter" data-idx="${qi}"
-                  onchange="updateOrgTargetValue(this)"></td>`;
+                  data-org-target-value></td>`;
               });
             } else if (isMonth1) {
               [0,1,2,3,4,5].forEach(mi => {
                 html += `<td style="text-align:center;"><input type="number" class="target-input target-input-sm"
                   value="${t.month[mi]}" data-org="${org}" data-ch="${ch}" data-cat="${cat.key}" data-dim="month" data-idx="${mi}"
-                  onchange="updateOrgTargetValue(this)"></td>`;
+                  data-org-target-value></td>`;
               });
             } else {
               [6,7,8,9,10,11].forEach(mi => {
                 html += `<td style="text-align:center;"><input type="number" class="target-input target-input-sm"
                   value="${t.month[mi]}" data-org="${org}" data-ch="${ch}" data-cat="${cat.key}" data-dim="month" data-idx="${mi}"
-                  onchange="updateOrgTargetValue(this)"></td>`;
+                  data-org-target-value></td>`;
               });
             }
           });
@@ -482,6 +483,57 @@
           arr[idx] = val;
         }
       }
+    }
+
+    function bindTargetModalControls() {
+      const body = document.getElementById('modalBody');
+      if (!body || body.dataset.boundTargetControls === 'true') return;
+      body.dataset.boundTargetControls = 'true';
+
+      body.addEventListener('click', event => {
+        const actionButton = event.target.closest('button[data-target-action]');
+        if (actionButton && body.contains(actionButton)) {
+          event.preventDefault();
+          const action = actionButton.dataset.targetAction;
+          if (action === 'export') {
+            exportTargetJSON();
+          } else if (action === 'import') {
+            body.querySelector('input[data-target-import-file]')?.click();
+          } else if (action === 'save') {
+            saveTargetData(event);
+          }
+          return;
+        }
+
+        const dimButton = event.target.closest('button[data-org-target-dim]');
+        if (!dimButton || !body.contains(dimButton)) return;
+        event.preventDefault();
+        switchOrgTargetDim(dimButton.dataset.orgTargetDim);
+      });
+
+      body.addEventListener('change', event => {
+        const yearSelect = event.target.closest('select[data-target-year]');
+        if (yearSelect && body.contains(yearSelect)) {
+          changeTargetYear(yearSelect.value);
+          return;
+        }
+
+        const importInput = event.target.closest('input[data-target-import-file]');
+        if (importInput && body.contains(importInput)) {
+          importTargetJSON(importInput);
+          return;
+        }
+
+        const targetInput = event.target.closest('input[data-target-value]');
+        if (targetInput && body.contains(targetInput)) {
+          updateTargetValue(targetInput);
+          return;
+        }
+
+        const orgTargetInput = event.target.closest('input[data-org-target-value]');
+        if (!orgTargetInput || !body.contains(orgTargetInput)) return;
+        updateOrgTargetValue(orgTargetInput);
+      });
     }
 
     async function saveTargetData(evt) {

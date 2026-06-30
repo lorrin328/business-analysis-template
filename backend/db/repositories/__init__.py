@@ -1,5 +1,6 @@
 """Repository 模块 — 所有数据查询函数。"""
-from db.repositories.kpi import get_platform_data, get_kpi_data
+from db.repositories.platform import get_platform_data
+from db.repositories.kpi import get_kpi_data
 from db.repositories.org import get_org_kpi_data
 from db.repositories.payment import get_payment_period_structure
 from db.repositories.product import (

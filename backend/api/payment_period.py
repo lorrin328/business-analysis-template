@@ -4,8 +4,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from auth import require_permission
+from api.params import AsOfQuery
 from config.metrics import METRICS
 from db import get_payment_period_structure
+from services.response import response_meta, success_response
 
 router = APIRouter(tags=["payment-period"])
 
@@ -20,7 +22,7 @@ def payment_period_analysis(
     orgs: Optional[str] = Query(None),
     jingdaiOrgs: Optional[str] = Query(None),
     metric: str = Query("qj"),
-    asOf: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    asOf: AsOfQuery = None,
     _user=Depends(require_permission("payment_period")),
 ):
     """获取交期结构数据。
@@ -36,7 +38,6 @@ def payment_period_analysis(
     - metric: qj=期交保费, gm=规模保费
     """
     from db import _split_csv
-    from services.response import success_response
     month_list = [
         int(item) for item in _split_csv(months)
         if item.isdigit() and 1 <= int(item) <= 12
@@ -55,16 +56,16 @@ def payment_period_analysis(
     )
     return success_response(
         data,
-        meta={
-            "year": str(year),
-            "asOf": asOf,
-            "metric": metric or "qj",
-            "unit": "万元/件",
-            "dataSource": "agg_payment_period",
-            "definitions": {
+        meta=response_meta(
+            metric=metric or "qj",
+            unit="万元/件",
+            data_source="agg_payment_period",
+            year=str(year),
+            asOf=asOf,
+            definitions={
                 k: METRICS[k]
                 for k in ["achievement_rate", "yoy"]
                 if k in METRICS
             },
-        },
+        ),
     )

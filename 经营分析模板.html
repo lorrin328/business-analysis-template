@@ -13,6 +13,7 @@
   <script src="js/dashboard-config.js?v=1.0.98"></script>
   <script src="js/upload.js?v=1.0.98"></script>
   <script src="js/target-modal.js?v=1.0.98"></script>
+  <script src="js/dashboard-actions.js?v=1.0.98"></script>
   <script src="js/kpi-cards.js?v=1.0.98"></script>
   <script src="js/platform-trend.js?v=1.0.98"></script>
   <style>
@@ -987,20 +988,20 @@
       <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.98</span>
     </div>
     <div class="header-right">
-      <button class="chart-btn" data-permission="permission_admin" onclick="openPermissionAdmin()" style="margin-right:8px;">权限管理</button>
-      <button class="chart-btn" data-permission="permission_admin" onclick="openOperationLogs()" style="margin-right:8px;">操作日志</button>
-      <button class="chart-btn" data-permission="personnel_management" onclick="window.location.href='/personnel-management.html'" style="margin-right:8px;">人员管理</button>
-      <button class="chart-btn" data-permission="honor_view" onclick="window.location.href='/honor'" style="margin-right:8px;">荣誉体系</button>
-      <button class="chart-btn" id="exportExcelBtn" data-permission="excel_export" onclick="exportDashboardExcel()" style="margin-right:8px;">导出Excel</button>
-      <button class="chart-btn" data-permission="product_config" onclick="openProductConfigModal()" style="margin-right:8px;">参数设置</button>
-      <button class="chart-btn" data-permission="targets" onclick="openTargetModal()" style="margin-right:8px;">设置目标</button>
-      <button class="chart-btn" id="recalcBtn" onclick="recalculateDashboard()" style="margin-right:8px;">重新计算</button>
+      <button class="chart-btn" data-permission="permission_admin" data-dashboard-action="open-permission-admin" style="margin-right:8px;">权限管理</button>
+      <button class="chart-btn" data-permission="permission_admin" data-dashboard-action="open-operation-logs" style="margin-right:8px;">操作日志</button>
+      <button class="chart-btn" data-permission="personnel_management" data-dashboard-action="navigate" data-dashboard-href="/personnel-management.html" style="margin-right:8px;">人员管理</button>
+      <button class="chart-btn" data-permission="honor_view" data-dashboard-action="navigate" data-dashboard-href="/honor" style="margin-right:8px;">荣誉体系</button>
+      <button class="chart-btn" id="exportExcelBtn" data-permission="excel_export" data-dashboard-action="export-excel" style="margin-right:8px;">导出Excel</button>
+      <button class="chart-btn" data-permission="product_config" data-dashboard-action="open-product-config" style="margin-right:8px;">参数设置</button>
+      <button class="chart-btn" data-permission="targets" data-dashboard-action="open-targets" style="margin-right:8px;">设置目标</button>
+      <button class="chart-btn" id="recalcBtn" data-dashboard-action="recalculate" style="margin-right:8px;">重新计算</button>
       <span class="user-pill" id="currentUserName"></span>
-      <button class="chart-btn" onclick="logout()" style="margin-right:8px;">退出</button>
+      <button class="chart-btn" data-dashboard-action="logout" style="margin-right:8px;">退出</button>
       <div class="cutoff-control" id="dataCutoffControl">
         <div class="cutoff-row">
           <span class="date-display" id="dataCutoff">数据截止：--</span>
-          <select class="cutoff-select" id="dataCutoffSelect" onchange="switchDashboardAsOf(this.value)" aria-label="数据截止日期"></select>
+          <select class="cutoff-select" id="dataCutoffSelect" data-dashboard-as-of aria-label="数据截止日期"></select>
         </div>
         <span class="cutoff-note" id="dataCutoffNote" style="display:none;"></span>
       </div>
@@ -1013,14 +1014,14 @@
       <div class="section-title">KPI 概览</div>
       <div class="kpi-grid">
         <!-- 1. 整体达成率（期交保费） -->
-        <div class="kpi-card" onclick="openModal('overall')">
+        <div class="kpi-card" data-kpi-modal="overall">
           <div class="kpi-top-label">期交保费达成率</div>
           <div class="kpi-big-value" id="kpi-qj-rate" style="color: var(--accent-light);">--</div>
           <div class="kpi-bottom-meta" id="kpi-qj-sub"></div>
         </div>
 
         <!-- 2. 价值达成率 -->
-        <div class="kpi-card" onclick="openModal('value')">
+        <div class="kpi-card" data-kpi-modal="value">
           <div class="kpi-upload-badge">需上传</div>
           <div class="kpi-top-label">价值达成率</div>
           <div class="kpi-big-value" id="kpi-value-rate" style="color: var(--success);">--</div>
@@ -1028,42 +1029,42 @@
         </div>
 
         <!-- 3. 长险活动率 -->
-        <div class="kpi-card" onclick="openModal('activity')">
+        <div class="kpi-card" data-kpi-modal="activity">
           <div class="kpi-top-label">长险活动率</div>
           <div class="kpi-big-value" id="kpi-activity-rate" style="color: var(--warning);">--</div>
           <div class="kpi-bottom-meta" id="kpi-activity-sub"></div>
         </div>
 
         <!-- 4. 商保年金 -->
-        <div class="kpi-card" onclick="openModal('annuity')">
+        <div class="kpi-card" data-kpi-modal="annuity">
           <div class="kpi-top-label">商保年金达成率</div>
           <div class="kpi-big-value" id="kpi-annuity-rate" style="color: #8b5cf6;">--</div>
           <div class="kpi-bottom-meta" id="kpi-annuity-sub"></div>
         </div>
 
         <!-- 5. 保障类产品 -->
-        <div class="kpi-card" onclick="openModal('protection')">
+        <div class="kpi-card" data-kpi-modal="protection">
           <div class="kpi-top-label">保障类产品达成率</div>
           <div class="kpi-big-value" id="kpi-protection-rate" style="color: #ec4899;">--</div>
           <div class="kpi-bottom-meta" id="kpi-protection-sub"></div>
         </div>
 
         <!-- 6. 10年期产品 -->
-        <div class="kpi-card" onclick="openModal('10year')">
+        <div class="kpi-card" data-kpi-modal="10year">
           <div class="kpi-top-label">10年期产品达成率</div>
           <div class="kpi-big-value" id="kpi-10year-rate" style="color: #06b6d4;">--</div>
           <div class="kpi-bottom-meta" id="kpi-10year-sub"></div>
         </div>
 
         <!-- 7. 长险期交达成率 -->
-        <div class="kpi-card" onclick="openModal('longterm')">
+        <div class="kpi-card" data-kpi-modal="longterm">
           <div class="kpi-top-label">长险期交达成率</div>
           <div class="kpi-big-value" id="kpi-longterm-rate" style="color: #3b82f6;">--</div>
           <div class="kpi-bottom-meta" id="kpi-longterm-sub"></div>
         </div>
 
         <!-- 8. 人均保费（转型业务） -->
-        <div class="kpi-card" onclick="openModal('percapita')">
+        <div class="kpi-card" data-kpi-modal="percapita">
           <div class="kpi-top-label">人均保费 <span style="font-size:10px;color:var(--text-secondary);">(月均)</span></div>
           <div class="kpi-big-value" id="kpi-percapita" style="color: #f97316;">--</div>
           <div class="kpi-bottom-meta" id="kpi-percapita-sub"></div>
@@ -1092,36 +1093,36 @@
         <div class="org-filter-group">
           <label>机构</label>
           <div class="org-filter-checks" id="orgFilterChecks">
-            <label class="active" onclick="toggleOrgFilter(this, 'all')"><input type="checkbox" checked data-org="all">全部</label>
-            <label onclick="toggleOrgFilter(this, '上海')"><input type="checkbox" data-org="上海">上海</label>
-            <label onclick="toggleOrgFilter(this, '湖北')"><input type="checkbox" data-org="湖北">湖北</label>
-            <label onclick="toggleOrgFilter(this, '四川')"><input type="checkbox" data-org="四川">四川</label>
-            <label onclick="toggleOrgFilter(this, '辽宁')"><input type="checkbox" data-org="辽宁">辽宁</label>
-            <label onclick="toggleOrgFilter(this, '山东')"><input type="checkbox" data-org="山东">山东</label>
-            <label onclick="toggleOrgFilter(this, '广东')"><input type="checkbox" data-org="广东">广东</label>
-            <label onclick="toggleOrgFilter(this, '福建')"><input type="checkbox" data-org="福建">福建</label>
-            <label onclick="toggleOrgFilter(this, '浙江')"><input type="checkbox" data-org="浙江">浙江</label>
-            <label onclick="toggleOrgFilter(this, '河南')"><input type="checkbox" data-org="河南">河南</label>
-            <label onclick="toggleOrgFilter(this, '北京')"><input type="checkbox" data-org="北京">北京</label>
+            <label class="active" data-org-filter="all"><input type="checkbox" checked data-org="all">全部</label>
+            <label data-org-filter="上海"><input type="checkbox" data-org="上海">上海</label>
+            <label data-org-filter="湖北"><input type="checkbox" data-org="湖北">湖北</label>
+            <label data-org-filter="四川"><input type="checkbox" data-org="四川">四川</label>
+            <label data-org-filter="辽宁"><input type="checkbox" data-org="辽宁">辽宁</label>
+            <label data-org-filter="山东"><input type="checkbox" data-org="山东">山东</label>
+            <label data-org-filter="广东"><input type="checkbox" data-org="广东">广东</label>
+            <label data-org-filter="福建"><input type="checkbox" data-org="福建">福建</label>
+            <label data-org-filter="浙江"><input type="checkbox" data-org="浙江">浙江</label>
+            <label data-org-filter="河南"><input type="checkbox" data-org="河南">河南</label>
+            <label data-org-filter="北京"><input type="checkbox" data-org="北京">北京</label>
           </div>
         </div>
         <div class="org-filter-group">
           <label>时间</label>
           <div class="org-dim-btns" id="orgDimBtns">
-            <button class="active" onclick="switchOrgDim('year')">年度</button>
-            <button onclick="switchOrgDim('quarter')">季度</button>
-            <button onclick="switchOrgDim('month')">月度</button>
+            <button class="active" data-org-dim="year">年度</button>
+            <button data-org-dim="quarter">季度</button>
+            <button data-org-dim="month">月度</button>
           </div>
         </div>
         <div class="org-filter-group">
           <label>季度/月份</label>
-          <select class="period-select" id="orgSubPeriod" onchange="renderOrgTable()" style="display:none;">
+          <select class="period-select" id="orgSubPeriod" style="display:none;">
             <option value="0">Q1</option>
             <option value="1" selected>Q2</option>
             <option value="2">Q3</option>
             <option value="3">Q4</option>
           </select>
-          <select class="period-select" id="orgSubMonth" onchange="renderOrgTable()" style="display:none;">
+          <select class="period-select" id="orgSubMonth" style="display:none;">
             <option value="0">1月</option>
             <option value="1">2月</option>
             <option value="2">3月</option>
@@ -1154,48 +1155,48 @@
           <div class="chart-controls">
             <div class="control-row">
               <span class="control-label">年份</span>
-              <select class="period-select" id="yearSelect" onchange="switchYear(this.value)">
+              <select class="period-select" id="yearSelect">
               </select>
               <span class="control-label" style="margin-left:12px;">时间维度</span>
-              <div class="control-btns">
-                <button class="chart-btn active" onclick="switchTimeDim(this, 'year')">年度</button>
-                <button class="chart-btn" onclick="switchTimeDim(this, 'quarter')">季度</button>
-                <button class="chart-btn" onclick="switchTimeDim(this, 'month')">月度</button>
+              <div class="control-btns" id="platformTimeDimBtns">
+                <button class="chart-btn active" data-platform-time-dim="year">年度</button>
+                <button class="chart-btn" data-platform-time-dim="quarter">季度</button>
+                <button class="chart-btn" data-platform-time-dim="month">月度</button>
               </div>
-              <select class="period-select" id="subPeriodSelect" onchange="switchSubPeriod(this.value)" style="display:none;">
+              <select class="period-select" id="subPeriodSelect" style="display:none;">
                 <option value="all">全年</option>
               </select>
             </div>
             <div class="control-row">
               <span class="control-label">业务系列</span>
               <div class="control-checks" id="seriesChecks">
-                <label class="check-label"><input type="checkbox" checked onchange="toggleSeries('经代', this.checked)"> <span>经代</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleSeries('OTO', this.checked)"> <span>OTO</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleSeries('证保', this.checked)"> <span>证保</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleSeries('蚁桥', this.checked)"> <span>蚁桥</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-series="经代"> <span>经代</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-series="OTO"> <span>OTO</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-series="证保"> <span>证保</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-series="蚁桥"> <span>蚁桥</span></label>
               </div>
             </div>
             <div class="control-row">
               <span class="control-label">机构</span>
               <div class="control-checks" id="orgChecks">
-                <label class="check-label"><input type="checkbox" checked onchange="toggleOrg('上海', this.checked)"> <span>上海</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleOrg('湖北', this.checked)"> <span>湖北</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleOrg('四川', this.checked)"> <span>四川</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleOrg('辽宁', this.checked)"> <span>辽宁</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleOrg('山东', this.checked)"> <span>山东</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleOrg('广东', this.checked)"> <span>广东</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleOrg('福建', this.checked)"> <span>福建</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleOrg('浙江', this.checked)"> <span>浙江</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleOrg('河南', this.checked)"> <span>河南</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleOrg('北京', this.checked)"> <span>北京</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-org="上海"> <span>上海</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-org="湖北"> <span>湖北</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-org="四川"> <span>四川</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-org="辽宁"> <span>辽宁</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-org="山东"> <span>山东</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-org="广东"> <span>广东</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-org="福建"> <span>福建</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-org="浙江"> <span>浙江</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-org="河南"> <span>河南</span></label>
+                <label class="check-label"><input type="checkbox" checked data-platform-org="北京"> <span>北京</span></label>
               </div>
             </div>
             <div class="control-row">
               <span class="control-label">保费类型</span>
-              <div class="control-btns">
-                <button class="chart-btn active" onclick="switchPremiumType(this, 'qj')">期交保费</button>
-                <button class="chart-btn" onclick="switchPremiumType(this, 'gm')">规模保费</button>
-                <button class="chart-btn" onclick="switchPremiumType(this, 'zs')">折算保费</button>
+              <div class="control-btns" id="platformPremiumTypeBtns">
+                <button class="chart-btn active" data-platform-premium-type="qj">期交保费</button>
+                <button class="chart-btn" data-platform-premium-type="gm">规模保费</button>
+                <button class="chart-btn" data-platform-premium-type="zs">折算保费</button>
               </div>
             </div>
           </div>
@@ -1212,25 +1213,25 @@
         <div class="chart-card" data-permission="product_structure">
           <div class="chart-header">
             <span class="chart-title">产品结构</span>
-            <div class="chart-actions">
-              <button class="chart-btn active" onclick="switchPie(this, 'premium')">保费</button>
-              <button class="chart-btn" onclick="switchPie(this, 'count')">件数</button>
+            <div class="chart-actions" id="productPieTypeBtns">
+              <button class="chart-btn active" data-product-pie-type="premium">保费</button>
+              <button class="chart-btn" data-product-pie-type="count">件数</button>
             </div>
           </div>
           <div class="chart-controls">
             <div class="control-row">
               <span class="control-label">业务来源</span>
-              <div class="control-checks">
-                <label class="check-label"><input type="checkbox" checked onchange="toggleProductSource('transform', this.checked)"> <span>转型业务</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleProductSource('jingdai', this.checked)"> <span>经代业务</span></label>
+              <div class="control-checks" id="productSourceChecks">
+                <label class="check-label"><input type="checkbox" checked data-product-source="transform"> <span>转型业务</span></label>
+                <label class="check-label"><input type="checkbox" checked data-product-source="jingdai"> <span>经代业务</span></label>
               </div>
             </div>
             <div class="control-row" id="productTransformRow">
               <span class="control-label">转型业务</span>
               <div class="control-checks">
-                <label class="check-label"><input type="checkbox" checked onchange="toggleProductTransform('OTO', this.checked)"> <span>OTO</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleProductTransform('证保', this.checked)"> <span>证保</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleProductTransform('蚁桥', this.checked)"> <span>蚁桥</span></label>
+                <label class="check-label"><input type="checkbox" checked data-product-transform="OTO"> <span>OTO</span></label>
+                <label class="check-label"><input type="checkbox" checked data-product-transform="证保"> <span>证保</span></label>
+                <label class="check-label"><input type="checkbox" checked data-product-transform="蚁桥"> <span>蚁桥</span></label>
               </div>
             </div>
             <div class="control-row" id="productJingdaiRow">
@@ -1240,23 +1241,23 @@
             <div class="control-row" id="productOrgRow">
               <span class="control-label">转型机构</span>
               <div class="control-checks" id="productOrgChecks">
-                <label class="check-label"><input type="checkbox" checked data-org="all" onchange="toggleProductOrg('all', this.checked)"> <span>全部</span></label>
+                <label class="check-label"><input type="checkbox" checked data-product-org="all"> <span>全部</span></label>
               </div>
             </div>
             <div class="control-row">
               <span class="control-label">时间维度</span>
-              <div class="control-btns">
-                <button class="chart-btn active" onclick="switchProductDim(this, 'year')">年度</button>
-                <button class="chart-btn" onclick="switchProductDim(this, 'quarter')">季度</button>
-                <button class="chart-btn" onclick="switchProductDim(this, 'month')">月度</button>
+              <div class="control-btns" id="productDimBtns">
+                <button class="chart-btn active" data-product-dim="year">年度</button>
+                <button class="chart-btn" data-product-dim="quarter">季度</button>
+                <button class="chart-btn" data-product-dim="month">月度</button>
               </div>
-              <select class="period-select" id="productSubSelect" onchange="switchProductSub(this.value)" style="display:none;"></select>
+              <select class="period-select" id="productSubSelect" style="display:none;"></select>
             </div>
             <div class="control-row">
               <span class="control-label">保费类型</span>
-              <div class="control-btns">
-                <button class="chart-btn active" onclick="switchProductMetric(this, 'qj')">期交保费</button>
-                <button class="chart-btn" onclick="switchProductMetric(this, 'gm')">规模保费</button>
+              <div class="control-btns" id="productMetricBtns">
+                <button class="chart-btn active" data-product-metric="qj">期交保费</button>
+                <button class="chart-btn" data-product-metric="gm">规模保费</button>
               </div>
             </div>
           </div>
@@ -1268,43 +1269,43 @@
         <div class="chart-card" data-permission="payment_period">
           <div class="chart-header">
             <span class="chart-title">交期结构</span>
-            <div class="chart-actions">
-              <button class="chart-btn active" onclick="switchPayPeriodPie(this, 'premium')">保费</button>
-              <button class="chart-btn" onclick="switchPayPeriodPie(this, 'count')">件数</button>
+            <div class="chart-actions" id="payPeriodPieTypeBtns">
+              <button class="chart-btn active" data-pay-period-pie-type="premium">保费</button>
+              <button class="chart-btn" data-pay-period-pie-type="count">件数</button>
             </div>
           </div>
           <div class="chart-controls">
             <div class="control-row">
               <span class="control-label">年份</span>
-              <select class="period-select" id="payPeriodYearSelect" onchange="switchPayPeriodYear(this.value)">
+              <select class="period-select" id="payPeriodYearSelect">
               </select>
               <span class="control-label" style="margin-left:12px;">时间维度</span>
-              <div class="control-btns">
-                <button class="chart-btn active" onclick="switchPayPeriodDim(this, 'year')">年度</button>
-                <button class="chart-btn" onclick="switchPayPeriodDim(this, 'quarter')">季度</button>
-                <button class="chart-btn" onclick="switchPayPeriodDim(this, 'month')">月度</button>
+              <div class="control-btns" id="payPeriodDimBtns">
+                <button class="chart-btn active" data-pay-period-dim="year">年度</button>
+                <button class="chart-btn" data-pay-period-dim="quarter">季度</button>
+                <button class="chart-btn" data-pay-period-dim="month">月度</button>
               </div>
-              <select class="period-select" id="payPeriodSubSelect" onchange="switchPayPeriodSub(this.value)" style="display:none;"></select>
+              <select class="period-select" id="payPeriodSubSelect" style="display:none;"></select>
             </div>
             <div class="control-row">
               <span class="control-label">业务系列</span>
-              <div class="control-checks">
-                <label class="check-label"><input type="checkbox" checked onchange="togglePayPeriodBiz('转型', this.checked)"> <span>转型</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="togglePayPeriodBiz('经代', this.checked)"> <span>经代</span></label>
+              <div class="control-checks" id="payPeriodBizChecks">
+                <label class="check-label"><input type="checkbox" checked data-pay-period-biz="转型"> <span>转型</span></label>
+                <label class="check-label"><input type="checkbox" checked data-pay-period-biz="经代"> <span>经代</span></label>
               </div>
             </div>
             <div class="control-row" id="payPeriodTransformRow">
               <span class="control-label">转型渠道</span>
               <div class="control-checks">
-                <label class="check-label"><input type="checkbox" checked onchange="togglePayPeriodChannel('OTO', this.checked)"> <span>OTO</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="togglePayPeriodChannel('证保', this.checked)"> <span>证保</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="togglePayPeriodChannel('蚁桥', this.checked)"> <span>蚁桥</span></label>
+                <label class="check-label"><input type="checkbox" checked data-pay-period-channel="OTO"> <span>OTO</span></label>
+                <label class="check-label"><input type="checkbox" checked data-pay-period-channel="证保"> <span>证保</span></label>
+                <label class="check-label"><input type="checkbox" checked data-pay-period-channel="蚁桥"> <span>蚁桥</span></label>
               </div>
             </div>
             <div class="control-row" id="payPeriodTransformOrgRow">
               <span class="control-label">转型机构</span>
               <div class="control-checks" id="payPeriodTransformOrgChecks">
-                <label class="check-label"><input type="checkbox" checked data-org="all" onchange="togglePayPeriodOrg('all', this.checked)"> <span>全部</span></label>
+                <label class="check-label"><input type="checkbox" checked data-pay-period-org="all"> <span>全部</span></label>
               </div>
             </div>
             <div class="control-row" id="payPeriodJingdaiOrgRow" style="display:none;">
@@ -1313,9 +1314,9 @@
             </div>
             <div class="control-row">
               <span class="control-label">保费类型</span>
-              <div class="control-btns">
-                <button class="chart-btn active" onclick="switchPayPeriodMetric(this, 'qj')">期交保费</button>
-                <button class="chart-btn" onclick="switchPayPeriodMetric(this, 'gm')">规模保费</button>
+              <div class="control-btns" id="payPeriodMetricBtns">
+                <button class="chart-btn active" data-pay-period-metric="qj">期交保费</button>
+                <button class="chart-btn" data-pay-period-metric="gm">规模保费</button>
               </div>
             </div>
           </div>
@@ -1338,23 +1339,23 @@
           <div class="chart-controls">
             <div class="control-row">
               <span class="control-label">年份</span>
-              <select class="period-select" id="teamYearSelect" onchange="switchTeamYear(this.value)">
+              <select class="period-select" id="teamYearSelect">
               </select>
               <span class="control-label" style="margin-left:12px;">指标类型</span>
-              <div class="control-btns">
-                <button class="chart-btn active" onclick="switchTeamMetric(this, 'headcount')">人力规模</button>
-                <button class="chart-btn" onclick="switchTeamMetric(this, 'activity')">长险活动率</button>
-                <button class="chart-btn" onclick="switchTeamMetric(this, 'perCapitaPremium')">人均保费</button>
-                <button class="chart-btn" onclick="switchTeamMetric(this, 'perCapitaCapacity')">人均产能</button>
+              <div class="control-btns" id="teamMetricBtns">
+                <button class="chart-btn active" data-team-metric="headcount">人力规模</button>
+                <button class="chart-btn" data-team-metric="activity">长险活动率</button>
+                <button class="chart-btn" data-team-metric="perCapitaPremium">人均保费</button>
+                <button class="chart-btn" data-team-metric="perCapitaCapacity">人均产能</button>
               </div>
             </div>
             <div class="control-row">
               <span class="control-label">时间维度</span>
-              <div class="control-btns">
-                <button class="chart-btn active" onclick="switchTeamDim(this, 'year')">年度</button>
-                <button class="chart-btn" onclick="switchTeamDim(this, 'quarter')">季度</button>
+              <div class="control-btns" id="teamDimBtns">
+                <button class="chart-btn active" data-team-dim="year">年度</button>
+                <button class="chart-btn" data-team-dim="quarter">季度</button>
               </div>
-              <select class="period-select" id="teamQuarterSelect" onchange="switchTeamQuarter(this.value)" style="display:none;margin-left:8px;">
+              <select class="period-select" id="teamQuarterSelect" style="display:none;margin-left:8px;">
                 <option value="Q1">Q1</option>
                 <option value="Q2" selected>Q2</option>
                 <option value="Q3">Q3</option>
@@ -1364,25 +1365,25 @@
             <div class="control-row">
               <span class="control-label">业务系列</span>
               <div class="control-checks" id="teamSeriesChecks">
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamSeries('OTO', this.checked)"> <span>OTO</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamSeries('证保', this.checked)"> <span>证保</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamSeries('蚁桥', this.checked)"> <span>蚁桥</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-series="OTO"> <span>OTO</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-series="证保"> <span>证保</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-series="蚁桥"> <span>蚁桥</span></label>
               </div>
             </div>
             <div class="control-row">
               <span class="control-label">机构</span>
               <div class="control-checks" id="teamOrgChecks">
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('all', this.checked)"> <span>全部</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('上海', this.checked)"> <span>上海</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('四川', this.checked)"> <span>四川</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('湖北', this.checked)"> <span>湖北</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('辽宁', this.checked)"> <span>辽宁</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('山东', this.checked)"> <span>山东</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('广东', this.checked)"> <span>广东</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('福建', this.checked)"> <span>福建</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('浙江', this.checked)"> <span>浙江</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('河南', this.checked)"> <span>河南</span></label>
-                <label class="check-label"><input type="checkbox" checked onchange="toggleTeamOrg('北京', this.checked)"> <span>北京</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-org="all"> <span>全部</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-org="上海"> <span>上海</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-org="四川"> <span>四川</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-org="湖北"> <span>湖北</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-org="辽宁"> <span>辽宁</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-org="山东"> <span>山东</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-org="广东"> <span>广东</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-org="福建"> <span>福建</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-org="浙江"> <span>浙江</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-org="河南"> <span>河南</span></label>
+                <label class="check-label"><input type="checkbox" checked data-team-org="北京"> <span>北京</span></label>
               </div>
             </div>
           </div>
@@ -1407,44 +1408,44 @@
         <span>强制重写相同文件</span>
       </label>
       <div class="upload-grid">
-        <div class="upload-card" onclick="document.getElementById('file1').click()">
+        <div class="upload-card" data-upload-input="file1">
           <div class="upload-mandatory">必需</div>
           <div class="upload-icon">👥</div>
           <div class="upload-title">转型队伍清单</div>
           <div class="upload-desc">人员信息、组织架构</div>
           <button class="upload-btn">选择文件</button>
           <div class="file-info" id="info1"></div>
-          <input type="file" id="file1" accept=".xlsx,.xls,.csv" onchange="handleFile(this, 'info1')">
+          <input type="file" id="file1" accept=".xlsx,.xls,.csv" data-upload-info="info1">
         </div>
 
-        <div class="upload-card" onclick="document.getElementById('file2').click()">
+        <div class="upload-card" data-upload-input="file2">
           <div class="upload-mandatory">必需</div>
           <div class="upload-icon">📋</div>
           <div class="upload-title">转型业务清单</div>
           <div class="upload-desc">保费、保单明细</div>
           <button class="upload-btn">选择文件</button>
           <div class="file-info" id="info2"></div>
-          <input type="file" id="file2" accept=".xlsx,.xls,.csv" onchange="handleFile(this, 'info2')">
+          <input type="file" id="file2" accept=".xlsx,.xls,.csv" data-upload-info="info2">
         </div>
 
-        <div class="upload-card" onclick="document.getElementById('file3').click()">
+        <div class="upload-card" data-upload-input="file3">
           <div class="upload-mandatory">必需</div>
           <div class="upload-icon">🤝</div>
           <div class="upload-title">经代业务清单</div>
           <div class="upload-desc">经代渠道业务数据</div>
           <button class="upload-btn">选择文件</button>
           <div class="file-info" id="info3"></div>
-          <input type="file" id="file3" accept=".xlsx,.xls,.csv" onchange="handleFile(this, 'info3')">
+          <input type="file" id="file3" accept=".xlsx,.xls,.csv" data-upload-info="info3">
         </div>
 
-        <div class="upload-card" onclick="document.getElementById('file4').click()">
+        <div class="upload-card" data-upload-input="file4">
           <div class="upload-mandatory">必需</div>
           <div class="upload-icon">💎</div>
           <div class="upload-title">价值清单</div>
           <div class="upload-desc">价值保费、价值率数据</div>
           <button class="upload-btn">选择文件</button>
           <div class="file-info" id="info4"></div>
-          <input type="file" id="file4" accept=".xlsx,.xls,.csv" onchange="handleFile(this, 'info4')">
+          <input type="file" id="file4" accept=".xlsx,.xls,.csv" data-upload-info="info4">
         </div>
 
       </div>
@@ -1456,11 +1457,11 @@
   </div>
 
   <!-- Modal -->
-  <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
-    <div class="modal" onclick="event.stopPropagation()">
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
       <div class="modal-header">
         <span class="modal-title" id="modalTitle">详情</span>
-        <button class="modal-close" onclick="closeModal()">×</button>
+        <button class="modal-close" data-modal-action="close">×</button>
       </div>
       <div class="modal-body" id="modalBody">
         <!-- Dynamic content -->
@@ -1495,6 +1496,20 @@
       }
     }
 
+    function bindModalControls() {
+      if (!modalOverlay.dataset.boundModalClose) {
+        modalOverlay.dataset.boundModalClose = 'true';
+        modalOverlay.addEventListener('click', closeModal);
+      }
+      document.querySelectorAll('[data-modal-action="close"]').forEach(button => {
+        if (button.dataset.boundModalAction) return;
+        button.dataset.boundModalAction = 'true';
+        button.addEventListener('click', () => closeModal());
+      });
+    }
+
+    bindModalControls();
+
     // Product config modal lives in js/product-config-modal.js
   </script>
   <script src="js/product-config-modal.js?v=1.0.98"></script>
@@ -1512,6 +1527,7 @@
   </script>
   <script src="js/org-analysis.js?v=1.0.98"></script>
   <script src="js/seed-data.js?v=1.0.98"></script>
+  <script src="js/platform-seed-data.js?v=1.0.98"></script>
   <script src="js/data-integration.js?v=1.0.98"></script>
   <script src="js/platform-trend-main.js?v=1.0.98"></script>
   <script>

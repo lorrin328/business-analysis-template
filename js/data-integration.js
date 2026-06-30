@@ -230,6 +230,15 @@
     }
     window.switchDashboardAsOf = switchDashboardAsOf;
 
+    function bindDashboardAsOfControl() {
+      const select = document.getElementById('dataCutoffSelect');
+      if (!select || select.dataset.boundDashboardAsOf === 'true') return;
+      select.dataset.boundDashboardAsOf = 'true';
+      select.addEventListener('change', () => switchDashboardAsOf(select.value));
+    }
+    window.bindDashboardAsOfControl = bindDashboardAsOfControl;
+    bindDashboardAsOfControl();
+
     // 检查API数据是否包含有效记录（非空）
     function hasValidApiData(apiPlatform) {
       if (!apiPlatform) return false;
@@ -460,14 +469,13 @@
       }
     }
 
-    function createCheckboxLabel(labelText, checked, onChange) {
+    function createCheckboxLabel(labelText, checked, datasetKey) {
       const label = document.createElement('label');
       label.className = 'check-label';
       const input = document.createElement('input');
       input.type = 'checkbox';
       input.checked = checked !== false;
-      input.dataset.org = String(labelText || '');
-      input.addEventListener('change', () => onChange(input.dataset.org, input.checked));
+      input.dataset[datasetKey] = String(labelText || '');
       const span = document.createElement('span');
       span.textContent = String(labelText || '');
       label.appendChild(input);
@@ -484,7 +492,7 @@
         productFilters.orgsInitialized = true;
       }
       wrapper.replaceChildren(...orgs.map(org => (
-        createCheckboxLabel(org, productFilters.jingdaiOrgs[org] !== false, toggleProductJingdaiOrg)
+        createCheckboxLabel(org, productFilters.jingdaiOrgs[org] !== false, 'productJingdaiOrg')
       )));
     }
 

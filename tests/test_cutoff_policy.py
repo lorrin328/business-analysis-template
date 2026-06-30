@@ -6,7 +6,12 @@ import sys
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 
-from services.cutoff_policy import build_source_cutoff_policy, date_filter_sql, latest_daily_cutoff
+from services.cutoff_policy import (
+    build_source_cutoff_policy,
+    channel_cutoff_filter_sql,
+    date_filter_sql,
+    latest_daily_cutoff,
+)
 
 
 def test_cutoff_policy_keeps_source_cutoffs_and_exposes_common_cutoff():
@@ -43,3 +48,18 @@ def test_cutoff_policy_marks_partial_daily_without_enabling_daily_reads():
     assert policy["mode"] == "monthly_complete_fallback"
     assert policy["latest"] == {"month": 5, "day": 23}
     assert policy["common"] is None
+
+
+def test_channel_cutoff_filter_sql_builds_per_channel_ytd_condition():
+    sql, params = channel_cutoff_filter_sql(
+        {
+            "OTO": {"month": 5, "day": 23},
+            "证保": (5, 21),
+        }
+    )
+
+    assert sql == (
+        "((channel = ? AND (month < ? OR (month = ? AND day <= ?))) OR "
+        "(channel = ? AND (month < ? OR (month = ? AND day <= ?))))"
+    )
+    assert params == ["OTO", 5, 5, 23, "证保", 5, 5, 21]

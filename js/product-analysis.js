@@ -119,8 +119,10 @@
     }
 
     function switchPie(btn, type) {
-      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      if (btn?.parentElement) {
+        btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
       currentPieType = type;
       productChart.setOption(getPieOption(type), true);
     }
@@ -153,21 +155,23 @@
       if (org === 'all') {
         productFilters.orgs['all'] = checked;
         ORG_LIST.forEach(o => productFilters.orgs[o] = checked);
-        const allLabel = document.querySelector('#productOrgChecks [data-org="all"]');
-        document.querySelectorAll('#productOrgChecks [data-org]:not([data-org="all"])').forEach(cb => cb.checked = checked);
+        const allLabel = document.querySelector('#productOrgChecks [data-product-org="all"]');
+        document.querySelectorAll('#productOrgChecks [data-product-org]:not([data-product-org="all"])').forEach(cb => cb.checked = checked);
       } else {
         productFilters.orgs[org] = checked;
         const allChecked = ORG_LIST.every(o => productFilters.orgs[o]);
         productFilters.orgs['all'] = allChecked;
-        const allLabel = document.querySelector('#productOrgChecks [data-org="all"]');
+        const allLabel = document.querySelector('#productOrgChecks [data-product-org="all"]');
         if (allLabel) allLabel.checked = allChecked;
       }
       refreshProductChart();
     }
 
     function switchProductDim(btn, dim) {
-      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      if (btn?.parentElement) {
+        btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
       productFilters.timeDim = dim;
       const sub = document.getElementById('productSubSelect');
       if (dim === 'year') { sub.style.display = 'none'; productFilters.subPeriod = 'all'; }
@@ -187,9 +191,93 @@
     }
 
     function switchProductMetric(btn, metric) {
-      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      if (btn?.parentElement) {
+        btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
       productFilters.metric = metric;
       refreshProductChart();
     }
 
+    function bindProductStructureControls() {
+      const pieBtns = document.getElementById('productPieTypeBtns');
+      if (pieBtns && pieBtns.dataset.boundProductPie !== 'true') {
+        pieBtns.dataset.boundProductPie = 'true';
+        pieBtns.addEventListener('click', event => {
+          const button = event.target.closest('button[data-product-pie-type]');
+          if (!button || !pieBtns.contains(button)) return;
+          event.preventDefault();
+          switchPie(button, button.dataset.productPieType);
+        });
+      }
+
+      const sourceChecks = document.getElementById('productSourceChecks');
+      if (sourceChecks && sourceChecks.dataset.boundProductSources !== 'true') {
+        sourceChecks.dataset.boundProductSources = 'true';
+        sourceChecks.addEventListener('change', event => {
+          const input = event.target.closest('input[data-product-source]');
+          if (!input || !sourceChecks.contains(input)) return;
+          toggleProductSource(input.dataset.productSource, input.checked);
+        });
+      }
+
+      const transformRow = document.getElementById('productTransformRow');
+      if (transformRow && transformRow.dataset.boundProductTransform !== 'true') {
+        transformRow.dataset.boundProductTransform = 'true';
+        transformRow.addEventListener('change', event => {
+          const input = event.target.closest('input[data-product-transform]');
+          if (!input || !transformRow.contains(input)) return;
+          toggleProductTransform(input.dataset.productTransform, input.checked);
+        });
+      }
+
+      const jingdaiOrgChecks = document.getElementById('productJingdaiOrgChecks');
+      if (jingdaiOrgChecks && jingdaiOrgChecks.dataset.boundProductJingdaiOrg !== 'true') {
+        jingdaiOrgChecks.dataset.boundProductJingdaiOrg = 'true';
+        jingdaiOrgChecks.addEventListener('change', event => {
+          const input = event.target.closest('input[data-product-jingdai-org]');
+          if (!input || !jingdaiOrgChecks.contains(input)) return;
+          toggleProductJingdaiOrg(input.dataset.productJingdaiOrg, input.checked);
+        });
+      }
+
+      const orgChecks = document.getElementById('productOrgChecks');
+      if (orgChecks && orgChecks.dataset.boundProductOrgs !== 'true') {
+        orgChecks.dataset.boundProductOrgs = 'true';
+        orgChecks.addEventListener('change', event => {
+          const input = event.target.closest('input[data-product-org]');
+          if (!input || !orgChecks.contains(input)) return;
+          toggleProductOrg(input.dataset.productOrg, input.checked);
+        });
+      }
+
+      const dimBtns = document.getElementById('productDimBtns');
+      if (dimBtns && dimBtns.dataset.boundProductDims !== 'true') {
+        dimBtns.dataset.boundProductDims = 'true';
+        dimBtns.addEventListener('click', event => {
+          const button = event.target.closest('button[data-product-dim]');
+          if (!button || !dimBtns.contains(button)) return;
+          event.preventDefault();
+          switchProductDim(button, button.dataset.productDim);
+        });
+      }
+
+      const subSelect = document.getElementById('productSubSelect');
+      if (subSelect && subSelect.dataset.boundProductSub !== 'true') {
+        subSelect.dataset.boundProductSub = 'true';
+        subSelect.addEventListener('change', () => switchProductSub(subSelect.value));
+      }
+
+      const metricBtns = document.getElementById('productMetricBtns');
+      if (metricBtns && metricBtns.dataset.boundProductMetrics !== 'true') {
+        metricBtns.dataset.boundProductMetrics = 'true';
+        metricBtns.addEventListener('click', event => {
+          const button = event.target.closest('button[data-product-metric]');
+          if (!button || !metricBtns.contains(button)) return;
+          event.preventDefault();
+          switchProductMetric(button, button.dataset.productMetric);
+        });
+      }
+    }
+
+    bindProductStructureControls();

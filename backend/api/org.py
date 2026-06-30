@@ -1,32 +1,33 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 
 from auth import require_permission
+from api.params import AsOfQuery, DashboardYearQuery
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_org_kpi_data
-from services.response import success_response
+from services.response import response_meta, success_response
 
 router = APIRouter(prefix="/api", tags=["org"])
 
 
 @router.get("/org-analysis")
 def org_analysis(
-    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
-    asOf: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    year: DashboardYearQuery = DEFAULT_YEAR,
+    asOf: AsOfQuery = None,
     _user=Depends(require_permission("org")),
 ):
     return success_response(
         get_org_kpi_data(year, as_of=asOf),
-        meta={
-            "year": year,
-            "asOf": asOf,
-            "metric": "org-analysis",
-            "unit": "万元",
-            "dataSource": "agg_org_*, agg_longterm_qj",
-            "definitions": {
+        meta=response_meta(
+            metric="org-analysis",
+            unit="万元",
+            data_source="agg_org_*, agg_longterm_qj",
+            year=year,
+            asOf=asOf,
+            definitions={
                 k: METRICS[k]
                 for k in ["achievement_rate", "yoy", "avg_premium", "avg_productivity"]
                 if k in METRICS
             },
-        },
+        ),
     )

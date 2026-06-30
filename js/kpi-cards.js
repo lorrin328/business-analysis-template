@@ -398,6 +398,29 @@
       } catch (e) { console.error('updateKPICards error:', e); }
     }
 
-    window.updateKPICards = updateKPICards;
-})(window);
+    function bindKPICardActions() {
+      const grid = window.document.querySelector('.kpi-grid');
+      if (!grid || grid.dataset.kpiActionsBound === '1') return;
+      grid.dataset.kpiActionsBound = '1';
+      grid.addEventListener('click', event => {
+        const card = event.target.closest('.kpi-card[data-kpi-modal]');
+        if (!card || !grid.contains(card)) return;
+        const modalType = card.dataset.kpiModal;
+        if (!modalType) return;
+        if (typeof window.openModal !== 'function') {
+          console.error('KPI modal opener is unavailable');
+          return;
+        }
+        window.openModal(modalType);
+      });
+    }
 
+    if (window.document.readyState === 'loading') {
+      window.document.addEventListener('DOMContentLoaded', bindKPICardActions);
+    } else {
+      bindKPICardActions();
+    }
+
+    window.updateKPICards = updateKPICards;
+    window.bindKPICardActions = bindKPICardActions;
+})(window);

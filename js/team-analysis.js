@@ -135,26 +135,26 @@
         return `<option value="${month}" ${Number(periodValue) === month ? 'selected' : ''}>${month}月</option>`;
       }).join('');
       const selectHtml = periodType === 'year' ? '' : `
-        <select class="chart-select" onchange="switchTeamEnhancedPeriodValue(this.value)">
+        <select class="chart-select" data-team-enhanced-period-value>
           ${periodType === 'quarter' ? quarterOptions : monthOptions}
         </select>
       `;
       return `
         <div class="chart-controls team-enhanced-controls">
           <span class="team-enhanced-control-label">统计期间</span>
-          <button class="chart-btn ${periodType === 'year' ? 'active' : ''}" onclick="switchTeamEnhancedPeriodType('year')">年度</button>
-          <button class="chart-btn ${periodType === 'quarter' ? 'active' : ''}" onclick="switchTeamEnhancedPeriodType('quarter')">季度</button>
-          <button class="chart-btn ${periodType === 'month' ? 'active' : ''}" onclick="switchTeamEnhancedPeriodType('month')">月度</button>
+          <button class="chart-btn ${periodType === 'year' ? 'active' : ''}" data-team-enhanced-period-type="year">年度</button>
+          <button class="chart-btn ${periodType === 'quarter' ? 'active' : ''}" data-team-enhanced-period-type="quarter">季度</button>
+          <button class="chart-btn ${periodType === 'month' ? 'active' : ''}" data-team-enhanced-period-type="month">月度</button>
           ${selectHtml}
           <span class="team-enhanced-control-label">业务模式</span>
           <label class="check-label team-enhanced-check">
-            <input type="checkbox" ${allSelected ? 'checked' : ''} onchange="toggleTeamEnhancedBusinessLine('全部', this.checked)">
+            <input type="checkbox" ${allSelected ? 'checked' : ''} data-team-enhanced-line="全部">
             <span>全选</span>
           </label>
           ${Object.keys(selectedTeamEnhancedBusinessLines).map(line => `
             <label class="check-label team-enhanced-check">
-              <input type="checkbox" ${selectedTeamEnhancedBusinessLines[line] ? 'checked' : ''} onchange="toggleTeamEnhancedBusinessLine('${line}', this.checked)">
-              <span>${line}</span>
+              <input type="checkbox" ${selectedTeamEnhancedBusinessLines[line] ? 'checked' : ''} data-team-enhanced-line="${escapeTeamText(line)}">
+              <span>${escapeTeamText(line)}</span>
             </label>
           `).join('')}
         </div>
@@ -517,6 +517,31 @@
       `;
     }
 
+    function bindTeamEnhancedControls() {
+      const panel = document.getElementById('teamEnhancedPanel');
+      if (!panel || panel.dataset.boundTeamEnhancedControls === 'true') return;
+      panel.dataset.boundTeamEnhancedControls = 'true';
+
+      panel.addEventListener('click', event => {
+        const button = event.target.closest('button[data-team-enhanced-period-type]');
+        if (!button || !panel.contains(button)) return;
+        event.preventDefault();
+        switchTeamEnhancedPeriodType(button.dataset.teamEnhancedPeriodType);
+      });
+
+      panel.addEventListener('change', event => {
+        const select = event.target.closest('select[data-team-enhanced-period-value]');
+        if (select && panel.contains(select)) {
+          switchTeamEnhancedPeriodValue(select.value);
+          return;
+        }
+
+        const input = event.target.closest('input[data-team-enhanced-line]');
+        if (!input || !panel.contains(input)) return;
+        toggleTeamEnhancedBusinessLine(input.dataset.teamEnhancedLine, input.checked);
+      });
+    }
+
     function getTeamAggregated(year, metric) {
       const selectedKeys = Object.keys(selectedTeamSeries).filter(k => selectedTeamSeries[k]);
       const selectedOrgs = Object.keys(selectedTeamOrgs).filter(k => selectedTeamOrgs[k]);
@@ -618,6 +643,7 @@
     }
 
     teamChart.setOption(getTeamOption());
+    bindTeamEnhancedControls();
     refreshTeamEnhancedPanel();
 
     async function switchTeamYear(value) {
@@ -628,16 +654,20 @@
       refreshTeamEnhancedPanel();
     }
     function switchTeamMetric(btn, metric) {
-      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      if (btn?.parentElement) {
+        btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
       currentTeamMetric = metric;
       teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
       refreshTeamEnhancedPanel();
     }
     function switchTeamDim(btn, dim) {
-      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      if (btn?.parentElement) {
+        btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
       currentTeamDim = dim;
       document.getElementById('teamQuarterSelect').style.display = dim === 'quarter' ? 'inline-block' : 'none';
       teamChart.clear();
@@ -660,13 +690,13 @@
     function toggleTeamOrg(key, checked) {
       if (key === 'all') {
         ORG_LIST_TEAM.forEach(o => { selectedTeamOrgs[o] = checked; });
-        document.querySelectorAll('#teamOrgChecks input[type="checkbox"]').forEach((input, idx) => {
-          if (idx > 0) input.checked = checked;
+        document.querySelectorAll('#teamOrgChecks input[data-team-org]:not([data-team-org="all"])').forEach(input => {
+          input.checked = checked;
         });
       } else {
         selectedTeamOrgs[key] = checked;
         const allChecked = ORG_LIST_TEAM.every(o => selectedTeamOrgs[o]);
-        const allInput = document.querySelector('#teamOrgChecks input[type="checkbox"]');
+        const allInput = document.querySelector('#teamOrgChecks input[data-team-org="all"]');
         if (allInput) allInput.checked = allChecked;
       }
       teamChart.clear();
@@ -674,3 +704,60 @@
       refreshTeamEnhancedPanel();
     }
 
+    function bindTeamTrendControls() {
+      const yearSelect = document.getElementById('teamYearSelect');
+      if (yearSelect && yearSelect.dataset.boundTeamYear !== 'true') {
+        yearSelect.dataset.boundTeamYear = 'true';
+        yearSelect.addEventListener('change', () => switchTeamYear(yearSelect.value));
+      }
+
+      const metricBtns = document.getElementById('teamMetricBtns');
+      if (metricBtns && metricBtns.dataset.boundTeamMetrics !== 'true') {
+        metricBtns.dataset.boundTeamMetrics = 'true';
+        metricBtns.addEventListener('click', event => {
+          const button = event.target.closest('button[data-team-metric]');
+          if (!button || !metricBtns.contains(button)) return;
+          event.preventDefault();
+          switchTeamMetric(button, button.dataset.teamMetric);
+        });
+      }
+
+      const dimBtns = document.getElementById('teamDimBtns');
+      if (dimBtns && dimBtns.dataset.boundTeamDims !== 'true') {
+        dimBtns.dataset.boundTeamDims = 'true';
+        dimBtns.addEventListener('click', event => {
+          const button = event.target.closest('button[data-team-dim]');
+          if (!button || !dimBtns.contains(button)) return;
+          event.preventDefault();
+          switchTeamDim(button, button.dataset.teamDim);
+        });
+      }
+
+      const quarterSelect = document.getElementById('teamQuarterSelect');
+      if (quarterSelect && quarterSelect.dataset.boundTeamQuarter !== 'true') {
+        quarterSelect.dataset.boundTeamQuarter = 'true';
+        quarterSelect.addEventListener('change', () => switchTeamQuarter(quarterSelect.value));
+      }
+
+      const seriesChecks = document.getElementById('teamSeriesChecks');
+      if (seriesChecks && seriesChecks.dataset.boundTeamSeries !== 'true') {
+        seriesChecks.dataset.boundTeamSeries = 'true';
+        seriesChecks.addEventListener('change', event => {
+          const input = event.target.closest('input[data-team-series]');
+          if (!input || !seriesChecks.contains(input)) return;
+          toggleTeamSeries(input.dataset.teamSeries, input.checked);
+        });
+      }
+
+      const orgChecks = document.getElementById('teamOrgChecks');
+      if (orgChecks && orgChecks.dataset.boundTeamOrgs !== 'true') {
+        orgChecks.dataset.boundTeamOrgs = 'true';
+        orgChecks.addEventListener('change', event => {
+          const input = event.target.closest('input[data-team-org]');
+          if (!input || !orgChecks.contains(input)) return;
+          toggleTeamOrg(input.dataset.teamOrg, input.checked);
+        });
+      }
+    }
+
+    bindTeamTrendControls();

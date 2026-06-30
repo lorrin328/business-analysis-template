@@ -9,7 +9,7 @@ import pytest
 
 import db as database
 import db.connection as db_connection
-from services.response import error_response, success_response
+from services.response import batch_meta, error_response, response_meta, success_response
 
 
 def test_response_format():
@@ -20,6 +20,40 @@ def test_response_format():
 
     err = error_response("错误", "E")
     assert err == {"success": False, "data": None, "message": "错误", "errorCode": "E"}
+
+
+def test_response_meta_builds_common_metric_contract():
+    meta = response_meta(
+        metric="team-analysis",
+        unit="人/万元",
+        data_source="agg_hr_data",
+        definitions={"activity_rate": {"name": "活动率"}},
+        year=2026,
+    )
+
+    assert meta == {
+        "metric": "team-analysis",
+        "unit": "人/万元",
+        "dataSource": "agg_hr_data",
+        "definitions": {"activity_rate": {"name": "活动率"}},
+        "year": 2026,
+    }
+
+
+def test_batch_meta_builds_common_batch_contract():
+    meta = batch_meta(
+        batch_id=10,
+        rule_version="2026-v1",
+        data_source_mode="raw_detail",
+        exceptionCount=2,
+    )
+
+    assert meta == {
+        "batchId": 10,
+        "ruleVersion": "2026-v1",
+        "dataSourceMode": "raw_detail",
+        "exceptionCount": 2,
+    }
 
 
 def test_target_save_and_read(tmp_path):

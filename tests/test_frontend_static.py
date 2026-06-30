@@ -125,7 +125,7 @@ def test_frontend_centralizes_read_api_fetches():
     assert "fetch(`${API_BASE}/api/product/" not in html
     assert "fetch(`${API_BASE}/api/org-kpi/" not in html
     # API URLs are only expected in the active runtime boundary plus the current HTML shell.
-    js_files = ["platform-trend.js", "kpi-cards.js", "dashboard-config.js", "export-excel.js", "product-config-modal.js",
+    js_files = ["platform-trend.js", "kpi-cards.js", "dashboard-config.js", "dashboard-actions.js", "export-excel.js", "product-config-modal.js",
                 "kpi-modal-content.js", "org-analysis.js", "seed-data.js", "data-integration.js",
                 "product-analysis.js", "payperiod-chart.js", "team-analysis.js", "target-modal.js"]
     all_js = read_html() + " ".join(read_js(f) for f in js_files if os.path.exists(os.path.join(JS_DIR, f)))
@@ -232,12 +232,14 @@ def test_runtime_js_boundary_is_explicit():
         "js/dashboard-config.js",
         "js/upload.js",
         "js/target-modal.js",
+        "js/dashboard-actions.js",
         "js/kpi-cards.js",
         "js/platform-trend.js",
         "js/product-config-modal.js",
         "js/kpi-modal-content.js",
         "js/org-analysis.js",
         "js/seed-data.js",
+        "js/platform-seed-data.js",
         "js/data-integration.js",
         "js/platform-trend-main.js",
         "js/product-analysis.js",
@@ -259,6 +261,8 @@ def test_dashboard_config_is_loaded_before_kpi_cards():
     assert "await loadDashboardConfig();" in html
     assert "/api/config/metrics" in config
     assert "dashboardKpiCards" in config
+    assert ".kpi-card[data-kpi-modal]" in config
+    assert '[onclick="openModal(' not in config
 
 
 def test_product_config_modal_is_outside_html_shell():
@@ -270,6 +274,55 @@ def test_product_config_modal_is_outside_html_shell():
     assert "async function saveProductConfig()" not in html
     assert "async function openProductConfigModal()" in modal
     assert "async function saveProductConfig()" in modal
+    assert 'onclick="closeModal()"' not in modal
+    assert 'onclick="saveProductConfig()"' not in modal
+    assert 'data-product-config-action="cancel"' in modal
+    assert 'data-product-config-action="save"' in modal
+    assert "function bindProductConfigActions()" in modal
+
+
+def test_modal_close_controls_are_bound_by_modal_script():
+    html = read_html()
+    modal_shell = html.split('<!-- Modal -->', 1)[1].split('<!-- Product config modal lives', 1)[0]
+
+    assert 'id="modalOverlay" onclick=' not in modal_shell
+    assert 'onclick="event.stopPropagation()"' not in modal_shell
+    assert 'onclick="closeModal()"' not in modal_shell
+    assert 'data-modal-action="close"' in modal_shell
+    assert "function closeModal(e)" in modal_shell
+    assert "function bindModalControls()" in modal_shell
+    assert "modalOverlay.addEventListener('click', closeModal)" in modal_shell
+    assert "button.addEventListener('click', () => closeModal())" in modal_shell
+    assert "modalOverlay.classList.remove('modal-target')" in modal_shell
+    assert "modalOverlay.classList.remove('modal-product-config')" in modal_shell
+
+
+def test_dashboard_toolbar_actions_are_bound_by_runtime_module():
+    html = read_html()
+    actions = read_js("dashboard-actions.js")
+    header = html.split('<div class="container">', 1)[0]
+
+    assert '<script src="js/dashboard-actions.js?v=1.0.98"></script>' in html
+    assert html.index('js/target-modal.js') < html.index('js/dashboard-actions.js') < html.index('js/kpi-cards.js')
+    assert 'data-dashboard-action="open-permission-admin"' in header
+    assert 'data-dashboard-action="open-operation-logs"' in header
+    assert 'data-dashboard-action="navigate" data-dashboard-href="/personnel-management.html"' in header
+    assert 'data-dashboard-action="navigate" data-dashboard-href="/honor"' in header
+    assert 'data-dashboard-action="export-excel"' in header
+    assert 'data-dashboard-action="open-product-config"' in header
+    assert 'data-dashboard-action="open-targets"' in header
+    assert 'data-dashboard-action="recalculate"' in header
+    assert 'data-dashboard-action="logout"' in header
+    assert 'onclick="openPermissionAdmin()"' not in header
+    assert 'onclick="openOperationLogs()"' not in header
+    assert 'onclick="exportDashboardExcel()"' not in header
+    assert 'onclick="openProductConfigModal()"' not in header
+    assert 'onclick="openTargetModal()"' not in header
+    assert 'onclick="recalculateDashboard()"' not in header
+    assert 'onclick="logout()"' not in header
+    assert "const ACTIONS =" in actions
+    assert "'open-product-config': () => invokeGlobal('openProductConfigModal')" in actions
+    assert "document.querySelector('.header-right')?.addEventListener('click', handleDashboardAction)" in actions
 
 
 def test_excel_export_is_runtime_module():
@@ -298,9 +351,9 @@ def test_account_auth_replaces_admin_token_prompt():
     assert "权限管理" in html
     assert 'data-permission="permission_admin"' in html
     assert 'data-permission="personnel_management"' in html
-    assert "window.location.href='/personnel-management.html'" in html
+    assert 'data-dashboard-action="navigate" data-dashboard-href="/personnel-management.html"' in html
     assert 'data-permission="honor_view"' in html
-    assert "window.location.href='/honor'" in html
+    assert 'data-dashboard-action="navigate" data-dashboard-href="/honor"' in html
     assert 'data-permission="upload"' in html
     assert 'data-permission="excel_export"' in html
     assert "/api/auth/${mode}" in auth_ui
@@ -362,7 +415,7 @@ def test_honor_page_is_separate_runtime():
         honor_html = f.read()
     honor_js = read_js("honor.js")
 
-    assert 'data-permission="honor_view" onclick="window.location.href=\'/honor\'" style="margin-right:8px;">荣誉体系</button>' in html
+    assert 'data-permission="honor_view" data-dashboard-action="navigate" data-dashboard-href="/honor" style="margin-right:8px;">荣誉体系</button>' in html
     assert "????" not in html
     assert "星钻联盟荣誉体系" in honor_html
     assert '<script src="/js/honor.js?v=1.0.98"></script>' in honor_html
@@ -399,8 +452,11 @@ def test_static_cutoff_starts_empty_until_server_data_arrives():
     assert 'id="dataCutoff">数据截止：--</span>' in html
     assert 'id="dataCutoffSelect"' in html
     assert 'id="dataCutoffNote"' in html
-    assert "switchDashboardAsOf(this.value)" in html
+    assert 'data-dashboard-as-of' in html
+    assert "switchDashboardAsOf(this.value)" not in html
     assert "function switchDashboardAsOf(value)" in data_integration
+    assert "function bindDashboardAsOfControl()" in data_integration
+    assert "select.addEventListener('change', () => switchDashboardAsOf(select.value))" in data_integration
     assert "warningText" in data_integration
     assert '数据截止：2026年5月</span>' not in html
 
@@ -468,6 +524,30 @@ def test_org_analysis_has_expand_mode_and_colored_indicators():
     assert ".org-table .org-ind-red" in combined
 
 
+def test_org_filter_controls_are_bound_by_org_analysis_js():
+    html = read_html()
+    org = read_js("org-analysis.js")
+    org_section = html.split('<!-- Business Platform Trend -->', 1)[0].split('<!-- 机构维度 -->', 1)[1]
+
+    assert 'onclick="toggleOrgFilter' not in org_section
+    assert 'onclick="switchOrgDim' not in org_section
+    assert 'onchange="renderOrgTable()"' not in org_section
+    assert 'data-org-filter="all"' in org_section
+    assert 'data-org-filter="上海"' in org_section
+    assert 'data-org-dim="year"' in org_section
+    assert 'data-org-dim="quarter"' in org_section
+    assert 'data-org-dim="month"' in org_section
+    assert "function bindOrgFilterControls()" in org
+    assert "function bindOrgDimControls()" in org
+    assert "function bindOrgPeriodControls()" in org
+    assert "label[data-org-filter]" in org
+    assert "button[data-org-dim]" in org
+    assert "switchOrgDim(button.dataset.orgDim, button)" in org
+    assert "orgSubPeriod = parseInt(qSelect.value, 10)" in org
+    assert "orgSubMonth = parseInt(mSelect.value, 10)" in org
+    assert "event.target.classList.add('active')" not in org
+
+
 def test_org_analysis_includes_annual_longterm_qj_metric():
     org = read_js("org-analysis.js")
 
@@ -483,8 +563,25 @@ def test_org_analysis_includes_annual_longterm_qj_metric():
 def test_upload_js_exposes_handle_file():
     html = read_html()
     upload = read_js("upload.js")
+    upload_section = html.split('<!-- Modal -->', 1)[0].split('<!-- Upload Module -->', 1)[1]
+
     assert "async function handleFile(input, infoId)" not in html
+    assert 'onclick="document.getElementById(' not in upload_section
+    assert 'onchange="handleFile' not in upload_section
+    assert 'data-upload-input="file1"' in upload_section
+    assert 'data-upload-input="file2"' in upload_section
+    assert 'data-upload-input="file3"' in upload_section
+    assert 'data-upload-input="file4"' in upload_section
+    assert 'data-upload-info="info1"' in upload_section
+    assert 'data-upload-info="info2"' in upload_section
+    assert 'data-upload-info="info3"' in upload_section
+    assert 'data-upload-info="info4"' in upload_section
+    assert "function bindUploadControls()" in upload
+    assert ".upload-card[data-upload-input]" in upload
+    assert "document.querySelectorAll('input[type=\"file\"][data-upload-info]')" in upload
+    assert "handleFile(input, input.dataset.uploadInfo)" in upload
     assert "window.handleFile = handleFile" in upload
+    assert "window.bindUploadControls = bindUploadControls" in upload
     assert "try {" in upload
     assert "} catch" in upload
     assert "} finally" in upload
@@ -498,17 +595,55 @@ def test_target_modal_js_is_runtime_owner_for_target_settings():
     assert "async function openTargetModal()" in target
     assert "function createDefaultTargetData(year)" in target
     assert "function saveTargetData(evt)" in target
+    assert "function bindTargetModalControls()" in target
+    assert 'onchange="changeTargetYear' not in target
+    assert 'onclick="exportTargetJSON' not in target
+    assert 'onclick="document.getElementById' not in target
+    assert 'onchange="importTargetJSON' not in target
+    assert 'onclick="saveTargetData' not in target
+    assert 'onchange="updateTargetValue' not in target
+    assert 'onclick="switchOrgTargetDim' not in target
+    assert 'onchange="updateOrgTargetValue' not in target
+    assert 'data-target-year' in target
+    assert 'data-target-action="export"' in target
+    assert 'data-target-action="import"' in target
+    assert 'data-target-action="save"' in target
+    assert 'data-target-import-file' in target
+    assert 'data-target-value' in target
+    assert 'data-org-target-dim="year"' in target
+    assert 'data-org-target-dim="quarter"' in target
+    assert 'data-org-target-dim="month1"' in target
+    assert 'data-org-target-dim="month2"' in target
+    assert 'data-org-target-value' in target
+    assert "button[data-target-action]" in target
+    assert "body.querySelector('input[data-target-import-file]')?.click()" in target
+    assert "button[data-org-target-dim]" in target
+    assert "switchOrgTargetDim(dimButton.dataset.orgTargetDim)" in target
+    assert "select[data-target-year]" in target
+    assert "changeTargetYear(yearSelect.value)" in target
+    assert "input[data-target-value]" in target
+    assert "updateTargetValue(targetInput)" in target
+    assert "input[data-org-target-value]" in target
+    assert "updateOrgTargetValue(orgTargetInput)" in target
     assert "function updateKPICards()" not in target
 
 
 def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
     html = read_html()
     kpi = read_js("kpi-cards.js")
+    kpi_section = html.split('<!-- 机构维度 -->', 1)[0]
 
     assert "function updateKPICards()" not in html
     assert 'src="js/kpi-cards.js?v=1.0.98"' in html
+    assert 'onclick="openModal(' not in kpi_section
+    for modal_type in ["overall", "value", "activity", "annuity", "protection", "10year", "longterm", "percapita"]:
+        assert f'data-kpi-modal="{modal_type}"' in kpi_section
     assert "function updateKPICards()" in kpi
+    assert "function bindKPICardActions()" in kpi
+    assert ".kpi-card[data-kpi-modal]" in kpi
+    assert "window.openModal(modalType)" in kpi
     assert "window.updateKPICards = updateKPICards" in kpi
+    assert "window.bindKPICardActions = bindKPICardActions" in kpi
     assert "KPI card rendering lives in js/kpi-cards.js" in html
 
 
@@ -604,6 +739,116 @@ def test_structure_modules_are_same_level_with_tables():
     assert "def _query_top_products_by_business_line" in backend_product
 
 
+def test_product_structure_controls_are_bound_by_product_module():
+    html = read_html()
+    product = read_js("product-analysis.js")
+    data_integration = read_js("data-integration.js")
+    product_section = html.split('<div class="chart-card" data-permission="payment_period">', 1)[0].split('<div class="chart-card" data-permission="product_structure">', 1)[1]
+
+    assert 'onclick="switchPie' not in product_section
+    assert 'onchange="toggleProductSource' not in product_section
+    assert 'onchange="toggleProductTransform' not in product_section
+    assert 'onchange="toggleProductOrg' not in product_section
+    assert 'onclick="switchProductDim' not in product_section
+    assert 'onchange="switchProductSub' not in product_section
+    assert 'onclick="switchProductMetric' not in product_section
+    assert 'id="productPieTypeBtns"' in product_section
+    assert 'data-product-pie-type="premium"' in product_section
+    assert 'data-product-pie-type="count"' in product_section
+    assert 'id="productSourceChecks"' in product_section
+    assert 'data-product-source="transform"' in product_section
+    assert 'data-product-transform="OTO"' in product_section
+    assert 'data-product-org="all"' in product_section
+    assert 'id="productDimBtns"' in product_section
+    assert 'data-product-dim="year"' in product_section
+    assert 'id="productMetricBtns"' in product_section
+    assert 'data-product-metric="qj"' in product_section
+    assert "function bindProductStructureControls()" in product
+    assert "button[data-product-pie-type]" in product
+    assert "input[data-product-source]" in product
+    assert "input[data-product-transform]" in product
+    assert "input[data-product-jingdai-org]" in product
+    assert "input[data-product-org]" in product
+    assert "button[data-product-dim]" in product
+    assert "subSelect.addEventListener('change', () => switchProductSub(subSelect.value))" in product
+    assert "button[data-product-metric]" in product
+    assert "input.dataset[datasetKey] = String(labelText || '')" in data_integration
+    assert "'productJingdaiOrg'" in data_integration
+    assert "input.addEventListener('change'" not in data_integration
+
+
+def test_pay_period_controls_are_bound_by_payperiod_module():
+    html = read_html()
+    payperiod = read_js("payperiod-chart.js")
+    payperiod_section = html.split('<!-- Charts Row 2: Team Trend + YoY -->', 1)[0].split('<div class="chart-card" data-permission="payment_period">', 1)[1]
+
+    assert 'onclick="switchPayPeriodPie' not in payperiod_section
+    assert 'onchange="switchPayPeriodYear' not in payperiod_section
+    assert 'onclick="switchPayPeriodDim' not in payperiod_section
+    assert 'onchange="switchPayPeriodSub' not in payperiod_section
+    assert 'onchange="togglePayPeriodBiz' not in payperiod_section
+    assert 'onchange="togglePayPeriodChannel' not in payperiod_section
+    assert 'onchange="togglePayPeriodOrg' not in payperiod_section
+    assert 'onclick="switchPayPeriodMetric' not in payperiod_section
+    assert 'id="payPeriodPieTypeBtns"' in payperiod_section
+    assert 'data-pay-period-pie-type="premium"' in payperiod_section
+    assert 'id="payPeriodDimBtns"' in payperiod_section
+    assert 'data-pay-period-dim="year"' in payperiod_section
+    assert 'id="payPeriodBizChecks"' in payperiod_section
+    assert 'data-pay-period-biz="转型"' in payperiod_section
+    assert 'data-pay-period-channel="OTO"' in payperiod_section
+    assert 'data-pay-period-org="all"' in payperiod_section
+    assert 'id="payPeriodMetricBtns"' in payperiod_section
+    assert 'data-pay-period-metric="qj"' in payperiod_section
+    assert "function bindPayPeriodControls()" in payperiod
+    assert "button[data-pay-period-pie-type]" in payperiod
+    assert "yearSelect.addEventListener('change', () => switchPayPeriodYear(yearSelect.value))" in payperiod
+    assert "button[data-pay-period-dim]" in payperiod
+    assert "subSelect.addEventListener('change', () => switchPayPeriodSub(subSelect.value))" in payperiod
+    assert "input[data-pay-period-biz]" in payperiod
+    assert "input[data-pay-period-channel]" in payperiod
+    assert "input[data-pay-period-org]" in payperiod
+    assert "input[data-pay-period-jingdai-org]" in payperiod
+    assert "button[data-pay-period-metric]" in payperiod
+    assert "createCheckboxLabel(org, true, 'payPeriodOrg')" in payperiod
+    assert "createCheckboxLabel(org, true, 'productOrg')" in payperiod
+    assert "createCheckboxLabel(org, checked, 'payPeriodJingdaiOrg')" in payperiod
+    assert "createCheckboxLabel(org, true, togglePayPeriodOrg)" not in payperiod
+    assert "createCheckboxLabel(org, true, toggleProductOrg)" not in payperiod
+
+
+def test_team_trend_controls_are_bound_by_team_module():
+    html = read_html()
+    team = read_js("team-analysis.js")
+    team_trend_section = html.split('<div class="chart-card" data-permission="team_enhanced">', 1)[0].split('<!-- Charts Row 2: Team Trend + YoY -->', 1)[1]
+
+    assert 'onchange="switchTeamYear' not in team_trend_section
+    assert 'onclick="switchTeamMetric' not in team_trend_section
+    assert 'onclick="switchTeamDim' not in team_trend_section
+    assert 'onchange="switchTeamQuarter' not in team_trend_section
+    assert 'onchange="toggleTeamSeries' not in team_trend_section
+    assert 'onchange="toggleTeamOrg' not in team_trend_section
+    assert 'id="teamMetricBtns"' in team_trend_section
+    assert 'data-team-metric="headcount"' in team_trend_section
+    assert 'id="teamDimBtns"' in team_trend_section
+    assert 'data-team-dim="year"' in team_trend_section
+    assert 'data-team-series="OTO"' in team_trend_section
+    assert 'data-team-org="all"' in team_trend_section
+    assert 'data-team-org="上海"' in team_trend_section
+    assert "function bindTeamTrendControls()" in team
+    assert "yearSelect.addEventListener('change', () => switchTeamYear(yearSelect.value))" in team
+    assert "button[data-team-metric]" in team
+    assert "switchTeamMetric(button, button.dataset.teamMetric)" in team
+    assert "button[data-team-dim]" in team
+    assert "switchTeamDim(button, button.dataset.teamDim)" in team
+    assert "quarterSelect.addEventListener('change', () => switchTeamQuarter(quarterSelect.value))" in team
+    assert "input[data-team-series]" in team
+    assert "toggleTeamSeries(input.dataset.teamSeries, input.checked)" in team
+    assert "input[data-team-org]" in team
+    assert "toggleTeamOrg(input.dataset.teamOrg, input.checked)" in team
+    assert "document.querySelectorAll('#teamOrgChecks input[data-team-org]:not([data-team-org=\"all\"])')" in team
+
+
 def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     html = read_html()
     team = read_js("team-analysis.js")
@@ -644,6 +889,23 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert "team-enhanced-controls" in team
     assert "team-enhanced-control-label" in team
     assert "team-enhanced-check" in team
+    assert "function bindTeamEnhancedControls()" in team
+    assert "bindTeamEnhancedControls();" in team
+    assert 'onchange="switchTeamEnhancedPeriodValue' not in team
+    assert 'onclick="switchTeamEnhancedPeriodType' not in team
+    assert 'onchange="toggleTeamEnhancedBusinessLine' not in team
+    assert 'data-team-enhanced-period-value' in team
+    assert 'data-team-enhanced-period-type="year"' in team
+    assert 'data-team-enhanced-period-type="quarter"' in team
+    assert 'data-team-enhanced-period-type="month"' in team
+    assert 'data-team-enhanced-line="全部"' in team
+    assert 'data-team-enhanced-line="${escapeTeamText(line)}"' in team
+    assert "button[data-team-enhanced-period-type]" in team
+    assert "switchTeamEnhancedPeriodType(button.dataset.teamEnhancedPeriodType)" in team
+    assert "select[data-team-enhanced-period-value]" in team
+    assert "switchTeamEnhancedPeriodValue(select.value)" in team
+    assert "input[data-team-enhanced-line]" in team
+    assert "toggleTeamEnhancedBusinessLine(input.dataset.teamEnhancedLine, input.checked)" in team
     assert ".team-enhanced-check" in html
     assert "<span>全选</span>" in team
     assert "业务模式" in team
@@ -723,6 +985,38 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
     assert "convertApiToPlatformMock(cached.platform, yearLabel)" in platform_main
     assert "fetchProductData(yearKey)" not in platform_main
     assert "convertApiToPlatformMock(cached.platform, yearKey)" not in platform_main
+
+
+def test_platform_trend_controls_are_bound_by_platform_module():
+    html = read_html()
+    platform_main = read_js("platform-trend-main.js")
+    platform_section = html.split('<!-- Product and Payment Period Structure -->', 1)[0].split('<!-- Business Platform Trend -->', 1)[1]
+
+    assert 'onchange="switchYear' not in platform_section
+    assert 'onclick="switchTimeDim' not in platform_section
+    assert 'onchange="switchSubPeriod' not in platform_section
+    assert 'onchange="toggleSeries' not in platform_section
+    assert 'onchange="toggleOrg' not in platform_section
+    assert 'onclick="switchPremiumType' not in platform_section
+    assert 'id="platformTimeDimBtns"' in platform_section
+    assert 'data-platform-time-dim="year"' in platform_section
+    assert 'data-platform-time-dim="quarter"' in platform_section
+    assert 'data-platform-time-dim="month"' in platform_section
+    assert 'data-platform-series="经代"' in platform_section
+    assert 'data-platform-org="上海"' in platform_section
+    assert 'id="platformPremiumTypeBtns"' in platform_section
+    assert 'data-platform-premium-type="qj"' in platform_section
+    assert "function bindPlatformTrendControls()" in platform_main
+    assert "yearSelect.addEventListener('change', () => switchYear(yearSelect.value))" in platform_main
+    assert "button[data-platform-time-dim]" in platform_main
+    assert "switchTimeDim(button, button.dataset.platformTimeDim)" in platform_main
+    assert "subPeriodSelect.addEventListener('change', () => switchSubPeriod(subPeriodSelect.value))" in platform_main
+    assert "input[data-platform-series]" in platform_main
+    assert "toggleSeries(input.dataset.platformSeries, input.checked)" in platform_main
+    assert "input[data-platform-org]" in platform_main
+    assert "toggleOrg(input.dataset.platformOrg, input.checked)" in platform_main
+    assert "button[data-platform-premium-type]" in platform_main
+    assert "switchPremiumType(button, button.dataset.platformPremiumType)" in platform_main
 
 
 def test_dashboard_asof_only_drives_precise_kpi_and_org_yoy_not_trend_series():

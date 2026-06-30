@@ -1,17 +1,18 @@
 from fastapi import APIRouter, Depends, Query
 
 from auth import require_permission
+from api.params import AsOfQuery, DashboardYearQuery
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_product_structure
-from services.response import success_response
+from services.response import response_meta, success_response
 
 router = APIRouter(prefix="/api", tags=["product"])
 
 
 @router.get("/product-analysis")
 def product_analysis(
-    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
+    year: DashboardYearQuery = DEFAULT_YEAR,
     dimension: str = "product_mix",
     transformLines: str | None = None,
     jingdaiOrgs: str | None = None,
@@ -20,7 +21,7 @@ def product_analysis(
     orgs: str | None = None,
     months: str | None = None,
     metric: str = Query("qj", pattern="^(qj|gm)$"),
-    asOf: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    asOf: AsOfQuery = None,
     _user=Depends(require_permission("product_structure")),
 ):
     return success_response(
@@ -36,16 +37,16 @@ def product_analysis(
             metric,
             as_of=asOf,
         ),
-        meta={
-            "year": year,
-            "asOf": asOf,
-            "metric": "product-analysis",
-            "unit": "万元/件",
-            "dataSource": "performance / jingdai",
-            "definitions": {
+        meta=response_meta(
+            metric="product-analysis",
+            unit="万元/件",
+            data_source="performance / jingdai",
+            year=year,
+            asOf=asOf,
+            definitions={
                 k: METRICS[k]
                 for k in ["achievement_rate", "yoy"]
                 if k in METRICS
             },
-        },
+        ),
     )

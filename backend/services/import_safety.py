@@ -3,25 +3,13 @@ from __future__ import annotations
 
 from etl.columns import _pick_col
 from etl.normalize import _period_year_month
+from services.raw_table_reader import compact_period_expr, quote_identifier
 
 KNOWN_RAW_TABLES = {'performance', 'jingdai', 'hr_data', 'value_data'}
 
 
 class RawIncrementalWriteError(ValueError):
     """Raised when a raw table cannot be updated safely by period."""
-
-
-def quote_identifier(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
-
-
-def compact_period_expr(column: str) -> str:
-    """SQLite expression that normalizes supported date text to YYYYMMDD digits."""
-    quoted = quote_identifier(column)
-    expr = f'CAST({quoted} AS TEXT)'
-    for token in ['-', '/', '.', '年', '月', '日', ' ']:
-        expr = f"replace({expr}, '{token}', '')"
-    return expr
 
 
 def raw_period_config(table: str, df):

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from auth import require_permission
 from config.business_lines import BUSINESS_LINES
 from config.metrics import DASHBOARD_KPI_CARDS, DISPLAY_CONSTRAINTS, METRICS
-from services.response import success_response
+from services.response import response_meta, success_response
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -46,10 +46,10 @@ def get_metrics(_user=Depends(require_permission("kpi"))):
             "displayConstraints": DISPLAY_CONSTRAINTS,
             "dashboardKpiCards": DASHBOARD_KPI_CARDS,
         },
-        meta={
-            "metric": "config-metrics",
-            "unit": "-",
-            "dataSource": "config/metrics.py",
-            "definitions": METRICS,
-        },
+        meta=response_meta(
+            metric="config-metrics",
+            unit="-",
+            data_source="config/metrics.py",
+            definitions=METRICS,
+        ),
     )

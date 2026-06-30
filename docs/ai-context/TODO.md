@@ -1,5 +1,34 @@
 # 待办事项
 
+## 2026-06-30 等价重构建议
+
+- 【已完成 2026-06-30】先拆 `js/platform-trend-main.js`：内嵌 `platformMock` 历史兜底数据已迁到 `js/platform-seed-data.js`，平台趋势运行逻辑文件已降至约 `647` 行。
+- 【已完成 2026-06-30】拆分后端平台数据查询边界：`get_platform_data()` 已从 `db.repositories.kpi` 迁到 `db.repositories.platform`，外部 `from db import get_platform_data` 调用保持不变。
+- 【已完成 2026-06-30】整理队伍分析工具边界：业务线归一、人员代码清洗、期间解析、百分位、比例和产能分档已迁入 `services.team_analysis_utils`，`team_enhanced` 保留数据访问和结果组装。
+- 【已完成 2026-06-30】收敛队伍分析空响应结构：无 `hr_data` 表或无可选月份时统一由 `_empty_team_analysis_response()` 返回完整结构，后续新增字段只需集中维护。
+- 【已完成 2026-06-30】API meta helper 起步：`services.response.response_meta()` 已承接指标类 API 的通用 meta 字段，KPI、机构、产品、平台趋势、队伍分析、目标、交期结构、配置指标、AI 只读和产品配置相关接口已迁移；荣誉体系批次类 meta 已使用 `services.response.batch_meta()`。
+- 【已完成 2026-06-30】API 查询参数收敛：看板年份和 `asOf` 日期格式校验已集中到 `backend/api/params.py`，KPI、机构、产品、交期、平台趋势、AI 只读、导出、目标和队伍接口已迁移。
+- 【已完成 2026-06-30】荣誉体系清洗归一收敛：人员代码、日期、数字、业务线和职级角色识别已集中到 `backend/honor/normalizers.py`，星钻计算主流程复用该模块并补充专项测试。
+- 【已完成 2026-06-30】荣誉体系 dashboard 派生逻辑拆分：项目/机构排序、会员结构、专员/管理职历史、预警、等级分布和趋势已迁入 `backend/honor/dashboard.py`，repository 回归持久化和基础读取职责。
+- 【已完成 2026-06-30】荣誉体系源数据准备拆分：人力/保单源表加载、异常识别、个人/主管/经理指标索引已迁入 `backend/honor/sources.py`，calculator 回归星钻流水和汇总职责。
+- 【已完成 2026-06-30】荣誉体系汇总与奖励测算拆分：机构汇总和季度奖励测算已迁入 `backend/honor/summary.py`，calculator 进一步收敛为星钻余额流转和人员摘要职责。
+- 【已完成 2026-06-30】抽取统一 Excel 导入 pipeline：Web 上传和 `backend/rebuild_from_excels.py` 已复用 `backend/services/excel_pipeline.py` 中的解析、聚合、活动人力回填、写库和校验流程。
+- 【已完成 2026-06-30】收敛日级截止查询辅助逻辑：机构维度按渠道日级截止 SQL 已集中到 `services.cutoff_policy.channel_cutoff_filter_sql()`；产品结构、产品配置和导入安全的原始表日期过滤已集中到 `services.raw_table_reader`；KPI 日级 YTD 查询已集中到 `backend/db/repositories/kpi.py` 内部 helper。
+- 【已完成 2026-06-30】产品配置弹窗事件绑定收敛：取消/保存按钮已由内联 `onclick` 改为 `data-product-config-action` + `bindProductConfigActions()`，并补充静态测试防回退。
+- 【已完成 2026-06-30】主工具栏动作绑定模块化：顶部权限、日志、人员、荣誉、导出、参数、目标、重算、退出按钮已迁移到 `data-dashboard-action` + `js/dashboard-actions.js` 事件代理，并补充静态测试防回退。
+- 【已完成 2026-06-30】KPI 卡片详情入口声明式绑定：8 张 KPI 卡片已由 `onclick="openModal(...)"` 改为 `data-kpi-modal` + `bindKPICardActions()`，`dashboard-config.js` 同步改为按 `data-kpi-modal` 应用标题配置。
+- 【已完成 2026-06-30】机构维度筛选控件事件绑定收敛：机构标签、时间维度按钮、季度/月度下拉框已迁移到 `data-org-filter` / `data-org-dim` + `org-analysis.js` 绑定函数，并补充静态测试防回退。
+- 【已完成 2026-06-30】平台趋势控件事件绑定收敛：年份、时间维度、季度/月度、业务系列、机构和保费类型控件已迁移到 `data-platform-*` + `bindPlatformTrendControls()`，并补充静态测试防回退。
+- 【已完成 2026-06-30】产品结构控件事件绑定收敛：图表切换、业务来源、转型业务、经代/转型机构、时间维度、季度/月度和保费类型控件已迁移到 `data-product-*` + `bindProductStructureControls()`，并补充静态测试防回退。
+- 【已完成 2026-06-30】交期结构控件事件绑定收敛：图表切换、年份、时间维度、季度/月度、业务系列、转型渠道、经代/转型机构和保费类型控件已迁移到 `data-pay-period-*` + `bindPayPeriodControls()`，并补充静态测试防回退。
+- 【已完成 2026-06-30】队伍趋势控件事件绑定收敛：年份、指标类型、时间维度、季度、业务系列和机构控件已迁移到 `data-team-*` + `bindTeamTrendControls()`，并补充静态测试防回退。
+- 【已完成 2026-06-30】上传区域事件绑定收敛：上传卡片和文件输入已迁移到 `data-upload-input` / `data-upload-info` + `bindUploadControls()`，并补充静态测试防回退。
+- 【已完成 2026-06-30】通用弹窗关闭事件绑定收敛：overlay 背景点击和关闭按钮已迁移到 `data-modal-action="close"` + `bindModalControls()`，并补充静态测试防回退。
+- 【已完成 2026-06-30】队伍增强面板动态控件事件绑定收敛：`renderTeamEnhancedControls()` 已迁移到 `data-team-enhanced-*` + `bindTeamEnhancedControls()`，并补充静态测试防回退。
+- 【已完成 2026-06-30】主页面与 `js` 目录内联事件清零：数据截止日期和目标弹窗已迁移到 `data-dashboard-as-of`、`data-target-*`、`data-org-target-*` + 模块事件绑定；全局搜索已无 `onclick=` / `onchange=`。
+- 【已完成 2026-06-30】版本治理：`pyproject.toml` 已同步为 `1.0.98`，与 `VERSION`、页面和后端默认版本一致。
+- 【暂不建议】Rust 改写：除非后续通过计时证明 Excel 解析/聚合存在明确瓶颈，否则不建议引入 Rust。当前更高收益路径是 pandas 向量化、SQLite 索引/预聚合、前端按需加载和导入链路复用。
+
 ## 2026-06-29 自动部署待恢复
 
 - 【已完成 2026-06-29】已通过 SSH 手工部署 `v1.0.97` 到 `192.168.50.6`，并同步 20260629 四份源 Excel 后重建数据库；线上 `/api/health` 返回 `app_version=v1.0.97`、`page_version=v1.0.97`、`latest_period=202606`。
@@ -14,7 +43,7 @@
 - 【中】如业务要求交期结构支持 6 月 18 日/6 月 19 日等日级切换，新增日级交期聚合表或改为按原始明细实时聚合。
 - 【中】补充生产安全基线：HTTPS、账号开通审批、密码复杂度/失败锁定、Session 清理、备份恢复演练和操作审计留存周期。
 - 【已完成 2026-06-24】将 `pyproject.toml`、`VERSION`、README 当前版本口径统一治理；当前应用版本为 `v1.0.96`。
-- 【低】清理前端超大脚本和内联 `innerHTML` 拼接模式，逐步收敛为可测试、可复用的渲染组件或安全模板函数。
+- 【低】继续清理前端超大脚本和动态 `innerHTML` 拼接模式；内联事件已清零，后续重点转向可测试、可复用的渲染组件或安全模板函数。
 
 ## KPI 与数据口径
 
@@ -39,4 +68,4 @@
 
 ## 项目文档
 
-- `docs/数据流说明.md` 中仍提到旧的 `backend/aggregator.py`，需要后续按当前 `backend/etl/` 与 `backend/rebuild_from_excels.py` 链路更新。
+- 【已完成 2026-06-30】`docs/数据流说明.md` 已按当前 `backend/services/excel_pipeline.py` 与 `backend/etl/aggregates/` 链路更新，并新增测试防止重新把旧 `backend/aggregator.py` 写成当前入口。

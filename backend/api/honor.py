@@ -11,7 +11,7 @@ from honor.exporter import build_honor_export_workbook
 from honor.repository import fetch_dashboard, fetch_summary, fetch_table, latest_batch
 from honor.service import recalculate_honor, run_field_audit
 from services.audit_log import log_operation
-from services.response import success_response
+from services.response import batch_meta, success_response
 
 router = APIRouter(prefix="/api/honor", tags=["honor"])
 
@@ -46,7 +46,11 @@ def field_audit(_user=Depends(require_permission("honor_audit"))):
     )
     return success_response(
         audit,
-        meta={"batchId": audit.get("batchId"), "ruleVersion": RULE_VERSION, "dataSourceMode": DATA_SOURCE_MODE},
+        meta=batch_meta(
+            batch_id=audit.get("batchId"),
+            rule_version=RULE_VERSION,
+            data_source_mode=DATA_SOURCE_MODE,
+        ),
     )
 
 
@@ -77,7 +81,14 @@ def summary(
         user=_user,
         detail={"year": data.get("batch", {}).get("year"), "month": data.get("batch", {}).get("month"), "batchId": batch["id"], "ruleVersion": data.get("batch", {}).get("rule_version"), "dataSourceMode": data.get("batch", {}).get("data_source_mode"), "userOrgScope": "all"},
     )
-    return success_response(data, meta={"batchId": batch["id"], "ruleVersion": RULE_VERSION, "dataSourceMode": DATA_SOURCE_MODE})
+    return success_response(
+        data,
+        meta=batch_meta(
+            batch_id=batch["id"],
+            rule_version=RULE_VERSION,
+            data_source_mode=DATA_SOURCE_MODE,
+        ),
+    )
 
 
 @router.get("/dashboard")
@@ -101,19 +112,26 @@ def dashboard(
             "userOrgScope": "all",
         },
     )
-    return success_response(data, meta={"batchId": batch["id"], "ruleVersion": RULE_VERSION, "dataSourceMode": DATA_SOURCE_MODE})
+    return success_response(
+        data,
+        meta=batch_meta(
+            batch_id=batch["id"],
+            rule_version=RULE_VERSION,
+            data_source_mode=DATA_SOURCE_MODE,
+        ),
+    )
 
 
 @router.get("/orgs")
 def orgs(batch_id: int | None = Query(None, alias="batchId"), year: int = Query(DEFAULT_YEAR), month: int | None = None, _user=Depends(require_permission("honor_view"))):
     batch = _batch_or_404(batch_id, year, month)
-    return success_response({"rows": fetch_table("honor_org_summary", int(batch["id"]))}, meta={"batchId": batch["id"]})
+    return success_response({"rows": fetch_table("honor_org_summary", int(batch["id"]))}, meta=batch_meta(batch_id=batch["id"]))
 
 
 @router.get("/persons")
 def persons(batch_id: int | None = Query(None, alias="batchId"), year: int = Query(DEFAULT_YEAR), month: int | None = None, _user=Depends(require_permission("honor_view"))):
     batch = _batch_or_404(batch_id, year, month)
-    return success_response({"rows": fetch_table("honor_person_summary", int(batch["id"]))}, meta={"batchId": batch["id"]})
+    return success_response({"rows": fetch_table("honor_person_summary", int(batch["id"]))}, meta=batch_meta(batch_id=batch["id"]))
 
 
 @router.get("/exceptions")
@@ -124,7 +142,7 @@ def exceptions(batch_id: int | None = Query(None, alias="batchId"), year: int = 
     name_index = {str(row.get("staff_code") or ""): row.get("staff_name") for row in persons if row.get("staff_code")}
     for row in rows:
         row["staff_name"] = name_index.get(str(row.get("staff_code") or ""), "")
-    return success_response({"rows": rows}, meta={"batchId": batch["id"]})
+    return success_response({"rows": rows}, meta=batch_meta(batch_id=batch["id"]))
 
 
 @router.get("/trend")
@@ -138,7 +156,7 @@ def trend(batch_id: int | None = Query(None, alias="batchId"), year: int = Query
         item["gainCount"] += 1 if int(row.get("diamond_delta") or 0) > 0 else 0
         item["deductCount"] += 1 if int(row.get("diamond_delta") or 0) < 0 else 0
         item["memberCount"] += 1 if row.get("membership_level") != "未入会" else 0
-    return success_response({"rows": [grouped[k] for k in sorted(grouped)]}, meta={"batchId": batch["id"]})
+    return success_response({"rows": [grouped[k] for k in sorted(grouped)]}, meta=batch_meta(batch_id=batch["id"]))
 
 
 @router.get("/export")

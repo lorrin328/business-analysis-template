@@ -5,6 +5,12 @@ import sqlite3
 from db.connection import get_db
 from db.schema import init_db
 from services.cutoff_policy import build_as_of_context
+from services.raw_table_reader import (
+    append_cutoff_filter,
+    append_period_filter,
+    pick_existing_column,
+    quote_identifier,
+)
 
 logger = logging.getLogger("business-analysis")
 
@@ -15,44 +21,6 @@ def _split_csv(value: str | None) -> list[str]:
     return [item.strip() for item in str(value).split(',') if item and item.strip()]
 
 
-def _compact_period_expr(column: str) -> str:
-    quoted = '"' + column.replace('"', '""') + '"'
-    expr = f'CAST({quoted} AS TEXT)'
-    for token in ['-', '/', '.', '年', '月', '日', ' ']:
-        expr = f"replace({expr}, '{token}', '')"
-    return expr
-
-
-def _append_period_filter(column: str, year: int, months: list[int] | None, params: list) -> str:
-    expr = _compact_period_expr(column)
-    clause = f' AND CAST(substr({expr}, 1, 4) AS INTEGER) = ?'
-    params.append(year)
-    if months:
-        m_placeholders = ','.join(['?'] * len(months))
-        clause += f' AND CAST(substr({expr}, 5, 2) AS INTEGER) IN ({m_placeholders})'
-        params.extend(months)
-    return clause
-
-
-def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
-    try:
-        return {row[1] for row in conn.execute(f'PRAGMA table_info("{table}")').fetchall()}
-    except sqlite3.OperationalError:
-        return set()
-
-
-def _pick_existing_column(conn: sqlite3.Connection, table: str, candidates: list[str]) -> str | None:
-    columns = _table_columns(conn, table)
-    for col in candidates:
-        if col in columns:
-            return col
-    return None
-
-
-def _quote_identifier(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
-
-
 def _existing_numeric_expr(
     conn: sqlite3.Connection,
     table: str,
@@ -60,11 +28,11 @@ def _existing_numeric_expr(
     *,
     default: str = '0',
 ) -> str:
-    col = _pick_existing_column(conn, table, candidates)
+    col = pick_existing_column(conn, table, candidates)
     if not col:
         logger.warning("%s missing expected numeric columns: %s", table, candidates)
         return default
-    return f'COALESCE({_quote_identifier(col)}, {default})'
+    return f'COALESCE({quote_identifier(col)}, {default})'
 
 
 def _max_daily_cutoff(conn: sqlite3.Connection, table: str, year: int, months: list[int] | None, channels: list[str] | None = None):
@@ -110,22 +78,6 @@ def _common_mixed_cutoff(
     return None
 
 
-def _append_cutoff_filter(column: str, cutoff: tuple[int, int] | None, params: list) -> str:
-    if not cutoff:
-        return ''
-    expr = _compact_period_expr(column)
-    params.extend([cutoff[0], cutoff[0], cutoff[1]])
-    return f'''
-      AND (
-        CAST(substr({expr}, 5, 2) AS INTEGER) < ?
-        OR (
-          CAST(substr({expr}, 5, 2) AS INTEGER) = ?
-          AND COALESCE(NULLIF(CAST(substr({expr}, 7, 2) AS INTEGER), 0), 31) <= ?
-        )
-      )
-    '''
-
-
 def _query_product_structure_raw(
     conn: sqlite3.Connection,
     year: int,
@@ -165,7 +117,7 @@ def _query_product_structure_raw(
     if include_transform and raw_transform_line_list:
         try:
             t_params: list = []
-            transform_time_col = _pick_existing_column(
+            transform_time_col = pick_existing_column(
                 conn,
                 'performance',
                 ['年月日', '入账时间', '日期', '出单日期', '投保日期', '承保日期', '年月'],
@@ -173,8 +125,8 @@ def _query_product_structure_raw(
             cutoff = _common_mixed_cutoff(
                 conn, year, months, sorted(normalized_transform_lines), include_transform, include_jingdai
             ) or as_of_cutoff
-            extra_where = _append_period_filter(transform_time_col, year, months, t_params)
-            extra_where += _append_cutoff_filter(transform_time_col, cutoff, t_params)
+            extra_where = append_period_filter(transform_time_col, year, months, t_params)
+            extra_where += append_cutoff_filter(transform_time_col, cutoff, t_params)
             if orgs:
                 o_placeholders = ','.join(['?'] * len(orgs))
                 extra_where += f' AND "销售机构名称" IN ({o_placeholders})'
@@ -200,7 +152,7 @@ def _query_product_structure_raw(
     if include_jingdai:
         try:
             jd_params: list = []
-            jingdai_time_col = _pick_existing_column(
+            jingdai_time_col = pick_existing_column(
                 conn,
                 'jingdai',
                 ['年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期', '时间', '年月'],
@@ -208,8 +160,8 @@ def _query_product_structure_raw(
             cutoff = _common_mixed_cutoff(
                 conn, year, months, sorted(normalized_transform_lines), include_transform, include_jingdai
             ) or as_of_cutoff
-            jd_extra_where = _append_period_filter(jingdai_time_col, year, months, jd_params)
-            jd_extra_where += _append_cutoff_filter(jingdai_time_col, cutoff, jd_params)
+            jd_extra_where = append_period_filter(jingdai_time_col, year, months, jd_params)
+            jd_extra_where += append_cutoff_filter(jingdai_time_col, cutoff, jd_params)
             org_clause = ''
             if jingdai_orgs:
                 placeholders = ','.join(['?'] * len(jingdai_orgs))
@@ -247,8 +199,8 @@ def _query_product_structure_raw(
 def _text_coalesce_expr(conn: sqlite3.Connection, table: str, candidates: list[str], fallback: str = '未分类') -> str:
     parts = []
     for col in candidates:
-        if _pick_existing_column(conn, table, [col]):
-            parts.append(f"NULLIF(TRIM({_quote_identifier(col)}), '')")
+        if pick_existing_column(conn, table, [col]):
+            parts.append(f"NULLIF(TRIM({quote_identifier(col)}), '')")
     if not parts:
         return f"'{fallback}'"
     return f"COALESCE({', '.join(parts)}, '{fallback}')"
@@ -281,13 +233,13 @@ def _query_top_products_by_business_line(
     if include_transform and raw_transform_lines:
         try:
             t_params: list = []
-            transform_time_col = _pick_existing_column(
+            transform_time_col = pick_existing_column(
                 conn,
                 'performance',
                 ['年月日', '入账时间', '日期', '出单日期', '投保日期', '承保日期', '年月'],
             ) or '年月'
-            extra_where = _append_period_filter(transform_time_col, year, months, t_params)
-            extra_where += _append_cutoff_filter(transform_time_col, cutoff, t_params)
+            extra_where = append_period_filter(transform_time_col, year, months, t_params)
+            extra_where += append_cutoff_filter(transform_time_col, cutoff, t_params)
             if orgs:
                 o_placeholders = ','.join(['?'] * len(orgs))
                 extra_where += f' AND "销售机构名称" IN ({o_placeholders})'
@@ -320,13 +272,13 @@ def _query_top_products_by_business_line(
     if include_jingdai:
         try:
             jd_params: list = []
-            jingdai_time_col = _pick_existing_column(
+            jingdai_time_col = pick_existing_column(
                 conn,
                 'jingdai',
                 ['年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期', '时间', '年月'],
             ) or '时间'
-            jd_extra_where = _append_period_filter(jingdai_time_col, year, months, jd_params)
-            jd_extra_where += _append_cutoff_filter(jingdai_time_col, cutoff, jd_params)
+            jd_extra_where = append_period_filter(jingdai_time_col, year, months, jd_params)
+            jd_extra_where += append_cutoff_filter(jingdai_time_col, cutoff, jd_params)
             org_clause = ''
             if jingdai_orgs:
                 placeholders = ','.join(['?'] * len(jingdai_orgs))
@@ -387,7 +339,7 @@ def get_jingdai_orgs(year: int | None = None) -> list[str]:
         params: list = []
         where = ''
         if year:
-            where = 'WHERE 1=1' + _append_period_filter('时间', year, None, params)
+            where = 'WHERE 1=1' + append_period_filter('时间', year, None, params)
         rows = conn.execute(f'''
             SELECT DISTINCT TRIM("经代机构") AS org
             FROM jingdai

@@ -20,12 +20,12 @@
     (function initPayPeriodOrgChecks() {
       const container = document.getElementById('payPeriodTransformOrgChecks');
       ORG_LIST.forEach(org => {
-        container.appendChild(createCheckboxLabel(org, true, togglePayPeriodOrg));
+        container.appendChild(createCheckboxLabel(org, true, 'payPeriodOrg'));
       });
       // Also init product org checks
       const prodContainer = document.getElementById('productOrgChecks');
       ORG_LIST.forEach(org => {
-        prodContainer.appendChild(createCheckboxLabel(org, true, toggleProductOrg));
+        prodContainer.appendChild(createCheckboxLabel(org, true, 'productOrg'));
       });
     })();
 
@@ -154,8 +154,10 @@
     }
 
     function switchPayPeriodPie(btn, type) {
-      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      if (btn?.parentElement) {
+        btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
       payPeriodFilters.currentPieType = type;
       renderPayPeriodChart();
     }
@@ -222,12 +224,12 @@
       if (org === 'all') {
         payPeriodFilters.orgs['all'] = checked;
         ORG_LIST.forEach(o => payPeriodFilters.orgs[o] = checked);
-        document.querySelectorAll('#payPeriodTransformOrgChecks [data-org]:not([data-org="all"])').forEach(cb => cb.checked = checked);
+        document.querySelectorAll('#payPeriodTransformOrgChecks [data-pay-period-org]:not([data-pay-period-org="all"])').forEach(cb => cb.checked = checked);
       } else {
         payPeriodFilters.orgs[org] = checked;
         const allChecked = ORG_LIST.every(o => payPeriodFilters.orgs[o]);
         payPeriodFilters.orgs['all'] = allChecked;
-        const allCb = document.querySelector('#payPeriodTransformOrgChecks [data-org="all"]');
+        const allCb = document.querySelector('#payPeriodTransformOrgChecks [data-pay-period-org="all"]');
         if (allCb) allCb.checked = allChecked;
       }
       refreshPayPeriodChart();
@@ -239,8 +241,10 @@
     }
 
     function switchPayPeriodDim(btn, dim) {
-      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      if (btn?.parentElement) {
+        btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
       payPeriodFilters.timeDim = dim;
       const sub = document.getElementById('payPeriodSubSelect');
       if (dim === 'year') { sub.style.display = 'none'; payPeriodFilters.subPeriod = 'all'; }
@@ -258,8 +262,10 @@
     function switchPayPeriodYear(value) { payPeriodFilters.year = value; refreshPayPeriodChart(); }
 
     function switchPayPeriodMetric(btn, metric) {
-      btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      if (btn?.parentElement) {
+        btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
       payPeriodFilters.metric = metric;
       refreshPayPeriodChart();
     }
@@ -270,9 +276,98 @@
       const labels = orgs.map(org => {
         const checked = payPeriodFilters.orgsInitialized ? (payPeriodFilters.jingdaiOrgs[org] !== false) : true;
         if (!payPeriodFilters.orgsInitialized) payPeriodFilters.jingdaiOrgs[org] = true;
-        return createCheckboxLabel(org, checked, togglePayPeriodJingdaiOrg);
+        return createCheckboxLabel(org, checked, 'payPeriodJingdaiOrg');
       });
       container.replaceChildren(...labels);
       payPeriodFilters.orgsInitialized = true;
     }
+
+    function bindPayPeriodControls() {
+      const pieBtns = document.getElementById('payPeriodPieTypeBtns');
+      if (pieBtns && pieBtns.dataset.boundPayPeriodPie !== 'true') {
+        pieBtns.dataset.boundPayPeriodPie = 'true';
+        pieBtns.addEventListener('click', event => {
+          const button = event.target.closest('button[data-pay-period-pie-type]');
+          if (!button || !pieBtns.contains(button)) return;
+          event.preventDefault();
+          switchPayPeriodPie(button, button.dataset.payPeriodPieType);
+        });
+      }
+
+      const yearSelect = document.getElementById('payPeriodYearSelect');
+      if (yearSelect && yearSelect.dataset.boundPayPeriodYear !== 'true') {
+        yearSelect.dataset.boundPayPeriodYear = 'true';
+        yearSelect.addEventListener('change', () => switchPayPeriodYear(yearSelect.value));
+      }
+
+      const dimBtns = document.getElementById('payPeriodDimBtns');
+      if (dimBtns && dimBtns.dataset.boundPayPeriodDims !== 'true') {
+        dimBtns.dataset.boundPayPeriodDims = 'true';
+        dimBtns.addEventListener('click', event => {
+          const button = event.target.closest('button[data-pay-period-dim]');
+          if (!button || !dimBtns.contains(button)) return;
+          event.preventDefault();
+          switchPayPeriodDim(button, button.dataset.payPeriodDim);
+        });
+      }
+
+      const subSelect = document.getElementById('payPeriodSubSelect');
+      if (subSelect && subSelect.dataset.boundPayPeriodSub !== 'true') {
+        subSelect.dataset.boundPayPeriodSub = 'true';
+        subSelect.addEventListener('change', () => switchPayPeriodSub(subSelect.value));
+      }
+
+      const bizChecks = document.getElementById('payPeriodBizChecks');
+      if (bizChecks && bizChecks.dataset.boundPayPeriodBiz !== 'true') {
+        bizChecks.dataset.boundPayPeriodBiz = 'true';
+        bizChecks.addEventListener('change', event => {
+          const input = event.target.closest('input[data-pay-period-biz]');
+          if (!input || !bizChecks.contains(input)) return;
+          togglePayPeriodBiz(input.dataset.payPeriodBiz, input.checked);
+        });
+      }
+
+      const transformRow = document.getElementById('payPeriodTransformRow');
+      if (transformRow && transformRow.dataset.boundPayPeriodChannels !== 'true') {
+        transformRow.dataset.boundPayPeriodChannels = 'true';
+        transformRow.addEventListener('change', event => {
+          const input = event.target.closest('input[data-pay-period-channel]');
+          if (!input || !transformRow.contains(input)) return;
+          togglePayPeriodChannel(input.dataset.payPeriodChannel, input.checked);
+        });
+      }
+
+      const transformOrgChecks = document.getElementById('payPeriodTransformOrgChecks');
+      if (transformOrgChecks && transformOrgChecks.dataset.boundPayPeriodOrgs !== 'true') {
+        transformOrgChecks.dataset.boundPayPeriodOrgs = 'true';
+        transformOrgChecks.addEventListener('change', event => {
+          const input = event.target.closest('input[data-pay-period-org]');
+          if (!input || !transformOrgChecks.contains(input)) return;
+          togglePayPeriodOrg(input.dataset.payPeriodOrg, input.checked);
+        });
+      }
+
+      const jingdaiOrgChecks = document.getElementById('payPeriodJingdaiOrgChecks');
+      if (jingdaiOrgChecks && jingdaiOrgChecks.dataset.boundPayPeriodJingdaiOrgs !== 'true') {
+        jingdaiOrgChecks.dataset.boundPayPeriodJingdaiOrgs = 'true';
+        jingdaiOrgChecks.addEventListener('change', event => {
+          const input = event.target.closest('input[data-pay-period-jingdai-org]');
+          if (!input || !jingdaiOrgChecks.contains(input)) return;
+          togglePayPeriodJingdaiOrg(input.dataset.payPeriodJingdaiOrg, input.checked);
+        });
+      }
+
+      const metricBtns = document.getElementById('payPeriodMetricBtns');
+      if (metricBtns && metricBtns.dataset.boundPayPeriodMetrics !== 'true') {
+        metricBtns.dataset.boundPayPeriodMetrics = 'true';
+        metricBtns.addEventListener('click', event => {
+          const button = event.target.closest('button[data-pay-period-metric]');
+          if (!button || !metricBtns.contains(button)) return;
+          event.preventDefault();
+          switchPayPeriodMetric(button, button.dataset.payPeriodMetric);
+        });
+      }
+    }
+
+    bindPayPeriodControls();
 

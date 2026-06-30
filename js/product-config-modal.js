@@ -50,15 +50,23 @@
             </table>
           </div>
           <div class="product-config-actions">
-            <button class="chart-btn" onclick="closeModal()">取消</button>
-            <button class="chart-btn" style="background: var(--accent); color: #fff;" onclick="saveProductConfig()">保存</button>
+            <button class="chart-btn" data-product-config-action="cancel">取消</button>
+            <button class="chart-btn" style="background: var(--accent); color: #fff;" data-product-config-action="save">保存</button>
           </div>
         `;
+        bindProductConfigActions();
         modalOverlay.classList.add('active', 'modal-product-config');
       } catch (e) {
         console.error('加载产品配置失败', e);
         alert('加载产品配置失败：' + e.message);
       }
+    }
+
+    function bindProductConfigActions() {
+      modalBody.querySelector('[data-product-config-action="cancel"]')
+        ?.addEventListener('click', () => closeModal());
+      modalBody.querySelector('[data-product-config-action="save"]')
+        ?.addEventListener('click', saveProductConfig);
     }
 
     async function saveProductConfig() {

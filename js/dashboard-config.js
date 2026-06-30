@@ -21,7 +21,9 @@
   function applyDashboardKpiCardLabels() {
     getDashboardKpiCards().forEach(card => {
       if (!card || !card.code || !card.name) return;
-      const node = document.querySelector(`.kpi-card[onclick="openModal('${card.code}')"] .kpi-top-label`);
+      const kpiCard = Array.from(document.querySelectorAll('.kpi-card[data-kpi-modal]'))
+        .find(node => node.dataset.kpiModal === String(card.code));
+      const node = kpiCard?.querySelector('.kpi-top-label');
       if (!node) return;
       node.textContent = card.name;
       if (card.definition) node.title = card.definition;

@@ -71,6 +71,62 @@ def test_team_enhanced_keeps_zero_productivity_staff(tmp_path, monkeypatch):
     assert len(result["orgPercentiles"]) == 1
 
 
+def test_team_enhanced_empty_response_without_hr_table(tmp_path, monkeypatch):
+    from db import connection
+    import db as db_module
+    from db.repositories import team_enhanced
+    from db.repositories.team_enhanced import get_team_enhanced_analysis
+
+    db_path = tmp_path / "team_enhanced_empty.db"
+    monkeypatch.setattr(connection, "DB_PATH", str(db_path))
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    monkeypatch.setattr(team_enhanced, "init_db", lambda: None)
+
+    with connection.get_db() as conn:
+        conn.execute("CREATE TABLE performance (dummy TEXT)")
+        conn.commit()
+
+    result = get_team_enhanced_analysis(2026, period_type="quarter", period_value=2, business_lines=["证券"])
+
+    assert result["months"] == []
+    assert result["summary"]["sampleCount"] == 0
+    assert result["standardManpower"]["periodMonths"] == 0
+    assert result["filters"]["businessLines"] == ["证保"]
+
+
+def test_team_enhanced_empty_response_without_selected_months(tmp_path, monkeypatch):
+    from db import connection
+    import db as db_module
+    from db.repositories import team_enhanced
+    from db.repositories.team_enhanced import get_team_enhanced_analysis
+
+    db_path = tmp_path / "team_enhanced_no_month.db"
+    monkeypatch.setattr(connection, "DB_PATH", str(db_path))
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    monkeypatch.setattr(team_enhanced, "init_db", lambda: None)
+
+    with connection.get_db() as conn:
+        conn.execute(
+            """CREATE TABLE hr_data (
+                "统计年" INTEGER, "统计月" INTEGER, "销售机构名称" TEXT,
+                "业务模式名称" TEXT, "职等" TEXT, "人员代码" TEXT,
+                "月末司龄区间" TEXT, "月初在职人力" INTEGER, "月末在职人力" INTEGER
+            )"""
+        )
+        conn.execute(
+            'INSERT INTO hr_data VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (2026, 5, "上海", "OTO", "F1", "A001", "1年以内", 1, 1),
+        )
+        conn.commit()
+
+    result = get_team_enhanced_analysis(2026, period_type="month", period_value=6, scope="active")
+
+    assert result["month"] is None
+    assert result["months"] == []
+    assert result["summary"]["sampleCount"] == 0
+    assert result["filters"]["scope"] == "active"
+
+
 def test_team_enhanced_quarter_deduplicates_staff_across_months(tmp_path, monkeypatch):
     from db import connection
     import db as db_module

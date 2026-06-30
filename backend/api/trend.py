@@ -1,48 +1,49 @@
 from fastapi import APIRouter, Depends, Query
 
 from auth import require_permission
+from api.params import AsOfQuery, DashboardYearQuery
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_platform_data
 from services.query_service import get_platform_trend
-from services.response import success_response
+from services.response import response_meta, success_response
 
 router = APIRouter(prefix="/api", tags=["trend"])
 
 
 @router.get("/platform-data")
 def platform_data(
-    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
-    asOf: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    year: DashboardYearQuery = DEFAULT_YEAR,
+    asOf: AsOfQuery = None,
     _user=Depends(require_permission("platform_trend")),
 ):
     return success_response(
         get_platform_data(year, as_of=asOf),
-        meta={
-            "year": year,
-            "asOf": asOf,
-            "metric": "platform-data",
-            "unit": "万元/人",
-            "dataSource": "SQLite aggregate tables",
-            "definitions": {
+        meta=response_meta(
+            metric="platform-data",
+            unit="万元/人",
+            data_source="SQLite aggregate tables",
+            year=year,
+            asOf=asOf,
+            definitions={
                 k: METRICS[k]
                 for k in ["achievement_rate", "yoy", "time_progress", "progress_gap"]
                 if k in METRICS
             },
-        },
+        ),
     )
 
 
 @router.get("/platform-trend")
 def platform_trend(
-    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
+    year: DashboardYearQuery = DEFAULT_YEAR,
     month: int | None = Query(None, ge=1, le=12),
     quarter: int | None = Query(None, ge=1, le=4),
     periodType: str = Query("year", pattern="^(year|quarter|month)$"),
     periodValue: int | None = Query(None, ge=0, le=12),
     businessLines: str | None = None,
     metric: str = Query("qj", pattern="^(qj|gm|zs)$"),
-    asOf: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    asOf: AsOfQuery = None,
     _user=Depends(require_permission("platform_trend")),
 ):
     channels = [x.strip() for x in businessLines.split(",") if x.strip()] if businessLines else None
@@ -64,19 +65,19 @@ def platform_trend(
     )
     return success_response(
         data,
-        meta={
-            "year": year,
-            "periodType": data.get("periodType", periodType),
-            "periodValue": data.get("periodValue", periodValue or 0),
-            "businessLines": data.get("businessLines", []),
-            "asOf": asOf,
-            "metric": metric,
-            "unit": "万元",
-            "dataSource": "agg_performance / agg_jingdai / agg_daily_performance / agg_jingdai_daily",
-            "definitions": {
+        meta=response_meta(
+            metric=metric,
+            unit="万元",
+            data_source="agg_performance / agg_jingdai / agg_daily_performance / agg_jingdai_daily",
+            year=year,
+            periodType=data.get("periodType", periodType),
+            periodValue=data.get("periodValue", periodValue or 0),
+            businessLines=data.get("businessLines", []),
+            asOf=asOf,
+            definitions={
                 k: METRICS[k]
                 for k in ["yoy", "achievement_rate", "time_progress"]
                 if k in METRICS
             },
-        },
+        ),
     )

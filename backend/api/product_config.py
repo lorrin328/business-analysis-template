@@ -15,20 +15,12 @@ from services.product_config_service import (
 )
 from services.audit_log import log_operation
 from services.operation_lock import OperationLockError, operation_lock
-from services.raw_table_reader import read_raw_table_dataframe
-from services.response import success_response
+from services.raw_table_reader import compact_period_expr, read_raw_table_dataframe
+from services.response import response_meta, success_response
 
 router = APIRouter(prefix="/api", tags=["product-config"])
 
 logger = logging.getLogger("business-analysis")
-
-
-def _compact_period_expr(column: str) -> str:
-    quoted = '"' + column.replace('"', '""') + '"'
-    expr = f'CAST({quoted} AS TEXT)'
-    for token in ['-', '/', '.', '\u5e74', '\u6708', '\u65e5', ' ', ':']:
-        expr = f"replace({expr}, '{token}', '')"
-    return expr
 
 
 def _auto_extract_from_jingdai(conn) -> int:
@@ -37,7 +29,7 @@ def _auto_extract_from_jingdai(conn) -> int:
     if not c.fetchone():
         return 0
 
-    period_expr = _compact_period_expr('时间')
+    period_expr = compact_period_expr('时间')
     c.execute(f"SELECT COUNT(*) FROM jingdai WHERE CAST(substr({period_expr}, 1, 4) AS INTEGER) >= ? LIMIT 1", (DEFAULT_YEAR,))
     if c.fetchone()[0] == 0:
         return 0
@@ -124,7 +116,12 @@ def get_product_config(_user=Depends(require_permission("product_config"))):
         ]
     return success_response(
         rows,
-        meta={"metric": "product-config", "unit": "-", "dataSource": "product_config", "scope": "经代"},
+        meta=response_meta(
+            metric="product-config",
+            unit="-",
+            data_source="product_config",
+            scope="经代",
+        ),
     )
 
 
@@ -223,5 +220,5 @@ def _save_product_config_locked(payload: dict, _user: dict):
     return success_response(
         {"updated": updated, "normalized": normalized, "purged": purged, "recalculated": recalc_count},
         message="经代产品配置已保存" + (f"，已重新计算 {recalc_count} 条经代业绩数据" if recalc_count else ""),
-        meta={"metric": "product-config", "unit": "-"},
+        meta=response_meta(metric="product-config", unit="-"),
     )

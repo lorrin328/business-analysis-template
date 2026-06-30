@@ -176,7 +176,36 @@
     }
   }
 
+  function bindUploadControls() {
+    var grid = document.querySelector('.upload-grid');
+    if (grid && grid.dataset.boundUploadCards !== 'true') {
+      grid.dataset.boundUploadCards = 'true';
+      grid.addEventListener('click', function (event) {
+        if (event.target && event.target.matches('input[type="file"]')) return;
+        var card = event.target.closest('.upload-card[data-upload-input]');
+        if (!card || !grid.contains(card)) return;
+        var input = document.getElementById(card.dataset.uploadInput);
+        if (input) input.click();
+      });
+    }
+
+    document.querySelectorAll('input[type="file"][data-upload-info]').forEach(function (input) {
+      if (input.dataset.boundUploadChange === 'true') return;
+      input.dataset.boundUploadChange = 'true';
+      input.addEventListener('change', function () {
+        handleFile(input, input.dataset.uploadInfo);
+      });
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindUploadControls);
+  } else {
+    bindUploadControls();
+  }
+
   window.handleFile = handleFile;
+  window.bindUploadControls = bindUploadControls;
   window._setAllInfos = _setAllInfos;
   window._resetAllCards = _resetAllCards;
   window._pickUploadRefreshYear = _pickRefreshYear;

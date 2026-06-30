@@ -1,166 +1,83 @@
-"""Repository queries — auto-split from database.py."""
-import json
+"""KPI repository queries."""
+import re
 import sqlite3
 from db.connection import get_db
-from db.schema import init_db
 from services.cutoff_policy import (
     build_as_of_context,
     build_source_cutoff_policy,
     cutoff_min,
+    Cutoff,
     date_filter_sql,
     latest_daily_cutoff,
 )
 
 
-def get_platform_data(year: int, as_of: str | None = None):
-    with get_db() as conn:
-        c = conn.cursor()
-        as_of_context = build_as_of_context(conn, year, as_of)
-        selected_cutoff = as_of_context.get("selectedCutoff")
-        cutoff_month = int(selected_cutoff["month"]) if selected_cutoff else 12
+_SQL_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-        c.execute('''
-            SELECT month, channel, qj_premium, gm_premium, zs_premium
-            FROM agg_performance WHERE year = ? AND month <= ? ORDER BY month, channel
-        ''', (year, cutoff_month))
-        perf_rows = c.fetchall()
-        if selected_cutoff:
-            date_sql, date_params = date_filter_sql(selected_cutoff)
-            c.execute('''
-                SELECT month, channel, SUM(qj_premium) AS qj_premium,
-                       SUM(gm_premium) AS gm_premium, SUM(zs_premium) AS zs_premium
-                FROM agg_daily_performance
-                WHERE year = ? AND ''' + date_sql + '''
-                GROUP BY month, channel
-                ORDER BY month, channel
-            ''', [year, *date_params])
-            daily_perf_rows = c.fetchall()
-            if daily_perf_rows:
-                perf_rows = daily_perf_rows
 
-        c.execute('''
-            SELECT month, qj_premium, gm_premium, zs_premium
-            FROM agg_jingdai WHERE year = ? AND month <= ? ORDER BY month
-        ''', (year, cutoff_month))
-        jingdai_rows = c.fetchall()
-        if selected_cutoff:
-            date_sql, date_params = date_filter_sql(selected_cutoff)
-            c.execute('''
-                SELECT month, SUM(qj_premium) AS qj_premium,
-                       SUM(gm_premium) AS gm_premium, SUM(zs_premium) AS zs_premium
-                FROM agg_jingdai_daily
-                WHERE year = ? AND ''' + date_sql + '''
-                GROUP BY month
-                ORDER BY month
-            ''', [year, *date_params])
-            daily_jingdai_rows = c.fetchall()
-            if daily_jingdai_rows:
-                jingdai_rows = daily_jingdai_rows
+def _sql_identifier(value: str) -> str:
+    if not _SQL_IDENTIFIER_RE.match(value):
+        raise ValueError(f"Invalid SQL identifier: {value}")
+    return value
 
-        if selected_cutoff:
-            date_sql, date_params = date_filter_sql(selected_cutoff)
-            c.execute('''
-                SELECT year, month, day, ymd, qj_premium, gm_premium, zs_premium
-                FROM agg_jingdai_daily WHERE year = ? AND ''' + date_sql + ''' ORDER BY month, day
-            ''', [year, *date_params])
-        else:
-            c.execute('''
-                SELECT year, month, day, ymd, qj_premium, gm_premium, zs_premium
-                FROM agg_jingdai_daily WHERE year = ? ORDER BY month, day
-            ''', (year,))
-        jingdai_daily_rows = c.fetchall()
 
-        c.execute('''
-            SELECT month, channel, start_headcount, end_headcount, active_headcount
-            FROM agg_hr_data WHERE year = ? AND month <= ? ORDER BY month, channel
-        ''', (year, cutoff_month))
-        hr_rows = c.fetchall()
+def _sum_daily_columns(
+    cursor: sqlite3.Cursor,
+    table: str,
+    year: int,
+    cutoff: Cutoff,
+    columns: dict[str, str],
+) -> dict[str, float]:
+    """Sum daily aggregate columns through an inclusive month/day cutoff."""
+    date_sql, date_params = date_filter_sql(cutoff)
+    table = _sql_identifier(table)
+    select_sql = ", ".join(
+        [
+            f"SUM({_sql_identifier(column)}) AS {_sql_identifier(alias)}"
+            for alias, column in columns.items()
+        ]
+    )
+    cursor.execute(
+        f"""
+        SELECT {select_sql}
+        FROM {table}
+        WHERE year = ?
+          AND {date_sql}
+        """,
+        [year, *date_params],
+    )
+    row = cursor.fetchone()
+    return {
+        alias: round((row[alias] if row else 0) or 0, 2)
+        for alias in columns
+    }
 
-        try:
-            c.execute('''
-                SELECT month, org, channel, start_headcount, end_headcount, active_headcount
-                FROM agg_org_hr_data WHERE year = ? AND month <= ? ORDER BY month, org, channel
-            ''', (year, cutoff_month))
-            org_hr_rows = c.fetchall()
-        except sqlite3.OperationalError:
-            org_hr_rows = []
 
-        c.execute('''
-            SELECT month, channel, value_premium
-            FROM agg_value_data WHERE year = ? AND month <= ? ORDER BY month, channel
-        ''', (year, cutoff_month))
-        value_rows = c.fetchall()
-
-        c.execute('''
-            SELECT month, org, channel, qj_premium, gm_premium, zs_premium
-            FROM agg_org_performance WHERE year = ? AND month <= ? ORDER BY month, org, channel
-        ''', (year, cutoff_month))
-        org_perf_rows = c.fetchall()
-        if selected_cutoff:
-            date_sql, date_params = date_filter_sql(selected_cutoff)
-            c.execute('''
-                SELECT month, org, channel, SUM(qj_premium) AS qj_premium,
-                       SUM(gm_premium) AS gm_premium, SUM(zs_premium) AS zs_premium
-                FROM agg_org_daily_performance
-                WHERE year = ? AND ''' + date_sql + '''
-                GROUP BY month, org, channel
-                ORDER BY month, org, channel
-            ''', [year, *date_params])
-            org_daily_perf_rows = c.fetchall()
-            if org_daily_perf_rows:
-                org_perf_rows = org_daily_perf_rows
-
-        if selected_cutoff:
-            date_sql, date_params = date_filter_sql(selected_cutoff)
-            c.execute('''
-                SELECT month, day, channel, qj_premium, gm_premium, zs_premium
-                FROM agg_daily_performance WHERE year = ? AND ''' + date_sql + ''' ORDER BY month, day, channel
-            ''', [year, *date_params])
-        else:
-            c.execute('''
-                SELECT month, day, channel, qj_premium, gm_premium, zs_premium
-                FROM agg_daily_performance WHERE year = ? ORDER BY month, day, channel
-            ''', (year,))
-        daily_rows = c.fetchall()
-
-        if selected_cutoff:
-            date_sql, date_params = date_filter_sql(selected_cutoff)
-            c.execute('''
-                SELECT month, day, org, channel, qj_premium, gm_premium, zs_premium
-                FROM agg_org_daily_performance WHERE year = ? AND ''' + date_sql + ''' ORDER BY month, day, org, channel
-            ''', [year, *date_params])
-        else:
-            c.execute('''
-                SELECT month, day, org, channel, qj_premium, gm_premium, zs_premium
-                FROM agg_org_daily_performance WHERE year = ? ORDER BY month, day, org, channel
-            ''', (year,))
-        org_daily_rows = c.fetchall()
-
-        c.execute('''
-            SELECT MAX(year * 100 + month) AS latest_period
-            FROM (
-              SELECT year, month FROM agg_performance
-              UNION ALL SELECT year, month FROM agg_jingdai
-              UNION ALL SELECT year, month FROM agg_hr_data
-              UNION ALL SELECT year, month FROM agg_value_data
-            )
-        ''')
-        latest = c.fetchone()['latest_period']
-
-        return {
-            'performance': [dict(r) for r in perf_rows],
-            'jingdai': [dict(r) for r in jingdai_rows],
-            'jingdai_daily': [dict(r) for r in jingdai_daily_rows],
-            'hr': [dict(r) for r in hr_rows],
-            'org_hr': [dict(r) for r in org_hr_rows],
-            'value': [dict(r) for r in value_rows],
-            'org_performance': [dict(r) for r in org_perf_rows],
-            'daily_performance': [dict(r) for r in daily_rows],
-            'org_daily_performance': [dict(r) for r in org_daily_rows],
-            'latest_period': latest,
-            'as_of': as_of_context,
-        }
-
+def _sum_daily_column_by_channel(
+    cursor: sqlite3.Cursor,
+    table: str,
+    year: int,
+    cutoff: Cutoff,
+    column: str,
+) -> dict[str, float]:
+    """Sum one daily aggregate column by channel through a cutoff."""
+    date_sql, date_params = date_filter_sql(cutoff)
+    table = _sql_identifier(table)
+    column = _sql_identifier(column)
+    cursor.execute(
+        f"""
+        SELECT channel, SUM({column}) AS total
+        FROM {table}
+        WHERE year = ?
+          AND {date_sql}
+        GROUP BY channel
+        """,
+        [year, *date_params],
+    )
+    return {
+        r["channel"]: round(r["total"] or 0, 2)
+        for r in cursor.fetchall()
+    }
 
 
 def get_kpi_data(year: int, as_of: str | None = None):
@@ -218,72 +135,50 @@ def get_kpi_data(year: int, as_of: str | None = None):
 
         def _ytd_premiums_daily(query_year: int) -> dict:
             """从日累计表取截至统计日的期交保费，按 channel 汇总。"""
-            result = {}
             if not use_daily or not transform_daily_cutoff:
-                return result
-            date_sql, date_params = date_filter_sql(transform_daily_cutoff)
-            c.execute('''
-                SELECT channel, SUM(qj_premium) AS total
-                FROM agg_daily_performance
-                WHERE year = ?
-                  AND ''' + date_sql + '''
-                GROUP BY channel
-            ''', [query_year, *date_params])
-            for r in c.fetchall():
-                result[r['channel']] = round(r['total'] or 0, 2)
-            return result
+                return {}
+            return _sum_daily_column_by_channel(
+                c, 'agg_daily_performance', query_year, transform_daily_cutoff, 'qj_premium'
+            )
 
         def _ytd_jingdai_daily(query_year: int) -> float:
             """从经代日累计表取截至统计日的期交保费。"""
             if not use_daily or not jingdai_daily_cutoff:
                 return 0.0
-            date_sql, date_params = date_filter_sql(jingdai_daily_cutoff)
-            c.execute('''
-                SELECT SUM(qj_premium) AS total
-                FROM agg_jingdai_daily
-                WHERE year = ?
-                  AND ''' + date_sql + '''
-            ''', [query_year, *date_params])
-            row = c.fetchone()
-            return round(row['total'] or 0, 2) if row else 0.0
+            return _sum_daily_columns(
+                c, 'agg_jingdai_daily', query_year, jingdai_daily_cutoff, {'total': 'qj_premium'}
+            )['total']
 
         def _ytd_transform_products_daily(query_year: int) -> dict:
             """从转型机构日表取截至统计日的产品指标。"""
             if not use_daily or not transform_daily_cutoff:
                 return {'annuity': 0.0, 'protection': 0.0, 'tenyear': 0.0}
-            date_sql, date_params = date_filter_sql(transform_daily_cutoff)
-            c.execute('''
-                SELECT SUM(product_annuity) AS annuity,
-                       SUM(product_protection) AS protection,
-                       SUM(product_10year) AS tenyear
-                FROM agg_org_daily_performance
-                WHERE year = ?
-                  AND ''' + date_sql + '''
-            ''', [query_year, *date_params])
-            row = c.fetchone()
-            return {
-                'annuity': round(row['annuity'] or 0, 2) if row else 0.0,
-                'protection': round(row['protection'] or 0, 2) if row else 0.0,
-                'tenyear': round(row['tenyear'] or 0, 2) if row else 0.0,
-            }
+            return _sum_daily_columns(
+                c,
+                'agg_org_daily_performance',
+                query_year,
+                transform_daily_cutoff,
+                {
+                    'annuity': 'product_annuity',
+                    'protection': 'product_protection',
+                    'tenyear': 'product_10year',
+                },
+            )
 
         def _ytd_jingdai_products_daily(query_year: int) -> dict:
             """从经代日表取截至统计日的商保年金 / 保障类指标。"""
             if not use_daily or not jingdai_daily_cutoff:
                 return {'annuity': 0.0, 'protection': 0.0}
-            date_sql, date_params = date_filter_sql(jingdai_daily_cutoff)
-            c.execute('''
-                SELECT SUM(product_annuity) AS annuity,
-                       SUM(product_protection) AS protection
-                FROM agg_jingdai_daily
-                WHERE year = ?
-                  AND ''' + date_sql + '''
-            ''', [query_year, *date_params])
-            row = c.fetchone()
-            return {
-                'annuity': round(row['annuity'] or 0, 2) if row else 0.0,
-                'protection': round(row['protection'] or 0, 2) if row else 0.0,
-            }
+            return _sum_daily_columns(
+                c,
+                'agg_jingdai_daily',
+                query_year,
+                jingdai_daily_cutoff,
+                {
+                    'annuity': 'product_annuity',
+                    'protection': 'product_protection',
+                },
+            )
 
         # ── YTD 保费（有日数据时用日累计，否则回退月表） ──
         daily_perf = _ytd_premiums_daily(year)

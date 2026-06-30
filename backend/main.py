@@ -28,24 +28,21 @@ from api.ai import router as ai_router
 from auth import get_current_user, require_permission
 from config.business_lines import DEFAULT_YEAR
 from db import (
-    init_db, get_db, replace_rows_incremental,
-)
-from etl import (
-    parse_performance_excel, parse_jingdai_excel, parse_hr_excel, parse_value_excel,
-    aggregate_performance, aggregate_jingdai, aggregate_jingdai_daily, aggregate_hr, aggregate_value,
-    aggregate_product_structure, aggregate_active_headcount,
-    aggregate_org_performance, aggregate_org_value,
-    aggregate_daily_performance, aggregate_org_daily_performance,
-    aggregate_payment_period, aggregate_jingdai_payment_period,
-    aggregate_transform_longterm, aggregate_jingdai_longterm,
-    aggregate_org_hr, aggregate_org_active_headcount,
+    init_db, get_db,
 )
 
-from validators.data_validator import validate_rows
-from services.import_safety import RawIncrementalWriteError, write_raw_table_incremental
+from services.excel_pipeline import (
+    ExcelSource,
+    ExcelPipelineResult,
+    append_excel_source,
+    finalize_excel_pipeline_result,
+    validate_daily_cutoff_alignment as _validate_daily_cutoff_alignment,
+    write_excel_pipeline_result,
+)
+from services.import_safety import RawIncrementalWriteError
 from services.health_check import run_health_check
 from services.operation_lock import OperationLockError, operation_lock
-from services.product_config_service import extract_jingdai_products_to_config, purge_non_jingdai_product_config
+from services.product_config_service import purge_non_jingdai_product_config
 from services.audit_log import log_operation
 
 
@@ -84,47 +81,6 @@ def _skip_duplicate_upload(file_name: str, file_hash: str, label: str, results: 
     results["skipped"].append(f"{label}: duplicate file, skipped")
     logger.info("import skipped duplicate file=%s hash=%s", file_name, file_hash)
     return True
-
-
-class _DuplicateUpload(Exception):
-    pass
-
-
-def _daily_cutoffs_by_year(rows: list[dict]) -> dict[int, tuple[int, int]]:
-    cutoffs: dict[int, tuple[int, int]] = {}
-    for row in rows or []:
-        year = row.get("year")
-        month = row.get("month")
-        day = row.get("day")
-        if not year or not month or not day:
-            continue
-        key = int(year)
-        value = (int(month), int(day))
-        if key not in cutoffs or value > cutoffs[key]:
-            cutoffs[key] = value
-    return cutoffs
-
-
-def _validate_daily_cutoff_alignment(performance_daily_rows: list[dict], jingdai_daily_rows: list[dict]) -> list[str]:
-    """Return warnings when transform and jingdai daily cutoffs differ.
-
-    转型数据通常截至拉取当天，经代数据通常截至拉取日前一日。导入层保留真实
-    截止日，查询层在混合统计时自动按共同截止日截断，因此这里不再阻断导入。
-    """
-    perf_cutoffs = _daily_cutoffs_by_year(performance_daily_rows)
-    jd_cutoffs = _daily_cutoffs_by_year(jingdai_daily_rows)
-    warnings = []
-    for year in sorted(set(perf_cutoffs) & set(jd_cutoffs)):
-        if perf_cutoffs[year] != jd_cutoffs[year]:
-            pm, pd = perf_cutoffs[year]
-            jm, jd = jd_cutoffs[year]
-            cm, cd = min(perf_cutoffs[year], jd_cutoffs[year])
-            warnings.append(
-                f"{year}年转型与经代日级数据截止日不同：转型{pm}月{pd}日，经代{jm}月{jd}日；"
-                f"混合统计将按共同截止日{cm}月{cd}日计算。"
-            )
-    return warnings
-
 
 
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
@@ -264,7 +220,7 @@ async def _upload_files_locked(
     results["force"] = bool(force)
     file_hashes = {}  # file_name -> hash
     file_sizes = {}   # file_name -> size
-    table_row_counts = {}  # table -> count
+    pipeline_result = ExcelPipelineResult()
     logger.info("import started year=%s force=%s", year, force)
     with get_db() as conn:
         purged = purge_non_jingdai_product_config(conn)
@@ -272,147 +228,44 @@ async def _upload_files_locked(
         if purged:
             logger.info("purged %s non-jingdai product_config rows before import", purged)
 
-    # 第一步：解析所有Excel文件，收集实际年份
-    perf_rows = []
-    daily_rows = []
-    org_daily_rows = []
-    jd_rows = []
-    jd_daily_rows = []
-    hr_rows = []
-    org_hr_rows = []
-    value_rows = []
-    product_rows = []
-    active_rows = []
-    org_active_rows = []
-    org_perf_rows = []
-    org_value_rows = []
-    pay_period_rows = []
-    jd_pay_period_rows = []
-    longterm_rows = []
-    jd_longterm_rows = []
-    raw_tables = {}
-
-    if performance and performance.filename:
+    upload_specs = [
+        ("performance", "转型业务业绩", performance),
+        ("jingdai", "经代业务业绩", jingdai),
+        ("hr", "人力数据", hr),
+        ("value", "价值数据", value),
+    ]
+    upload_labels = {kind: label for kind, label, _ in upload_specs}
+    for kind, label, upload in upload_specs:
+        if not upload or not upload.filename:
+            continue
         try:
-            perf_bytes = await performance.read()
-            h = _hash_bytes(perf_bytes)
-            if _skip_duplicate_upload(performance.filename, h, "performance", results, force=force):
-                raise _DuplicateUpload()
-            file_hashes[performance.filename] = h
-            file_sizes[performance.filename] = len(perf_bytes)
-            df = parse_performance_excel(perf_bytes)
-            raw_tables['performance'] = df
-            perf_rows = aggregate_performance(df)
-            daily_rows = aggregate_daily_performance(df)
-            org_daily_rows = aggregate_org_daily_performance(df)
-            product_rows = aggregate_product_structure(df)
-            active_rows = aggregate_active_headcount(df)
-            org_active_rows = aggregate_org_active_headcount(df)
-            org_perf_rows = aggregate_org_performance(df)
-            pay_period_rows = aggregate_payment_period(df)
-            longterm_rows = aggregate_transform_longterm(df)
-            validation = validate_rows(perf_rows, required=["year", "month", "channel"], unique_keys=["year", "month", "channel"])
-            if not validation.valid:
-                raise ValueError(validation.to_dict())
-            results["uploaded"].append(f"转型业务业绩: {len(perf_rows)}条")
-        except _DuplicateUpload:
-            pass
+            content = await upload.read()
+            file_hash = _hash_bytes(content)
+            if _skip_duplicate_upload(upload.filename, file_hash, kind, results, force=force):
+                continue
+            source = ExcelSource(kind=kind, filename=upload.filename, content=content)
+            append_excel_source(pipeline_result, source)
+            file_hashes[upload.filename] = file_hash
+            file_sizes[upload.filename] = len(content)
         except Exception as e:
-            results["errors"].append(f"转型业务业绩: {str(e)}")
-            logger.exception("performance import failed")
+            results["errors"].append(f"{label}: {str(e)}")
+            logger.exception("%s import failed", kind)
 
-    if jingdai and jingdai.filename:
+    if file_hashes:
         try:
-            jd_bytes = await jingdai.read()
-            h = _hash_bytes(jd_bytes)
-            if _skip_duplicate_upload(jingdai.filename, h, "jingdai", results, force=force):
-                raise _DuplicateUpload()
-            file_hashes[jingdai.filename] = h
-            file_sizes[jingdai.filename] = len(jd_bytes)
-            df = parse_jingdai_excel(jd_bytes)
-            raw_tables['jingdai'] = df
-            extract_jingdai_products_to_config(df)
-            jd_rows = aggregate_jingdai(df)
-            jd_daily_rows = aggregate_jingdai_daily(df)
-            jd_pay_period_rows = aggregate_jingdai_payment_period(df)
-            jd_longterm_rows = aggregate_jingdai_longterm(df)
-            validation = validate_rows(jd_rows, required=["year", "month"], unique_keys=["year", "month"])
-            if not validation.valid:
-                raise ValueError(validation.to_dict())
-            results["uploaded"].append(f"经代业务业绩: {len(jd_rows)}条")
-        except _DuplicateUpload:
-            pass
+            finalize_excel_pipeline_result(pipeline_result)
+            results["uploaded"].extend(pipeline_result.source_summaries)
+            results["data_years"] = pipeline_result.data_years or [year]
+            if pipeline_result.cutoff_warnings:
+                results["cutoff_warnings"] = pipeline_result.cutoff_warnings
+                logger.info("daily cutoff alignment warnings: %s", pipeline_result.cutoff_warnings)
         except Exception as e:
-            results["errors"].append(f"经代业务业绩: {str(e)}")
-            logger.exception("jingdai import failed")
-
-    if hr and hr.filename:
-        try:
-            hr_bytes = await hr.read()
-            h = _hash_bytes(hr_bytes)
-            if _skip_duplicate_upload(hr.filename, h, "hr", results, force=force):
-                raise _DuplicateUpload()
-            file_hashes[hr.filename] = h
-            file_sizes[hr.filename] = len(hr_bytes)
-            df = parse_hr_excel(hr_bytes)
-            raw_tables['hr_data'] = df
-            hr_rows = aggregate_hr(df)
-            org_hr_rows = aggregate_org_hr(df)
-            results["uploaded"].append(f"人力数据: {len(hr_rows)}条")
-        except _DuplicateUpload:
-            pass
-        except Exception as e:
-            results["errors"].append(f"人力数据: {str(e)}")
-            logger.exception("hr import failed")
-
-    if value and value.filename:
-        try:
-            val_bytes = await value.read()
-            h = _hash_bytes(val_bytes)
-            if _skip_duplicate_upload(value.filename, h, "value", results, force=force):
-                raise _DuplicateUpload()
-            file_hashes[value.filename] = h
-            file_sizes[value.filename] = len(val_bytes)
-            df = parse_value_excel(val_bytes)
-            raw_tables['value_data'] = df
-            value_rows = aggregate_value(df)
-            org_value_rows = aggregate_org_value(df)
-            results["uploaded"].append(f"价值数据: {len(value_rows)}条")
-        except _DuplicateUpload:
-            pass
-        except Exception as e:
-            results["errors"].append(f"价值数据: {str(e)}")
-            logger.exception("value import failed")
-
-    if hr_rows and active_rows:
-        active_index = {
-            (r['year'], r['month'], r['channel']): r['active_headcount']
-            for r in active_rows
-        }
-        for row in hr_rows:
-            row['active_headcount'] = active_index.get((row['year'], row['month'], row['channel']), 0)
-
-    if org_hr_rows and org_active_rows:
-        org_active_index = {
-            (r['year'], r['month'], r['org'], r['channel']): r['active_headcount']
-            for r in org_active_rows
-        }
-        for row in org_hr_rows:
-            row['active_headcount'] = org_active_index.get((row['year'], row['month'], row['org'], row['channel']), 0)
-
-    cutoff_warnings = _validate_daily_cutoff_alignment(daily_rows, jd_daily_rows)
-    if cutoff_warnings:
-        results["cutoff_warnings"] = cutoff_warnings
-        logger.info("daily cutoff alignment warnings: %s", cutoff_warnings)
-
-    # 收集所有实际年份
-    for rows in [perf_rows, daily_rows, org_daily_rows, jd_rows, jd_daily_rows, hr_rows, value_rows, product_rows, org_perf_rows, org_value_rows, org_hr_rows]:
-        for r in rows:
-            if 'year' in r and r['year']:
-                results["data_years"].add(int(r['year']))
-
-    # 如果没有检测到年份，使用传入的year参数
-    results["data_years"] = sorted(list(results["data_years"])) if results["data_years"] else [year]
+            for kind in upload_labels:
+                if any(summary.startswith(f"{kind}:") for summary in pipeline_result.source_summaries):
+                    results["errors"].append(f"{upload_labels[kind]}: {str(e)}")
+            logger.exception("excel pipeline build failed")
+    else:
+        results["data_years"] = [year]
 
     if not file_hashes and not results["errors"]:
         logger.info("import finished with duplicates only skipped=%s years=%s", len(results["skipped"]), results["data_years"])
@@ -429,33 +282,17 @@ async def _upload_files_locked(
         logger.warning("import aborted because partial import is disabled errors=%s", results["errors"])
         raise HTTPException(status_code=400, detail=results)
 
+    if not file_hashes:
+        _set_import_status(results, has_written_rows=False)
+        raise HTTPException(status_code=400, detail=results)
+
     # 写入数据库（增量：按月删除再插入，未涉及月份保持不动）
     import_id = None
+    table_row_counts = {}
     with get_db() as conn:
         conn.execute('BEGIN IMMEDIATE')
         try:
-            table_rows = [
-                ('agg_performance', perf_rows),
-                ('agg_daily_performance', daily_rows),
-                ('agg_org_daily_performance', org_daily_rows),
-                ('agg_product_structure', product_rows),
-                ('agg_jingdai', jd_rows),
-                ('agg_jingdai_daily', jd_daily_rows),
-                ('agg_hr_data', hr_rows),
-                ('agg_org_hr_data', org_hr_rows),
-                ('agg_value_data', value_rows),
-                ('agg_org_performance', org_perf_rows),
-                ('agg_org_value', org_value_rows),
-                ('agg_payment_period', pay_period_rows + jd_pay_period_rows),
-                ('agg_longterm_qj', longterm_rows + jd_longterm_rows),
-            ]
-            for table, rows in table_rows:
-                if rows:
-                    replace_rows_incremental(conn, table, rows)
-                    table_row_counts[table] = len(rows)
-            for table, df in raw_tables.items():
-                write_raw_table_incremental(conn, table, df)
-                table_row_counts[table] = len(df)
+            table_row_counts = write_excel_pipeline_result(conn, pipeline_result, incremental=True)
 
             # 记录导入历史
             has_errors = len(results["errors"]) > 0

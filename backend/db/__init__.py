@@ -19,7 +19,8 @@ from db.schema import init_db, AGG_TABLES
 from db.repository import replace_rows, replace_rows_incremental, clear_year_data, clear_table_year_data
 
 # 查询函数
-from db.repositories.kpi import get_platform_data, get_kpi_data
+from db.repositories.platform import get_platform_data
+from db.repositories.kpi import get_kpi_data
 from db.repositories.org import get_org_kpi_data
 from db.repositories.payment import get_payment_period_structure
 from db.repositories.product import (

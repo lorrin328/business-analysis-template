@@ -65,6 +65,28 @@ def date_filter_sql(cutoff: Cutoff) -> tuple[str, list[int]]:
     ]
 
 
+def channel_cutoff_filter_sql(
+    channel_cutoffs: dict[str, Cutoff | tuple[int, int]],
+    *,
+    channel_column: str = "channel",
+) -> tuple[str, list[object]]:
+    """SQL condition and params for per-channel inclusive YTD cutoffs."""
+    clauses = []
+    params: list[object] = []
+    for channel, cutoff in channel_cutoffs.items():
+        if isinstance(cutoff, dict):
+            month = int(cutoff["month"])
+            day = int(cutoff["day"])
+        else:
+            month = int(cutoff[0])
+            day = int(cutoff[1])
+        clauses.append(f"({channel_column} = ? AND (month < ? OR (month = ? AND day <= ?)))")
+        params.extend([channel, month, month, day])
+    if not clauses:
+        return "", []
+    return f"({' OR '.join(clauses)})", params
+
+
 def parse_as_of(value: str | None) -> date | None:
     if not value:
         return None

@@ -1,5 +1,283 @@
 # 工作日志
 
+## 2026-06-30 目标弹窗与截止日期内联事件清理
+
+- 任务：继续提升前端可维护性，完成主页面和 `js` 目录可见 `onclick` / `onchange` 内联事件清理。
+- 调整：`经营分析模板.html` 中数据截止日期下拉框移除 `onchange="switchDashboardAsOf(this.value)"`，改为 `data-dashboard-as-of`。
+- 调整：`js/data-integration.js` 新增 `bindDashboardAsOfControl()`，统一绑定数据截止日期切换事件。
+- 调整：`js/target-modal.js` 中目标年份、导出/导入/保存、目标值输入、机构目标维度和机构目标值输入均移除内联事件。
+- 调整：目标弹窗改为 `data-target-*`、`data-org-target-*` 声明式属性，并新增 `bindTargetModalControls()` 在 `modalBody` 上统一事件代理。
+- 测试：`tests/test_frontend_static.py` 增加截止日期和目标弹窗不得回退到内联事件的静态约束。
+- 验证：前端静态测试 `49 passed`；全局搜索确认 `经营分析模板.html` 和 `js` 目录已无 `onclick=` / `onchange=` 命中。
+
+## 2026-06-30 队伍增强动态控件事件绑定收敛
+
+- 任务：继续提升队伍增强面板可维护性，降低运行时 HTML 模板中统计期间和业务模式控件的内联事件耦合。
+- 调整：`js/team-analysis.js` 中 `renderTeamEnhancedControls()` 移除 `switchTeamEnhancedPeriodType`、`switchTeamEnhancedPeriodValue`、`toggleTeamEnhancedBusinessLine` 内联事件。
+- 调整：队伍增强控件改为 `data-team-enhanced-period-type`、`data-team-enhanced-period-value`、`data-team-enhanced-line` 声明式属性。
+- 调整：新增 `bindTeamEnhancedControls()`，在 `teamEnhancedPanel` 容器上通过事件代理统一处理期间切换、期间值变化和业务模式勾选。
+- 测试：`tests/test_frontend_static.py` 增加队伍增强动态控件不得回退到内联事件、必须使用 `data-team-enhanced-*` 事件代理的静态约束。
+- 验证：前端静态测试 `49 passed`；搜索确认队伍增强旧内联事件已无命中。
+
+## 2026-06-30 通用弹窗关闭事件绑定收敛
+
+- 任务：继续提升通用弹窗系统可维护性，降低详情弹窗、目标弹窗、产品配置弹窗等共享 overlay 的 HTML 内联事件耦合。
+- 调整：`经营分析模板.html` 中 `modalOverlay` 移除 `onclick="closeModal(event)"`，弹窗主体移除 `onclick="event.stopPropagation()"`，关闭按钮改为 `data-modal-action="close"`。
+- 调整：通用弹窗脚本新增 `bindModalControls()`，统一绑定 overlay 点击关闭和关闭按钮点击关闭。
+- 保持：`closeModal()` 仍保留仅点击 overlay 背景关闭的判断，并继续清理 `modal-target`、`modal-product-config` 类名。
+- 测试：`tests/test_frontend_static.py` 增加通用弹窗关闭控件不得回退到内联 `closeModal` / `stopPropagation` 的静态约束。
+- 验证：前端静态测试 `49 passed`；搜索确认通用弹窗旧内联关闭事件已无命中。
+
+## 2026-06-30 上传区域事件绑定收敛
+
+- 任务：继续提升数据上传入口可维护性，降低后续新增、调整、删减上传文件类型时的 HTML 内联事件耦合。
+- 调整：`经营分析模板.html` 中 4 张上传卡片移除 `onclick="document.getElementById(...).click()"`，改为 `data-upload-input` 声明目标文件输入。
+- 调整：4 个文件输入移除 `onchange="handleFile(...)"`，改为 `data-upload-info` 声明对应提示区域。
+- 调整：`js/upload.js` 新增 `bindUploadControls()`，集中绑定上传卡片点击和文件输入 change 事件；保留 `handleFile()` 上传业务流程不变。
+- 测试：`tests/test_frontend_static.py` 增加上传区域不得回退到卡片点击和文件选择内联事件的静态约束。
+- 验证：前端静态测试 `48 passed`；搜索确认上传区域已无旧内联事件。
+
+## 2026-06-30 队伍趋势控件事件绑定收敛
+
+- 任务：继续提升队伍分析模块可维护性，降低后续新增队伍指标、时间维度、业务系列或机构筛选时的 HTML 内联事件耦合。
+- 调整：`经营分析模板.html` 中队伍趋势年份、指标类型、时间维度、季度、业务系列和机构控件移除内联 `onchange` / `onclick`。
+- 调整：队伍趋势控件改为 `data-team-metric`、`data-team-dim`、`data-team-series`、`data-team-org` 等声明式属性。
+- 调整：`js/team-analysis.js` 新增 `bindTeamTrendControls()`，集中绑定队伍趋势主控件事件；`switchTeamMetric()`、`switchTeamDim()` 增加按钮参数判空。
+- 调整：队伍机构全选同步改为使用 `data-team-org` 选择器，不再依赖 checkbox 顺序。
+- 测试：`tests/test_frontend_static.py` 增加队伍趋势主控件不得回退到 `switchTeam*` / `toggleTeam*` 内联事件的静态约束。
+- 验证：前端静态测试 `48 passed`；搜索确认队伍趋势主控件已无旧内联事件。
+
+## 2026-06-30 交期结构控件事件绑定收敛
+
+- 任务：继续提升产品与交期结构区域可维护性，降低后续新增交期维度、业务系列、渠道、机构筛选和保费口径时的 HTML 内联事件耦合。
+- 调整：`经营分析模板.html` 中交期结构图表切换、年份、时间维度、季度/月度、业务系列、转型渠道、转型机构和保费类型控件移除内联 `onclick` / `onchange`。
+- 调整：交期结构控件改为 `data-pay-period-pie-type`、`data-pay-period-dim`、`data-pay-period-biz`、`data-pay-period-channel`、`data-pay-period-org`、`data-pay-period-metric` 等声明式属性。
+- 调整：`js/payperiod-chart.js` 新增 `bindPayPeriodControls()`，集中绑定交期结构控制区事件；按钮切换函数增加显式判空，便于模块内调用。
+- 修正：动态生成的转型机构、经代机构复选框改为 `data-pay-period-org` / `data-pay-period-jingdai-org`；动态生成的产品转型机构复选框改为 `data-product-org`，避免上一轮 `createCheckboxLabel()` 改造后仍传业务回调的隐患。
+- 测试：`tests/test_frontend_static.py` 增加交期结构控件不得回退到 `switchPayPeriod*` / `togglePayPeriod*` 内联事件的静态约束，并约束动态复选框不再传回调函数。
+- 验证：前端静态测试 `47 passed`；搜索确认交期结构区已无旧内联控制调用。
+
+## 2026-06-30 产品结构控件事件绑定收敛
+
+- 任务：继续提升产品结构模块可维护性，降低后续新增业务来源、转型渠道、经代机构、转型机构、时间维度和保费口径时的 HTML 内联事件耦合。
+- 调整：`经营分析模板.html` 中产品结构图表切换、业务来源、转型业务、转型机构、时间维度、季度/月度和保费类型控件移除内联 `onclick` / `onchange`。
+- 调整：产品结构控件改为 `data-product-pie-type`、`data-product-source`、`data-product-transform`、`data-product-org`、`data-product-dim`、`data-product-metric` 等声明式属性。
+- 调整：`js/product-analysis.js` 新增 `bindProductStructureControls()`，集中绑定产品结构控制区事件；按钮切换函数增加显式判空，便于模块内调用。
+- 调整：`js/data-integration.js` 动态生成的经代机构复选框改为 `data-product-jingdai-org`，由产品结构模块事件代理处理。
+- 测试：`tests/test_frontend_static.py` 增加产品结构控件不得回退到 `switchPie`、`toggleProductSource`、`toggleProductTransform`、`toggleProductOrg`、`switchProductDim`、`switchProductSub`、`switchProductMetric` 内联事件的静态约束。
+- 验证：前端静态测试 `46 passed`；搜索确认产品结构区已无旧内联控制调用。
+
+## 2026-06-30 平台趋势控件事件绑定收敛
+
+- 任务：继续提升业务平台趋势模块可维护性，降低后续新增趋势维度、保费类型、业务系列或机构筛选时的 HTML 内联事件耦合。
+- 调整：`经营分析模板.html` 中平台趋势年份、时间维度、季度/月度、业务系列、机构和保费类型控件移除内联 `onchange` / `onclick`。
+- 调整：平台趋势控件改为 `data-platform-time-dim`、`data-platform-series`、`data-platform-org`、`data-platform-premium-type` 等声明式属性。
+- 调整：`js/platform-trend-main.js` 新增 `bindPlatformTrendControls()`，集中绑定平台趋势控制区事件。
+- 调整：`switchTimeDim()` 和 `switchPremiumType()` 对按钮参数增加显式判空，便于模块内调用和后续测试。
+- 测试：`tests/test_frontend_static.py` 增加平台趋势控件不得回退到 `switchYear`、`switchTimeDim`、`switchSubPeriod`、`toggleSeries`、`toggleOrg`、`switchPremiumType` 内联事件的静态约束。
+- 验证：前端静态测试 `45 passed`；搜索确认平台趋势区已无旧内联控制调用。
+
+## 2026-06-30 机构维度筛选控件事件绑定收敛
+
+- 任务：继续提升机构维度模块可维护性，降低后续新增机构、调整时间维度和筛选逻辑时的 HTML 内联事件耦合。
+- 调整：`经营分析模板.html` 中机构筛选标签改为 `data-org-filter`，时间维度按钮改为 `data-org-dim`，季度/月度下拉框移除内联 `onchange`。
+- 调整：`js/org-analysis.js` 新增 `bindOrgFilterControls()`、`bindOrgDimControls()`、`bindOrgPeriodControls()`，统一绑定机构筛选、时间维度和季度/月度变化。
+- 调整：`switchOrgDim()` 不再依赖浏览器全局 `event`，改为显式接收当前按钮；季度/月度下拉变化会同步 `orgSubPeriod` / `orgSubMonth` 后重渲染。
+- 测试：`tests/test_frontend_static.py` 增加机构维度控件不得回退到 `toggleOrgFilter`、`switchOrgDim`、`renderOrgTable` 内联事件的静态约束。
+- 验证：前端静态测试 `44 passed`；搜索确认机构筛选区域已无旧内联事件。
+
+## 2026-06-30 KPI 卡片点击入口声明式绑定
+
+- 任务：继续提升 KPI 模块可维护性，降低后续新增、调整、删减指标卡片时的 HTML 与弹窗函数耦合。
+- 调整：`经营分析模板.html` 中 8 张 KPI 卡片由 `onclick="openModal(...)"` 改为 `data-kpi-modal` 声明详情类型。
+- 调整：`js/kpi-cards.js` 新增 `bindKPICardActions()`，通过 `.kpi-grid` 事件代理统一打开 KPI 详情弹窗。
+- 调整：`js/dashboard-config.js` 的卡片标题配置应用改为通过 `.kpi-card[data-kpi-modal]` 查找，不再依赖旧 `onclick` 选择器。
+- 测试：`tests/test_frontend_static.py` 增加 KPI 卡片入口、绑定函数和配置选择器约束。
+- 验证：前端静态测试 `43 passed`；搜索确认 KPI 区域已无 `onclick="openModal(...)"`。
+
+## 2026-06-30 主工具栏动作绑定模块化
+
+- 任务：继续提升前端入口可维护性，降低后续新增、调整、删减顶部功能按钮时的 HTML 与全局函数耦合。
+- 调整：新增 `js/dashboard-actions.js`，集中维护顶部工具栏动作表和事件代理。
+- 调整：`经营分析模板.html` 顶部权限管理、操作日志、人员管理、荣誉体系、导出 Excel、参数设置、设置目标、重新计算、退出按钮改为 `data-dashboard-action` 声明式动作。
+- 调整：`js/README.md` 记录 `dashboard-actions.js` 为当前生产运行脚本。
+- 测试：`tests/test_frontend_static.py` 增加顶部工具栏动作绑定约束，防止该组按钮回退到内联 `onclick`。
+- 验证：前端静态测试 `43 passed`；搜索确认顶部工具栏已无 `openPermissionAdmin()`、`openOperationLogs()`、`exportDashboardExcel()`、`openProductConfigModal()`、`openTargetModal()`、`recalculateDashboard()`、`logout()` 的内联调用。
+
+## 2026-06-30 产品配置弹窗事件绑定收敛
+
+- 任务：继续提升前端模块可维护性，先从范围较小的产品配置弹窗移除内联点击事件。
+- 调整：`js/product-config-modal.js` 中取消/保存按钮改为 `data-product-config-action` 标记，并由 `bindProductConfigActions()` 在脚本内绑定事件。
+- 保持：弹窗加载、产品分类保存、经代业绩重算和看板刷新流程不变。
+- 测试：`tests/test_frontend_static.py` 增加产品配置弹窗不得回退到 `onclick="closeModal()"` / `onclick="saveProductConfig()"` 的静态约束。
+- 验证：前端静态测试 `42 passed`；`rg` 确认 `js/product-config-modal.js` 已无 `onclick=`。
+
+## 2026-06-30 荣誉体系 summary builder 拆分
+
+- 任务：继续降低星钻联盟荣誉体系计算主流程复杂度，便于后续调整机构汇总、会员率、奖励测算等展示口径。
+- 调整：新增 `backend/honor/summary.py`，集中承接 `build_org_summary()` 和 `build_quarter_rewards()`。
+- 调整：`backend/honor/calculator.py` 改为调用 summary builder，自身只保留星钻余额流转、离职清零、人员月度和人员汇总职责。
+- 效果：`backend/honor/calculator.py` 从上一轮约 `235` 行降至约 `174` 行；机构汇总和季度奖励测算独立为约 `77` 行纯函数。
+- 测试：新增 `tests/test_honor_summary.py`，覆盖当前在职会员统计、资深及以上统计、月度增减、会员率、预估奖励和季度归属。
+- 验证：荣誉体系 summary、sources、calculator、dashboard、API、normalizers、规则、字段审计、导出和权限专项测试 `28 passed, 1 warning`。
+
+## 2026-06-30 荣誉体系 sources 拆分
+
+- 任务：继续降低星钻联盟荣誉体系计算主流程的复杂度，便于后续新增人员、保单、团队类规则。
+- 调整：新增 `backend/honor/sources.py`，集中承接人力源表加载、保单源表加载、个人/主管/经理指标索引构造、45天回销异常、负数保费异常和缺人员工号异常。
+- 调整：`backend/honor/calculator.py` 改为调用 `load_staff()`、`load_policies()`、`metric_for_staff()`，自身保留星钻流水、离职清零、人员汇总、机构汇总和奖励测算职责。
+- 效果：`backend/honor/calculator.py` 从约 `542` 行降至 `235` 行；源数据准备逻辑独立为 `backend/honor/sources.py` 约 `276` 行。
+- 测试：新增 `tests/test_honor_sources.py`，覆盖主管团队指标合格时优先使用团队指标、不合格时回落个人指标。
+- 验证：荣誉体系 sources、calculator、dashboard、API、normalizers、规则、字段审计、导出和权限专项测试 `26 passed, 1 warning`。
+
+## 2026-06-30 荣誉体系 dashboard builder 拆分
+
+- 任务：继续降低星钻联盟荣誉体系后续新增 dashboard 展示维度、预警和历史明细时的改动风险。
+- 调整：新增 `backend/honor/dashboard.py`，集中承接荣誉体系 dashboard 派生聚合，包括项目/机构排序、会员结构、专员/管理职历史、月度预警、等级分布和趋势。
+- 调整：`backend/honor/repository.py` 保留批次、审计、结果写入、摘要读取和基础表读取职责，`fetch_dashboard()` 读取数据库后交给 `build_honor_dashboard_payload()` 组装。
+- 效果：`backend/honor/repository.py` 从约 `633` 行降至 `243` 行；dashboard 派生逻辑独立为约 `414` 行，后续展示扩展不再挤在持久化层。
+- 测试：新增 `tests/test_honor_dashboard.py`，直接覆盖 dashboard builder 的项目、机构会员结构、专员历史、管理职历史、预警和趋势派生字段。
+- 验证：荣誉体系 dashboard、API、导出、权限、计算、normalizers、规则和字段审计专项测试 `24 passed, 1 warning`。
+
+## 2026-06-30 荣誉体系 normalizers 拆分
+
+- 任务：继续降低星钻联盟荣誉体系后续新增规则、调整人员/保单字段清洗口径时的维护成本。
+- 调整：新增 `backend/honor/normalizers.py`，集中承接文本清洗、人员代码补零、数字转换、整数转换、日期解析、年月解析、业务线归一和职级角色识别等纯函数。
+- 调整：`backend/honor/calculator.py` 改为复用 `honor.normalizers`，删除本地重复的清洗函数和职级识别函数，星钻计算主流程保留规则计算与结果组装职责。
+- 测试：新增 `tests/test_honor_normalizers.py`，覆盖人员代码、日期、数字、业务线和职级归一规则。
+- 验证：荣誉体系 normalizers、calculator、API、规则、字段审计、导出和权限专项测试 `23 passed, 1 warning`。
+
+## 2026-06-30 数据流文档与 API 查询参数继续收敛
+
+- 任务：继续降低后续新增模块时误用旧导入链路、重复手写 API 参数校验的风险。
+- 调整：`docs/数据流说明.md` 从旧 `backend/aggregator.py` 口径更新为当前 `backend/services/excel_pipeline.py` + `backend/etl/aggregates/` 数据流，补充 Web 上传、全量重建和新增聚合表的维护边界。
+- 调整：新增 `tests/test_docs_current_data_flow.py`，约束当前数据流文档必须引用 `excel_pipeline` 和 `backend/etl/`，且不得把 `backend/aggregator.py` 写成当前链路。
+- 调整：新增 `backend/api/params.py`，集中定义 `DashboardYearQuery` 和 `AsOfQuery`；KPI、机构、产品、交期、平台趋势、AI 只读、导出、目标和队伍接口迁移到公共查询参数类型。
+- 验证：API 参数与文档专项测试 `65 passed`；相关 API 文件语法编译通过。
+
+## 2026-06-30 原始表日期 SQL helper 继续收敛
+
+- 任务：继续降低后续新增原始 Excel 表读取逻辑时的重复代码和日期过滤口径漂移风险。
+- 调整：`services.raw_table_reader.compact_period_expr()` 增加对 `:` 的剔除，兼容 `YYYY-MM-DD HH:MM:SS` 等带时间文本。
+- 调整：`backend/api/product_config.py` 和 `backend/services/import_safety.py` 改为复用 `raw_table_reader` 的 `compact_period_expr()` 与 `quote_identifier()`，删除本地重复实现。
+- 测试：`tests/test_raw_table_reader.py` 增加日期时间分隔符覆盖测试。
+- 验证：产品配置、原始表读取、导入安全专项测试 `32 passed`；完整测试 `248 passed, 1 warning`；`backend/audit_data_quality.py --year 2026 --json` 返回 `status=ok, issue_count=0`；`scripts/preflight.ps1` 返回 `preflight ok`；`git diff --check` 无空白错误，仅有 LF/CRLF 换行提示。
+
+## 2026-06-30 荣誉体系批次 meta helper 收敛
+
+- 任务：继续提升 API 层可维护性，同时保持荣誉体系批次类响应与指标类响应的语义边界。
+- 调整：`backend/services/response.py` 新增 `batch_meta()`，统一生成 `batchId`、`ruleVersion`、`dataSourceMode` 等批次响应 meta 字段。
+- 调整：`backend/api/honor.py` 的字段审计、摘要、看板、机构表、人员表、异常表、趋势表接口迁移到 `batch_meta()`；`recalculate` 继续使用完整计算结果作为 meta，保持原有返回契约。
+- 测试：`tests/test_targets_api.py` 新增 `batch_meta()` 公共契约测试。
+- 验证：`backend/services/response.py`、`backend/api/honor.py` 语法编译通过；荣誉体系和响应契约专项测试 `11 passed, 1 warning`。
+
+## 2026-06-30 AI 只读与产品配置 API meta 迁移
+
+- 任务：继续推进 API 层响应说明统一，同时区分指标类接口与批次/规则类特殊接口。
+- 调整：`backend/api/ai.py` 的 AI 只读 KPI、机构摘要、队伍摘要、指标定义、看板快照接口迁移到 `services.response.response_meta()`，保留 `access=ai-readonly`。
+- 调整：`backend/api/product_config.py` 的经代产品配置读取和保存接口迁移到 `response_meta()`，保留 `scope=经代`。
+- 保留：`backend/api/honor.py` 的 meta 主要围绕 `batchId`、`ruleVersion`、`dataSourceMode`，属于批次/规则版本类响应，暂不迁移到指标类 `response_meta()`。
+- 验证：`backend/api/ai.py`、`backend/api/product_config.py` 语法编译通过；AI 只读、产品配置和响应契约专项测试 `25 passed, 1 warning`。
+
+## 2026-06-30 目标交期配置 API meta 迁移到 response_meta
+
+- 任务：继续推进 API 层统一响应说明，减少目标、交期和配置指标接口重复手写 meta 字典。
+- 调整：`backend/api/targets.py`、`backend/api/payment_period.py`、`backend/api/config.py` 的指标类响应迁移到 `services.response.response_meta()`。
+- 调整：`backend/api/payment_period.py` 将 `success_response` 从函数内部导入移到文件顶部，避免局部隐藏依赖。
+- 保留：业务线配置列表接口不强行套用指标 meta；目标保存、交期结构和配置指标接口的 JSON 外壳与业务字段不变。
+- 验证：相关 API 文件语法编译通过；目标、配置指标和 API 合约专项测试 `23 passed`。
+
+## 2026-06-30 核心指标 API meta 迁移到 response_meta
+
+- 任务：继续推进 API 层可维护性，减少 KPI、机构、产品、趋势和队伍接口中重复手写 meta 字典。
+- 调整：`backend/api/kpi.py`、`backend/api/org.py`、`backend/api/product.py`、`backend/api/trend.py` 迁移到 `services.response.response_meta()`；上一轮已迁移的 `backend/api/team.py` 保持该模式。
+- 保留：接口路径、参数、权限、数据读取、`success/data/message/meta` 外壳、`meta.updatedAt` 注入方式和前端契约不变。
+- 验证：相关 API 文件语法编译通过；API 合约、指标配置、平台趋势相关专项测试 `64 passed`。
+
+## 2026-06-30 API 响应 meta helper 起步
+
+- 任务：继续提升 API 层新增模块时的可维护性，减少各接口重复手写 `metric`、`unit`、`dataSource`、`definitions` 等 meta 字段。
+- 调整：`backend/services/response.py` 新增 `response_meta()`，统一生成指标类 API 响应 meta 字典；`success_response()` 原结构不变，仍统一附加 `updatedAt`。
+- 调整：`backend/api/team.py` 的 `/api/team-analysis` 与 `/api/team-enhanced-analysis` 改为使用 `response_meta()`，接口返回字段和前端契约不变。
+- 测试：`tests/test_targets_api.py` 新增 `response_meta()` 公共契约测试。
+- 验证：`backend/services/response.py`、`backend/api/team.py` 语法编译通过；响应、队伍和指标配置相关专项测试 `27 passed`。
+
+## 2026-06-30 队伍分析空响应结构收敛
+
+- 任务：继续降低队伍分析后续新增返回字段时的漏改风险。
+- 调整：`backend/db/repositories/team_enhanced.py` 新增 `_empty_team_analysis_response()`，集中维护无 `hr_data` 表或无可选月份时的完整空结果结构。
+- 调整：`get_team_enhanced_analysis()` 中两个早退分支改为复用该 helper，正常样本计算、趋势、标准人力和筛选逻辑不变。
+- 测试：`tests/test_team_enhanced.py` 新增无 `hr_data` 表、无选中月份两类空响应测试，锁定 `summary`、`standardManpower`、`filters` 等关键字段。
+- 验证：`backend/db/repositories/team_enhanced.py` 语法编译通过；队伍分析专项测试 `12 passed`。
+
+## 2026-06-30 队伍分析纯工具函数迁出 repository
+
+- 任务：继续提升队伍分析模块可维护性，减少 `backend/db/repositories/team_enhanced.py` 中数据库查询、样本组装和纯计算/清洗函数混放的问题。
+- 调整：新增 `backend/services/team_analysis_utils.py`，集中承接业务线归一、人员代码清洗、日期压缩解析、百分位、分档、比例和阈值计数等纯函数与队伍分析常量。
+- 调整：`backend/db/repositories/team_enhanced.py` 改为从 service 导入这些 helper，保留数据库读取、样本构造、结构分析和接口返回组装职责。
+- 测试：新增 `tests/test_team_analysis_utils.py`，覆盖业务线归一、人员代码清洗、期间解析、百分位、阈值计数、比例和产能分档。
+- 验证：`backend/db/repositories/team_enhanced.py` 与 `backend/services/team_analysis_utils.py` 语法编译通过；队伍分析专项测试 `10 passed`。
+
+## 2026-06-30 平台数据 repository 与 KPI repository 拆分
+
+- 任务：继续提升后端查询层可维护性，降低平台数据底座与 KPI 概览逻辑混放带来的后续改动风险。
+- 调整：新增 `backend/db/repositories/platform.py`，承接原 `backend/db/repositories/kpi.py` 中的 `get_platform_data()` 平台聚合数据查询。
+- 调整：`backend/db/__init__.py` 和 `backend/db/repositories/__init__.py` 改为从 `db.repositories.platform` 导出 `get_platform_data`；外部调用仍保持 `from db import get_platform_data` 不变。
+- 效果：`backend/db/repositories/kpi.py` 从约 `502` 行降至 `363` 行，平台数据 repository 独立为约 `141` 行；后续调整平台趋势、队伍分析、KPI 概览时边界更清晰。
+- 验证：`backend/db/repositories/kpi.py`、`backend/db/repositories/platform.py`、`backend/db/__init__.py`、`backend/db/repositories/__init__.py` 语法编译通过；趋势、API 合约和指标配置相关专项测试 `64 passed`。
+
+## 2026-06-30 KPI 日级 YTD 查询 helper 收敛
+
+- 任务：继续提升后续指标模块维护性，减少 `get_kpi_data()` 中转型、经代、产品指标按日级截止累计时的重复 SQL。
+- 调整：`backend/db/repositories/kpi.py` 新增 `_sum_daily_columns()`、`_sum_daily_column_by_channel()`，统一处理“按 month/day 截止累计日表字段”的查询。
+- 调整：KPI 期交保费、经代期交、转型产品指标和经代产品指标的日级读取改为复用 helper；月级回退、长险期交、`asOf` 策略和接口返回字段不变。
+- 安全边界：helper 增加 SQL 标识符校验，只允许内部表名、列名和别名使用普通 SQL identifier，避免后续复用时引入动态 SQL 风险。
+- 验证：`backend/db/repositories/kpi.py` 语法编译通过；KPI/产品配置/配置接口/AI 只读接口相关专项测试 `35 passed`；截止策略、机构长险和原始表 helper 专项测试 `8 passed, 1 warning`。
+
+## 2026-06-30 原始表日期过滤 helper 收敛
+
+- 任务：继续提升后续模块维护性，减少直接读取原始 Excel 表时重复编写中文日期字段解析、年份/月度过滤和 `asOf` 截止过滤。
+- 调整：`backend/services/raw_table_reader.py` 新增 `raw_table_column_set()`、`pick_existing_column()`、`compact_period_expr()`、`append_period_filter()`、`append_cutoff_filter()`，集中处理原始表列选择与日期过滤 SQL。
+- 调整：`backend/db/repositories/product.py` 删除本地重复的原始表列选择、日期压缩、期间过滤和截止过滤 helper，产品结构和各业务模式前三产品查询改为复用 `raw_table_reader`。
+- 测试：新增 `tests/test_raw_table_reader.py`，覆盖候选列选择、分隔日期文本期间过滤、截止日参数生成。
+- 验证：产品/趋势/API/前端相关专项测试 `95 passed`；完整测试 `240 passed, 1 warning`；`backend/audit_data_quality.py --year 2026 --json` 返回 `status=ok, issue_count=0`；`scripts/preflight.ps1` 返回 `preflight ok`。
+
+## 2026-06-30 机构日级截止 SQL helper 收敛
+
+- 任务：继续提升后续模块维护性，减少机构维度中按渠道日级截止查询条件的重复拼装。
+- 调整：`backend/services/cutoff_policy.py` 新增 `channel_cutoff_filter_sql()`，统一生成“按渠道分别截至 month/day”的 SQL 条件和参数。
+- 调整：`backend/db/repositories/org.py` 中机构年度期交、产品指标、长险期交三处日级查询改为复用该 helper，业务计算口径不变。
+- 测试：`tests/test_cutoff_policy.py` 新增渠道截止 SQL 生成测试，锁定参数顺序和 SQL 形态。
+- 验证：专项测试 `27 passed`；完整测试 `237 passed, 1 warning`；`backend/audit_data_quality.py --year 2026 --json` 返回 `status=ok, issue_count=0`；`scripts/preflight.ps1` 返回 `preflight ok`。
+
+## 2026-06-30 平台趋势运行逻辑与兜底数据拆分
+
+- 任务：继续提升项目可维护性，降低后续调整平台趋势图时在超大 JS 文件中误改历史兜底数据的风险。
+- 调整：新增 `js/platform-seed-data.js`，承接原 `js/platform-trend-main.js` 中约 `16290` 行 `platformMock` 本地兜底数据。
+- 调整：`js/platform-trend-main.js` 保留平台趋势图状态、筛选、缓存、接口加载和渲染逻辑，文件规模从约 `16936` 行降至 `647` 行。
+- 调整：`经营分析模板.html` 在 `seed-data.js` 后、`data-integration.js` 前加载 `platform-seed-data.js`；`tests/test_frontend_static.py` 和 `js/README.md` 同步更新生产运行边界。
+- 验证：`tests/test_frontend_static.py` 结果 `42 passed`；完整测试 `236 passed, 1 warning`；`backend/audit_data_quality.py --year 2026 --json` 返回 `status=ok, issue_count=0`；`scripts/preflight.ps1` 返回 `preflight ok`。
+
+## 2026-06-30 导入链路统一 pipeline 重构
+
+- 任务：优化项目可维护性，降低后续模块新增、调整、优化、删减时 Web 上传链路与本地 Excel 重建链路逻辑漂移的风险。
+- 调整：新增 `backend/services/excel_pipeline.py`，集中承接四类 Excel 的解析、聚合、活动人力回填、年份收集、日级截止警告、聚合表写入和原始表写入。
+- 调整：`backend/main.py` 的 `/api/upload` 不再直接维护各聚合表生成细节，改为逐个源文件追加到统一 pipeline；保留重复文件跳过、部分失败处理、导入历史、增量写库和操作日志。
+- 调整：`backend/rebuild_from_excels.py` 改为复用同一 pipeline 做全量重建；后续新增聚合表或调整导入顺序时，只需优先改 pipeline，避免 Web 上传和命令行重建两处重复维护。
+- 调整：`pyproject.toml` 版本从 `1.0.97` 同步到当前 `1.0.98`，与 `VERSION`、后端默认版本和页面缓存参数一致。
+- 验证：`python -m py_compile backend/main.py backend/rebuild_from_excels.py backend/services/excel_pipeline.py` 通过；相关测试 `34 passed`；完整测试 `236 passed, 1 warning`；`backend/audit_data_quality.py --year 2026 --json` 返回 `status=ok, issue_count=0`；`scripts/preflight.ps1` 返回 `preflight ok`。
+
+## 2026-06-30 代码精简与 Rust 化可行性审查
+
+- 任务：评估当前代码是否能在不改变业务逻辑的前提下精简、重构，或改用 Rust 等更高性能方案。
+- 已读取：`AGENTS.md`、`README.md`、`pyproject.toml`、`requirements.txt`、`backend/requirements.txt`、`backend/main.py`、`backend/rebuild_from_excels.py`、`backend/db/repositories/kpi.py`、`backend/db/repositories/product.py`、`backend/db/repositories/team_enhanced.py`、`backend/etl/aggregates/org.py`、`backend/etl/aggregates/jingdai.py`、`js/platform-trend-main.js`、`js/platform-trend.js`、`js/seed-data.js`、`js/data-integration.js` 和 `docs/ai-context/` 项目记忆。
+- 结构判断：当前后端约 `114` 个 Python 文件、约 `14580` 行；前端约 `21` 个 JS 文件、约 `23077` 行。最大维护热点是 `js/platform-trend-main.js`，约 `16936` 行，其中大量内容为内嵌 `platformMock` 历史兜底数据，不是算法复杂度本身。
+- 重构判断：优先做等价重构，不建议一上来改 Rust。当前项目主要依赖 FastAPI、pandas/openpyxl、SQLite 和原生前端；性能瓶颈更可能来自 Excel 解析、SQLite 查询/索引、前端大文件加载和重复聚合，而不是 Python 语言本身。
+- 可精简方向：将 `js/platform-trend-main.js` 中内嵌兜底数据迁出到独立 seed/runtime fallback 文件；将 `backend/main.py` 的上传解析、聚合、写库流程抽成导入服务，与 `rebuild_from_excels.py` 复用同一套 pipeline；进一步收敛 `get_kpi_data()`、`get_org_kpi_data()`、产品结构查询中的日级截止和 SQL 拼装辅助逻辑。
+- 边界提醒：重构必须保持转型产品分类读取源 Excel 标识、经代产品分类继续读取 `product_config` 手工配置、KPI/机构按 `asOf` 精准同日口径、趋势图展示完整已有趋势这几条近期决策不变。
+- 验证：执行 `.\.venv\Scripts\python.exe -m pytest -q`，结果 `236 passed, 1 warning`；本次未修改业务代码。
+- 发现：`VERSION`、后端默认版本和页面缓存参数为 `v1.0.98`，但 `pyproject.toml` 仍为 `1.0.97`；已在同日导入链路重构中同步。
+
 ## 2026-06-29 v1.0.98 产品指标日级截止口径修正
 
 - 任务：复核 v1.0.97 转型产品标识读取后的计算逻辑，确认源 Excel、ETL、SQLite 聚合、KPI 和机构维度展示是否一致。

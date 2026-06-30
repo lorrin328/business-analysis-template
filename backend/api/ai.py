@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 
+from api.params import DashboardYearQuery
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import DASHBOARD_KPI_CARDS, DISPLAY_CONSTRAINTS, METRICS
 from config.version import get_app_version, get_semver
@@ -14,7 +15,7 @@ from db import get_kpi_data, get_org_kpi_data
 from db.repositories.target import get_target_config
 from db.repositories.team_enhanced import get_team_enhanced_analysis
 from services.audit_log import log_operation
-from services.response import success_response
+from services.response import response_meta, success_response
 
 router = APIRouter(prefix="/api/ai", tags=["ai-readonly"])
 
@@ -141,18 +142,23 @@ def _snapshot(kpi: dict, org_data: dict, *, include_org_detail: bool) -> dict:
 
 
 @router.get("/kpi")
-def ai_kpi(year: int = Query(DEFAULT_YEAR, ge=2000, le=2100), user=Depends(require_ai_readonly)):
+def ai_kpi(year: DashboardYearQuery = DEFAULT_YEAR, user=Depends(require_ai_readonly)):
     data = get_kpi_data(year)
     _log_ai("ai_kpi_read", user, {"year": year})
     return success_response(
         data,
-        meta={"year": year, "metric": "ai-kpi", "access": "ai-readonly", "dataSource": "SQLite aggregate tables"},
+        meta=response_meta(
+            metric="ai-kpi",
+            data_source="SQLite aggregate tables",
+            year=year,
+            access="ai-readonly",
+        ),
     )
 
 
 @router.get("/org-summary")
 def ai_org_summary(
-    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
+    year: DashboardYearQuery = DEFAULT_YEAR,
     includeDetail: bool = Query(False),
     user=Depends(require_ai_readonly),
 ):
@@ -163,13 +169,18 @@ def ai_org_summary(
     _log_ai("ai_org_summary_read", user, {"year": year, "includeDetail": includeDetail})
     return success_response(
         data,
-        meta={"year": year, "metric": "ai-org-summary", "access": "ai-readonly", "dataSource": "agg_org_*"},
+        meta=response_meta(
+            metric="ai-org-summary",
+            data_source="agg_org_*",
+            year=year,
+            access="ai-readonly",
+        ),
     )
 
 
 @router.get("/team-summary")
 def ai_team_summary(
-    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
+    year: DashboardYearQuery = DEFAULT_YEAR,
     month: int | None = Query(None, ge=1, le=12),
     periodType: str = Query("month", pattern="^(year|quarter|month)$"),
     periodValue: int | None = Query(None, ge=1, le=12),
@@ -202,7 +213,12 @@ def ai_team_summary(
     )
     return success_response(
         data,
-        meta={"year": year, "metric": "ai-team-summary", "access": "ai-readonly", "dataSource": "hr_data/performance"},
+        meta=response_meta(
+            metric="ai-team-summary",
+            data_source="hr_data/performance",
+            year=year,
+            access="ai-readonly",
+        ),
     )
 
 
@@ -215,13 +231,17 @@ def ai_metric_definitions(user=Depends(require_ai_readonly)):
             "dashboardCards": DASHBOARD_KPI_CARDS,
             "displayConstraints": DISPLAY_CONSTRAINTS,
         },
-        meta={"metric": "ai-metric-definitions", "access": "ai-readonly", "dataSource": "config.metrics"},
+        meta=response_meta(
+            metric="ai-metric-definitions",
+            data_source="config.metrics",
+            access="ai-readonly",
+        ),
     )
 
 
 @router.get("/dashboard-snapshot")
 def ai_dashboard_snapshot(
-    year: int = Query(DEFAULT_YEAR, ge=2000, le=2100),
+    year: DashboardYearQuery = DEFAULT_YEAR,
     includeOrgDetail: bool = Query(False),
     user=Depends(require_ai_readonly),
 ):
@@ -231,12 +251,12 @@ def ai_dashboard_snapshot(
     _log_ai("ai_dashboard_snapshot_read", user, {"year": year, "includeOrgDetail": includeOrgDetail})
     return success_response(
         data,
-        meta={
-            "year": year,
-            "metric": "ai-dashboard-snapshot",
-            "access": "ai-readonly",
-            "dataSource": "KPI/org aggregate tables and target_config",
-        },
+        meta=response_meta(
+            metric="ai-dashboard-snapshot",
+            data_source="KPI/org aggregate tables and target_config",
+            year=year,
+            access="ai-readonly",
+        ),
     )
 
 
