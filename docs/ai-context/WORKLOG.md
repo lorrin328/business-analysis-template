@@ -1,5 +1,17 @@
 # 工作日志
 
+## 2026-06-30 GitHub 同步与 192.168.50.6 手工部署
+
+- 任务：将维护性重构成果同步到 GitHub，并部署到 `192.168.50.6` 生产服务器。
+- GitHub：本地 `master` 已提交 `5688acf refactor: improve dashboard maintainability`，并推送到 `origin/master`。
+- 部署：因服务器 `/opt/business-analysis` Git 工作区存在大量本地改动，未直接 `git pull`；改为在服务器 `/tmp` 临时克隆 GitHub 最新提交 `5688acf`，通过 `deploy/deploy.sh` 同步代码到 `/opt/business-analysis`。
+- 数据保护：部署脚本已备份生产数据库到 `/opt/business-analysis-backups/business_data.db.20260630_173301`。
+- 数据重建：服务器检测到 8 个 Excel 文件并重建数据库，导入后年份覆盖 `[2022, 2023, 2024, 2025, 2026]`。
+- 验证：`business-analysis` 与 `nginx` 均为 `active`；`/api/health` 返回 `status=ok`、`app_version=v1.0.98`、`page_version=v1.0.98`、`latest_period=202606`；首页 HTTP 状态 `200`。
+- 验证：生产文件已包含 `data-dashboard-as-of` 和 `bindTargetModalControls()`；服务器数据质量审计 `status=ok`、`issue_count=0`。
+- 日志：`journalctl -u business-analysis -n 40` 显示服务在 `2026-06-30 17:33:56` 正常停止并重启，新进程启动后健康检查 `200 OK`。
+- 风险：服务器仍未配置 `/opt/business-analysis/deploy/.webhook_env`，部署脚本提示自动部署功能不可用；本次为 SSH 手工部署。
+
 ## 2026-06-30 目标弹窗与截止日期内联事件清理
 
 - 任务：继续提升前端可维护性，完成主页面和 `js` 目录可见 `onclick` / `onchange` 内联事件清理。
