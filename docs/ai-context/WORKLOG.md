@@ -1,5 +1,15 @@
 # 工作日志
 
+## 2026-07-01 荣誉体系修正同步 GitHub 与生产部署
+
+- 任务：将荣誉体系 2026 版方案修正同步到 GitHub，并部署到 `192.168.50.6` 生产服务器。
+- GitHub：本地 `master` 提交 `4196d43 fix: align honor rules with 2026 scheme`，已推送到 `origin/master`。
+- 部署：服务器从 GitHub 克隆时出现 `GnuTLS recv error (-110)`，改为使用本地 `git archive` 生成同一提交归档包并通过 SSH 上传到 `/tmp/business-analysis-4196d43.tar`，再在服务器临时目录执行 `deploy/deploy.sh`。
+- 数据保护：部署脚本已备份生产数据库到 `/opt/business-analysis-backups/business_data.db.20260701_185936`。
+- 生产验证：`business-analysis` 与 `nginx` 均为 `active`；首页和 `honor.html` HTTP 状态均为 `200`；`/api/health` 返回 `status=ok`、`latest_period=202607`、`table_count=36`。
+- 荣誉验证：生产文件已包含“累计获钻次数”和“团队会员人数”新标签；生产执行数据质量审计 `status=ok`、`issue_count=0`；按新逻辑重算 2026 年 6 月荣誉批次，生成 `batchId=82`、`personCount=614`、`orgCount=13`、`exceptionCount=599`、`status=success`。
+- 风险：服务器自动部署 webhook 仍未配置密钥，本次继续采用 SSH 手工部署；GitHub 克隆网络偶发失败时可继续使用归档包上传方式。
+
 ## 2026-07-01 荣誉体系按原方案修正
 
 - 任务：按《网电多元部工作通知书〔2026〕19号 “星钻联盟”荣誉方案（2026版）》原件，修正荣誉体系计算逻辑和展示口径。
