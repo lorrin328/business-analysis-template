@@ -1,5 +1,16 @@
 # 工作日志
 
+## 2026-07-01 7月1日数据导入展示异常修复
+
+- 任务：排查并修正用户导入截至 `2026-07-01` 清单后页面展示仍不正常的问题。
+- 原因：服务器日志显示 `2026-07-01 09:30` Web 导入在价值数据阶段失败；传入 `value` 字段的文件列结构为 `时间/当前缴别大类/缴费年限范围/产品名称/经代机构/期交保费`，实际是经代业务清单结构，不是价值基表结构。因 `allow_partial=false`，整批导入被取消，线上 `/api/health` 仍停留在 `latest_period=202606`。
+- 数据修复：将本地正确的 4 个 `20260701` 源文件复制到 `192.168.50.6:/opt/business-analysis/`，备份原库到 `/opt/business-analysis-backups/business_data.db.20260701_before_rebuild`，并执行 `backend/rebuild_from_excels.py` 重建数据库。
+- 重建结果：转型业绩 `56 monthly / 1353 daily / 313 org / 912 pay period / 5514 longterm`；经代 `55 monthly / 1643 daily / 1557 pay period / 10088 longterm`；人力 `90 / 518 org`；价值 `20 / 96 org`；覆盖年份 `[2022, 2023, 2024, 2025, 2026]`。
+- 线上验证：重启 `business-analysis` 后 `/api/health` 返回 `latest_period=202607`；`agg_performance`、`agg_jingdai`、`agg_value_data`、`agg_daily_performance`、`agg_jingdai_daily`、`agg_org_daily_performance`、`agg_payment_period` 均为 `latest=202607`；日表包含 `2026-07-01`。
+- 数据审计：服务器 `audit_data_quality.py --year 2026 --json` 返回 `status=ok`、`issue_count=0`。
+- 代码修复：`js/upload.js` 新增 `_readUploadError()`，前端在上传接口返回 `400` 时直接展示后端 `detail.errors` / `detail.message`，避免仅显示“服务器错误，请检查后端日志”。
+- 测试：`tests/test_frontend_static.py` 增加上传错误提示静态约束；本地 `pytest -q` 为 `265 passed, 1 warning`，`scripts/preflight.ps1` 为 `preflight ok`。
+
 ## 2026-06-30 GitHub 同步与 192.168.50.6 手工部署
 
 - 任务：将维护性重构成果同步到 GitHub，并部署到 `192.168.50.6` 生产服务器。

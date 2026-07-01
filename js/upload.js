@@ -89,6 +89,29 @@
     return !!(input && input.checked);
   }
 
+  async function _readUploadError(resp) {
+    try {
+      var body = await resp.json();
+      var detail = body && body.detail ? body.detail : body;
+      var messages = [];
+      if (detail && Array.isArray(detail.errors)) {
+        messages = messages.concat(detail.errors);
+      }
+      if (detail && detail.message) {
+        messages.push(detail.message);
+      }
+      if (typeof detail === 'string') {
+        messages.push(detail);
+      }
+      if (body && body.message && body.message !== (detail && detail.message)) {
+        messages.push(body.message);
+      }
+      return messages.filter(Boolean).join('; ');
+    } catch (e) {
+      return '';
+    }
+  }
+
   async function handleFile(input, infoId) {
     if (!input.files || !input.files[0]) return;
     var file = input.files[0];
@@ -124,23 +147,19 @@
 
       var resp = await fetchFn(uploadUrl, { method: 'POST', body: fd });
 
-      if (resp.status === 413) {
-        _setAllInfos('文件过大 (413)，请调整 nginx client_max_body_size 至 100m');
-        _resetAllCards();
-        return;
-      }
-      if (resp.status === 401 || resp.status === 403) {
-        _setAllInfos('认证或权限不足 (' + resp.status + ')，请登录有导入权限的账号');
-        _resetAllCards();
-        return;
-      }
-      if (resp.status === 500) {
-        _setAllInfos('服务器内部错误 (500)，请检查后端日志');
-        _resetAllCards();
-        return;
-      }
       if (!resp.ok) {
-        _setAllInfos('服务器错误 (' + resp.status + ')，请检查后端日志');
+        var serverError = await _readUploadError(resp);
+        if (resp.status === 413) {
+          _setAllInfos(serverError || '文件过大 (413)，请调整 nginx client_max_body_size 至 100m');
+        } else if (resp.status === 401 || resp.status === 403) {
+          _setAllInfos(serverError || ('认证或权限不足 (' + resp.status + ')，请登录有导入权限的账号'));
+        } else if (resp.status === 400) {
+          _setAllInfos('导入失败: ' + (serverError || '服务器拒绝本次导入，请检查文件类型、字段和后端日志'));
+        } else if (resp.status === 500) {
+          _setAllInfos(serverError || '服务器内部错误 (500)，请检查后端日志');
+        } else {
+          _setAllInfos(serverError || ('服务器错误 (' + resp.status + ')，请检查后端日志'));
+        }
         _resetAllCards();
         return;
       }
@@ -206,6 +225,7 @@
 
   window.handleFile = handleFile;
   window.bindUploadControls = bindUploadControls;
+  window._readUploadError = _readUploadError;
   window._setAllInfos = _setAllInfos;
   window._resetAllCards = _resetAllCards;
   window._pickUploadRefreshYear = _pickRefreshYear;

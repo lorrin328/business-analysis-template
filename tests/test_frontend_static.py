@@ -582,6 +582,12 @@ def test_upload_js_exposes_handle_file():
     assert "handleFile(input, input.dataset.uploadInfo)" in upload
     assert "window.handleFile = handleFile" in upload
     assert "window.bindUploadControls = bindUploadControls" in upload
+    assert "async function _readUploadError(resp)" in upload
+    assert "Array.isArray(detail.errors)" in upload
+    assert "导入失败: " in upload
+    assert "resp.status === 400" in upload
+    assert "服务器拒绝本次导入，请检查文件类型、字段和后端日志" in upload
+    assert "window._readUploadError = _readUploadError" in upload
     assert "try {" in upload
     assert "} catch" in upload
     assert "} finally" in upload
