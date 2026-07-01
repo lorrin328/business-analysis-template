@@ -441,7 +441,9 @@ def test_honor_page_is_separate_runtime():
     assert "function renderWarnings()" in honor_js
     assert "staff_name: '人员姓名'" in honor_js
     assert "manager_code: '主管/经理代码'" in honor_js
-    assert "star_manpower_count: '星钻人力数'" in honor_js
+    assert "star_manpower_count: '团队会员人数'" in honor_js
+    assert "qualified_months: '累计获钻次数'" in honor_js
+    assert 'id="honorMonth" type="number" min="1" max="12" value="6"' in honor_html
     assert "avg_diamond: '人均钻石'" in honor_js
     assert "return Number.isFinite(n) ? `${(n * 100).toFixed(1)}%`" in honor_js
 

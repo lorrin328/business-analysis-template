@@ -40,7 +40,7 @@
     diamond_balance: '当前钻石',
     total_gain: '累计获钻',
     total_deduct: '累计扣减',
-    qualified_months: '达标月份',
+    qualified_months: '累计获钻次数',
     is_new_star: '新星人力',
     warning_type: '预警类型',
     month: '月份',
@@ -50,7 +50,7 @@
     team_qj_premium: '团队期交(万)',
     team_standard_premium: '团队标保(万)',
     team_tracked_headcount: '团队人力',
-    star_manpower_count: '星钻人力数',
+    star_manpower_count: '团队会员人数',
     specialist_member_count: '专员级会员',
     manager_member_count: '管理职会员',
     team_diamond_balance: '团队钻石',
@@ -519,6 +519,8 @@
     const data = await api(`/api/honor/dashboard?${query}`);
     state.dashboard = data;
     currentBatchId = data.batch?.id || batchId || currentBatchId;
+    if (data.batch?.year) document.getElementById('honorYear').value = data.batch.year;
+    if (data.batch?.month) document.getElementById('honorMonth').value = data.batch.month;
     renderAll();
     setStatus(`已加载批次 ${currentBatchId}`, 'ok');
   }

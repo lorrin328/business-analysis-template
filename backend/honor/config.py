@@ -24,6 +24,21 @@ MONTHLY_RULES = {
     "证保": {"premium_threshold": 30_000, "longterm_count_threshold": 1},
 }
 
+TEAM_RULES = {
+    ("OTO", "主管"): {"premium_threshold": 100_000, "star_count_threshold": 4},
+    ("OTO", "经理"): {"premium_threshold": 320_000, "star_count_threshold": 12},
+    ("证保", "主管"): {"premium_threshold": 100_000, "star_count_threshold": 4},
+}
+
+PREMIUM_FACTORS = {
+    "short": 0.0,
+    "single": 0.1,
+    "2_4": 0.3,
+    "5_9": 0.5,
+    "ge_10": 1.0,
+    "unknown": 0.0,
+}
+
 SENIOR_PLUS_LEVELS = {"资深会员", "黄金会员", "白金会员", "钻石会员", "至尊会员", "金星会员", "恒星会员", "星钻会员", "星曜会员"}
 
 REWARD_RULES = [

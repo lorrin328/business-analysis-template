@@ -5,7 +5,7 @@ import json
 from collections import defaultdict
 from typing import Any
 
-from .rules import diamond_delta, is_new_star, membership_level, reward_for_level
+from .rules import diamond_delta, diamond_delta_units, is_new_star, membership_level, reward_for_level
 from .sources import load_policies, load_staff, metric_for_staff
 from .summary import build_org_summary, build_quarter_rewards
 
@@ -14,7 +14,7 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
     staff_rows, source_staff, current_staff = load_staff(year, month)
     for row in source_staff:
         row["batch_id"] = batch_id
-    policy_index, source_policy, policy_exceptions = load_policies(year, month, batch_id)
+    policy_index, source_policy, policy_exceptions = load_policies(year, month, batch_id, staff_rows=staff_rows)
 
     person_month: list[dict[str, Any]] = []
     person_summary: list[dict[str, Any]] = []
@@ -33,21 +33,22 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
             metric = metric_for_staff(policy_index, y, m, staff_code, business_line, staff.get("role_type"))
             premium = float(metric.get("premium") or 0)
             longterm_count = int(metric.get("policy_count") or 0)
-            qualified = bool(metric.get("qualified"))
+            earned_diamonds = int(metric.get("earned_diamonds") or (1 if metric.get("qualified") else 0))
+            qualified = earned_diamonds > 0
             protected = bool(metric.get("protected"))
             employed = bool(staff.get("is_employed_end_month"))
             previous_balance = int(balances[staff_code] or 0)
             balance_before_month[(staff_code, y, m)] = previous_balance
             if business_line not in {"OTO", "证保"}:
-                qualified, protected = False, False
+                qualified, protected, earned_diamonds = False, False, 0
                 flags = ["非星钻MVP计算业务线"]
             else:
                 flags = []
             if not employed:
                 flags.append("月末非在职，按离职清零")
-            delta, balance = diamond_delta(
+            delta, balance = diamond_delta_units(
                 previous_balance,
-                qualified=qualified,
+                earned_units=earned_diamonds,
                 protected_month=protected,
                 employed=employed,
             )
@@ -59,7 +60,13 @@ def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, li
             elif delta < 0:
                 totals[staff_code]["deduct"] += abs(delta)
             if qualified:
-                totals[staff_code]["qualified"] += 1
+                totals[staff_code]["qualified"] += earned_diamonds
+            if metric.get("personal_qualified"):
+                flags.append("个人星钻达标")
+            if metric.get("team_qualified"):
+                flags.append("团队星钻达标")
+            if metric.get("quarter_protected"):
+                flags.append("证保季度通算达标")
             row = {
                 "batch_id": batch_id,
                 "year": y,

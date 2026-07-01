@@ -1,6 +1,7 @@
 """Source-data loaders for honor alliance calculations."""
 from __future__ import annotations
 
+import calendar
 import json
 import os
 from collections import defaultdict
@@ -9,7 +10,7 @@ from typing import Any
 
 from db.connection import get_db
 
-from .config import MONTHLY_RULES
+from .config import MONTHLY_RULES, TEAM_RULES
 from .normalizers import (
     normalize_business_line,
     number_value,
@@ -20,16 +21,17 @@ from .normalizers import (
     text_value,
     ym_from_value,
 )
-from .rules import monthly_result
+from .rules import is_longterm_policy, monthly_result, premium_factor
 
 
-def _as_of_date() -> datetime:
+def _as_of_date(year: int, month: int) -> datetime:
     configured = os.getenv("HONOR_AS_OF_DATE")
     if configured:
         parsed = parse_date(configured)
         if parsed:
             return parsed
-    return datetime.now()
+    last_day = calendar.monthrange(int(year), int(month))[1]
+    return datetime(int(year), int(month), last_day) + timedelta(days=45)
 
 
 def load_staff(year: int, month: int) -> tuple[
@@ -50,8 +52,9 @@ def load_staff(year: int, month: int) -> tuple[
             """,
             (year,),
         ).fetchone()
-        status_month = int(latest["month"] if latest and latest["month"] else month)
-        load_until = max(int(month), status_month)
+        latest_month = int(latest["month"] if latest and latest["month"] else month)
+        status_month = min(int(month), latest_month)
+        load_until = int(month)
         rows = conn.execute(
             """
             SELECT "统计年", "统计月", "销售机构名称", "业务模式名称", "人员代码", "人员姓名",
@@ -101,34 +104,56 @@ def metric_for_staff(
     business_line: str,
     role_type: str | None,
 ) -> dict[str, Any]:
+    empty = {"premium": 0.0, "policy_count": 0, "qualified": False, "protected": False}
     personal = policy_index["personal"].get(
         (year, month, staff_code, business_line),
-        {"premium": 0.0, "policy_count": 0, "qualified": False, "protected": False},
+        empty,
     )
     if role_type == "主管":
         team = policy_index["supervisor"].get(
-            (year, month, staff_code),
-            {"premium": 0.0, "policy_count": 0, "qualified": False, "protected": False},
+            (year, month, staff_code, business_line),
+            empty,
         )
-        return team if team.get("qualified") else personal
-    if role_type == "经理":
+    elif role_type == "经理":
         team = policy_index["manager"].get(
-            (year, month, staff_code),
-            {"premium": 0.0, "policy_count": 0, "qualified": False, "protected": False},
+            (year, month, staff_code, business_line),
+            empty,
         )
-        return team if team.get("qualified") else personal
-    return personal
+    else:
+        team = empty
+    team_qualified = bool(team.get("qualified"))
+    personal_qualified = bool(personal.get("qualified"))
+    return {
+        "premium": float(personal.get("premium") or 0) + (float(team.get("premium") or 0) if team_qualified else 0),
+        "policy_count": int(personal.get("policy_count") or 0) + (int(team.get("policy_count") or 0) if team_qualified else 0),
+        "qualified": personal_qualified or team_qualified,
+        "protected": bool(personal.get("protected")) and not team_qualified,
+        "personal_qualified": personal_qualified,
+        "team_qualified": team_qualified,
+        "earned_diamonds": (1 if personal_qualified else 0) + (1 if team_qualified else 0),
+        "personal_premium": float(personal.get("premium") or 0),
+        "team_premium": float(team.get("premium") or 0),
+        "personal_policy_count": int(personal.get("policy_count") or 0),
+        "team_star_count": int(team.get("policy_count") or 0),
+        "quarter_protected": bool(personal.get("quarter_protected")),
+    }
 
 
-def load_policies(year: int, month: int, batch_id: int) -> tuple[dict[str, dict[Any, dict[str, Any]]], list[dict[str, Any]], list[dict[str, Any]]]:
+def load_policies(
+    year: int,
+    month: int,
+    batch_id: int,
+    *,
+    staff_rows: dict[tuple[int, int], dict[tuple[str, str], dict[str, Any]]] | None = None,
+) -> tuple[dict[str, dict[Any, dict[str, Any]]], list[dict[str, Any]], list[dict[str, Any]]]:
     personal_agg: dict[tuple[int, int, str, str], dict[str, float]] = defaultdict(lambda: {"premium": 0.0, "policy_count": 0.0})
-    supervisor_premium: dict[tuple[int, int, str], float] = defaultdict(float)
-    manager_premium: dict[tuple[int, int, str], float] = defaultdict(float)
+    supervisor_premium: dict[tuple[int, int, str, str], float] = defaultdict(float)
+    manager_premium: dict[tuple[int, int, str, str], float] = defaultdict(float)
     supervisor_by_person: dict[tuple[int, int, str, str], str] = {}
     manager_by_person: dict[tuple[int, int, str, str], str] = {}
     source_rows: list[dict[str, Any]] = []
     exceptions: list[dict[str, Any]] = []
-    as_of = _as_of_date()
+    as_of = _as_of_date(year, month)
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -153,10 +178,24 @@ def load_policies(year: int, month: int, batch_id: int) -> tuple[dict[str, dict[
         if business_line not in {"OTO", "证保"}:
             continue
         policy_no = text_value(row["投保单号"])
-        standard_premium = number_value(row["折算保费"])
+        source_standard_premium = number_value(row["折算保费"])
         qj_premium = number_value(row["期交保费"])
         annualized_premium = number_value(row["年化规保"])
-        policy_count = number_value(row["policy_count"]) or 1
+        raw_policy_count = int(number_value(row["policy_count"]) or 1)
+        payment_years = number_value(row["缴费年限"])
+        longterm = is_longterm_policy(row["长短险"], payment_years)
+        factor = premium_factor(payment_years, row["长短险"])
+        calculated_standard_premium = annualized_premium * factor if annualized_premium else 0.0
+        if calculated_standard_premium > 0:
+            standard_premium = calculated_standard_premium
+            premium_source = "calculated_by_payment_years"
+        elif not longterm:
+            standard_premium = 0.0
+            premium_source = "excluded_short_term"
+        else:
+            standard_premium = source_standard_premium
+            premium_source = "source_zs_premium" if source_standard_premium > 0 else "missing_or_zero"
+        policy_count = raw_policy_count if longterm else 0
         callback_dt = parse_date(row["回销时间"])
         valid_policy = True
         if standard_premium > 0 and issue_dt:
@@ -195,9 +234,9 @@ def load_policies(year: int, month: int, batch_id: int) -> tuple[dict[str, dict[
             supervisor_by_person[key] = supervisor_code
             manager_by_person[key] = manager_code
             if supervisor_code:
-                supervisor_premium[(int(y), int(m), supervisor_code)] += standard_premium
+                supervisor_premium[(int(y), int(m), supervisor_code, business_line)] += standard_premium
             if manager_code:
-                manager_premium[(int(y), int(m), manager_code)] += standard_premium
+                manager_premium[(int(y), int(m), manager_code, business_line)] += standard_premium
         source_rows.append(
             {
                 "batch_id": batch_id,
@@ -208,11 +247,11 @@ def load_policies(year: int, month: int, batch_id: int) -> tuple[dict[str, dict[
                 "staff_code": staff_code,
                 "policy_no": policy_no,
                 "is_longterm": int(policy_count) if valid_policy else 0,
-                "payment_years": number_value(row["缴费年限"]),
+                "payment_years": payment_years,
                 "standard_premium": round(counted_standard_premium, 2),
                 "annualized_premium": round(counted_annualized_premium, 2),
                 "qj_premium": round(counted_qj_premium, 2),
-                "premium_source": "source_zs_premium",
+                "premium_source": premium_source,
                 "issue_date": str(row["承保时间"] or ""),
                 "callback_date": str(row["回销时间"] or ""),
                 "account_date": str(row["入账时间"] or ""),
@@ -225,59 +264,100 @@ def load_policies(year: int, month: int, batch_id: int) -> tuple[dict[str, dict[
         y, m, staff_code, business_line = key
         premium = float(values["premium"] or 0)
         count = int(values["policy_count"] or 0)
-        quarter_protected = False
         qualified, protected = monthly_result(business_line, premium, count)
-        if business_line == "证保":
-            quarter = ((m - 1) // 3) + 1
-            months = list(range((quarter - 1) * 3 + 1, quarter * 3 + 1))
-            quarter_premium = sum(float(personal_agg.get((y, qm, staff_code, business_line), {}).get("premium") or 0) for qm in months)
-            every_month_has_policy = all(float(personal_agg.get((y, qm, staff_code, business_line), {}).get("policy_count") or 0) > 0 for qm in months)
-            quarter_protected = every_month_has_policy and quarter_premium >= float(MONTHLY_RULES["证保"]["premium_threshold"] * 3)
-            if quarter_protected:
-                qualified, protected = True, False
         personal_metrics[key] = {
             "premium": premium,
             "policy_count": count,
             "qualified": qualified,
             "protected": protected,
-            "quarter_protected": quarter_protected,
+            "quarter_protected": False,
         }
-        personal_qualified_by_key[key] = bool(qualified)
 
-    supervisor_star_count: dict[tuple[int, int, str], int] = defaultdict(int)
-    manager_star_count: dict[tuple[int, int, str], int] = defaultdict(int)
+    if staff_rows:
+        _apply_zhengbao_quarter_rollup(personal_metrics, staff_rows, month)
+
+    personal_qualified_by_key = {key: bool(metric.get("qualified")) for key, metric in personal_metrics.items()}
+
+    supervisor_star_count: dict[tuple[int, int, str, str], int] = defaultdict(int)
+    manager_star_count: dict[tuple[int, int, str, str], int] = defaultdict(int)
     for key, qualified in personal_qualified_by_key.items():
         if not qualified:
             continue
-        y, m, _person_code, _business_line = key
+        y, m, _person_code, business_line = key
         supervisor_code = supervisor_by_person.get(key)
         manager_code = manager_by_person.get(key)
         if supervisor_code:
-            supervisor_star_count[(y, m, supervisor_code)] += 1
+            supervisor_star_count[(y, m, supervisor_code, business_line)] += 1
         if manager_code:
-            manager_star_count[(y, m, manager_code)] += 1
+            manager_star_count[(y, m, manager_code, business_line)] += 1
 
-    supervisor_metrics: dict[tuple[int, int, str], dict[str, Any]] = {}
+    supervisor_metrics: dict[tuple[int, int, str, str], dict[str, Any]] = {}
     for key, premium in supervisor_premium.items():
         star_count = int(supervisor_star_count.get(key) or 0)
+        _y, _m, _code, business_line = key
+        rule = TEAM_RULES.get((business_line, "主管")) or {}
         supervisor_metrics[key] = {
             "premium": float(premium or 0),
             "policy_count": star_count,
-            "qualified": float(premium or 0) >= 100_000 and star_count >= 4,
+            "qualified": bool(rule) and float(premium or 0) >= float(rule.get("premium_threshold") or 0) and star_count >= int(rule.get("star_count_threshold") or 0),
             "protected": False,
         }
 
-    manager_metrics: dict[tuple[int, int, str], dict[str, Any]] = {}
+    manager_metrics: dict[tuple[int, int, str, str], dict[str, Any]] = {}
     for key, premium in manager_premium.items():
         star_count = int(manager_star_count.get(key) or 0)
+        _y, _m, _code, business_line = key
+        rule = TEAM_RULES.get((business_line, "经理")) or {}
         manager_metrics[key] = {
             "premium": float(premium or 0),
             "policy_count": star_count,
-            "qualified": float(premium or 0) >= 320_000 and star_count >= 12,
+            "qualified": bool(rule) and float(premium or 0) >= float(rule.get("premium_threshold") or 0) and star_count >= int(rule.get("star_count_threshold") or 0),
             "protected": False,
         }
 
     return {"personal": personal_metrics, "supervisor": supervisor_metrics, "manager": manager_metrics}, source_rows, exceptions
+
+
+def _apply_zhengbao_quarter_rollup(
+    personal_metrics: dict[tuple[int, int, str, str], dict[str, Any]],
+    staff_rows: dict[tuple[int, int], dict[tuple[str, str], dict[str, Any]]],
+    target_month: int,
+) -> None:
+    grouped: dict[tuple[int, int, str, str], list[int]] = {}
+    for (year, month), rows in staff_rows.items():
+        if int(month) > int(target_month):
+            continue
+        quarter = ((int(month) - 1) // 3) + 1
+        for (staff_code, business_line), staff in rows.items():
+            if business_line != "证保" or not int(staff.get("is_employed_end_month") or 0):
+                continue
+            grouped.setdefault((int(year), quarter, staff_code, business_line), []).append(int(month))
+
+    threshold = float(MONTHLY_RULES["证保"]["premium_threshold"])
+    for (year, quarter, staff_code, business_line), months in grouped.items():
+        quarter_end = quarter * 3
+        if int(target_month) < quarter_end:
+            continue
+        in_service_months = sorted(set(months))
+        if not in_service_months:
+            continue
+        metrics = [
+            personal_metrics.get((year, month, staff_code, business_line), {"premium": 0.0, "policy_count": 0})
+            for month in in_service_months
+        ]
+        if not all(int(metric.get("policy_count") or 0) > 0 for metric in metrics):
+            continue
+        quarter_premium = sum(float(metric.get("premium") or 0) for metric in metrics)
+        if quarter_premium / len(in_service_months) < threshold:
+            continue
+        for month in in_service_months:
+            metric = personal_metrics.setdefault(
+                (year, month, staff_code, business_line),
+                {"premium": 0.0, "policy_count": 0, "qualified": False, "protected": False},
+            )
+            metric["qualified"] = True
+            metric["protected"] = False
+            metric["quarter_protected"] = True
 
 
 def _exception(batch_id: int, severity: str, exception_type: str, org: str | None, staff_code: str | None, policy_no: str | None, message: str) -> dict[str, Any]:

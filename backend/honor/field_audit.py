@@ -139,7 +139,7 @@ def _aggregate_tables(conn, tables: set[str]) -> dict[str, list[str]]:
 
 def _fallback_for(required_field: str, level: str) -> str:
     if required_field == "折算保费":
-        return "可按缴费年限复算，但需标记 premium_source=recalculated_by_payment_years"
+        return "缺失时按年化规保和缴费年限折算系数复算，并标记 premium_source=calculated_by_payment_years"
     if required_field in {"承保时间", "入账时间"}:
         return "可按年月字段降级归属，并写入异常提示"
     if level == "optional":
