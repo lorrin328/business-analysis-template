@@ -50,6 +50,7 @@
 
 - 【已完成 2026-06-29】已通过 SSH 手工部署 `v1.0.97` 到 `192.168.50.6`，并同步 20260629 四份源 Excel 后重建数据库；线上 `/api/health` 返回 `app_version=v1.0.97`、`page_version=v1.0.97`、`latest_period=202606`。
 - 【已完成 2026-06-30】已通过 SSH 手工部署提交 `5688acf` 到 `192.168.50.6`；线上 `/api/health` 返回 `app_version=v1.0.98`、`page_version=v1.0.98`、`latest_period=202606`，数据质量审计 `issue_count=0`。
+- 【已完成 2026-07-02】已通过 SSH 手工部署提交 `8a60622` 到 `192.168.50.6`；线上 `/api/health` 返回 `app_version=v1.0.98`、`page_version=v1.0.98`、`latest_period=202607`，2026 年 6 月荣誉重算 `batchId=89` 与同事底稿一致。
 - 【高】修复服务器 `192.168.50.6` 的 `webhook-deploy` 服务：当前 `/opt/business-analysis/deploy/.webhook_env` 缺失，服务 inactive，`/webhook/deploy` 返回 `502 Bad Gateway`，GitHub push 不能触发自动部署。
 - 【高】2026-06-30 手工部署时再次确认 `/opt/business-analysis/deploy/.webhook_env` 未配置，部署脚本提示自动部署功能不可用；GitHub 已同步，但生产发布仍依赖 SSH 手工部署。
 - 【高】恢复 webhook 时必须同时处理服务器 `WEBHOOK_SECRET` 与 GitHub Webhook Secret 的一致性；不要只在服务器生成新密钥，否则 GitHub 签名会校验失败。

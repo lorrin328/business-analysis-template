@@ -1,5 +1,15 @@
 # 工作日志
 
+## 2026-07-02 荣誉体系同事底稿修正 GitHub 同步与生产部署
+
+- 任务：将按同事底稿修正后的荣誉体系计算逻辑同步到 GitHub，并部署到 `192.168.50.6` 生产服务器。
+- GitHub：本地 `master` 提交 `8a60622 fix: align honor calculation rules`，已推送到 `origin/master`。
+- 部署：`/webhook/deploy` 仍返回 `502 Bad Gateway`，本次继续采用 SSH 手工部署；使用本地 `git archive` 生成同一提交归档包上传到 `/tmp/business-analysis-8a60622.tar`，再在服务器临时目录执行 `deploy/deploy.sh`。
+- 数据保护：部署脚本已备份生产数据库到 `/opt/business-analysis-backups/business_data.db.20260702_131035`；部署过程中根据服务器现有 20260701 源 Excel 重建数据库，`/api/health` 最新期间为 `202607`。
+- 荣誉验证：生产执行 2026 年 6 月荣誉重算，生成 `batchId=89`、`personCount=702`、`orgCount=13`、`exceptionCount=170`；会员身份轨道 `59`，个人 `53`、主管 `5`、经理 `1`，OTO `50`、证保 `9`，等级为初级 `30`、中级 `29`，机构分布与同事底稿一致。
+- 服务验证：`business-analysis` 与 `nginx` 均为 `active`；`/api/health` 返回 `status=ok`、`app_version=v1.0.98`、`page_version=v1.0.98`、`latest_period=202607`；`/honor.html` 返回 `200` 且文件更新时间为本次部署时间。
+- 风险：服务器自动部署 webhook 仍缺少有效配置，GitHub push 不能自动发布，后续仍需修复 `.webhook_env` 与 GitHub Webhook Secret 的一致性。
+
 ## 2026-07-02 荣誉体系同事底稿基准二次复核与延伸补强
 
 - 任务：用户确认同事底稿正确后，继续以《“星钻联盟”荣誉方案追踪0630.xlsx》为基准复核系统逻辑，检查是否存在同类延伸错误。
