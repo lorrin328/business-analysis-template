@@ -1,5 +1,17 @@
 # 工作日志
 
+## 2026-07-02 v1.0.99 注册入口恢复与自动部署风险修复
+
+- 任务：按用户要求恢复注册功能，注册后默认为普通用户权限；修复上次遗留的自动部署 webhook 风险，并同步 GitHub、部署 `192.168.50.6`。
+- GitHub：本地 `master` 提交 `cbfddc9 feat: restore registration entry and preserve deploy env`，已推送到 `origin/master`。
+- 注册：`js/auth-ui.js` 将登录遮罩改为“登录页 -> 注册账号页”两步交互，注册页要求用户名、密码和确认密码；后端继续通过 `/api/auth/register` 创建 `normal` 普通用户组，管理类权限默认关闭。
+- 部署脚本：`deploy/deploy.sh` 新增保留 `deploy/.admin_env`、`deploy/.ai_env`、`deploy/.webhook_env`，避免 `rsync --delete` 删除生产运行时配置；webhook systemd service 改为每次部署刷新。
+- 生产配置：服务器 `/opt/business-analysis/deploy/.admin_env` 已显式开启 `AUTH_ALLOW_PUBLIC_REGISTRATION=1`；`/api/auth/config` 返回 `allowPublicRegistration=true`。
+- 自动部署：服务器 `/opt/business-analysis/deploy/.webhook_env` 已配置，`webhook-deploy` 服务为 `active`；GitHub webhook 已创建，hook id 为 `648507986`；本机带签名 ping `/webhook/deploy` 返回 `200 pong`，未签名 ping 返回 `403 invalid signature`，不再是 `502`。
+- 部署验证：生产 `/api/health` 返回 `status=ok`、`app_version=v1.0.99`、`page_version=v1.0.99`、`latest_period=202607`；首页和 `honor.html` 均为 `200`，首页加载 `auth-ui.js?v=1.0.99`，线上脚本包含“注册账号”、确认密码和“新注册账号默认为普通用户”。
+- 数据保护：部署脚本已备份生产数据库到 `/opt/business-analysis-backups/business_data.db.20260702_133041`；部署过程中继续使用服务器现有 20260701 源 Excel 重建数据库。
+- 风险：GitHub webhook 目标 URL 当前仍为内网地址 `192.168.50.6`。服务器端 webhook 已修复，但若由 github.com 云端直接触发，仍需公网可达地址、VPN/隧道或自托管网络中转。
+
 ## 2026-07-02 荣誉体系同事底稿修正 GitHub 同步与生产部署
 
 - 任务：将按同事底稿修正后的荣誉体系计算逻辑同步到 GitHub，并部署到 `192.168.50.6` 生产服务器。
