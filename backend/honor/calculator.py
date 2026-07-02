@@ -10,11 +10,23 @@ from .sources import load_policies, load_staff, metric_for_staff
 from .summary import build_org_summary, build_quarter_rewards
 
 
-def calculate_personal_mvp(batch_id: int, year: int, month: int) -> dict[str, list[dict[str, Any]]]:
+def calculate_personal_mvp(
+    batch_id: int,
+    year: int,
+    month: int,
+    *,
+    source_cutoff: str | None = None,
+) -> dict[str, list[dict[str, Any]]]:
     staff_rows, source_staff, current_staff = load_staff(year, month)
     for row in source_staff:
         row["batch_id"] = batch_id
-    policy_index, source_policy, policy_exceptions = load_policies(year, month, batch_id, staff_rows=staff_rows)
+    policy_index, source_policy, policy_exceptions = load_policies(
+        year,
+        month,
+        batch_id,
+        staff_rows=staff_rows,
+        source_cutoff=source_cutoff,
+    )
 
     person_month: list[dict[str, Any]] = []
     person_summary: list[dict[str, Any]] = []

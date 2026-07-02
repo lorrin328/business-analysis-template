@@ -48,10 +48,12 @@ def build_honor_dashboard_payload(
     qj_index = _policy_qj_index(source_policy)
     specialist_history = _specialist_history(person_month, qj_index)
     manager_history = _manager_history(source_staff, person_month, qj_index)
+    tracking = _build_tracking(summary, person_summary, person_month, org_rows, source_policy)
 
     return {
         "batch": summary.get("batch"),
         "overview": summary.get("overview") or {},
+        "tracking": tracking,
         "orgs": _rank_rows(org_rows, "member_rate", "total_diamond"),
         "projects": _rank_rows(project_rows, "member_rate", "total_diamond"),
         "projectOrgs": project_org_rows,
@@ -149,6 +151,235 @@ def _project_org_rows(org_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return _rank_rows(rows, "member_rate", "total_diamond")
+
+
+def _build_tracking(
+    summary: dict[str, Any],
+    summaries: list[dict[str, Any]],
+    months: list[dict[str, Any]],
+    org_rows: list[dict[str, Any]],
+    source_policy: list[dict[str, Any]],
+) -> dict[str, Any]:
+    batch = summary.get("batch") or {}
+    current_month = int(batch.get("month") or max((int(row.get("month") or 0) for row in months), default=0))
+    current_rows = [
+        row
+        for row in months
+        if int(row.get("month") or 0) == current_month
+        and int(row.get("is_employed_end_month") or 0) > 0
+    ]
+    current_members = [row for row in current_rows if row.get("membership_level") != "未入会"]
+    previous_index = {
+        _track_key(row): row
+        for row in months
+        if int(row.get("month") or 0) == current_month - 1
+    }
+    summary_index = {_track_key(row): row for row in summaries}
+    display_policy_count = _tracking_policy_count_index(source_policy, current_month)
+
+    org_members = _tracking_org_members(current_members, org_rows)
+    member_rows = [
+        _tracking_member_row(
+            row,
+            previous_index.get(_track_key(row)),
+            summary_index.get(_track_key(row)),
+            display_policy_count.get(_track_key(row)),
+        )
+        for row in current_members
+    ]
+    new_members = [row for row in member_rows if _level_rank(row.get("previous_level")) == 0]
+    promotions = [
+        row
+        for row in member_rows
+        if _level_rank(row.get("previous_level")) > 0
+        and _level_rank(row.get("membership_level")) > _level_rank(row.get("previous_level"))
+    ]
+    top_source = [row for row in member_rows if row.get("role_type") == "个人"] or member_rows
+    top_contributors = sorted(
+        top_source,
+        key=lambda row: (
+            -float(row.get("standard_premium") or 0),
+            -int(row.get("longterm_policy_count") or 0),
+            str(row.get("org") or ""),
+            str(row.get("staff_name") or ""),
+        ),
+    )[:3]
+
+    personal_count = sum(1 for row in current_members if row.get("role_type") == "个人")
+    supervisor_count = sum(1 for row in current_members if row.get("role_type") == "主管")
+    manager_count = sum(1 for row in current_members if row.get("role_type") == "经理")
+
+    return {
+        "periodLabel": f"{int(batch.get('year') or 0)}年{current_month}月" if current_month else "",
+        "sourceCutoff": batch.get("source_cutoff") or "",
+        "trackingMode": "过程追踪" if batch.get("source_cutoff") else "月底最终",
+        "overview": {
+            "total_members": len(current_members),
+            "oto_members": sum(1 for row in current_members if row.get("business_line") == "OTO"),
+            "zhengbao_members": sum(1 for row in current_members if row.get("business_line") == "证保"),
+            "personal_members": personal_count,
+            "supervisor_members": supervisor_count,
+            "manager_members": manager_count,
+            "management_members": supervisor_count + manager_count,
+            "new_member_count": len(new_members),
+            "promotion_count": len(promotions),
+        },
+        "orgMembers": _rank_rows(org_members, "member_count", "personal_member_count"),
+        "newMembers": _rank_tracking_rows(new_members),
+        "topContributors": _rank_tracking_rows(top_contributors),
+        "promotions": _rank_tracking_rows(promotions),
+        "memberRoster": _rank_tracking_rows(
+            sorted(
+                member_rows,
+                key=lambda row: (
+                    str(row.get("org") or ""),
+                    _role_rank(row.get("role_type")),
+                    str(row.get("business_line") or ""),
+                    -int(row.get("diamond_balance") or 0),
+                    str(row.get("staff_name") or ""),
+                ),
+            )
+        ),
+    }
+
+
+def _tracking_org_members(
+    current_members: list[dict[str, Any]],
+    org_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in org_rows:
+        org = str(row.get("org") or "未归属")
+        item = grouped.setdefault(
+            org,
+            {
+                "org": org,
+                "tracked_headcount": 0,
+                "member_count": 0,
+                "personal_member_count": 0,
+                "supervisor_member_count": 0,
+                "manager_member_count": 0,
+            },
+        )
+        item["tracked_headcount"] += int(row.get("tracked_headcount") or 0)
+    for row in current_members:
+        org = str(row.get("org") or "未归属")
+        item = grouped.setdefault(
+            org,
+            {
+                "org": org,
+                "tracked_headcount": 0,
+                "member_count": 0,
+                "personal_member_count": 0,
+                "supervisor_member_count": 0,
+                "manager_member_count": 0,
+            },
+        )
+        item["member_count"] += 1
+        if row.get("role_type") == "主管":
+            item["supervisor_member_count"] += 1
+        elif row.get("role_type") == "经理":
+            item["manager_member_count"] += 1
+        else:
+            item["personal_member_count"] += 1
+    return list(grouped.values())
+
+
+def _tracking_member_row(
+    row: dict[str, Any],
+    previous: dict[str, Any] | None,
+    summary: dict[str, Any] | None,
+    tracking_policy_count: int | None,
+) -> dict[str, Any]:
+    return {
+        "org": row.get("org"),
+        "business_line": row.get("business_line"),
+        "role_type": row.get("role_type"),
+        "staff_code": row.get("staff_code"),
+        "staff_name": row.get("staff_name"),
+        "membership_level": row.get("membership_level"),
+        "previous_level": (previous or {}).get("membership_level") or "未入会",
+        "diamond_balance": int(row.get("diamond_balance") or 0),
+        "diamond_delta": int(row.get("diamond_delta") or 0),
+        "standard_premium": round(float(row.get("standard_premium") or 0), 2),
+        "longterm_policy_count": int(row.get("longterm_policy_count") or 0),
+        "tracking_policy_count": int(tracking_policy_count if tracking_policy_count is not None else row.get("longterm_policy_count") or 0),
+        "monthly_qualified": int(row.get("monthly_qualified") or 0),
+        "total_gain": int((summary or {}).get("total_gain") or 0),
+        "total_deduct": int((summary or {}).get("total_deduct") or 0),
+        "qualified_months": int((summary or {}).get("qualified_months") or 0),
+    }
+
+
+def _track_key(row: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(row.get("staff_code") or ""),
+        str(row.get("business_line") or ""),
+        str(row.get("role_type") or ""),
+    )
+
+
+def _tracking_policy_count_index(
+    source_policy: list[dict[str, Any]],
+    current_month: int,
+) -> dict[tuple[str, str, str], int]:
+    grouped: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    row_seq = 0
+    for row in source_policy:
+        if int(row.get("month") or 0) != int(current_month or 0):
+            continue
+        if not _is_tracking_countable_policy(row):
+            continue
+        staff_code = str(row.get("staff_code") or "")
+        business_line = str(row.get("business_line") or "")
+        policy_no = str(row.get("policy_no") or "").strip()
+        if not policy_no:
+            row_seq += 1
+            policy_no = f"__row_{row_seq}"
+        key = (staff_code, business_line, "个人", policy_no)
+        item = grouped.setdefault(key, {"count": 0, "premium": 0.0})
+        item["count"] += int(row.get("is_longterm") or 0)
+        item["premium"] += float(row.get("standard_premium") or 0)
+    result: dict[tuple[str, str, str], int] = {}
+    for (staff_code, business_line, role_type, _policy_no), item in grouped.items():
+        if int(item.get("count") or 0) <= 0 or float(item.get("premium") or 0) <= 0:
+            continue
+        track_key = (staff_code, business_line, role_type)
+        result[track_key] = result.get(track_key, 0) + 1
+    return result
+
+
+def _is_tracking_countable_policy(row: dict[str, Any]) -> bool:
+    if int(row.get("is_longterm") or 0) == 0:
+        return False
+    raw = _load_json_dict(row.get("raw_payload"))
+    term = str(raw.get("长短险") or raw.get("长短险标识") or "").strip()
+    if "短" in term:
+        return False
+    if "一年期" in term and "一年期以上" not in term:
+        return False
+    return True
+
+
+def _load_json_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _role_rank(role_type: Any) -> int:
+    order = {"个人": 0, "主管": 1, "经理": 2}
+    return order.get(str(role_type or ""), 9)
+
+
+def _rank_tracking_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{"rank": idx + 1, **row} for idx, row in enumerate(rows)]
 
 
 def _org_member_structure(

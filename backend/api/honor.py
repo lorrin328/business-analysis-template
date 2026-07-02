@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from io import BytesIO
 from urllib.parse import quote
 
@@ -16,8 +17,26 @@ from services.response import batch_meta, success_response
 router = APIRouter(prefix="/api/honor", tags=["honor"])
 
 
-def _batch_or_404(batch_id: int | None = None, year: int | None = None, month: int | None = None) -> dict:
-    batch = {"id": batch_id} if batch_id else latest_batch(year=year, month=month)
+def _normalize_source_cutoff(value: str | None, *, year: int | None = None, month: int | None = None) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.strptime(text[:10], "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="过程截至日格式应为 YYYY-MM-DD") from exc
+    if year and month and parsed < date(int(year), int(month), 1):
+        raise HTTPException(status_code=400, detail="过程截至日不能早于所选月份首日")
+    return parsed.isoformat()
+
+
+def _batch_or_404(
+    batch_id: int | None = None,
+    year: int | None = None,
+    month: int | None = None,
+    source_cutoff: str | None = None,
+) -> dict:
+    batch = {"id": batch_id} if batch_id else latest_batch(year=year, month=month, source_cutoff=source_cutoff)
     if batch_id:
         batch = latest_batch()
         if not batch or int(batch["id"]) != int(batch_id):
@@ -58,7 +77,8 @@ def field_audit(_user=Depends(require_permission("honor_audit"))):
 def recalculate(payload: dict = Body(...), _user=Depends(require_permission("honor_recalculate"))):
     year = int(payload.get("year") or DEFAULT_YEAR)
     month = int(payload.get("month") or 12)
-    result = recalculate_honor(year, month, user=_user)
+    source_cutoff = _normalize_source_cutoff(payload.get("asOf") or payload.get("sourceCutoff"), year=year, month=month)
+    result = recalculate_honor(year, month, source_cutoff=source_cutoff, user=_user)
     log_operation(
         "honor_recalculate",
         user=_user,
@@ -72,14 +92,16 @@ def summary(
     year: int = Query(DEFAULT_YEAR),
     month: int | None = None,
     batch_id: int | None = Query(None, alias="batchId"),
+    as_of: str | None = Query(None, alias="asOf"),
     _user=Depends(require_permission("honor_view")),
 ):
-    batch = _batch_or_404(batch_id, year, month)
+    source_cutoff = _normalize_source_cutoff(as_of, year=year, month=month) if as_of else None
+    batch = _batch_or_404(batch_id, year, month, source_cutoff)
     data = fetch_summary(int(batch["id"]))
     log_operation(
         "honor_view_batch",
         user=_user,
-        detail={"year": data.get("batch", {}).get("year"), "month": data.get("batch", {}).get("month"), "batchId": batch["id"], "ruleVersion": data.get("batch", {}).get("rule_version"), "dataSourceMode": data.get("batch", {}).get("data_source_mode"), "userOrgScope": "all"},
+        detail={"year": data.get("batch", {}).get("year"), "month": data.get("batch", {}).get("month"), "batchId": batch["id"], "ruleVersion": data.get("batch", {}).get("rule_version"), "dataSourceMode": data.get("batch", {}).get("data_source_mode"), "sourceCutoff": data.get("batch", {}).get("source_cutoff"), "userOrgScope": "all"},
     )
     return success_response(
         data,
@@ -87,6 +109,7 @@ def summary(
             batch_id=batch["id"],
             rule_version=RULE_VERSION,
             data_source_mode=DATA_SOURCE_MODE,
+            sourceCutoff=data.get("batch", {}).get("source_cutoff"),
         ),
     )
 
@@ -96,9 +119,11 @@ def dashboard(
     year: int = Query(DEFAULT_YEAR),
     month: int | None = None,
     batch_id: int | None = Query(None, alias="batchId"),
+    as_of: str | None = Query(None, alias="asOf"),
     _user=Depends(require_permission("honor_view")),
 ):
-    batch = _batch_or_404(batch_id, year, month)
+    source_cutoff = _normalize_source_cutoff(as_of, year=year, month=month) if as_of else None
+    batch = _batch_or_404(batch_id, year, month, source_cutoff)
     data = fetch_dashboard(int(batch["id"]))
     log_operation(
         "honor_dashboard_view",
@@ -109,6 +134,7 @@ def dashboard(
             "batchId": batch["id"],
             "ruleVersion": data.get("batch", {}).get("rule_version"),
             "dataSourceMode": data.get("batch", {}).get("data_source_mode"),
+            "sourceCutoff": data.get("batch", {}).get("source_cutoff"),
             "userOrgScope": "all",
         },
     )
@@ -118,6 +144,7 @@ def dashboard(
             batch_id=batch["id"],
             rule_version=RULE_VERSION,
             data_source_mode=DATA_SOURCE_MODE,
+            sourceCutoff=data.get("batch", {}).get("source_cutoff"),
         ),
     )
 

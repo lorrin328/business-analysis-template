@@ -113,6 +113,35 @@ def test_honor_calculator_uses_issue_date_before_account_month(tmp_path, monkeyp
     assert "P_ISSUE_JUNE_ACCOUNT_MAY" not in may_sources
 
 
+def test_honor_calculator_applies_source_cutoff_for_process_tracking(tmp_path, monkeypatch):
+    db_path = tmp_path / "honor_calc_process_cutoff.db"
+    _setup_source_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO hr_data VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (2026, 7, "福建", "OTO", "1001", "张三", "客户经理", "", 2025, 1, 1, "G1", "D1"),
+    )
+    policy_rows = [
+        ("2026-07-01", "福建", "OTO", "1001", "P_BEFORE", "2026-07-10 00:00:00", "2026-07-11 00:00:00", "", "一年期以上", 10, 20000, 20000, 20000, "A", "截至日前"),
+        ("2026-07-01", "福建", "OTO", "1001", "P_AFTER", "2026-07-20 00:00:00", "2026-07-21 00:00:00", "", "一年期以上", 10, 30000, 30000, 30000, "A", "截至日后"),
+    ]
+    conn.executemany("INSERT INTO performance VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", policy_rows)
+    conn.commit()
+    conn.close()
+    _patch_db(monkeypatch, db_path)
+
+    from honor.calculator import calculate_personal_mvp
+
+    result = calculate_personal_mvp(batch_id=1, year=2026, month=7, source_cutoff="2026-07-15")
+    month = next(row for row in result["person_month"] if row["staff_code"] == "00001001")
+    source_policies = {row["policy_no"] for row in result["source_policy"]}
+
+    assert month["standard_premium"] == 20000
+    assert month["longterm_policy_count"] == 1
+    assert month["monthly_qualified"] == 1
+    assert source_policies == {"P_BEFORE"}
+
+
 def test_honor_calculator_excludes_short_term_policy_from_qualification(tmp_path, monkeypatch):
     db_path = tmp_path / "honor_calc_short_term.db"
     _setup_source_tables(db_path)

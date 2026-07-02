@@ -4,6 +4,7 @@
     dashboard: null,
     audit: null,
     filters: {
+      tracking: { keyword: '', org: 'all', businessLine: 'all', roleType: 'all' },
       orgs: { keyword: '', businessLine: 'all' },
       projects: { businessLine: 'all' },
       specialists: { keyword: '', org: 'all', businessLine: 'all' },
@@ -30,6 +31,17 @@
     data_note: '数据说明',
     tracked_headcount: '追踪人力',
     member_count: '会员人数',
+    total_members: '会员数',
+    oto_members: 'OTO会员',
+    zhengbao_members: '证保会员',
+    personal_members: '个人会员',
+    supervisor_members: '主管会员',
+    manager_members: '经理会员',
+    management_members: '管理职会员',
+    new_member_count: '新晋人数',
+    promotion_count: '晋升人数',
+    personal_member_count: '个人会员',
+    supervisor_member_count: '主管会员',
     member_rate: '会员率',
     avg_diamond: '人均钻石',
     monthly_gain_count: '本月获钻',
@@ -56,6 +68,8 @@
     team_diamond_balance: '团队钻石',
     manager_diamond_balance: '管理职钻石',
     longterm_policy_count: '长险件数',
+    tracking_policy_count: '当月件数',
+    monthly_qualified: '当月达标',
     previous_level: '上月等级',
     current_level: '本月等级',
     standard_premium_gap: '标保差额(万)',
@@ -78,6 +92,10 @@
     'specialist_member_count', 'manager_member_count', 'team_diamond_balance',
     'manager_diamond_balance', 'longterm_policy_count', 'standard_premium_gap',
     'count', 'gain_count', 'deduct_count', 'qualified_count',
+    'total_members', 'oto_members', 'zhengbao_members', 'personal_members',
+    'supervisor_members', 'manager_members', 'management_members',
+    'new_member_count', 'promotion_count', 'personal_member_count',
+    'supervisor_member_count', 'monthly_qualified', 'tracking_policy_count',
   ]);
 
   const PERCENT_COLUMNS = new Set(['member_rate', 'share', 'qualified_rate']);
@@ -199,14 +217,14 @@
     renderTable(targetId, rows.slice(0, 8), columns, emptyText);
   }
 
-  function renderBarList(targetId, rows, labelKey, valueKey, valueFormatter = numberText) {
+  function renderBarList(targetId, rows, labelKey, valueKey, valueFormatter = numberText, limit = 8) {
     const target = document.getElementById(targetId);
     const max = Math.max(...rows.map(row => Number(row[valueKey] || 0)), 0);
     if (!rows.length || max <= 0) {
       target.innerHTML = '<div class="empty">暂无数据</div>';
       return;
     }
-    target.innerHTML = rows.slice(0, 8).map(row => {
+    target.innerHTML = rows.slice(0, limit).map(row => {
       const pct = Math.max(3, Number(row[valueKey] || 0) / max * 100);
       return `
         <div class="bar-row">
@@ -233,6 +251,101 @@
 
   function bindFilter(id, event, callback) {
     document.getElementById(id)?.addEventListener(event, callback);
+  }
+
+  function renderTracking() {
+    const data = state.dashboard || {};
+    const tracking = data.tracking || {};
+    const overview = tracking.overview || {};
+    const orgMembers = tracking.orgMembers || [];
+    const newMembers = tracking.newMembers || [];
+    const promotions = tracking.promotions || [];
+    const roster = tracking.memberRoster || [];
+    const f = state.filters.tracking;
+    const filteredRoster = roster.filter(row => (
+      matchesKeyword(row, f.keyword, ['staff_code', 'staff_name', 'org'])
+      && (f.org === 'all' || row.org === f.org)
+      && (f.businessLine === 'all' || row.business_line === f.businessLine)
+      && (f.roleType === 'all' || row.role_type === f.roleType)
+    ));
+    const sourceNote = tracking.sourceCutoff ? `过程截至 ${tracking.sourceCutoff}` : '月底最终口径';
+    document.getElementById('tracking').innerHTML = `
+      <div class="panel-head">
+        <div><h2>星钻联盟荣誉追踪</h2><p>${escapeHtml(tracking.periodLabel || '-')} · ${escapeHtml(sourceNote)}</p></div>
+      </div>
+      <section class="tracking-hero">
+        <div class="tracking-total">
+          <span>“星钻联盟”会员数</span>
+          <strong>${numberText(overview.total_members)}</strong>
+          <em>${escapeHtml(tracking.trackingMode || '月底最终')}</em>
+        </div>
+        <div class="tracking-metrics">
+          <div><span>OTO</span><strong>${numberText(overview.oto_members)}</strong><em>人</em></div>
+          <div><span>证保</span><strong>${numberText(overview.zhengbao_members)}</strong><em>人</em></div>
+          <div><span>个人</span><strong>${numberText(overview.personal_members)}</strong><em>人</em></div>
+          <div><span>主管</span><strong>${numberText(overview.supervisor_members)}</strong><em>人</em></div>
+          <div><span>经理</span><strong>${numberText(overview.manager_members)}</strong><em>人</em></div>
+          <div><span>管理职</span><strong>${numberText(overview.management_members)}</strong><em>人</em></div>
+        </div>
+      </section>
+      <div class="dashboard-grid">
+        <section class="panel-block">
+          <h2>机构会员追踪</h2>
+          <div id="trackingOrgBars"></div>
+        </section>
+        <section class="panel-block">
+          <h2>当月贡献TOP3会员</h2>
+          <div id="trackingTopContributors"></div>
+        </section>
+        <section class="panel-block wide">
+          <h2>当月新晋入围会员</h2>
+          <div id="trackingNewMembers"></div>
+        </section>
+        <section class="panel-block wide">
+          <h2>当月晋升会员</h2>
+          <div id="trackingPromotions"></div>
+        </section>
+        <section class="panel-block wide">
+          <h2>当月“星钻联盟”会员</h2>
+          <div class="filter-bar">
+            ${searchControl('trackingKeyword', '人员', f.keyword, '姓名/代码/机构')}
+            ${selectControl('trackingOrg', '机构', f.org, optionValues(roster, 'org'))}
+            ${selectControl('trackingBusinessLine', '项目', f.businessLine, optionValues(roster, 'business_line'))}
+            ${selectControl('trackingRoleType', '轨道', f.roleType, optionValues(roster, 'role_type'))}
+          </div>
+          <div id="trackingRoster"></div>
+        </section>
+      </div>`;
+    renderBarList('trackingOrgBars', orgMembers, 'org', 'member_count', numberText, 12);
+    renderTopContributors('trackingTopContributors', tracking.topContributors || []);
+    renderTable('trackingNewMembers', newMembers, ['rank', 'org', 'staff_name', 'business_line', 'role_type', 'membership_level', 'diamond_balance', 'standard_premium', 'tracking_policy_count'], '暂无当月新晋入围会员');
+    renderTable('trackingPromotions', promotions, ['rank', 'org', 'staff_name', 'business_line', 'role_type', 'previous_level', 'membership_level', 'diamond_balance', 'diamond_delta'], '暂无当月晋升会员');
+    renderTable('trackingRoster', filteredRoster, ['rank', 'staff_code', 'staff_name', 'org', 'business_line', 'role_type', 'membership_level', 'diamond_balance', 'standard_premium', 'tracking_policy_count', 'qualified_months']);
+    bindFilter('trackingKeyword', 'input', () => { state.filters.tracking.keyword = document.getElementById('trackingKeyword').value; renderTracking(); });
+    bindFilter('trackingOrg', 'change', () => { state.filters.tracking.org = document.getElementById('trackingOrg').value; renderTracking(); });
+    bindFilter('trackingBusinessLine', 'change', () => { state.filters.tracking.businessLine = document.getElementById('trackingBusinessLine').value; renderTracking(); });
+    bindFilter('trackingRoleType', 'change', () => { state.filters.tracking.roleType = document.getElementById('trackingRoleType').value; renderTracking(); });
+  }
+
+  function renderTopContributors(targetId, rows) {
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    if (!rows.length) {
+      target.innerHTML = '<div class="empty">暂无数据</div>';
+      return;
+    }
+    target.innerHTML = `<div class="top-contributors">${rows.map(row => `
+      <article class="top-person">
+        <div class="avatar-mark">${escapeHtml(String(row.staff_name || '-').slice(-2))}</div>
+        <div class="top-person-main">
+          <div class="top-person-name">${escapeHtml(row.org || '')} ${escapeHtml(row.staff_name || '-')}</div>
+          <div class="top-person-stats">
+            <span><strong>${numberText(row.tracking_policy_count ?? row.longterm_policy_count)}</strong>件</span>
+            <span><strong>${numberText(Number(row.standard_premium || 0) / 10000, 0)}</strong>万</span>
+          </div>
+        </div>
+      </article>
+    `).join('')}</div>`;
   }
 
   function renderOverview() {
@@ -505,6 +618,7 @@
   function renderAll() {
     const data = state.dashboard || {};
     renderMetricCards(data.overview || {});
+    renderTracking();
     renderOverview();
     renderOrgs();
     renderProjects();
@@ -515,14 +629,19 @@
   }
 
   async function loadDashboard(batchId) {
-    const query = batchId ? `batchId=${encodeURIComponent(batchId)}` : `year=${document.getElementById('honorYear').value}&month=${document.getElementById('honorMonth').value}`;
+    const asOf = document.getElementById('honorAsOf')?.value || '';
+    const query = batchId
+      ? `batchId=${encodeURIComponent(batchId)}`
+      : `year=${document.getElementById('honorYear').value}&month=${document.getElementById('honorMonth').value}${asOf ? `&asOf=${encodeURIComponent(asOf)}` : ''}`;
     const data = await api(`/api/honor/dashboard?${query}`);
     state.dashboard = data;
     currentBatchId = data.batch?.id || batchId || currentBatchId;
     if (data.batch?.year) document.getElementById('honorYear').value = data.batch.year;
     if (data.batch?.month) document.getElementById('honorMonth').value = data.batch.month;
+    if (data.batch?.source_cutoff) document.getElementById('honorAsOf').value = data.batch.source_cutoff;
     renderAll();
-    setStatus(`已加载批次 ${currentBatchId}`, 'ok');
+    const cutoff = data.batch?.source_cutoff ? `，过程截至 ${data.batch.source_cutoff}` : '';
+    setStatus(`已加载批次 ${currentBatchId}${cutoff}`, 'ok');
   }
 
   async function loadLatestOrAudit() {
@@ -544,11 +663,12 @@
   async function recalculate() {
     const year = Number(document.getElementById('honorYear').value || 2026);
     const month = Number(document.getElementById('honorMonth').value || 12);
+    const asOf = document.getElementById('honorAsOf')?.value || '';
     setStatus('星钻重算中...');
     const result = await api('/api/honor/recalculate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ year, month, scope: 'all', force: true }),
+      body: JSON.stringify({ year, month, asOf, scope: 'all', force: true }),
     });
     await loadDashboard(result.batchId);
     setStatus(`重算完成，批次 ${result.batchId}，人员 ${result.personCount}，异常 ${result.exceptionCount}`, 'ok');

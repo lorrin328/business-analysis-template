@@ -124,6 +124,47 @@ def test_honor_summary_prefers_latest_calculation_batch_over_audit_only_batch(au
     assert latest_batch(2026, 5)["id"] == result_batch
 
 
+def test_honor_latest_batch_can_match_source_cutoff(auth_db):
+    from honor.repository import create_batch, latest_batch, replace_calculation_results
+
+    final_batch = create_batch(year=2026, month=5, rule_version="2026-v1", created_by="pytest")
+    cutoff_batch = create_batch(
+        year=2026,
+        month=5,
+        rule_version="2026-v1",
+        source_cutoff="2026-05-15",
+        created_by="pytest",
+    )
+    for batch_id in (final_batch, cutoff_batch):
+        replace_calculation_results(
+            batch_id,
+            {
+                "org_summary": [],
+                "person_summary": [
+                    {
+                        "batch_id": batch_id,
+                        "year": 2026,
+                        "latest_month": 5,
+                        "org": "上海",
+                        "business_line": "OTO",
+                        "staff_code": "1001",
+                        "staff_name": "张三",
+                        "membership_level": "初级会员",
+                    }
+                ],
+                "person_month": [],
+                "quarter_rewards": [],
+                "exceptions": [],
+                "source_staff_month": [],
+                "source_policy": [],
+            },
+            0,
+        )
+
+    assert latest_batch(2026, 5, source_cutoff="2026-05-15")["id"] == cutoff_batch
+    assert latest_batch(2026, 5, source_cutoff=None)["id"] == cutoff_batch
+
+
 def test_honor_dashboard_returns_tracking_sections(auth_db):
     from honor.repository import create_batch, replace_calculation_results
 
@@ -292,6 +333,9 @@ def test_honor_dashboard_returns_tracking_sections(auth_db):
     assert data["orgs"][0]["org"] == "上海"
     assert data["projects"][0]["dimension"] == "OTO"
     assert data["projectOrgs"][0]["org"] == "上海"
+    assert data["tracking"]["overview"]["total_members"] == 1
+    assert data["tracking"]["orgMembers"][0]["member_count"] == 1
+    assert data["tracking"]["newMembers"][0]["staff_name"] == "张三"
     assert data["orgMemberStructure"][0]["member_count"] == 1
     assert data["orgMemberStructure"][0]["specialist_member_count"] == 1
     assert data["orgMemberStructure"][0]["manager_member_count"] == 0

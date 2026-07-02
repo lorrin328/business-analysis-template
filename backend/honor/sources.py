@@ -24,14 +24,26 @@ from .normalizers import (
 from .rules import is_longterm_policy, monthly_result, premium_factor
 
 
-def _as_of_date(year: int, month: int) -> datetime:
+def _as_of_date(year: int, month: int, source_cutoff: str | None = None) -> datetime:
+    if source_cutoff:
+        parsed = parse_date(source_cutoff)
+        if parsed:
+            return _end_of_day(parsed)
     configured = os.getenv("HONOR_AS_OF_DATE")
     if configured:
         parsed = parse_date(configured)
         if parsed:
-            return parsed
+            return _end_of_day(parsed)
     last_day = calendar.monthrange(int(year), int(month))[1]
     return datetime(int(year), int(month), last_day) + timedelta(days=45)
+
+
+def _end_of_day(value: datetime) -> datetime:
+    return value.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+
+def _month_end(year: int, month: int) -> datetime:
+    return datetime(int(year), int(month), calendar.monthrange(int(year), int(month))[1], 23, 59, 59)
 
 
 def load_staff(year: int, month: int) -> tuple[
@@ -145,6 +157,7 @@ def load_policies(
     batch_id: int,
     *,
     staff_rows: dict[tuple[int, int], dict[tuple[str, str], dict[str, Any]]] | None = None,
+    source_cutoff: str | None = None,
 ) -> tuple[dict[str, dict[Any, dict[str, Any]]], list[dict[str, Any]], list[dict[str, Any]]]:
     personal_agg: dict[tuple[int, int, str, str], dict[str, float]] = defaultdict(lambda: {"premium": 0.0, "policy_count": 0.0})
     supervisor_premium: dict[tuple[int, int, str, str], float] = defaultdict(float)
@@ -153,7 +166,8 @@ def load_policies(
     manager_by_person: dict[tuple[int, int, str, str], str] = {}
     source_rows: list[dict[str, Any]] = []
     exceptions: list[dict[str, Any]] = []
-    as_of = _as_of_date(year, month)
+    as_of = _as_of_date(year, month, source_cutoff)
+    source_cutoff_dt = _as_of_date(year, month, source_cutoff) if source_cutoff else None
     counted_positive_policy_refs: dict[tuple[str, str, str], dict[str, str]] = {}
     with get_db() as conn:
         rows = conn.execute(
@@ -181,6 +195,25 @@ def load_policies(
         if business_line not in {"OTO", "证保"}:
             continue
         policy_no = text_value(row["投保单号"])
+        row_date = issue_dt or account_dt
+        if source_cutoff_dt:
+            if row_date and row_date > source_cutoff_dt:
+                continue
+            if not row_date:
+                fallback_month_end = _month_end(int(y), int(m))
+                if fallback_month_end > source_cutoff_dt:
+                    exceptions.append(
+                        _exception(
+                            batch_id,
+                            "info",
+                            "process_cutoff_date_missing",
+                            text_value(row["销售机构名称"]),
+                            staff_code,
+                            policy_no,
+                            "过程追踪按截至日计算，该业绩缺承保/入账日期且无法判断是否已发生，暂未纳入。",
+                        )
+                    )
+                    continue
         source_standard_premium = number_value(row["折算保费"])
         qj_premium = number_value(row["期交保费"])
         annualized_premium = number_value(row["年化规保"])

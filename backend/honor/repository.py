@@ -43,7 +43,12 @@ def create_batch(
         return int(cur.lastrowid)
 
 
-def latest_batch(year: int | None = None, month: int | None = None) -> dict | None:
+def latest_batch(
+    year: int | None = None,
+    month: int | None = None,
+    *,
+    source_cutoff: str | None = None,
+) -> dict | None:
     params: list[Any] = []
     where: list[str] = []
     if year is not None:
@@ -52,6 +57,9 @@ def latest_batch(year: int | None = None, month: int | None = None) -> dict | No
     if month is not None:
         where.append("month = ?")
         params.append(month)
+    if source_cutoff is not None:
+        where.append("source_cutoff = ?")
+        params.append(source_cutoff)
     sql = """
         SELECT b.*
         FROM honor_import_batches b

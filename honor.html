@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>星钻联盟荣誉体系</title>
-  <script src="/js/api-client.js?v=1.0.99"></script>
+  <script src="/js/api-client.js?v=1.0.100"></script>
   <style>
     :root {
       color-scheme: dark;
@@ -67,6 +67,7 @@
     }
     .toolbar label { color: var(--muted); display: flex; align-items: center; gap: 6px; }
     .toolbar input { width: 92px; }
+    .toolbar input[type="date"] { width: 150px; }
     .status-pill {
       color: var(--muted);
       border: 1px solid var(--line);
@@ -169,6 +170,65 @@
     }
     .conclusion-list span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
     .conclusion-list strong { color: #dceaff; font-size: 17px; }
+    .tracking-hero {
+      display: grid;
+      grid-template-columns: minmax(220px, .42fr) minmax(0, 1fr);
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .tracking-total,
+    .tracking-metrics div,
+    .top-person {
+      background: rgba(13,24,41,.72);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .tracking-total span,
+    .tracking-total em,
+    .tracking-metrics span,
+    .tracking-metrics em {
+      color: var(--muted);
+      font-style: normal;
+    }
+    .tracking-total strong {
+      display: block;
+      color: var(--gold);
+      font-size: 52px;
+      line-height: 1;
+      margin: 12px 0 8px;
+    }
+    .tracking-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .tracking-metrics strong {
+      display: inline-block;
+      color: #dceaff;
+      font-size: 26px;
+      margin: 4px 5px 0 0;
+    }
+    .top-contributors { display: grid; gap: 10px; }
+    .top-person {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .avatar-mark {
+      flex: 0 0 44px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, rgba(79,140,255,.92), rgba(37,194,133,.88));
+      color: white;
+      font-weight: 700;
+    }
+    .top-person-name { color: #dceaff; font-weight: 700; margin-bottom: 8px; }
+    .top-person-stats { display: flex; gap: 16px; color: var(--muted); }
+    .top-person-stats strong { color: var(--gold); font-size: 22px; margin-right: 3px; }
     .filter-bar {
       display: flex;
       flex-wrap: wrap;
@@ -215,7 +275,8 @@
       .toolbar label, .filter-bar label { width: 100%; }
       .filter-bar input, .filter-bar select { min-width: 0; }
       .metric-value { font-size: 22px; }
-      .dashboard-grid, .split-layout { grid-template-columns: 1fr; }
+      .dashboard-grid, .split-layout, .tracking-hero { grid-template-columns: 1fr; }
+      .tracking-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .panel-block.wide { grid-column: auto; }
       .panel-head { display: block; }
       .bar-row { grid-template-columns: 90px 1fr 64px; }
@@ -224,13 +285,14 @@
 </head>
 <body>
   <header>
-    <div><span class="page-title">星钻联盟荣誉体系</span><span class="version">v1.0.99</span></div>
+    <div><span class="page-title">星钻联盟荣誉体系</span><span class="version">v1.0.100</span></div>
     <div><a href="/">返回经营看板</a></div>
   </header>
   <main>
     <div class="toolbar">
       <label>年份 <input id="honorYear" type="number" min="2020" max="2100" value="2026"></label>
       <label>月份 <input id="honorMonth" type="number" min="1" max="12" value="6"></label>
+      <label>过程截至 <input id="honorAsOf" type="date"></label>
       <button id="auditBtn" data-permission="honor_audit">数据适配检查</button>
       <button id="recalcBtn" class="primary" data-permission="honor_recalculate">重新计算</button>
       <button id="exportBtn" data-permission="honor_export">导出Excel</button>
@@ -246,7 +308,8 @@
     <section class="cards" id="honorCards"></section>
 
     <nav class="tabs">
-      <div class="tab active" data-tab="overview">总览驾驶舱</div>
+      <div class="tab active" data-tab="tracking">荣誉追踪</div>
+      <div class="tab" data-tab="overview">总览驾驶舱</div>
       <div class="tab" data-tab="orgs">机构追踪</div>
       <div class="tab" data-tab="projects">项目分析</div>
       <div class="tab" data-tab="specialists">专员级</div>
@@ -256,7 +319,8 @@
       <div class="tab" data-tab="audit">数据审计</div>
     </nav>
 
-    <section id="overview" class="panel active"><div class="empty">正在加载数据适配结果...</div></section>
+    <section id="tracking" class="panel active"><div class="empty">正在加载荣誉追踪结果...</div></section>
+    <section id="overview" class="panel"><div class="empty">正在加载数据适配结果...</div></section>
     <section id="orgs" class="panel"></section>
     <section id="projects" class="panel"></section>
     <section id="specialists" class="panel"></section>
@@ -265,6 +329,6 @@
     <section id="persons" class="panel"></section>
     <section id="audit" class="panel"></section>
   </main>
-  <script src="/js/honor.js?v=1.0.99"></script>
+  <script src="/js/honor.js?v=1.0.100"></script>
 </body>
 </html>

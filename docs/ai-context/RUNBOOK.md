@@ -99,6 +99,30 @@ curl http://127.0.0.1:45679/api/health
 - `/opt/business-analysis/deploy/.admin_env`、`.ai_env`、`.webhook_env` 属于服务器运行时配置，部署脚本会保留这些文件；不得提交到 Git。
 - 自动部署 webhook 需要 `/opt/business-analysis/deploy/.webhook_env` 中的 `WEBHOOK_SECRET` 与 GitHub Webhook Secret 一致，并确认 `webhook-deploy` 服务为 `active`。
 
+## 荣誉体系过程追踪
+
+### 月底最终版
+
+1. 打开 `/honor.html`。
+2. 选择年份和月份。
+3. “过程截至”保持为空。
+4. 点击“重新计算”。
+5. 在“荣誉追踪”页签核对会员总览、机构排行、TOP3、新晋、晋升和会员清单。
+
+### 月中过程版
+
+1. 打开 `/honor.html`。
+2. 选择年份和月份。
+3. 在“过程截至”填写日期，例如 `2026-07-15`。
+4. 点击“重新计算”。
+5. 页面状态会显示“过程截至 YYYY-MM-DD”，该批次写入 `honor_import_batches.source_cutoff`。
+
+### 注意事项
+
+- 过程截至日不能早于所选月份首日；可以晚于月末，用于导入次月初清单后核对上月最终结果。
+- 有承保/入账日期的保单按日期截断；同月缺承保/入账日期且无法判断是否已发生的记录会进入异常提示，不强行计入过程结果。
+- 同一月份可以保留多个过程截至日批次；如需读取某个过程版本，可请求 `/api/honor/dashboard?year=2026&month=7&asOf=2026-07-15`。
+
 ## 数据与日志
 
 - Docker SQLite 数据库：`business-analysis-data` volume，对应容器内 `/data/business_data.db`。

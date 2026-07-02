@@ -37,7 +37,13 @@ def run_field_audit(*, user: dict | None = None, persist: bool = True) -> dict[s
     return audit
 
 
-def recalculate_honor(year: int, month: int, *, user: dict | None = None) -> dict[str, Any]:
+def recalculate_honor(
+    year: int,
+    month: int,
+    *,
+    source_cutoff: str | None = None,
+    user: dict | None = None,
+) -> dict[str, Any]:
     audit = audit_fields()
     source_tables = {
         table: {
@@ -51,12 +57,13 @@ def recalculate_honor(year: int, month: int, *, user: dict | None = None) -> dic
         year=year,
         month=month,
         rule_version=RULE_VERSION,
+        source_cutoff=source_cutoff,
         data_source_mode=DATA_SOURCE_MODE,
         source_tables=source_tables,
         created_by=(user or {}).get("username") or "system",
     )
     save_field_audit(batch_id, audit)
-    payload = calculate_personal_mvp(batch_id, year, month)
+    payload = calculate_personal_mvp(batch_id, year, month, source_cutoff=source_cutoff)
     replace_calculation_results(batch_id, payload, len(payload.get("exceptions", [])))
     return {
         "batchId": batch_id,
@@ -64,8 +71,8 @@ def recalculate_honor(year: int, month: int, *, user: dict | None = None) -> dic
         "month": month,
         "ruleVersion": RULE_VERSION,
         "dataSourceMode": DATA_SOURCE_MODE,
+        "sourceCutoff": source_cutoff,
         "exceptionCount": len(payload.get("exceptions", [])),
         "personCount": len(payload.get("person_summary", [])),
         "orgCount": len(payload.get("org_summary", [])),
     }
-
