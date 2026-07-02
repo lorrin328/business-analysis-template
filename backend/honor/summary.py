@@ -15,7 +15,10 @@ def build_org_summary(
     months: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     current_month = [row for row in months if row["year"] == year and row["month"] == month]
-    current_index = {(row["staff_code"], row["business_line"]): row for row in current_month}
+    current_index = {
+        (row["staff_code"], row["business_line"], row.get("role_type")): row
+        for row in current_month
+    }
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
     for row in summaries:
         key = (row.get("org") or "未归属", row.get("business_line") or "")
@@ -38,7 +41,7 @@ def build_org_summary(
                 "estimated_reward": 0,
             },
         )
-        current = current_index.get((row["staff_code"], row["business_line"]))
+        current = current_index.get((row["staff_code"], row["business_line"], row.get("role_type")))
         current_employed = bool(current and int(current.get("is_employed_end_month") or 0) > 0)
         item["tracked_headcount"] += 1 if current_employed else 0
         item["member_count"] += 1 if current_employed and row["membership_level"] != "未入会" else 0

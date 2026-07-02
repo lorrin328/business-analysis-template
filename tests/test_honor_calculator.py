@@ -140,6 +140,113 @@ def test_honor_calculator_excludes_short_term_policy_from_qualification(tmp_path
     assert month["diamond_balance"] == 0
 
 
+def test_honor_calculator_nets_negative_reversal_before_qualification(tmp_path, monkeypatch):
+    db_path = tmp_path / "honor_calc_reversal.db"
+    _setup_source_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute('ALTER TABLE performance ADD COLUMN "承保件数" INTEGER')
+    conn.execute(
+        "INSERT INTO hr_data VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (2026, 1, "上海", "OTO", "1001", "张三", "客户经理", "", 2025, 1, 1, "G1", "D1"),
+    )
+    rows = [
+        ("2026-01-01", "上海", "OTO", "1001", "P_REV", "2026-01-05 00:00:00", "2026-01-06 00:00:00", "", "一年期以上", 5, 30000, 60000, 60000, "A", "产品A", 1),
+        ("2026-01-01", "上海", "OTO", "1001", "P_REV", "2026-01-10 00:00:00", "2026-01-06 00:00:00", "", "一年期以上", 5, -15000, -30000, -30000, "A", "产品A", -1),
+    ]
+    conn.executemany(
+        """
+        INSERT INTO performance (
+            "年月", "销售机构名称", "业务模式", "人员工号", "投保单号", "承保时间",
+            "回销时间", "入账时间", "长短险", "缴费年限", "折算保费", "年化规保",
+            "期交保费", "产品代码", "产品名称", "承保件数"
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        rows,
+    )
+    conn.commit()
+    conn.close()
+    _patch_db(monkeypatch, db_path)
+
+    from honor.calculator import calculate_personal_mvp
+
+    result = calculate_personal_mvp(batch_id=1, year=2026, month=1)
+    month = next(row for row in result["person_month"] if row["staff_code"] == "00001001")
+    source_rows = [row for row in result["source_policy"] if row["policy_no"] == "P_REV"]
+
+    assert month["standard_premium"] == 15000
+    assert month["longterm_policy_count"] == 0
+    assert month["monthly_qualified"] == 0
+    assert month["diamond_balance"] == 0
+    assert sorted(row["standard_premium"] for row in source_rows) == [-15000, 30000]
+    assert sorted(row["is_longterm"] for row in source_rows) == [-1, 1]
+    assert not any(row["exception_type"] == "negative_premium" for row in result["exceptions"])
+
+
+def test_honor_calculator_nets_reversal_when_counted_positive_uses_account_date(tmp_path, monkeypatch):
+    db_path = tmp_path / "honor_calc_reversal_no_issue_date.db"
+    _setup_source_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO hr_data VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (2026, 1, "上海", "OTO", "1001", "张三", "客户经理", "", 2025, 1, 1, "G1", "D1"),
+    )
+    rows = [
+        ("2026-01-01", "上海", "OTO", "1001", "P_NO_ISSUE", "", "2026-01-06 00:00:00", "2026-01-05 00:00:00", "一年期以上", 10, 20000, 20000, 20000, "A", "产品A"),
+        ("2026-01-01", "上海", "OTO", "1001", "P_NO_ISSUE", "", "2026-01-06 00:00:00", "2026-01-10 00:00:00", "一年期以上", 10, -20000, -20000, -20000, "A", "产品A"),
+    ]
+    conn.executemany("INSERT INTO performance VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+    _patch_db(monkeypatch, db_path)
+
+    from honor.calculator import calculate_personal_mvp
+
+    result = calculate_personal_mvp(batch_id=1, year=2026, month=1)
+    month = next(row for row in result["person_month"] if row["staff_code"] == "00001001")
+    source_rows = [row for row in result["source_policy"] if row["policy_no"] == "P_NO_ISSUE"]
+
+    assert month["standard_premium"] == 0
+    assert month["longterm_policy_count"] == 0
+    assert month["monthly_qualified"] == 0
+    assert sorted(row["standard_premium"] for row in source_rows) == [-20000, 20000]
+    assert sorted(row["is_longterm"] for row in source_rows) == [-1, 1]
+
+
+def test_honor_calculator_preserves_explicit_zero_policy_count(tmp_path, monkeypatch):
+    db_path = tmp_path / "honor_calc_zero_count.db"
+    _setup_source_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute('ALTER TABLE performance ADD COLUMN "承保件数" INTEGER')
+    conn.execute(
+        "INSERT INTO hr_data VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (2026, 1, "上海", "OTO", "1001", "张三", "客户经理", "", 2025, 1, 1, "G1", "D1"),
+    )
+    conn.execute(
+        """
+        INSERT INTO performance (
+            "年月", "销售机构名称", "业务模式", "人员工号", "投保单号", "承保时间",
+            "回销时间", "入账时间", "长短险", "缴费年限", "折算保费", "年化规保",
+            "期交保费", "产品代码", "产品名称", "承保件数"
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        ("2026-01-01", "上海", "OTO", "1001", "P_ZERO_COUNT", "2026-01-05 00:00:00", "2026-01-06 00:00:00", "", "一年期以上", 10, 50000, 50000, 50000, "A", "产品A", 0),
+    )
+    conn.commit()
+    conn.close()
+    _patch_db(monkeypatch, db_path)
+
+    from honor.calculator import calculate_personal_mvp
+
+    result = calculate_personal_mvp(batch_id=1, year=2026, month=1)
+    month = next(row for row in result["person_month"] if row["staff_code"] == "00001001")
+    source = next(row for row in result["source_policy"] if row["policy_no"] == "P_ZERO_COUNT")
+
+    assert month["standard_premium"] == 50000
+    assert month["longterm_policy_count"] == 0
+    assert month["monthly_qualified"] == 0
+    assert source["is_longterm"] == 0
+
+
 def test_honor_calculator_keeps_diamond_balance_when_business_line_changes(tmp_path, monkeypatch):
     db_path = tmp_path / "honor_calc_business_switch.db"
     _setup_source_tables(db_path)
@@ -173,8 +280,44 @@ def test_honor_calculator_keeps_diamond_balance_when_business_line_changes(tmp_p
     assert [row["diamond_balance"] for row in months] == [1, 2, 3]
 
 
-def test_honor_calculator_applies_zhengbao_quarter_average_by_in_service_months(tmp_path, monkeypatch):
+def test_honor_calculator_applies_zhengbao_rollup_by_full_calendar_quarter(tmp_path, monkeypatch):
     db_path = tmp_path / "honor_calc_zhengbao_quarter.db"
+    _setup_source_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    staff_rows = [
+        (2026, 1, "山东", "证券", "1001", "成妤", "创新专员", "", 2025, 1, 1, "G1", "D1"),
+        (2026, 2, "山东", "证券", "1001", "成妤", "创新专员", "", 2025, 1, 1, "G1", "D1"),
+        (2026, 3, "山东", "证券", "1001", "成妤", "创新专员", "", 2025, 1, 1, "G1", "D1"),
+    ]
+    conn.executemany("INSERT INTO hr_data VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", staff_rows)
+    policy_rows = [
+        ("2026-01-01", "山东", "证券", "1001", "P1", "2026-01-05 00:00:00", "2026-01-06 00:00:00", "", "一年期以上", 10, 20000, 20000, 20000, "A", "产品A"),
+        ("2026-02-01", "山东", "证券", "1001", "P2", "2026-02-05 00:00:00", "2026-02-06 00:00:00", "", "一年期以上", 10, 40000, 40000, 40000, "A", "产品A"),
+        ("2026-03-01", "山东", "证券", "1001", "P3", "2026-03-05 00:00:00", "2026-03-06 00:00:00", "", "一年期以上", 10, 30000, 30000, 30000, "A", "产品A"),
+    ]
+    conn.executemany("INSERT INTO performance VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", policy_rows)
+    conn.commit()
+    conn.close()
+    _patch_db(monkeypatch, db_path)
+
+    from honor.calculator import calculate_personal_mvp
+
+    result = calculate_personal_mvp(batch_id=1, year=2026, month=3)
+    months = [row for row in result["person_month"] if row["staff_code"] == "00001001"]
+    summary = next(row for row in result["person_summary"] if row["staff_code"] == "00001001")
+
+    assert [(row["month"], row["monthly_qualified"], row["diamond_delta"], row["diamond_balance"]) for row in months] == [
+        (1, 1, 1, 1),
+        (2, 1, 1, 2),
+        (3, 1, 1, 3),
+    ]
+    assert "证保季度通算达标" in months[0]["exception_flags"]
+    assert summary["diamond_balance"] == 3
+    assert summary["qualified_months"] == 3
+
+
+def test_honor_calculator_requires_full_calendar_quarter_for_zhengbao_rollup(tmp_path, monkeypatch):
+    db_path = tmp_path / "honor_calc_zhengbao_two_month_quarter.db"
     _setup_source_tables(db_path)
     conn = sqlite3.connect(db_path)
     staff_rows = [
@@ -198,12 +341,12 @@ def test_honor_calculator_applies_zhengbao_quarter_average_by_in_service_months(
     summary = next(row for row in result["person_summary"] if row["staff_code"] == "00001001")
 
     assert [(row["month"], row["monthly_qualified"], row["diamond_delta"], row["diamond_balance"]) for row in months] == [
-        (1, 1, 1, 1),
-        (2, 1, 1, 2),
+        (1, 0, 0, 0),
+        (2, 1, 1, 1),
     ]
-    assert "证保季度通算达标" in months[0]["exception_flags"]
-    assert summary["diamond_balance"] == 2
-    assert summary["qualified_months"] == 2
+    assert all("证保季度通算达标" not in row["exception_flags"] for row in months)
+    assert summary["diamond_balance"] == 1
+    assert summary["qualified_months"] == 1
 
 
 def test_honor_calculator_counts_zhengbao_quarter_rollup_in_team_star_count(tmp_path, monkeypatch):
@@ -215,17 +358,19 @@ def test_honor_calculator_counts_zhengbao_quarter_rollup_in_team_star_count(tmp_
     staff_rows = [
         (2026, 1, "山东", "证券", "9001", "主管", "创新主管", "", 2025, 1, 1, "G1", "D1"),
         (2026, 2, "山东", "证券", "9001", "主管", "创新主管", "", 2025, 1, 1, "G1", "D1"),
+        (2026, 3, "山东", "证券", "9001", "主管", "创新主管", "", 2025, 1, 1, "G1", "D1"),
     ]
     for code in ["9101", "9102", "9103", "9104"]:
         staff_rows.extend(
             [
                 (2026, 1, "山东", "证券", code, f"专员{code[-1]}", "创新专员", "", 2025, 1, 1, "G1", "D1"),
                 (2026, 2, "山东", "证券", code, f"专员{code[-1]}", "创新专员", "", 2025, 1, 1, "G1", "D1"),
+                (2026, 3, "山东", "证券", code, f"专员{code[-1]}", "创新专员", "", 2025, 1, 1, "G1", "D1"),
             ]
         )
     conn.executemany("INSERT INTO hr_data VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", staff_rows)
     for code in ["9101", "9102", "9103", "9104"]:
-        for month, premium in [(1, 20_000), (2, 40_000)]:
+        for month, premium in [(1, 20_000), (2, 40_000), (3, 30_000)]:
             conn.execute(
                 """
                 INSERT INTO performance (
@@ -243,13 +388,78 @@ def test_honor_calculator_counts_zhengbao_quarter_rollup_in_team_star_count(tmp_
     from honor.calculator import calculate_personal_mvp
 
     result = calculate_personal_mvp(batch_id=1, year=2026, month=3)
-    supervisor_months = [row for row in result["person_month"] if row["staff_code"] == "00009001"]
+    supervisor_months = [row for row in result["person_month"] if row["staff_code"] == "00009001" and row["role_type"] == "主管"]
 
     assert [(row["month"], row["standard_premium"], row["longterm_policy_count"], row["monthly_qualified"], row["diamond_delta"]) for row in supervisor_months] == [
-        (1, 0, 0, 0, 0),
+        (1, 80000, 4, 0, 0),
         (2, 160000, 4, 1, 1),
+        (3, 120000, 4, 1, 1),
     ]
     assert "团队星钻达标" in supervisor_months[1]["exception_flags"]
+
+
+def test_honor_calculator_keeps_personal_and_supervisor_tracks_separate(tmp_path, monkeypatch):
+    db_path = tmp_path / "honor_calc_supervisor_separate_tracks.db"
+    _setup_source_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    staff_rows = [
+        (2026, 1, "湖北", "OTO", "9001", "主管", "创新主管", "", 2025, 1, 1, "G1", "D1"),
+        (2026, 2, "湖北", "OTO", "9001", "主管", "创新主管", "", 2025, 1, 1, "G1", "D1"),
+        (2026, 3, "湖北", "OTO", "9001", "主管", "创新主管", "", 2025, 1, 1, "G1", "D1"),
+    ]
+    conn.executemany("INSERT INTO hr_data VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", staff_rows)
+    policy_rows = [
+        ("2026-01-01", "湖北", "OTO", "9001", "P1", "2026-01-05 00:00:00", "2026-01-06 00:00:00", "", "一年期以上", 10, 20000, 20000, 20000, "A", "个人件"),
+        ("2026-02-01", "湖北", "OTO", "9001", "P2", "2026-02-05 00:00:00", "2026-02-06 00:00:00", "", "一年期以上", 10, 20000, 20000, 20000, "A", "个人件"),
+        ("2026-03-01", "湖北", "OTO", "9001", "P3", "2026-03-05 00:00:00", "2026-03-06 00:00:00", "", "一年期以上", 10, 20000, 20000, 20000, "A", "个人件"),
+    ]
+    conn.executemany("INSERT INTO performance VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", policy_rows)
+    conn.commit()
+    conn.close()
+    _patch_db(monkeypatch, db_path)
+
+    from honor.calculator import calculate_personal_mvp
+
+    result = calculate_personal_mvp(batch_id=1, year=2026, month=3)
+    personal = next(row for row in result["person_summary"] if row["staff_code"] == "00009001" and row["role_type"] == "个人")
+    supervisor = next(row for row in result["person_summary"] if row["staff_code"] == "00009001" and row["role_type"] == "主管")
+
+    assert personal["diamond_balance"] == 3
+    assert personal["membership_level"] == "初级会员"
+    assert supervisor["diamond_balance"] == 0
+    assert supervisor["membership_level"] == "未入会"
+
+
+def test_honor_calculator_requires_every_in_service_month_policy_for_zhengbao_rollup(tmp_path, monkeypatch):
+    db_path = tmp_path / "honor_calc_zhengbao_quarter_missing_month.db"
+    _setup_source_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    staff_rows = [
+        (2026, 1, "山东", "证券", "1001", "成妤", "创新专员", "", 2025, 1, 1, "G1", "D1"),
+        (2026, 2, "山东", "证券", "1001", "成妤", "创新专员", "", 2025, 1, 1, "G1", "D1"),
+        (2026, 3, "山东", "证券", "1001", "成妤", "创新专员", "", 2025, 1, 1, "G1", "D1"),
+    ]
+    conn.executemany("INSERT INTO hr_data VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", staff_rows)
+    policy_rows = [
+        ("2026-01-01", "山东", "证券", "1001", "P1", "2026-01-05 00:00:00", "2026-01-06 00:00:00", "", "一年期以上", 10, 45000, 45000, 45000, "A", "产品A"),
+        ("2026-03-01", "山东", "证券", "1001", "P3", "2026-03-05 00:00:00", "2026-03-06 00:00:00", "", "一年期以上", 10, 45000, 45000, 45000, "A", "产品A"),
+    ]
+    conn.executemany("INSERT INTO performance VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", policy_rows)
+    conn.commit()
+    conn.close()
+    _patch_db(monkeypatch, db_path)
+
+    from honor.calculator import calculate_personal_mvp
+
+    result = calculate_personal_mvp(batch_id=1, year=2026, month=3)
+    months = [row for row in result["person_month"] if row["staff_code"] == "00001001"]
+
+    assert [(row["month"], row["monthly_qualified"], row["diamond_delta"], row["diamond_balance"]) for row in months] == [
+        (1, 1, 1, 1),
+        (2, 0, -1, 0),
+        (3, 1, 1, 1),
+    ]
+    assert all("证保季度通算达标" not in row["exception_flags"] for row in months)
 
 
 def test_honor_calculator_uses_45_day_callback_and_latest_staff_status(tmp_path, monkeypatch):
@@ -337,11 +547,121 @@ def test_honor_calculator_uses_excel_team_logic_for_supervisor(tmp_path, monkeyp
     from honor.calculator import calculate_personal_mvp
 
     result = calculate_personal_mvp(batch_id=1, year=2026, month=1)
-    supervisor = next(row for row in result["person_month"] if row["staff_code"] == "00009001")
+    supervisor = next(row for row in result["person_month"] if row["staff_code"] == "00009001" and row["role_type"] == "主管")
+    personal = next(row for row in result["person_month"] if row["staff_code"] == "00009001" and row["role_type"] == "个人")
 
     assert supervisor["role_type"] == "主管"
-    assert supervisor["standard_premium"] == 120000
-    assert supervisor["longterm_policy_count"] == 5
+    assert supervisor["standard_premium"] == 100000
+    assert supervisor["longterm_policy_count"] == 4
     assert supervisor["monthly_qualified"] == 1
-    assert supervisor["diamond_delta"] == 2
-    assert supervisor["diamond_balance"] == 2
+    assert supervisor["diamond_delta"] == 1
+    assert supervisor["diamond_balance"] == 1
+    assert personal["standard_premium"] == 20000
+    assert personal["longterm_policy_count"] == 1
+    assert personal["monthly_qualified"] == 1
+    assert personal["diamond_delta"] == 1
+    assert personal["diamond_balance"] == 1
+
+
+def test_honor_calculator_nets_reversal_before_team_qualification(tmp_path, monkeypatch):
+    db_path = tmp_path / "honor_calc_team_reversal.db"
+    _setup_source_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute('ALTER TABLE performance ADD COLUMN "主管工号" TEXT')
+    conn.execute('ALTER TABLE performance ADD COLUMN "经理工号" TEXT')
+    conn.execute('ALTER TABLE performance ADD COLUMN "承保件数" INTEGER')
+    staff_rows = [(2026, 1, "四川", "OTO", "9001", "主管", "创新主管", "", 2025, 1, 1, "G1", "D1")]
+    staff_rows.extend(
+        (2026, 1, "四川", "OTO", code, f"专员{code[-1]}", "创新专员", "", 2025, 1, 1, "G1", "D1")
+        for code in ["9101", "9102", "9103", "9104"]
+    )
+    conn.executemany("INSERT INTO hr_data VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", staff_rows)
+    for code in ["9101", "9102", "9103", "9104"]:
+        conn.execute(
+            """
+            INSERT INTO performance (
+                "年月", "销售机构名称", "业务模式", "人员工号", "投保单号", "承保时间",
+                "回销时间", "入账时间", "长短险", "缴费年限", "折算保费", "年化规保",
+                "期交保费", "产品代码", "产品名称", "主管工号", "经理工号", "承保件数"
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            ("2026-01-01", "四川", "OTO", code, f"P{code}", "2026-01-05 00:00:00", "2026-01-06 00:00:00", "", "一年期以上", 10, 25000, 25000, 25000, "A", "产品A", "9001", "", 1),
+        )
+    conn.execute(
+        """
+        INSERT INTO performance (
+            "年月", "销售机构名称", "业务模式", "人员工号", "投保单号", "承保时间",
+            "回销时间", "入账时间", "长短险", "缴费年限", "折算保费", "年化规保",
+            "期交保费", "产品代码", "产品名称", "主管工号", "经理工号", "承保件数"
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        ("2026-01-01", "四川", "OTO", "9101", "P9101", "2026-01-10 00:00:00", "2026-01-06 00:00:00", "", "一年期以上", 10, -25000, -25000, -25000, "A", "产品A", "9001", "", -1),
+    )
+    conn.commit()
+    conn.close()
+    _patch_db(monkeypatch, db_path)
+
+    from honor.calculator import calculate_personal_mvp
+
+    result = calculate_personal_mvp(batch_id=1, year=2026, month=1)
+    supervisor = next(row for row in result["person_month"] if row["staff_code"] == "00009001" and row["role_type"] == "主管")
+    reversed_specialist = next(row for row in result["person_month"] if row["staff_code"] == "00009101" and row["role_type"] == "个人")
+
+    assert reversed_specialist["standard_premium"] == 0
+    assert reversed_specialist["longterm_policy_count"] == 0
+    assert reversed_specialist["monthly_qualified"] == 0
+    assert supervisor["standard_premium"] == 75000
+    assert supervisor["longterm_policy_count"] == 3
+    assert supervisor["monthly_qualified"] == 0
+
+
+def test_honor_calculator_deducts_team_reversal_using_positive_policy_team(tmp_path, monkeypatch):
+    db_path = tmp_path / "honor_calc_team_reversal_missing_team_code.db"
+    _setup_source_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute('ALTER TABLE performance ADD COLUMN "主管工号" TEXT')
+    conn.execute('ALTER TABLE performance ADD COLUMN "经理工号" TEXT')
+    conn.execute('ALTER TABLE performance ADD COLUMN "承保件数" INTEGER')
+    staff_rows = [(2026, 1, "四川", "OTO", "9001", "主管", "创新主管", "", 2025, 1, 1, "G1", "D1")]
+    staff_rows.extend(
+        (2026, 1, "四川", "OTO", code, f"专员{code[-1]}", "创新专员", "", 2025, 1, 1, "G1", "D1")
+        for code in ["9101", "9102", "9103", "9104"]
+    )
+    conn.executemany("INSERT INTO hr_data VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", staff_rows)
+    for code in ["9101", "9102", "9103", "9104"]:
+        conn.execute(
+            """
+            INSERT INTO performance (
+                "年月", "销售机构名称", "业务模式", "人员工号", "投保单号", "承保时间",
+                "回销时间", "入账时间", "长短险", "缴费年限", "折算保费", "年化规保",
+                "期交保费", "产品代码", "产品名称", "主管工号", "经理工号", "承保件数"
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            ("2026-01-01", "四川", "OTO", code, f"P{code}", "2026-01-05 00:00:00", "2026-01-06 00:00:00", "", "一年期以上", 10, 25000, 25000, 25000, "A", "产品A", "9001", "", 1),
+        )
+    conn.execute(
+        """
+        INSERT INTO performance (
+            "年月", "销售机构名称", "业务模式", "人员工号", "投保单号", "承保时间",
+            "回销时间", "入账时间", "长短险", "缴费年限", "折算保费", "年化规保",
+            "期交保费", "产品代码", "产品名称", "主管工号", "经理工号", "承保件数"
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        ("2026-01-01", "四川", "OTO", "9101", "P9101", "2026-01-10 00:00:00", "2026-01-06 00:00:00", "", "一年期以上", 10, -25000, -25000, -25000, "A", "产品A", "", "", -1),
+    )
+    conn.commit()
+    conn.close()
+    _patch_db(monkeypatch, db_path)
+
+    from honor.calculator import calculate_personal_mvp
+
+    result = calculate_personal_mvp(batch_id=1, year=2026, month=1)
+    supervisor = next(row for row in result["person_month"] if row["staff_code"] == "00009001" and row["role_type"] == "主管")
+    reversed_specialist = next(row for row in result["person_month"] if row["staff_code"] == "00009101" and row["role_type"] == "个人")
+
+    assert reversed_specialist["standard_premium"] == 0
+    assert reversed_specialist["longterm_policy_count"] == 0
+    assert reversed_specialist["monthly_qualified"] == 0
+    assert supervisor["standard_premium"] == 75000
+    assert supervisor["longterm_policy_count"] == 3
+    assert supervisor["monthly_qualified"] == 0

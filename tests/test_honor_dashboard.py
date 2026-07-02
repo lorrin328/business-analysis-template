@@ -118,6 +118,7 @@ def test_honor_dashboard_builder_derives_tracking_sections():
 
     assert payload["projects"][0]["dimension"] == "OTO"
     assert payload["orgMemberStructure"][0]["specialist_member_count"] == 1
+    assert payload["levels"] == [{"level": "初级会员", "count": 1, "share": 1.0}]
     assert payload["specialistHistory"][0]["qj_premium"] == 20000
     assert payload["managerHistory"][0]["team_qj_premium"] == 30000
     assert payload["warnings"][0]["warning_type"] == "等级下降"

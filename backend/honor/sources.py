@@ -154,6 +154,7 @@ def load_policies(
     source_rows: list[dict[str, Any]] = []
     exceptions: list[dict[str, Any]] = []
     as_of = _as_of_date(year, month)
+    counted_positive_policy_refs: dict[tuple[str, str, str], dict[str, str]] = {}
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -164,6 +165,8 @@ def load_policies(
             FROM performance
             """,
         ).fetchall()
+    prepared_rows: list[dict[str, Any]] = []
+    counted_positive_policy_keys: set[tuple[str, str, str]] = set()
     for row in rows:
         issue_dt = parse_date(row["承保时间"])
         account_dt = parse_date(row["入账时间"])
@@ -181,12 +184,12 @@ def load_policies(
         source_standard_premium = number_value(row["折算保费"])
         qj_premium = number_value(row["期交保费"])
         annualized_premium = number_value(row["年化规保"])
-        raw_policy_count = int(number_value(row["policy_count"]) or 1)
+        raw_policy_count = _policy_count(row["policy_count"], source_standard_premium, qj_premium, annualized_premium)
         payment_years = number_value(row["缴费年限"])
         longterm = is_longterm_policy(row["长短险"], payment_years)
         factor = premium_factor(payment_years, row["长短险"])
-        calculated_standard_premium = annualized_premium * factor if annualized_premium else 0.0
-        if calculated_standard_premium > 0:
+        calculated_standard_premium = annualized_premium * factor if annualized_premium and factor > 0 else 0.0
+        if calculated_standard_premium != 0:
             standard_premium = calculated_standard_premium
             premium_source = "calculated_by_payment_years"
         elif not longterm:
@@ -194,31 +197,82 @@ def load_policies(
             premium_source = "excluded_short_term"
         else:
             standard_premium = source_standard_premium
-            premium_source = "source_zs_premium" if source_standard_premium > 0 else "missing_or_zero"
+            premium_source = "source_zs_premium" if source_standard_premium != 0 else "missing_or_zero"
         policy_count = raw_policy_count if longterm else 0
         callback_dt = parse_date(row["回销时间"])
-        valid_policy = True
-        if standard_premium > 0 and issue_dt:
-            deadline = issue_dt + timedelta(days=45)
-            if callback_dt:
-                valid_policy = 0 <= (callback_dt - issue_dt).days <= 45
-            elif as_of > deadline:
-                valid_policy = False
-            if not valid_policy:
-                exceptions.append(
-                    _exception(
-                        batch_id,
-                        "warning",
-                        "callback_overdue_or_missing",
-                        text_value(row["销售机构名称"]),
-                        staff_code,
-                        policy_no,
-                        "承保满45个自然日后未回销成功，保费不计入星钻统计。",
-                    )
+        positive_policy_valid = True
+        if standard_premium > 0:
+            if issue_dt:
+                deadline = issue_dt + timedelta(days=45)
+                if callback_dt:
+                    positive_policy_valid = 0 <= (callback_dt - issue_dt).days <= 45
+                elif as_of > deadline:
+                    positive_policy_valid = False
+            if positive_policy_valid and policy_no and staff_code:
+                policy_key = (policy_no, staff_code, business_line)
+                counted_positive_policy_keys.add(policy_key)
+                policy_ref = counted_positive_policy_refs.setdefault(
+                    policy_key,
+                    {"supervisor_code": "", "manager_code": ""},
                 )
-        if standard_premium < 0:
+                if supervisor_code and not policy_ref["supervisor_code"]:
+                    policy_ref["supervisor_code"] = supervisor_code
+                if manager_code and not policy_ref["manager_code"]:
+                    policy_ref["manager_code"] = manager_code
+        prepared_rows.append(
+            {
+                "row": row,
+                "year": int(y),
+                "month": int(m),
+                "fallback_date": fallback_date,
+                "staff_code": staff_code,
+                "supervisor_code": supervisor_code,
+                "manager_code": manager_code,
+                "business_line": business_line,
+                "policy_no": policy_no,
+                "payment_years": payment_years,
+                "standard_premium": standard_premium,
+                "qj_premium": qj_premium,
+                "annualized_premium": annualized_premium,
+                "policy_count": policy_count,
+                "premium_source": premium_source,
+                "positive_policy_valid": positive_policy_valid,
+            }
+        )
+
+    for item in prepared_rows:
+        row = item["row"]
+        y = int(item["year"])
+        m = int(item["month"])
+        fallback_date = bool(item["fallback_date"])
+        staff_code = str(item["staff_code"])
+        supervisor_code = str(item["supervisor_code"])
+        manager_code = str(item["manager_code"])
+        business_line = str(item["business_line"])
+        policy_no = str(item["policy_no"])
+        payment_years = item["payment_years"]
+        standard_premium = float(item["standard_premium"] or 0)
+        qj_premium = float(item["qj_premium"] or 0)
+        annualized_premium = float(item["annualized_premium"] or 0)
+        policy_count = int(item["policy_count"] or 0)
+        premium_source = str(item["premium_source"])
+        policy_key = (policy_no, staff_code, business_line) if policy_no and staff_code else None
+        valid_policy = True
+        if standard_premium > 0 and not bool(item["positive_policy_valid"]):
             valid_policy = False
-            exceptions.append(_exception(batch_id, "warning", "negative_premium", text_value(row["销售机构名称"]), staff_code, policy_no, "发现负数折算保费或退保冲减，保费不计入星钻统计。"))
+            exceptions.append(
+                _exception(
+                    batch_id,
+                    "warning",
+                    "callback_overdue_or_missing",
+                    text_value(row["销售机构名称"]),
+                    staff_code,
+                    policy_no,
+                    "承保满45个自然日后未回销成功，保费不计入星钻统计。",
+                )
+            )
+        elif standard_premium < 0:
+            valid_policy = bool(policy_key and policy_key in counted_positive_policy_keys)
         if fallback_date:
             exceptions.append(_exception(batch_id, "info", "date_fallback", text_value(row["销售机构名称"]), staff_code, policy_no, "业绩归属使用年月字段降级口径。"))
         if not staff_code:
@@ -228,20 +282,26 @@ def load_policies(
         counted_qj_premium = qj_premium if valid_policy else 0.0
         counted_annualized_premium = annualized_premium if valid_policy else 0.0
         if valid_policy:
-            key = (int(y), int(m), staff_code, business_line)
+            key = (y, m, staff_code, business_line)
+            policy_ref = counted_positive_policy_refs.get(policy_key or ("", "", ""), {})
+            team_supervisor_code = supervisor_code
+            team_manager_code = manager_code
+            if standard_premium < 0:
+                team_supervisor_code = str(policy_ref.get("supervisor_code") or supervisor_code)
+                team_manager_code = str(policy_ref.get("manager_code") or manager_code)
             personal_agg[key]["premium"] += standard_premium
             personal_agg[key]["policy_count"] += policy_count
-            supervisor_by_person[key] = supervisor_code
-            manager_by_person[key] = manager_code
-            if supervisor_code:
-                supervisor_premium[(int(y), int(m), supervisor_code, business_line)] += standard_premium
-            if manager_code:
-                manager_premium[(int(y), int(m), manager_code, business_line)] += standard_premium
+            if team_supervisor_code:
+                supervisor_by_person[key] = team_supervisor_code
+                supervisor_premium[(y, m, team_supervisor_code, business_line)] += standard_premium
+            if team_manager_code:
+                manager_by_person[key] = team_manager_code
+                manager_premium[(y, m, team_manager_code, business_line)] += standard_premium
         source_rows.append(
             {
                 "batch_id": batch_id,
-                "year": int(y),
-                "month": int(m),
+                "year": y,
+                "month": m,
                 "org": text_value(row["销售机构名称"]),
                 "business_line": business_line,
                 "staff_code": staff_code,
@@ -263,7 +323,7 @@ def load_policies(
     for key, values in personal_agg.items():
         y, m, staff_code, business_line = key
         premium = float(values["premium"] or 0)
-        count = int(values["policy_count"] or 0)
+        count = max(0, int(values["policy_count"] or 0))
         qualified, protected = monthly_result(business_line, premium, count)
         personal_metrics[key] = {
             "premium": premium,
@@ -323,7 +383,7 @@ def _apply_zhengbao_quarter_rollup(
     staff_rows: dict[tuple[int, int], dict[tuple[str, str], dict[str, Any]]],
     target_month: int,
 ) -> None:
-    grouped: dict[tuple[int, int, str, str], list[int]] = {}
+    grouped: set[tuple[int, int, str, str]] = set()
     for (year, month), rows in staff_rows.items():
         if int(month) > int(target_month):
             continue
@@ -331,26 +391,24 @@ def _apply_zhengbao_quarter_rollup(
         for (staff_code, business_line), staff in rows.items():
             if business_line != "证保" or not int(staff.get("is_employed_end_month") or 0):
                 continue
-            grouped.setdefault((int(year), quarter, staff_code, business_line), []).append(int(month))
+            grouped.add((int(year), quarter, staff_code, business_line))
 
     threshold = float(MONTHLY_RULES["证保"]["premium_threshold"])
-    for (year, quarter, staff_code, business_line), months in grouped.items():
+    for year, quarter, staff_code, business_line in grouped:
         quarter_end = quarter * 3
         if int(target_month) < quarter_end:
             continue
-        in_service_months = sorted(set(months))
-        if not in_service_months:
-            continue
+        quarter_months = [quarter_end - 2, quarter_end - 1, quarter_end]
         metrics = [
             personal_metrics.get((year, month, staff_code, business_line), {"premium": 0.0, "policy_count": 0})
-            for month in in_service_months
+            for month in quarter_months
         ]
         if not all(int(metric.get("policy_count") or 0) > 0 for metric in metrics):
             continue
         quarter_premium = sum(float(metric.get("premium") or 0) for metric in metrics)
-        if quarter_premium / len(in_service_months) < threshold:
+        if quarter_premium < threshold * 3:
             continue
-        for month in in_service_months:
+        for month in quarter_months:
             metric = personal_metrics.setdefault(
                 (year, month, staff_code, business_line),
                 {"premium": 0.0, "policy_count": 0, "qualified": False, "protected": False},
@@ -358,6 +416,13 @@ def _apply_zhengbao_quarter_rollup(
             metric["qualified"] = True
             metric["protected"] = False
             metric["quarter_protected"] = True
+
+
+def _policy_count(raw_value: Any, *amounts: float) -> int:
+    raw_text = "" if raw_value is None else str(raw_value).strip()
+    if raw_text and raw_text.lower() not in {"承保件数", "nan", "none", "null"}:
+        return int(number_value(raw_value))
+    return -1 if any(float(amount or 0) < 0 for amount in amounts) else 1
 
 
 def _exception(batch_id: int, severity: str, exception_type: str, org: str | None, staff_code: str | None, policy_no: str | None, message: str) -> dict[str, Any]:

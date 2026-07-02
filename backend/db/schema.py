@@ -257,7 +257,7 @@ def init_db():
             group_code TEXT,
             department_code TEXT,
             raw_payload TEXT DEFAULT '{}',
-            UNIQUE(batch_id, year, month, staff_code, business_line)
+            UNIQUE(batch_id, year, month, staff_code, business_line, role_type)
         )''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS honor_source_policy (
@@ -301,7 +301,7 @@ def init_db():
             membership_level TEXT DEFAULT '未入会',
             is_new_star INTEGER DEFAULT 0,
             exception_flags TEXT DEFAULT '[]',
-            UNIQUE(batch_id, year, month, staff_code, business_line)
+            UNIQUE(batch_id, year, month, staff_code, business_line, role_type)
         )''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS honor_person_summary (
@@ -321,7 +321,7 @@ def init_db():
             qualified_months INTEGER DEFAULT 0,
             is_new_star INTEGER DEFAULT 0,
             warning_tags TEXT DEFAULT '[]',
-            UNIQUE(batch_id, year, staff_code, business_line)
+            UNIQUE(batch_id, year, staff_code, business_line, role_type)
         )''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS honor_org_summary (
@@ -369,6 +369,7 @@ def init_db():
             suggested_action TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
+        _migrate_honor_identity_tracks(c)
 
         c.execute('''
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
@@ -473,6 +474,87 @@ def _migrate_product_config_unique(c):
         FROM product_config_old
     ''')
     c.execute("DROP TABLE product_config_old")
+
+
+def _migrate_honor_identity_tracks(c):
+    applied = c.execute(
+        "SELECT 1 FROM schema_migrations WHERE version = '20260702_honor_identity_tracks'"
+    ).fetchone()
+    if applied:
+        return
+
+    c.execute("ALTER TABLE honor_person_month RENAME TO honor_person_month_old")
+    c.execute('''CREATE TABLE honor_person_month (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_id INTEGER NOT NULL,
+        year INTEGER NOT NULL,
+        month INTEGER NOT NULL,
+        org TEXT,
+        business_line TEXT,
+        staff_code TEXT NOT NULL,
+        staff_name TEXT,
+        role_type TEXT,
+        is_employed_end_month INTEGER DEFAULT 0,
+        standard_premium REAL DEFAULT 0,
+        longterm_policy_count INTEGER DEFAULT 0,
+        monthly_qualified INTEGER DEFAULT 0,
+        protected_month INTEGER DEFAULT 0,
+        diamond_delta INTEGER DEFAULT 0,
+        diamond_balance INTEGER DEFAULT 0,
+        membership_level TEXT DEFAULT '未入会',
+        is_new_star INTEGER DEFAULT 0,
+        exception_flags TEXT DEFAULT '[]',
+        UNIQUE(batch_id, year, month, staff_code, business_line, role_type)
+    )''')
+    c.execute('''
+        INSERT OR IGNORE INTO honor_person_month
+            (id, batch_id, year, month, org, business_line, staff_code, staff_name,
+             role_type, is_employed_end_month, standard_premium, longterm_policy_count,
+             monthly_qualified, protected_month, diamond_delta, diamond_balance,
+             membership_level, is_new_star, exception_flags)
+        SELECT id, batch_id, year, month, org, business_line, staff_code, staff_name,
+               role_type, is_employed_end_month, standard_premium, longterm_policy_count,
+               monthly_qualified, protected_month, diamond_delta, diamond_balance,
+               membership_level, is_new_star, exception_flags
+        FROM honor_person_month_old
+    ''')
+    c.execute("DROP TABLE honor_person_month_old")
+
+    c.execute("ALTER TABLE honor_person_summary RENAME TO honor_person_summary_old")
+    c.execute('''CREATE TABLE honor_person_summary (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_id INTEGER NOT NULL,
+        year INTEGER NOT NULL,
+        latest_month INTEGER NOT NULL,
+        org TEXT,
+        business_line TEXT,
+        staff_code TEXT NOT NULL,
+        staff_name TEXT,
+        role_type TEXT,
+        diamond_balance INTEGER DEFAULT 0,
+        membership_level TEXT DEFAULT '未入会',
+        total_gain INTEGER DEFAULT 0,
+        total_deduct INTEGER DEFAULT 0,
+        qualified_months INTEGER DEFAULT 0,
+        is_new_star INTEGER DEFAULT 0,
+        warning_tags TEXT DEFAULT '[]',
+        UNIQUE(batch_id, year, staff_code, business_line, role_type)
+    )''')
+    c.execute('''
+        INSERT OR IGNORE INTO honor_person_summary
+            (id, batch_id, year, latest_month, org, business_line, staff_code,
+             staff_name, role_type, diamond_balance, membership_level, total_gain,
+             total_deduct, qualified_months, is_new_star, warning_tags)
+        SELECT id, batch_id, year, latest_month, org, business_line, staff_code,
+               staff_name, role_type, diamond_balance, membership_level, total_gain,
+               total_deduct, qualified_months, is_new_star, warning_tags
+        FROM honor_person_summary_old
+    ''')
+    c.execute("DROP TABLE honor_person_summary_old")
+    c.execute('''
+        INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+        VALUES ('20260702_honor_identity_tracks', 0, 'Allows separate personal and management honor tracks')
+    ''')
 
 
 def _migrate_longterm_qj_daily(c):
