@@ -88,6 +88,23 @@ def test_public_registration_can_be_disabled_in_production(auth_db, monkeypatch)
     assert resp.status_code == 403
 
 
+def test_public_registration_can_be_explicitly_enabled_in_production(auth_db, monkeypatch):
+    client = TestClient(app)
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("AUTH_ALLOW_PUBLIC_REGISTRATION", "1")
+
+    config = client.get("/api/auth/config")
+    assert config.status_code == 200
+    assert config.json()["data"]["allowPublicRegistration"] is True
+
+    resp = client.post("/api/auth/register", json={"username": "enabled_user", "password": "normal-pass-123"})
+    assert resp.status_code == 200
+    user = resp.json()["data"]["user"]
+    assert user["role"] == "normal"
+    assert user["permissions"]["permission_admin"] is False
+    assert user["permissions"]["upload"] is False
+
+
 def test_username_rejects_event_attribute_payloads(auth_db):
     client = TestClient(app)
     resp = client.post("/api/auth/register", json={"username": "bad'user", "password": "normal-pass-123"})

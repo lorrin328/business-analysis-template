@@ -8,6 +8,9 @@
 | 应用日志 | `/app/backend/logs` | 由 Docker volume 持久化。 |
 | 上传文件限制 | `MAX_UPLOAD_SIZE_MB` | Compose 默认 `100`。 |
 | 公开自助注册 | `AUTH_ALLOW_PUBLIC_REGISTRATION` | 生产环境默认关闭；显式设置 `1` 才允许 `/api/auth/register`。 |
+| systemd 运行时配置 | `/opt/business-analysis/deploy/.admin_env` | 生产管理员初始化、注册开关等运行时配置；不进入 Git，部署时保留。 |
+| AI 只读接口配置 | `/opt/business-analysis/deploy/.ai_env` | AI 只读 token 等运行时配置；不进入 Git，部署时保留。 |
+| 自动部署配置 | `/opt/business-analysis/deploy/.webhook_env` | GitHub Webhook secret；不进入 Git，部署时保留。 |
 
 ## 业务口径参考
 

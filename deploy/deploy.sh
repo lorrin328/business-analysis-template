@@ -72,6 +72,9 @@ rsync -a --delete \
   --exclude='backend/__pycache__' \
   --exclude='backend/venv' \
   --exclude='backend/logs/*.log' \
+  --exclude='deploy/.admin_env' \
+  --exclude='deploy/.ai_env' \
+  --exclude='deploy/.webhook_env' \
   --exclude='*.xlsx' \
   --exclude='*.db' \
   "$SRC_DIR/" "$APP_DIR/"
@@ -141,12 +144,10 @@ if ! grep -q "client_max_body_size" /etc/nginx/sites-available/business-analysis
   echo "⚠ 警告：nginx 配置缺少 client_max_body_size，大文件上传将被拒绝（413 错误）"
 fi
 
-# 自动部署 Webhook（首次安装，后续更新保留配置）
-if [ ! -f /etc/systemd/system/webhook-deploy.service ]; then
-  cp "$APP_DIR/deploy/webhook.service" /etc/systemd/system/webhook-deploy.service
-  systemctl daemon-reload
-  systemctl enable webhook-deploy
-fi
+# 自动部署 Webhook（每次刷新 service 文件，运行时密钥由 deploy/.webhook_env 持久化）
+cp "$APP_DIR/deploy/webhook.service" /etc/systemd/system/webhook-deploy.service
+systemctl daemon-reload
+systemctl enable webhook-deploy
 if [ ! -f /etc/sudoers.d/webhook-deploy ]; then
   echo "$RUN_USER ALL=(ALL) NOPASSWD: /usr/bin/env bash $APP_DIR/deploy/deploy.sh" > /etc/sudoers.d/webhook-deploy
   chmod 440 /etc/sudoers.d/webhook-deploy

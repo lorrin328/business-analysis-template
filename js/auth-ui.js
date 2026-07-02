@@ -27,6 +27,7 @@
   const ROLE_OPTIONS = ['normal', 'senior', 'admin'];
   let adminUsersCache = [];
   let authConfig = { allowPublicRegistration: false };
+  let authMode = 'login';
 
   function ensureAuthClient() {
     if (typeof window.setAuthSession !== 'function') {
@@ -95,13 +96,29 @@
     if (el) el.textContent = message || '';
   }
 
+  function switchAuthMode(mode) {
+    authMode = mode === 'register' && authConfig.allowPublicRegistration ? 'register' : 'login';
+    const panel = document.getElementById('authPanel');
+    const title = document.getElementById('authTitle');
+    const password = document.getElementById('authPassword');
+    if (panel) panel.dataset.authMode = authMode;
+    if (title) title.textContent = authMode === 'register' ? '注册账号' : '经营分析看板';
+    if (password) password.autocomplete = authMode === 'register' ? 'new-password' : 'current-password';
+    setAuthMessage('');
+    applyAuthConfig();
+  }
+
   function applyAuthConfig() {
     const subtitle = document.getElementById('authSubtitle');
     const registerBtn = document.getElementById('authRegisterBtn');
     if (subtitle) {
-      subtitle.textContent = authConfig.allowPublicRegistration
-        ? '请登录或注册后进入系统。新注册账号默认为普通用户。'
-        : '请登录后进入系统。账号由管理员开通。';
+      if (authMode === 'register') {
+        subtitle.textContent = '填写用户名和密码完成注册。新注册账号默认为普通用户。';
+      } else {
+        subtitle.textContent = authConfig.allowPublicRegistration
+          ? '请登录或注册后进入系统。新注册账号默认为普通用户。'
+          : '请登录后进入系统。账号由管理员开通。';
+      }
     }
     if (registerBtn) registerBtn.style.display = authConfig.allowPublicRegistration ? '' : 'none';
   }
@@ -135,6 +152,17 @@
     if (!username || !password) {
       setAuthMessage('请输入用户名和密码');
       return;
+    }
+    if (mode === 'register') {
+      if (!authConfig.allowPublicRegistration) {
+        setAuthMessage('当前环境已关闭自助注册，请联系管理员开通账号');
+        return;
+      }
+      const confirmPassword = document.getElementById('authConfirmPassword')?.value || '';
+      if (password !== confirmPassword) {
+        setAuthMessage('两次输入的密码不一致');
+        return;
+      }
     }
     setAuthMessage(mode === 'register' ? '正在注册...' : '正在登录...');
     try {
@@ -195,20 +223,27 @@
     gate.id = 'authGate';
     gate.className = 'auth-gate';
     gate.innerHTML = `
-      <div class="auth-panel">
-        <div class="auth-title">经营分析看板</div>
+      <div class="auth-panel" id="authPanel" data-auth-mode="login">
+        <div class="auth-title" id="authTitle">经营分析看板</div>
         <div class="auth-subtitle" id="authSubtitle">请登录后进入系统。账号由管理员开通。</div>
         <label class="auth-label">用户名</label>
         <input class="auth-input" id="authUsername" autocomplete="username" placeholder="请输入用户名">
         <label class="auth-label">密码</label>
         <input class="auth-input" id="authPassword" type="password" autocomplete="current-password" placeholder="请输入密码">
-        <div class="auth-actions">
+        <label class="auth-label auth-register-only">确认密码</label>
+        <input class="auth-input auth-register-only" id="authConfirmPassword" type="password" autocomplete="new-password" placeholder="请再次输入密码">
+        <div class="auth-actions auth-login-actions">
           <button class="chart-btn auth-primary" id="authLoginBtn">登录</button>
           <button class="chart-btn" id="authRegisterBtn" style="display:none;">注册</button>
+        </div>
+        <div class="auth-actions auth-register-actions">
+          <button class="chart-btn auth-primary" id="authSubmitRegisterBtn">完成注册</button>
+          <button class="chart-btn" id="authBackLoginBtn">返回登录</button>
         </div>
         <div class="auth-message" id="authMessage"></div>
       </div>`;
     document.body.appendChild(gate);
+    switchAuthMode('login');
     document.getElementById('authLoginBtn').addEventListener('click', async () => {
       await submitAuth('login');
       if (window.__authResolve && getUser()) {
@@ -217,11 +252,19 @@
         resolve(getUser());
       }
     });
-    document.getElementById('authRegisterBtn').addEventListener('click', async () => {
+    document.getElementById('authRegisterBtn').addEventListener('click', () => {
       if (!authConfig.allowPublicRegistration) {
         setAuthMessage('当前环境已关闭自助注册，请联系管理员开通账号');
         return;
       }
+      switchAuthMode('register');
+      document.getElementById('authUsername')?.focus();
+    });
+    document.getElementById('authBackLoginBtn').addEventListener('click', () => {
+      switchAuthMode('login');
+      document.getElementById('authUsername')?.focus();
+    });
+    document.getElementById('authSubmitRegisterBtn').addEventListener('click', async () => {
       await submitAuth('register');
       if (window.__authResolve && getUser()) {
         const resolve = window.__authResolve;
@@ -230,7 +273,12 @@
       }
     });
     document.getElementById('authPassword').addEventListener('keydown', event => {
-      if (event.key === 'Enter') document.getElementById('authLoginBtn').click();
+      if (event.key === 'Enter') {
+        document.getElementById(authMode === 'register' ? 'authSubmitRegisterBtn' : 'authLoginBtn').click();
+      }
+    });
+    document.getElementById('authConfirmPassword').addEventListener('keydown', event => {
+      if (event.key === 'Enter') document.getElementById('authSubmitRegisterBtn').click();
     });
   }
 

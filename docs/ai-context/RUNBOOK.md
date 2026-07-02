@@ -95,7 +95,9 @@ curl http://127.0.0.1:45679/api/health
 - 初始化首个管理员账号时必须提供 `DEFAULT_ADMIN_PASSWORD`。
 - 初始密码应仅通过临时环境变量或安全配置注入，不得写入仓库、日志或项目记忆。
 - 首次登录后建议立即修改管理员密码。
-- 生产环境默认关闭公开自助注册；确需开放时设置 `AUTH_ALLOW_PUBLIC_REGISTRATION=1`，完成账号开通后恢复为 `0` 或移除该配置并重启服务。
+- 生产环境默认关闭公开自助注册；确需开放时在 `/opt/business-analysis/deploy/.admin_env` 设置 `AUTH_ALLOW_PUBLIC_REGISTRATION=1` 并重启服务，关闭时改为 `0` 或移除该配置并重启服务。
+- `/opt/business-analysis/deploy/.admin_env`、`.ai_env`、`.webhook_env` 属于服务器运行时配置，部署脚本会保留这些文件；不得提交到 Git。
+- 自动部署 webhook 需要 `/opt/business-analysis/deploy/.webhook_env` 中的 `WEBHOOK_SECRET` 与 GitHub Webhook Secret 一致，并确认 `webhook-deploy` 服务为 `active`。
 
 ## 数据与日志
 

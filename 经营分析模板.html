@@ -7,15 +7,15 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/format-utils.js"></script>
-  <script src="js/api-client.js?v=1.0.98"></script>
-  <script src="js/auth-ui.js?v=1.0.98"></script>
-  <script src="js/export-excel.js?v=1.0.98"></script>
-  <script src="js/dashboard-config.js?v=1.0.98"></script>
-  <script src="js/upload.js?v=1.0.98"></script>
-  <script src="js/target-modal.js?v=1.0.98"></script>
-  <script src="js/dashboard-actions.js?v=1.0.98"></script>
-  <script src="js/kpi-cards.js?v=1.0.98"></script>
-  <script src="js/platform-trend.js?v=1.0.98"></script>
+  <script src="js/api-client.js?v=1.0.99"></script>
+  <script src="js/auth-ui.js?v=1.0.99"></script>
+  <script src="js/export-excel.js?v=1.0.99"></script>
+  <script src="js/dashboard-config.js?v=1.0.99"></script>
+  <script src="js/upload.js?v=1.0.99"></script>
+  <script src="js/target-modal.js?v=1.0.99"></script>
+  <script src="js/dashboard-actions.js?v=1.0.99"></script>
+  <script src="js/kpi-cards.js?v=1.0.99"></script>
+  <script src="js/platform-trend.js?v=1.0.99"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -947,6 +947,10 @@
     .auth-actions { display:flex; gap: 10px; margin-top: 18px; }
     .auth-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
     .auth-message { min-height: 18px; color: var(--warning); font-size: 12px; margin-top: 12px; }
+    .auth-register-only, .auth-register-actions { display: none; }
+    .auth-panel[data-auth-mode="register"] .auth-register-only { display: block; }
+    .auth-panel[data-auth-mode="register"] .auth-register-actions { display: flex; }
+    .auth-panel[data-auth-mode="register"] .auth-login-actions { display: none; }
     .user-pill { color: var(--text-secondary); font-size: 12px; }
     .permission-toolbar { display:grid; grid-template-columns: 1fr 1fr 150px auto; gap: 8px; margin-bottom: 12px; }
     .permission-table { width: 100%; min-width: 0; table-layout: fixed; }
@@ -985,7 +989,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.98</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.99</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" data-permission="permission_admin" data-dashboard-action="open-permission-admin" style="margin-right:8px;">权限管理</button>
@@ -1512,7 +1516,7 @@
 
     // Product config modal lives in js/product-config-modal.js
   </script>
-  <script src="js/product-config-modal.js?v=1.0.98"></script>
+  <script src="js/product-config-modal.js?v=1.0.99"></script>
   <script>
     // KPI card rendering lives in js/kpi-cards.js
 
@@ -1521,24 +1525,24 @@
     // KPI detail modal content lives in js/kpi-modal-content.js
     // Local fallback seed data lives in js/seed-data.js
   </script>
-  <script src="js/kpi-modal-content.js?v=1.0.98"></script>
+  <script src="js/kpi-modal-content.js?v=1.0.99"></script>
   <script>
     // API integration lives in js/data-integration.js
   </script>
-  <script src="js/org-analysis.js?v=1.0.98"></script>
-  <script src="js/seed-data.js?v=1.0.98"></script>
-  <script src="js/platform-seed-data.js?v=1.0.98"></script>
-  <script src="js/data-integration.js?v=1.0.98"></script>
-  <script src="js/platform-trend-main.js?v=1.0.98"></script>
+  <script src="js/org-analysis.js?v=1.0.99"></script>
+  <script src="js/seed-data.js?v=1.0.99"></script>
+  <script src="js/platform-seed-data.js?v=1.0.99"></script>
+  <script src="js/data-integration.js?v=1.0.99"></script>
+  <script src="js/platform-trend-main.js?v=1.0.99"></script>
   <script>
   </script>
-  <script src="js/product-analysis.js?v=1.0.98"></script>
+  <script src="js/product-analysis.js?v=1.0.99"></script>
   <script>
   </script>
-  <script src="js/payperiod-chart.js?v=1.0.98"></script>
+  <script src="js/payperiod-chart.js?v=1.0.99"></script>
   <script>
   </script>
-  <script src="js/team-analysis.js?v=1.0.98"></script>
+  <script src="js/team-analysis.js?v=1.0.99"></script>
   <script>
     // ---------- Resize ----------
     window.addEventListener('resize', () => {
