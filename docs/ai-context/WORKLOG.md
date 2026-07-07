@@ -1,5 +1,15 @@
 # 工作日志
 
+## 2026-07-07 v1.0.101 GitHub 同步与生产部署
+
+- 任务：将“设置目标”页面优化同步到 GitHub，并部署到 `192.168.50.6` 生产服务器。
+- GitHub：本地 `master` 提交 `74deb49 feat: improve target settings page`，已推送到 `origin/master`。
+- 自动部署：推送后轮询生产 `/api/health` 约 2 分钟仍为 `v1.0.100`；本地无签名访问 `/webhook/deploy` 返回 `403`，说明 webhook 服务在线且签名校验生效，但 GitHub 云端未完成自动部署触发。
+- 手工部署：通过 SSH 登录服务器，在 `/tmp/business-analysis-template-deploy` 从 GitHub 拉取提交 `74deb49`，执行项目现有 `deploy/deploy.sh`；部署脚本备份生产数据库到 `/opt/business-analysis-backups/business_data.db.20260707_104333`。
+- 数据重建：部署过程中使用服务器现有 20260701 源 Excel 重建数据库，加载后最新期间为 `202607`。
+- 验证：`business-analysis` 为 `active`，nginx 配置校验通过；生产 `http://192.168.50.6/api/health` 返回 `status=ok`、`app_version=v1.0.101`、`page_version=v1.0.101`、`latest_period=202607`、`table_count=36`。
+- 风险：GitHub webhook 端点签名校验正常，但本次 push 未自动发布，仍需后续排查 GitHub webhook 的可达地址或投递状态；当前生产已通过 SSH 手工部署完成。
+
 ## 2026-07-07 v1.0.101 目标设置页操作优化
 
 - 任务：优化主看板“设置目标”页面，解决目标弹窗难操作、难查看的问题。
