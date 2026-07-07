@@ -102,14 +102,14 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.100"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.100"></script>' in html
-    assert '<script src="js/export-excel.js?v=1.0.100"></script>' in html
-    assert '<script src="js/upload.js?v=1.0.100"></script>' in html
-    assert '<script src="js/target-modal.js?v=1.0.100"></script>' in html
-    assert '<script src="js/kpi-cards.js?v=1.0.100"></script>' in html
-    assert '<script src="js/platform-trend.js?v=1.0.100"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.100"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.101"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.101"></script>' in html
+    assert '<script src="js/export-excel.js?v=1.0.101"></script>' in html
+    assert '<script src="js/upload.js?v=1.0.101"></script>' in html
+    assert '<script src="js/target-modal.js?v=1.0.101"></script>' in html
+    assert '<script src="js/kpi-cards.js?v=1.0.101"></script>' in html
+    assert '<script src="js/platform-trend.js?v=1.0.101"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.101"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -256,7 +256,7 @@ def test_dashboard_config_is_loaded_before_kpi_cards():
     html = read_html()
     config = read_js("dashboard-config.js")
 
-    assert '<script src="js/dashboard-config.js?v=1.0.100"></script>' in html
+    assert '<script src="js/dashboard-config.js?v=1.0.101"></script>' in html
     assert html.index('js/dashboard-config.js') < html.index('js/kpi-cards.js')
     assert "await loadDashboardConfig();" in html
     assert "/api/config/metrics" in config
@@ -269,7 +269,7 @@ def test_product_config_modal_is_outside_html_shell():
     html = read_html()
     modal = read_js("product-config-modal.js")
 
-    assert '<script src="js/product-config-modal.js?v=1.0.100"></script>' in html
+    assert '<script src="js/product-config-modal.js?v=1.0.101"></script>' in html
     assert "async function openProductConfigModal()" not in html
     assert "async function saveProductConfig()" not in html
     assert "async function openProductConfigModal()" in modal
@@ -302,7 +302,7 @@ def test_dashboard_toolbar_actions_are_bound_by_runtime_module():
     actions = read_js("dashboard-actions.js")
     header = html.split('<div class="container">', 1)[0]
 
-    assert '<script src="js/dashboard-actions.js?v=1.0.100"></script>' in html
+    assert '<script src="js/dashboard-actions.js?v=1.0.101"></script>' in html
     assert html.index('js/target-modal.js') < html.index('js/dashboard-actions.js') < html.index('js/kpi-cards.js')
     assert 'data-dashboard-action="open-permission-admin"' in header
     assert 'data-dashboard-action="open-operation-logs"' in header
@@ -329,7 +329,7 @@ def test_excel_export_is_runtime_module():
     html = read_html()
     exporter = read_js("export-excel.js")
 
-    assert '<script src="js/export-excel.js?v=1.0.100"></script>' in html
+    assert '<script src="js/export-excel.js?v=1.0.101"></script>' in html
     assert 'id="exportExcelBtn"' in html
     assert "function exportDashboardExcel()" not in html
     assert "function exportDashboardExcel()" in exporter
@@ -390,7 +390,7 @@ def test_personnel_management_page_is_admin_only_calculator_runtime():
 
     assert "人员管理</button>" in html
     assert 'data-permission="personnel_management"' in html
-    assert '<script src="/js/personnel-management.js?v=1.0.100"></script>' in page
+    assert '<script src="/js/personnel-management.js?v=1.0.101"></script>' in page
     assert "OTO 基本法测算" in page
     assert "证保基本法测算" in page
     assert "OTO 参数设置" in page
@@ -432,7 +432,7 @@ def test_honor_page_is_separate_runtime():
     assert 'data-permission="honor_view" data-dashboard-action="navigate" data-dashboard-href="/honor" style="margin-right:8px;">荣誉体系</button>' in html
     assert "????" not in html
     assert "星钻联盟荣誉体系" in honor_html
-    assert '<script src="/js/honor.js?v=1.0.100"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.101"></script>' in honor_html
     assert "数据适配检查" in honor_html
     assert "数据审计" in honor_html
     assert "荣誉追踪" in honor_html
@@ -503,7 +503,7 @@ def test_kpi_modal_content_is_outside_html_shell():
     html = read_html()
     modal_content = read_js("kpi-modal-content.js")
 
-    assert '<script src="js/kpi-modal-content.js?v=1.0.100"></script>' in html
+    assert '<script src="js/kpi-modal-content.js?v=1.0.101"></script>' in html
     assert "function getModalContent(type)" not in html
     assert "function getModalContent(type)" in modal_content
 
@@ -522,7 +522,7 @@ def test_org_analysis_has_expand_mode_and_colored_indicators():
     org = read_js("org-analysis.js")
     combined = html + "\n" + org
 
-    assert 'src="js/org-analysis.js?v=1.0.100"' in html
+    assert 'src="js/org-analysis.js?v=1.0.101"' in html
     assert 'id="orgExpandBtn"' in html
     assert 'id="orgExpandBtn" type="button" aria-expanded="false"' in html
     assert 'id="orgExpandBtn" onclick=' not in html
@@ -636,9 +636,15 @@ def test_target_modal_js_is_runtime_owner_for_target_settings():
     assert 'data-target-year' in target
     assert 'data-target-action="export"' in target
     assert 'data-target-action="import"' in target
+    assert 'data-target-action="distribute"' in target
     assert 'data-target-action="save"' in target
+    assert 'data-target-section="business"' in target
+    assert 'data-target-section="org"' in target
+    assert 'data-target-period="${dim}"' in target
     assert 'data-target-import-file' in target
     assert 'data-target-value' in target
+    assert 'target-save-state' in target
+    assert 'target-balance' in target
     assert 'data-org-target-dim="year"' in target
     assert 'data-org-target-dim="quarter"' in target
     assert 'data-org-target-dim="month1"' in target
@@ -646,6 +652,11 @@ def test_target_modal_js_is_runtime_owner_for_target_settings():
     assert 'data-org-target-value' in target
     assert "button[data-target-action]" in target
     assert "body.querySelector('input[data-target-import-file]')?.click()" in target
+    assert "button[data-target-section]" in target
+    assert "switchTargetSection(sectionButton.dataset.targetSection)" in target
+    assert "button[data-target-period]" in target
+    assert "switchTargetPeriod(periodButton.dataset.targetPeriod)" in target
+    assert "distributeTargetData()" in target
     assert "button[data-org-target-dim]" in target
     assert "switchOrgTargetDim(dimButton.dataset.orgTargetDim)" in target
     assert "select[data-target-year]" in target
@@ -654,6 +665,10 @@ def test_target_modal_js_is_runtime_owner_for_target_settings():
     assert "updateTargetValue(targetInput)" in target
     assert "input[data-org-target-value]" in target
     assert "updateOrgTargetValue(orgTargetInput)" in target
+    assert "body.addEventListener('input'" in target
+    assert "window.fetchTargetData = fetchTargetData" in target
+    assert "window.openTargetModal = openTargetModal" in target
+    assert "closeModal();" not in target
     assert "function updateKPICards()" not in target
 
 
@@ -663,7 +678,7 @@ def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
     kpi_section = html.split('<!-- 机构维度 -->', 1)[0]
 
     assert "function updateKPICards()" not in html
-    assert 'src="js/kpi-cards.js?v=1.0.100"' in html
+    assert 'src="js/kpi-cards.js?v=1.0.101"' in html
     assert 'onclick="openModal(' not in kpi_section
     for modal_type in ["overall", "value", "activity", "annuity", "protection", "10year", "longterm", "percapita"]:
         assert f'data-kpi-modal="{modal_type}"' in kpi_section
@@ -1001,7 +1016,7 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
 
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
-    assert '<script src="js/platform-trend-main.js?v=1.0.100"></script>' in html
+    assert '<script src="js/platform-trend-main.js?v=1.0.101"></script>' in html
     assert "Object.keys(platformMock).forEach(year => delete platformMock[year])" in platform_main
     assert "function refreshPlatformChart()" in platform_main
     assert "function switchYear(value)" in platform_main

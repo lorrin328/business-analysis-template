@@ -7,15 +7,15 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/format-utils.js"></script>
-  <script src="js/api-client.js?v=1.0.100"></script>
-  <script src="js/auth-ui.js?v=1.0.100"></script>
-  <script src="js/export-excel.js?v=1.0.100"></script>
-  <script src="js/dashboard-config.js?v=1.0.100"></script>
-  <script src="js/upload.js?v=1.0.100"></script>
-  <script src="js/target-modal.js?v=1.0.100"></script>
-  <script src="js/dashboard-actions.js?v=1.0.100"></script>
-  <script src="js/kpi-cards.js?v=1.0.100"></script>
-  <script src="js/platform-trend.js?v=1.0.100"></script>
+  <script src="js/api-client.js?v=1.0.101"></script>
+  <script src="js/auth-ui.js?v=1.0.101"></script>
+  <script src="js/export-excel.js?v=1.0.101"></script>
+  <script src="js/dashboard-config.js?v=1.0.101"></script>
+  <script src="js/upload.js?v=1.0.101"></script>
+  <script src="js/target-modal.js?v=1.0.101"></script>
+  <script src="js/dashboard-actions.js?v=1.0.101"></script>
+  <script src="js/kpi-cards.js?v=1.0.101"></script>
+  <script src="js/platform-trend.js?v=1.0.101"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -291,8 +291,20 @@
     }
 
     /* Target Setting Modal */
-    .modal-target .modal { max-width: 1000px; }
-    .modal-target .modal-body { max-height: 75vh; padding: 20px 24px; }
+    .modal-target .modal {
+      width: min(1320px, calc(100vw - 48px));
+      max-width: none;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-target .modal-body {
+      flex: 1;
+      min-height: 0;
+      max-height: none;
+      padding: 0;
+      overflow: hidden;
+    }
     .modal-product-config .modal { max-width: 900px; }
     .modal-product-config .modal-body { max-height: 70vh; padding: 16px 24px; }
     .product-config-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -302,53 +314,143 @@
     .product-config-table select { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 13px; cursor: pointer; }
     .product-config-table select:focus { border-color: var(--accent); outline: none; }
     .product-config-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
-    .target-toolbar {
-      display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
-      padding: 10px 14px; background: var(--bg); border-radius: 8px;
+    .target-shell {
+      height: calc(90vh - 75px);
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-card);
     }
-    .target-toolbar label { font-size: 13px; color: var(--text-secondary); }
+    .target-toolbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 12px 18px; background: rgba(15,23,42,0.86);
+      border-bottom: 1px solid var(--border);
+    }
+    .target-toolbar-main, .target-toolbar-actions {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .target-year-field {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: var(--text-secondary);
+    }
     .target-toolbar select {
-      padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border);
+      padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);
       background: var(--bg); color: var(--text); font-size: 13px;
     }
-    .target-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 12px; }
+    .target-source-note, .target-save-state {
+      color: var(--text-secondary); font-size: 12px; white-space: nowrap;
+    }
+    .target-save-state {
+      padding: 4px 8px; border-radius: 999px;
+      background: rgba(148,163,184,0.12);
+    }
+    .target-save-state.dirty { color: #fbbf24; background: rgba(245,158,11,0.14); }
+    .target-save-state.saving { color: var(--accent-light); background: rgba(59,130,246,0.14); }
+    .target-save-state.error { color: var(--danger); background: rgba(239,68,68,0.14); }
+    .target-switchbar {
+      display: flex; justify-content: space-between; gap: 12px;
+      padding: 10px 18px;
+      background: rgba(30,41,59,0.72);
+      border-bottom: 1px solid var(--border);
+    }
+    .target-section-tabs, .target-period-tabs {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    }
+    .target-grid {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      display: block;
+    }
+    .target-content {
+      height: 100%;
+      overflow: auto;
+      padding: 16px 18px 20px;
+    }
+    .target-section-head {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 16px; margin-bottom: 14px;
+    }
+    .target-section-title { font-size: 16px; font-weight: 700; color: var(--text); }
+    .target-summary-strip {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;
+      color: var(--text-secondary); font-size: 12px;
+    }
+    .target-summary-strip span {
+      padding: 4px 8px; border: 1px solid var(--border);
+      border-radius: 999px; background: rgba(15,23,42,0.44);
+    }
+    .target-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .target-card {
-      background: var(--bg); border-radius: 10px; border: 1px solid var(--border); overflow: hidden;
+      background: var(--bg); border-radius: 8px; border: 1px solid var(--border); overflow: hidden;
     }
     .target-card-header {
-      padding: 10px 14px; background: var(--bg);
+      padding: 10px 14px; background: rgba(15,23,42,0.88);
       border-bottom: 1px solid var(--border); font-weight: 600; font-size: 13px;
-      color: var(--text); display: flex; align-items: center; gap: 8px;
+      color: var(--text); display: flex; align-items: center; justify-content: space-between; gap: 12px;
     }
+    .target-card-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .target-card-header .icon { width: 8px; height: 8px; border-radius: 50%; }
+    .target-card-total {
+      color: var(--text-secondary); font-size: 11px; font-weight: 500; white-space: nowrap;
+    }
     .target-card-body { padding: 10px 14px; }
     .target-dim-title {
       font-size: 11px; color: var(--text-secondary); text-transform: uppercase;
       letter-spacing: 0.5px; margin: 10px 0 6px;
     }
     .target-dim-title:first-child { margin-top: 0; }
+    .target-table-wrap {
+      width: 100%;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(15,23,42,0.36);
+    }
+    .target-table-wrap-wide { max-height: 58vh; }
     .target-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .target-table th, .target-table td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border); }
-    .target-table th { color: var(--text-secondary); font-weight: 500; font-size: 11px; background: var(--bg); }
+    .target-table th, .target-table td { padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+    .target-table th {
+      color: var(--text-secondary); font-weight: 600; font-size: 11px;
+      background: var(--bg); position: sticky; top: 0; z-index: 2;
+      white-space: nowrap;
+    }
     .target-table td { color: var(--text); }
+    .target-table tr:hover td { background: rgba(59,130,246,0.06); }
     .target-table tr.sub td:first-child { padding-left: 20px; color: var(--text-secondary); }
+    .target-total-cell { color: var(--text-secondary) !important; text-align: right !important; white-space: nowrap; }
     input.target-input {
-      width: 80px; padding: 4px 6px; border-radius: 4px;
+      width: 92px; padding: 6px 8px; border-radius: 6px;
       border: 1px solid var(--border); background: var(--bg); color: var(--text);
       font-size: 12px; text-align: right;
     }
     input.target-input:focus {
       outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
     }
-    input.target-input-sm { width: 58px; padding: 3px 4px; font-size: 11px; }
+    input.target-input-sm { width: 68px; padding: 5px 6px; font-size: 11px; }
+    .target-balance {
+      display: inline-flex; min-width: 48px; justify-content: center;
+      padding: 3px 7px; border-radius: 999px; font-size: 11px; white-space: nowrap;
+    }
+    .target-balance.ok { color: var(--success); background: rgba(16,185,129,0.12); }
+    .target-balance.warn { color: #fbbf24; background: rgba(245,158,11,0.13); }
     .target-actions {
       display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end;
       padding-top: 12px; border-top: 1px solid var(--border);
     }
-    .org-dim-btn { padding:5px 14px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text-secondary);font-size:12px;cursor:pointer; }
+    .org-dim-btn { padding:6px 13px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text-secondary);font-size:12px;cursor:pointer; }
     .org-dim-btn.active, .org-dim-btn:hover { background:var(--accent);color:#fff;border-color:var(--accent); }
-    .org-target-table { min-width: 900px; }
+    .org-target-table { min-width: 900px; table-layout: fixed; }
     .org-target-table th { text-align: center; }
+    .org-target-table td { text-align: center; white-space: nowrap; }
+    .org-target-table .org-sticky {
+      position: sticky; z-index: 3; background: var(--bg);
+      box-shadow: 1px 0 0 var(--border);
+    }
+    .org-target-table th.org-sticky { z-index: 5; }
+    .org-target-table .org-sticky-org { left: 0; width: 72px; min-width: 72px; }
+    .org-target-table .org-sticky-channel { left: 72px; width: 72px; min-width: 72px; }
+    .org-target-table .org-name-cell { font-weight: 700; vertical-align: middle; }
 
     /* Charts Row */
     .chart-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
@@ -727,13 +829,21 @@
 
       /* 目标设置弹窗 */
       .modal-target .modal { border-radius: 16px 16px 0 0; }
-      .modal-target .modal-body { padding: 16px; max-height: 80vh; overflow: auto; -webkit-overflow-scrolling: touch; }
+      .modal-target .modal-body { padding: 0; max-height: none; overflow: hidden; }
+      .target-shell {
+        height: calc(92vh - 64px);
+        min-height: 0;
+      }
       .target-toolbar {
         flex-wrap: wrap;
         gap: 10px;
-        padding: 8px 10px;
+        padding: 10px 12px;
       }
-      .target-grid {
+      .target-toolbar-actions { width: 100%; justify-content: flex-start; }
+      .target-switchbar { padding: 8px 12px; }
+      .target-content { padding: 12px; }
+      .target-section-head { flex-direction: column; align-items: stretch; gap: 10px; }
+      .target-card-grid {
         grid-template-columns: 1fr;
       }
       .target-table { font-size: 11px; }
@@ -741,15 +851,17 @@
         padding: 4px 6px;
       }
       input.target-input {
-        width: 70px;
+        width: 76px;
         padding: 4px 6px;
         font-size: 12px;
       }
       input.target-input-sm {
-        width: 48px;
+        width: 56px;
         padding: 3px 4px;
         font-size: 10px;
       }
+      .org-target-table .org-sticky-org { width: 60px; min-width: 60px; }
+      .org-target-table .org-sticky-channel { left: 60px; width: 62px; min-width: 62px; }
 
       /* 图表区域 */
       .chart-card {
@@ -989,7 +1101,7 @@
     <div class="header-left">
       <div class="logo">太平人寿 <span>经营分析看板</span></div>
       <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.100</span>
+      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.101</span>
     </div>
     <div class="header-right">
       <button class="chart-btn" data-permission="permission_admin" data-dashboard-action="open-permission-admin" style="margin-right:8px;">权限管理</button>
@@ -1516,7 +1628,7 @@
 
     // Product config modal lives in js/product-config-modal.js
   </script>
-  <script src="js/product-config-modal.js?v=1.0.100"></script>
+  <script src="js/product-config-modal.js?v=1.0.101"></script>
   <script>
     // KPI card rendering lives in js/kpi-cards.js
 
@@ -1525,24 +1637,24 @@
     // KPI detail modal content lives in js/kpi-modal-content.js
     // Local fallback seed data lives in js/seed-data.js
   </script>
-  <script src="js/kpi-modal-content.js?v=1.0.100"></script>
+  <script src="js/kpi-modal-content.js?v=1.0.101"></script>
   <script>
     // API integration lives in js/data-integration.js
   </script>
-  <script src="js/org-analysis.js?v=1.0.100"></script>
-  <script src="js/seed-data.js?v=1.0.100"></script>
-  <script src="js/platform-seed-data.js?v=1.0.100"></script>
-  <script src="js/data-integration.js?v=1.0.100"></script>
-  <script src="js/platform-trend-main.js?v=1.0.100"></script>
+  <script src="js/org-analysis.js?v=1.0.101"></script>
+  <script src="js/seed-data.js?v=1.0.101"></script>
+  <script src="js/platform-seed-data.js?v=1.0.101"></script>
+  <script src="js/data-integration.js?v=1.0.101"></script>
+  <script src="js/platform-trend-main.js?v=1.0.101"></script>
   <script>
   </script>
-  <script src="js/product-analysis.js?v=1.0.100"></script>
+  <script src="js/product-analysis.js?v=1.0.101"></script>
   <script>
   </script>
-  <script src="js/payperiod-chart.js?v=1.0.100"></script>
+  <script src="js/payperiod-chart.js?v=1.0.101"></script>
   <script>
   </script>
-  <script src="js/team-analysis.js?v=1.0.100"></script>
+  <script src="js/team-analysis.js?v=1.0.101"></script>
   <script>
     // ---------- Resize ----------
     window.addEventListener('resize', () => {

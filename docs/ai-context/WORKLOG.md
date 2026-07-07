@@ -1,5 +1,15 @@
 # 工作日志
 
+## 2026-07-07 v1.0.101 目标设置页操作优化
+
+- 任务：优化主看板“设置目标”页面，解决目标弹窗难操作、难查看的问题。
+- 已读取：`AGENTS.md`、`README.md`、`pyproject.toml`、`requirements.txt`、`backend/requirements.txt`、`docs/ai-context/PROJECT_CONTEXT.md`、`RUNBOOK.md`、`DATA_DICTIONARY.md`、`DECISIONS.md`、`OPEN_QUESTIONS.md`、`TODO.md`、`WORKLOG.md`、`js/target-modal.js`、`经营分析模板.html`、目标 API 与前端静态测试。
+- 前端：`js/target-modal.js` 将目标弹窗拆为“总目标与渠道”和“机构目标”两个工作区；总目标与渠道目标支持年度、季度、1-6月、7-12月分期间查看和录入；机构目标继续支持年度、季度、上下半年月度录入。
+- 交互：新增“按年度分摊季/月”、未保存状态、保存中/已保存/失败状态；目标值输入改为实时更新内存状态，保存成功后刷新看板但不自动关闭弹窗，便于连续调整。
+- 展示：`经营分析模板.html` 扩大目标弹窗宽度，顶部工具栏和范围切换固定在弹窗上方；表格增加合计/差额校验、平衡提示；机构目标横向滚动时固定机构和业务模式列。
+- 版本：统一提升到 `v1.0.101`，刷新主页面、荣誉页和人员管理页脚本缓存参数，并同步 `VERSION`、`pyproject.toml` 与版本测试。
+- 验证：`node --check js/target-modal.js` 通过；`tests/test_frontend_static.py` 已补充目标弹窗分区、分期间、分摊、保存状态和实时输入绑定约束；专项测试 `59 passed, 1 warning`，全量测试 `282 passed, 1 warning`；本地普通服务健康检查返回 `app_version=v1.0.101`、`page_version=v1.0.101`、`latest_period=202607`。
+
 ## 2026-07-02 v1.0.100 荣誉追踪驾驶舱与过程截至日
 
 - 任务：按同事荣誉追踪截图，在星钻联盟驾驶舱补充同类结果展示，并支持月中过程追踪。
