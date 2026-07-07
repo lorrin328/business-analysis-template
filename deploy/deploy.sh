@@ -7,6 +7,8 @@ RUN_USER="${RUN_USER:-www-data}"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-/opt/business-analysis-backups}"
 DB_PATH="${BUSINESS_ANALYSIS_DB:-$APP_DIR/backend/business_data.db}"
+# auto: 首次部署且存在足够 Excel 时才全量重建；已有生产库默认保护页面上传数据。
+REBUILD_DATABASE="${REBUILD_DATABASE:-auto}"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "请使用 sudo 运行 deploy/deploy.sh"
@@ -28,6 +30,10 @@ if [ "$PYTHON_VERSION_OK" != "1" ]; then
 fi
 
 mkdir -p "$APP_DIR" "$BACKUP_DIR"
+DB_EXISTED_BEFORE=0
+if [ -f "$DB_PATH" ]; then
+  DB_EXISTED_BEFORE=1
+fi
 # 只要生产数据库存在就备份，避免有经营数据/权限数据但目标配置为空时漏备份。
 if [ -f "$DB_PATH" ]; then
   BACKUP_TS="$(date +%Y%m%d_%H%M%S)"
@@ -117,16 +123,47 @@ print(f'已导入 {data[\"year\"]} 年目标配置')
   fi
 fi
 
-# 重建数据库（如果存在 Excel 文件）
+# 数据重建策略：
+# - 默认 auto：已有生产库时不再使用服务器目录里的 Excel 全量重建，避免旧 Excel 覆盖 Web 上传数据；
+# - 首次部署无数据库且存在足够 Excel 时自动重建；
+# - 如确需从 Excel 强制重建，执行：REBUILD_DATABASE=1 sudo bash deploy/deploy.sh。
 EXCEL_COUNT=$(find "$APP_DIR" -maxdepth 1 -name "*.xlsx" 2>/dev/null | wc -l)
-if [ "$EXCEL_COUNT" -ge 3 ]; then
+REBUILD_MODE="$(printf '%s' "$REBUILD_DATABASE" | tr '[:upper:]' '[:lower:]')"
+SHOULD_REBUILD_FROM_EXCEL=0
+case "$REBUILD_MODE" in
+  1|true|yes|excel|force)
+    SHOULD_REBUILD_FROM_EXCEL=1
+    ;;
+  0|false|no|skip|raw|none)
+    SHOULD_REBUILD_FROM_EXCEL=0
+    ;;
+  auto|"")
+    if [ "$DB_EXISTED_BEFORE" = "0" ] && [ "$EXCEL_COUNT" -ge 3 ]; then
+      SHOULD_REBUILD_FROM_EXCEL=1
+    fi
+    ;;
+  *)
+    echo "ERROR: REBUILD_DATABASE must be auto, 1, or 0. Current: $REBUILD_DATABASE" >&2
+    exit 1
+    ;;
+esac
+
+if [ "$SHOULD_REBUILD_FROM_EXCEL" = "1" ]; then
+  if [ "$EXCEL_COUNT" -lt 3 ]; then
+    echo "ERROR: REBUILD_DATABASE=$REBUILD_DATABASE 但 Excel 文件不足（需 ≥3），无法全量重建数据库。"
+    exit 1
+  fi
   echo "检测到 $EXCEL_COUNT 个 Excel 文件，正在重建数据库..."
   "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_from_excels.py" || {
     echo "ERROR: 数据库重建失败，部署已中止。请检查 Excel 文件名、字段和重建日志。"
     exit 1
   }
 else
-  echo "⚠ 未检测到足够 Excel 文件（需 ≥3），跳过数据库重建"
+  if [ "$DB_EXISTED_BEFORE" = "1" ]; then
+    echo "检测到已有生产数据库，默认不从 Excel 全量重建；如需强制重建请设置 REBUILD_DATABASE=1"
+  else
+    echo "⚠ 未检测到已有生产数据库，且 Excel 文件不足（需 ≥3），跳过 Excel 全量重建"
+  fi
   echo "  尝试从 SQLite 原始明细表重建聚合..."
   "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_aggregates_from_raw_tables.py" \
     || echo "⚠ SQLite 原始表重建失败；请上传 Excel 后通过 Web 界面导入，或手动运行 rebuild_from_excels.py"

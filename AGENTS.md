@@ -14,6 +14,12 @@ This file provides guidance to Codex (Codex.ai/code) and OpenClaw for automated 
 sudo bash deploy/deploy.sh
 ```
 
+已有生产数据库时，`deploy.sh` 默认不再用服务器根目录 Excel 全量重建数据库，避免旧 Excel 覆盖 Web 页面导入后的最新数据。如确需从 Excel 强制重建，使用：
+
+```bash
+REBUILD_DATABASE=1 sudo bash deploy/deploy.sh
+```
+
 ### 手动部署步骤
 
 ```bash
@@ -78,6 +84,8 @@ sudo -u www-data ./venv/bin/python rebuild_from_excels.py
 ```
 
 或将新 Excel 文件放到 `/opt/business-analysis/` 目录后，通过 Web 上传界面导入。
+
+注意：代码部署默认保护现有生产库，不会自动用旧 Excel 重建。只有明确需要以服务器根目录 Excel 作为新口径时，才使用 `REBUILD_DATABASE=1 sudo bash deploy/deploy.sh` 或手动执行 `rebuild_from_excels.py`。
 
 ### 文件权限
 

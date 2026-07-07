@@ -376,6 +376,10 @@ def test_deploy_preserves_runtime_environment_files():
     assert "--exclude='deploy/.admin_env'" in deploy
     assert "--exclude='deploy/.ai_env'" in deploy
     assert "--exclude='deploy/.webhook_env'" in deploy
+    assert 'REBUILD_DATABASE="${REBUILD_DATABASE:-auto}"' in deploy
+    assert 'DB_EXISTED_BEFORE=1' in deploy
+    assert "默认不从 Excel 全量重建" in deploy
+    assert "REBUILD_DATABASE=1" in deploy
     assert "cp \"$APP_DIR/deploy/webhook.service\" /etc/systemd/system/webhook-deploy.service" in deploy
     assert "systemctl enable webhook-deploy" in deploy
 

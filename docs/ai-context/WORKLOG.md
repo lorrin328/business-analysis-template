@@ -1,5 +1,13 @@
 # 工作日志
 
+## 2026-07-07 v1.0.101 生产数据库恢复与部署脚本防覆盖修复
+
+- 问题：用户反馈“数据截至”回退到 7.1。排查确认 `v1.0.101` 部署时 `deploy.sh` 检测到服务器 `/opt/business-analysis/` 中仍有 20260701 旧 Excel，并自动执行 `rebuild_from_excels.py`，覆盖了用户 2026-07-07 通过 Web 页面导入后的数据库聚合结果。
+- 恢复：按用户确认，将生产数据库恢复为 `/opt/business-analysis-backups/business_data.db.20260707_104333`；恢复前已再备份错误库到 `/opt/business-analysis-backups/business_data.db.before_restore_20260707_112644`。
+- 验证：备份库 `PRAGMA integrity_check=ok`；恢复后 `agg_daily_performance`、`agg_jingdai_daily`、`agg_org_daily_performance` 最大日期均为 `20260707`，最近导入记录为用户当天 4 份 `20260707` Excel；`business-analysis` 为 `active`，生产 `/api/health` 返回 `status=ok`、`app_version=v1.0.101`、`page_version=v1.0.101`。
+- 修复：`deploy/deploy.sh` 新增 `REBUILD_DATABASE` 控制。默认 `auto` 模式下，已有生产数据库时不再从服务器根目录 Excel 全量重建，改为保护现有库并尝试基于 SQLite 原始明细表重建聚合；只有显式 `REBUILD_DATABASE=1 sudo bash deploy/deploy.sh` 才从 Excel 强制重建。
+- 文档：更新 `AGENTS.md` 与 `docs/ai-context/RUNBOOK.md`，明确代码部署默认保护 Web 上传数据，避免旧 Excel 覆盖生产库。
+
 ## 2026-07-07 v1.0.101 GitHub 同步与生产部署
 
 - 任务：将“设置目标”页面优化同步到 GitHub，并部署到 `192.168.50.6` 生产服务器。

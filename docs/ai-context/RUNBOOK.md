@@ -68,6 +68,20 @@ curl http://127.0.0.1:45679/api/health
 /opt/business-analysis
 ```
 
+代码部署：
+
+```bash
+sudo bash deploy/deploy.sh
+```
+
+已有生产数据库时，部署脚本默认不再使用 `/opt/business-analysis/` 根目录中的 Excel 全量重建数据库，避免旧 Excel 覆盖 Web 页面导入后的最新数据。脚本会备份当前库，并尝试基于 SQLite 原始明细表重建聚合。
+
+如确需用服务器根目录 Excel 全量重建数据库，必须显式执行：
+
+```bash
+REBUILD_DATABASE=1 sudo bash deploy/deploy.sh
+```
+
 服务：
 
 ```bash

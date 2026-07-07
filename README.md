@@ -373,6 +373,12 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python uv run python -m pytest 
 sudo bash deploy/deploy.sh
 ```
 
+已有生产数据库时，部署脚本默认保护现有数据库，不再用服务器根目录中的 Excel 自动全量重建，避免旧 Excel 覆盖 Web 页面导入的新数据。如确需以服务器 Excel 作为新基准强制重建，执行：
+
+```bash
+REBUILD_DATABASE=1 sudo bash deploy/deploy.sh
+```
+
 首次部署且数据库中尚无管理员账号时，需在部署环境文件中配置管理员初始密码：
 
 ```bash
