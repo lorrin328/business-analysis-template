@@ -23,6 +23,7 @@
     };
     let teamEnhancedData = null;
     let teamEnhancedLoading = false;
+    let teamEnhancedRequestSerial = 0;
     let selectedTeamEnhancedPeriodType = 'month';
     let selectedTeamEnhancedPeriodValue = null;
     const selectedTeamEnhancedBusinessLines = { OTO: true, '证保': true, '蚁桥': true };
@@ -190,9 +191,8 @@
       refreshTeamEnhancedPanel();
     }
 
-    async function fetchTeamEnhancedData() {
+    async function fetchTeamEnhancedData(requestSerial) {
       const wrapper = document.getElementById('teamEnhancedPanel');
-      if (teamEnhancedLoading) return;
       teamEnhancedLoading = true;
       if (wrapper && !teamEnhancedData) {
         wrapper.innerHTML = '<div class="structure-empty">正在加载队伍结构与产能分析...</div>';
@@ -200,19 +200,26 @@
       try {
         const params = buildTeamEnhancedParams();
         const payload = await window.fetchJson(`/api/team-enhanced-analysis?${params.toString()}`);
+        if (requestSerial !== teamEnhancedRequestSerial) return false;
         teamEnhancedData = window.unwrapApiResponse ? window.unwrapApiResponse(payload) : (payload?.data || null);
+        return true;
       } catch (error) {
-        console.error('load team enhanced analysis failed', error);
-        teamEnhancedData = null;
+        if (requestSerial === teamEnhancedRequestSerial) {
+          console.error('load team enhanced analysis failed', error);
+          teamEnhancedData = null;
+          return true;
+        }
+        return false;
       } finally {
-        teamEnhancedLoading = false;
+        if (requestSerial === teamEnhancedRequestSerial) teamEnhancedLoading = false;
       }
     }
 
     async function refreshTeamEnhancedPanel() {
+      const requestSerial = ++teamEnhancedRequestSerial;
       teamEnhancedData = null;
-      await fetchTeamEnhancedData();
-      renderTeamEnhancedPanel();
+      const shouldRender = await fetchTeamEnhancedData(requestSerial);
+      if (shouldRender) renderTeamEnhancedPanel();
     }
 
     function renderRows(rows, columns, emptyText) {
@@ -548,6 +555,7 @@
       const hasOrgFilter = selectedOrgs.length > 0 && selectedOrgs.length < ORG_LIST_TEAM.length;
       const useOrgData = hasOrgFilter && teamOrgData[year];
       const data = teamMock[year];
+      if (!data && !useOrgData) return Array(12).fill(null);
       const result = [];
       for (let i = 0; i < 12; i++) {
         if (Number(year) === DEFAULT_DASHBOARD_YEAR_NUM && i >= getLatestMonthForYear(String(year))) { result.push(null); continue; }
