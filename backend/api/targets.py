@@ -38,13 +38,15 @@ def targets(year: DashboardYearQuery = DEFAULT_YEAR, mode: str = "config"):
 def save_targets(
     year: DashboardYearQuery = DEFAULT_YEAR,
     payload: dict = Body(...),
-    updatedBy: str = "admin",
     _user=Depends(require_permission("targets")),
 ):
     validation = validate_target_payload(payload)
     if not validation.valid:
         raise HTTPException(status_code=400, detail=validation.to_dict())
-    data = save_target_config(year, payload, updated_by=updatedBy)
+    payload_year = payload.get("year")
+    if payload_year is not None and int(payload_year) != int(year):
+        raise HTTPException(status_code=400, detail="目标年份与请求年份不一致")
+    data = save_target_config(year, payload, updated_by=_user.get("username") or "system")
     log_operation("target_save", user=_user, detail={"year": year})
     return success_response(
         data,

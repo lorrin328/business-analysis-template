@@ -6,7 +6,12 @@ SERVICE_NAME="${SERVICE_NAME:-business-analysis}"
 RUN_USER="${RUN_USER:-www-data}"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-/opt/business-analysis-backups}"
-DB_PATH="${BUSINESS_ANALYSIS_DB:-$APP_DIR/backend/business_data.db}"
+DATA_DIR="${DATA_DIR:-/var/lib/business-analysis}"
+LOG_DIR="${BUSINESS_ANALYSIS_LOG_DIR:-/var/log/business-analysis}"
+DB_PATH="${BUSINESS_ANALYSIS_DB:-$DATA_DIR/business_data.db}"
+LEGACY_DB_PATH="$APP_DIR/backend/business_data.db"
+export BUSINESS_ANALYSIS_DB="$DB_PATH"
+export BUSINESS_ANALYSIS_LOG_DIR="$LOG_DIR"
 # auto: 首次部署且存在足够 Excel 时才全量重建；已有生产库默认保护页面上传数据。
 REBUILD_DATABASE="${REBUILD_DATABASE:-auto}"
 
@@ -29,7 +34,37 @@ if [ "$PYTHON_VERSION_OK" != "1" ]; then
   exit 1
 fi
 
-mkdir -p "$APP_DIR" "$BACKUP_DIR"
+mkdir -p "$APP_DIR" "$BACKUP_DIR" "$DATA_DIR" "$LOG_DIR"
+
+# 自动部署链路曾允许 www-data 执行项目树内可写脚本。正式安全方案落地前关闭该链路，
+# 仅保留由管理员通过可信发布包手工执行本脚本的方式。
+systemctl disable --now webhook-deploy 2>/dev/null || true
+rm -f /etc/sudoers.d/webhook-deploy
+
+SERVICE_WAS_ACTIVE=0
+if systemctl is-active --quiet "$SERVICE_NAME"; then
+  SERVICE_WAS_ACTIVE=1
+  systemctl stop "$SERVICE_NAME"
+fi
+
+restore_service_on_error() {
+  local exit_code=$?
+  echo "ERROR: 部署中止，尝试恢复原服务" >&2
+  if [ "$SERVICE_WAS_ACTIVE" = "1" ]; then
+    systemctl start "$SERVICE_NAME" 2>/dev/null || true
+  fi
+  exit "$exit_code"
+}
+trap restore_service_on_error ERR
+
+# 首次切换到专用运行数据目录时，使用 SQLite Online Backup API 迁移旧运行库。
+if [ ! -f "$DB_PATH" ] && [ -f "$LEGACY_DB_PATH" ]; then
+  echo "正在将生产数据库迁移到独立数据目录: $DB_PATH"
+  python3 "$SRC_DIR/backend/backup_database.py" \
+    --source "$LEGACY_DB_PATH" \
+    --destination "$DB_PATH"
+fi
+
 DB_EXISTED_BEFORE=0
 if [ -f "$DB_PATH" ]; then
   DB_EXISTED_BEFORE=1
@@ -38,37 +73,10 @@ fi
 if [ -f "$DB_PATH" ]; then
   BACKUP_TS="$(date +%Y%m%d_%H%M%S)"
   BACKUP_FILE="$BACKUP_DIR/business_data.db.$BACKUP_TS"
-  cp "$DB_PATH" "$BACKUP_FILE"
-  python3 - <<PY > "$BACKUP_FILE.meta" 2>/dev/null || true
-import hashlib
-import os
-import sqlite3
-
-db = "$DB_PATH"
-backup = "$BACKUP_FILE"
-print(f"backup_file={backup}")
-print(f"source_db={db}")
-print(f"size_bytes={os.path.getsize(backup)}")
-try:
-    with open(backup, "rb") as f:
-        print("sha256=" + hashlib.sha256(f.read()).hexdigest())
-    c = sqlite3.connect(backup)
-    tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-    print(f"table_count={len(tables)}")
-    for table in ["target_config", "users", "data_imports", "agg_performance", "agg_jingdai"]:
-        if table in tables:
-            count = c.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-            print(f"{table}_count={count}")
-    periods = []
-    for table in ["agg_daily_performance", "agg_jingdai_daily", "agg_performance", "agg_jingdai"]:
-        if table in tables:
-            row = c.execute(f"SELECT MAX(year * 100 + month) FROM {table}").fetchone()
-            if row and row[0]:
-                periods.append(int(row[0]))
-    print(f"latest_period={max(periods) if periods else ''}")
-except Exception as exc:
-    print(f"meta_error={exc}")
-PY
+  python3 "$SRC_DIR/backend/backup_database.py" \
+    --source "$DB_PATH" \
+    --destination "$BACKUP_FILE" \
+    --meta "$BACKUP_FILE.meta"
   echo "已备份数据库: $BACKUP_FILE"
 fi
 
@@ -165,8 +173,10 @@ else
     echo "⚠ 未检测到已有生产数据库，且 Excel 文件不足（需 ≥3），跳过 Excel 全量重建"
   fi
   echo "  尝试从 SQLite 原始明细表重建聚合..."
-  "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_aggregates_from_raw_tables.py" \
-    || echo "⚠ SQLite 原始表重建失败；请上传 Excel 后通过 Web 界面导入，或手动运行 rebuild_from_excels.py"
+  "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_aggregates_from_raw_tables.py" || {
+    echo "ERROR: SQLite 原始表重建失败，部署已中止，避免以空聚合或旧聚合继续上线。" >&2
+    exit 1
+  }
 fi
 
 echo "Account auth enabled; ADMIN_TOKEN is no longer required."
@@ -181,28 +191,25 @@ if ! grep -q "client_max_body_size" /etc/nginx/sites-available/business-analysis
   echo "⚠ 警告：nginx 配置缺少 client_max_body_size，大文件上传将被拒绝（413 错误）"
 fi
 
-# 自动部署 Webhook（每次刷新 service 文件，运行时密钥由 deploy/.webhook_env 持久化）
-cp "$APP_DIR/deploy/webhook.service" /etc/systemd/system/webhook-deploy.service
-systemctl daemon-reload
-systemctl enable webhook-deploy
-if [ ! -f /etc/sudoers.d/webhook-deploy ]; then
-  echo "$RUN_USER ALL=(ALL) NOPASSWD: /usr/bin/env bash $APP_DIR/deploy/deploy.sh" > /etc/sudoers.d/webhook-deploy
-  chmod 440 /etc/sudoers.d/webhook-deploy
+# 应用代码只读；仅独立的数据目录和日志目录允许应用账号写入。
+chown -R root:root "$APP_DIR"
+chown -R "$RUN_USER:$RUN_USER" "$DATA_DIR" "$LOG_DIR"
+chmod 750 "$DATA_DIR" "$LOG_DIR"
+if [ -f "$DB_PATH" ]; then
+  chmod 640 "$DB_PATH"
 fi
-if [ ! -f "$APP_DIR/deploy/.webhook_env" ]; then
-  echo "⚠ 未配置 webhook 密钥，自动部署功能不可用"
-  echo "  请执行: echo 'WEBHOOK_SECRET=你的密钥' > $APP_DIR/deploy/.webhook_env"
-else
-  systemctl restart webhook-deploy 2>/dev/null || echo "⚠ webhook-deploy 服务未启动，请检查 webhook 密钥和服务日志"
-fi
-
-mkdir -p "$APP_DIR/backend/logs"
-chown -R "$RUN_USER:$RUN_USER" "$APP_DIR"
+for runtime_env in "$APP_DIR/deploy/.admin_env" "$APP_DIR/deploy/.ai_env" "$APP_DIR/deploy/.webhook_env"; do
+  if [ -f "$runtime_env" ]; then
+    chown root:"$RUN_USER" "$runtime_env"
+    chmod 640 "$runtime_env"
+  fi
+done
 
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
 nginx -t && systemctl restart nginx
+trap - ERR
 APP_VERSION=$(grep -oP 'v\d+\.\d+\.\d+' "$APP_DIR/经营分析模板.html" | head -1 || true)
 
 echo ""
@@ -211,10 +218,6 @@ echo "  部署完成"
 echo "  访问地址: http://<服务器IP>/"
 echo "  版本: ${APP_VERSION:-unknown}"
 echo ""
-echo "  自动部署:"
-echo "    1. 在 GitHub Settings → Webhooks 添加:"
-echo "       URL: http://<服务器IP>/webhook/deploy"
-echo "       Secret: 与服务器 $APP_DIR/deploy/.webhook_env 一致"
-echo "    2. 验证: systemctl status webhook-deploy"
+echo "  自动部署: 已因安全整改暂停；请使用可信发布包手工执行 deploy/deploy.sh"
 echo "============================================"
 echo "  默认管理员账号: admin"

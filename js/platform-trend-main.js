@@ -569,13 +569,15 @@
       const updateProduct = options.updateProduct !== false;
       const yearNum = parseInt(year);
       const yearLabel = String(yearNum);
-      const cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(yearNum) : yearLabel;
+      let cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(yearNum) : yearLabel;
       if (!apiCache[cacheKey]) {
         const ok = await fetchAPIData(yearNum);
         if (!ok) {
           clearRuntimeFallbackYear(year);
           return false;
         }
+        // KPI 会把默认、月度或超出最新数据日的范围规范化；重新按规范化后的范围取缓存。
+        cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(yearNum) : yearLabel;
       }
       const cached = apiCache[cacheKey];
       if (cached && cached.platform && hasValidApiData(cached.platform)) {

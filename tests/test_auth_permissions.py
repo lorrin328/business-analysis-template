@@ -26,7 +26,7 @@ def auth_db(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTH_TEST_BYPASS", "1")
 
 
-def _login(client, username="admin", password="Aaaaasynology8888%"):
+def _login(client, username="admin", password="Test-only-admin-2026!"):
     resp = client.post("/api/auth/login", json={"username": username, "password": password})
     assert resp.status_code == 200
     return resp.json()["data"]
@@ -147,7 +147,71 @@ def test_admin_operation_logs_capture_login_register_and_permission_changes(auth
     assert all("created_at_utc" in row for row in log_rows)
 
     normal_token = registered.json()["data"]["token"]
-    assert client.get("/api/admin/operation-logs", headers=_auth_headers(normal_token)).status_code == 403
+    assert client.get("/api/auth/me", headers=_auth_headers(normal_token)).status_code == 401
+    assert client.get("/api/admin/operation-logs", headers=_auth_headers(normal_token)).status_code == 401
+
+
+def test_password_reset_revokes_existing_sessions(auth_db):
+    client = TestClient(app)
+    admin = _login(client)
+    admin_headers = _auth_headers(admin["token"])
+    registered = client.post("/api/auth/register", json={"username": "reset_user", "password": "normal-pass-123"})
+    user = registered.json()["data"]
+
+    reset = client.patch(
+        f"/api/admin/users/{user['user']['id']}",
+        headers=admin_headers,
+        json={"password": "normal-pass-456"},
+    )
+
+    assert reset.status_code == 200
+    assert client.get("/api/auth/me", headers=_auth_headers(user["token"])).status_code == 401
+
+
+def test_login_rate_limit_blocks_repeated_failures(auth_db, monkeypatch):
+    import api.auth_routes as auth_routes
+
+    client = TestClient(app)
+    monkeypatch.setattr(auth_routes, "LOGIN_ATTEMPT_LIMIT", 2)
+    monkeypatch.setattr(auth_routes, "LOGIN_LOCK_SECONDS", 60)
+    auth_routes._login_attempts.clear()
+    auth_routes._login_locks.clear()
+    try:
+        first = client.post("/api/auth/login", json={"username": "admin", "password": "wrong-password"})
+        blocked = client.post("/api/auth/login", json={"username": "admin", "password": "wrong-password"})
+        still_blocked = client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "Test-only-admin-2026!"},
+        )
+        assert first.status_code == 401
+        assert blocked.status_code == 429
+        assert still_blocked.status_code == 429
+        assert int(blocked.headers["Retry-After"]) >= 1
+    finally:
+        auth_routes._login_attempts.clear()
+        auth_routes._login_locks.clear()
+
+
+def test_legacy_read_routes_enforce_module_permissions(auth_db):
+    from db import get_db
+
+    client = TestClient(app)
+    registered = client.post("/api/auth/register", json={"username": "legacy_user", "password": "normal-pass-123"})
+    user = registered.json()["data"]
+    with get_db() as conn:
+        conn.execute(
+            """
+            UPDATE user_module_permissions
+            SET allowed = 0
+            WHERE user_id = ? AND module_key IN ('platform_trend', 'kpi', 'product_structure', 'org')
+            """,
+            (user["user"]["id"],),
+        )
+        conn.commit()
+    headers = _auth_headers(user["token"])
+
+    for path in ["/api/data/2026", "/api/kpi/2026", "/api/product/2026", "/api/org-kpi/2026"]:
+        assert client.get(path, headers=headers).status_code == 403
 
 
 def test_operation_logs_return_local_display_time(auth_db):
@@ -324,5 +388,5 @@ def test_default_admin_password_must_come_from_environment(monkeypatch):
     try:
         assert reloaded.DEFAULT_ADMIN_PASSWORD == ""
     finally:
-        monkeypatch.setenv("DEFAULT_ADMIN_PASSWORD", "Aaaaasynology8888%")
+        monkeypatch.setenv("DEFAULT_ADMIN_PASSWORD", "Test-only-admin-2026!")
         importlib.reload(auth)

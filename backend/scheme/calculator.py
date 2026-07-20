@@ -386,6 +386,40 @@ def _collect_warnings(workbook, formula_workbook) -> list[dict]:
                 "message": "45日撤保退保、回执回访、犹豫期、自保互保等政策条件需补充源字段后才能自动判断。",
             }
         )
+
+    missing_cache_cells = []
+    for layout in LAYOUTS:
+        if layout.sheet not in workbook.sheetnames or layout.sheet not in formula_workbook.sheetnames:
+            continue
+        cached_ws = workbook[layout.sheet]
+        formula_ws = formula_workbook[layout.sheet]
+        output_starts = [layout.qualified_start, layout.maintain_start, layout.award_start]
+        output_starts.extend(
+            value for value in [layout.final_award_start, layout.org_award_start, layout.star_award_start] if value
+        )
+        for row_idx in range(3, formula_ws.max_row + 1):
+            if not (_text(_get(formula_ws, row_idx, layout.code_col)) or _text(_get(formula_ws, row_idx, layout.name_col))):
+                continue
+            output_cells = [formula_ws.cell(row_idx, _offset_col(start, month)) for start in output_starts for month in MONTHS]
+            output_cells.extend(
+                [formula_ws.cell(row_idx, _col(layout.total_col)), formula_ws.cell(row_idx, _col(layout.status_col))]
+            )
+            for formula_cell in output_cells:
+                value = formula_cell.value
+                if not (formula_cell.data_type == "f" or (isinstance(value, str) and value.startswith("="))):
+                    continue
+                if cached_ws.cell(formula_cell.row, formula_cell.column).value in (None, ""):
+                    missing_cache_cells.append(f"{layout.sheet}!{formula_cell.coordinate}")
+    if missing_cache_cells:
+        preview = ", ".join(missing_cache_cells[:10])
+        suffix = "等" if len(missing_cache_cells) > 10 else ""
+        warnings.append(
+            {
+                "level": "high",
+                "title": "关键公式缓存缺失",
+                "message": f"{preview}{suffix} 未保存可读取的公式结果，请先用 Excel 完成重算并保存。",
+            }
+        )
     return warnings
 
 
@@ -394,6 +428,14 @@ def calculate_2026_org_dev_workbook(content: bytes, file_name: str) -> dict:
     formula_workbook = load_workbook(BytesIO(content), data_only=False)
     rows = _parse_sections(workbook)
     warnings = _collect_warnings(workbook, formula_workbook)
+    if not rows:
+        warnings.append(
+            {
+                "level": "high",
+                "title": "测算明细为空",
+                "message": "三个方案工作表均未解析到有效人员行，不能生成成功批次。",
+            }
+        )
     summary = _build_summary(rows)
     source_sheets = [{"name": name, "rows": workbook[name].max_row, "columns": workbook[name].max_column} for name in workbook.sheetnames]
 

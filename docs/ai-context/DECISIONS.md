@@ -1,5 +1,27 @@
 # 决策记录
 
+## 2026-07-20 生产代码、运行数据和 root 部署权限必须隔离
+
+### 决策
+
+systemd 部署下，代码固定在 `/opt/business-analysis` 且归 `root:root`；SQLite 运行库固定在 `/var/lib/business-analysis/business_data.db`，日志固定在 `/var/log/business-analysis`，仅这两个运行目录允许 `www-data` 写入。暂停项目树 webhook 自动部署，删除 `www-data` 执行项目内 `deploy.sh` 的免密 sudoers。数据库备份统一使用 SQLite Online Backup API 并验证完整性。
+
+### 原因
+
+- 应用账号可写部署脚本并免密 sudo 执行，会把任一应用层漏洞扩大为 root 提权。
+- WAL 模式数据库直接复制主文件可能遗漏已提交事务，无法作为可信恢复点。
+- 源码、运行数据、日志和凭据混在同一可写目录，不利于最小权限、审计和回滚。
+
+### 影响
+
+- GitHub push 不再直接触发 Ubuntu 发布；必须由管理员使用可信提交归档执行 `deploy/deploy.sh`。
+- 每次部署会迁移或备份生产库、生成校验元数据，并在聚合重建失败时中止。
+- `.admin_env`、`.ai_env`、`.webhook_env` 继续保留但归 root 管理；webhook 配置仅作历史兼容，不再启用服务。
+
+## 2026-07-20 不同时间粒度的指标不得直接混算
+
+日级或任意区间保费只有在同范围人力可获得时才能计算人均产能。当前人力为月级数据，因此仅完整自然月范围允许计算；其他范围显示不可计算，不用整月人力近似替代。
+
 ## 2026-07-20 全局统计范围采用统一期间模型
 
 ### 决策

@@ -114,7 +114,7 @@ def _set_import_status(results: dict, *, has_written_rows: bool):
 
 app = FastAPI(title="经营分析看板API")
 
-LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
+LOG_DIR = os.getenv("BUSINESS_ANALYSIS_LOG_DIR", os.path.join(os.path.dirname(__file__), "logs"))
 os.makedirs(LOG_DIR, exist_ok=True)
 logger = logging.getLogger("business-analysis")
 logger.setLevel(logging.INFO)

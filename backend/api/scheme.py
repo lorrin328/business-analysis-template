@@ -85,6 +85,28 @@ async def upload_scheme_excel(
         log_operation("scheme_upload", user=_user, status="failed", detail={"schemeId": scheme_id, "fileName": tracking.filename})
         raise HTTPException(status_code=400, detail=f"方案测算工作簿解析失败：{exc}") from exc
 
+    blocking_warnings = [item for item in result.get("warnings", []) if item.get("level") == "high"]
+    if blocking_warnings:
+        log_operation(
+            "scheme_upload",
+            user=_user,
+            status="failed",
+            detail={
+                "schemeId": scheme_id,
+                "fileName": tracking.filename,
+                "reason": "blocking_validation",
+                "warningTitles": [item.get("title") for item in blocking_warnings],
+            },
+        )
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "方案底稿未通过强校验，未生成成功批次",
+                "warnings": blocking_warnings,
+                "summary": result.get("summary") or {},
+            },
+        )
+
     file_hash = hashlib.sha256(content).hexdigest()
     batch = create_scheme_batch(
         scheme_id=option["id"],

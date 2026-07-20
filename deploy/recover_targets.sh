@@ -5,7 +5,7 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/business-analysis}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/business-analysis-backups}"
-DB="${BUSINESS_ANALYSIS_DB:-$APP_DIR/backend/business_data.db}"
+DB="${BUSINESS_ANALYSIS_DB:-/var/lib/business-analysis/business_data.db}"
 
 echo "=== 目标数据恢复 ==="
 echo "数据库: $DB"

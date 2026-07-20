@@ -16,7 +16,7 @@
 ## 当前运行边界
 
 - 生产入口为根目录 `经营分析模板.html`。
-- 后端默认运行库为 `backend/business_data.db`，可通过 `BUSINESS_ANALYSIS_DB` 覆盖。
+- 本地后端默认运行库为 `backend/business_data.db`；systemd 生产环境通过 `BUSINESS_ANALYSIS_DB` 固定为 `/var/lib/business-analysis/business_data.db`。
 - 业务 `/api/` 默认需要登录；`/api/auth/`、`/api/health`、`/api/ai/` 为公开前缀。
 - 首次初始化管理员必须通过 `DEFAULT_ADMIN_PASSWORD` 环境变量提供密码。
 - 生产环境默认关闭公开自助注册；如需临时开放，必须显式设置 `AUTH_ALLOW_PUBLIC_REGISTRATION=1`。

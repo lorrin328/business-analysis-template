@@ -31,12 +31,12 @@ def test_ai_api_reads_kpi_snapshot_and_logs(auth_db, monkeypatch):
     snapshot = client.get("/api/ai/dashboard-snapshot?year=2026", headers=headers)
     assert snapshot.status_code == 200
     payload = snapshot.json()["data"]
-    assert payload["version"] == "v1.0.104"
+    assert payload["version"] == "v1.0.105"
     assert "kpi" in payload
     assert "orgOverview" in payload
     assert "metricDefinitions" in payload
 
-    admin = client.post("/api/auth/login", json={"username": "admin", "password": "Aaaaasynology8888%"}).json()["data"]
+    admin = client.post("/api/auth/login", json={"username": "admin", "password": "Test-only-admin-2026!"}).json()["data"]
     logs = client.get(
         "/api/admin/operation-logs",
         headers={"Authorization": f"Bearer {admin['token']}"},

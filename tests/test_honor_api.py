@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from main import app
 
 
-def _login(client, username="admin", password="Aaaaasynology8888%"):
+def _login(client, username="admin", password="Test-only-admin-2026!"):
     resp = client.post("/api/auth/login", json={"username": username, "password": password})
     assert resp.status_code == 200
     return resp.json()["data"]

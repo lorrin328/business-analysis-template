@@ -9,7 +9,9 @@ Group=www-data
 WorkingDirectory=/opt/business-analysis/backend
 Environment="PATH=/opt/business-analysis/backend/venv/bin"
 Environment="APP_ENV=production"
-Environment="BUSINESS_ANALYSIS_DB=/opt/business-analysis/backend/business_data.db"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+Environment="BUSINESS_ANALYSIS_DB=/var/lib/business-analysis/business_data.db"
+Environment="BUSINESS_ANALYSIS_LOG_DIR=/var/log/business-analysis"
 EnvironmentFile=-/opt/business-analysis/deploy/.admin_env
 EnvironmentFile=-/opt/business-analysis/deploy/.ai_env
 ExecStart=/opt/business-analysis/backend/venv/bin/uvicorn main:app --host 0.0.0.0 --port 45679

@@ -387,7 +387,25 @@
       }
 
       // 8. 人均保费（月均新单保费 / 月均在职人力）
-      if (hasApiKpi && kpi.qj_premium && kpi.hr && Object.keys(kpi.hr).length > 0) {
+      // 人力只有月级精度；范围不是完整自然月时不将日级保费与整月人力混算。
+      const rangeStart = String(period.startDate || '');
+      const rangeEnd = String(period.endDate || '');
+      const rangeStartDate = /^\d{4}-\d{2}-\d{2}$/.test(rangeStart) ? new Date(`${rangeStart}T00:00:00`) : null;
+      const rangeEndDate = /^\d{4}-\d{2}-\d{2}$/.test(rangeEnd) ? new Date(`${rangeEnd}T00:00:00`) : null;
+      const rangeEndsAtMonthEnd = rangeEndDate
+        ? rangeEndDate.getDate() === new Date(rangeEndDate.getFullYear(), rangeEndDate.getMonth() + 1, 0).getDate()
+        : false;
+      const completeMonthRange = Boolean(
+        rangeStartDate && rangeEndDate && rangeStartDate.getDate() === 1 && rangeEndsAtMonthEnd
+      );
+      if (!completeMonthRange) {
+        const perCapitaEl = document.getElementById('kpi-percapita');
+        if (perCapitaEl) perCapitaEl.textContent = '--';
+        const perCapitaSubEl = document.getElementById('kpi-percapita-sub');
+        if (perCapitaSubEl) {
+          perCapitaSubEl.innerHTML = '<span style="color:var(--text-secondary)">当前范围非完整月，人力按月统计，暂不计算</span>';
+        }
+      } else if (hasApiKpi && kpi.qj_premium && kpi.hr && Object.keys(kpi.hr).length > 0) {
         let 总保费 = kpi.qj_premium.total_transform || 0;
         let 总在职 = 0;
         let 统计月数 = 0;
@@ -405,7 +423,7 @@
         if (perCapitaSubEl) {
           perCapitaSubEl.innerHTML = '<span style="color:var(--text-secondary)">转型业务人均保费</span>';
         }
-      } else if (tm) {
+      } else if (window.ALLOW_LOCAL_FALLBACK && tm) {
         const 保费OTO = sumArr(tm.premium['OTO']);
         const 保费证保 = sumArr(tm.premium['证保']);
         const 保费蚁桥 = sumArr(tm.premium['蚁桥']);
@@ -433,6 +451,13 @@
             <span>OTO <span class="${otoPc >= 3 ? 'up' : 'down'}">${otoPc}万</span></span>
             <span>证保 <span class="${zbPc >= 3 ? 'up' : 'down'}">${zbPc}万</span></span>
             <span>蚁桥 <span class="${yqPc >= 3 ? 'up' : 'down'}">${yqPc}万</span></span>`;
+        }
+      } else {
+        const perCapitaEl = document.getElementById('kpi-percapita');
+        if (perCapitaEl) perCapitaEl.textContent = '--';
+        const perCapitaSubEl = document.getElementById('kpi-percapita-sub');
+        if (perCapitaSubEl) {
+          perCapitaSubEl.innerHTML = '<span style="color:var(--text-secondary)">当前范围缺少同口径月度人力数据</span>';
         }
       }
         updateTargetTrustState();

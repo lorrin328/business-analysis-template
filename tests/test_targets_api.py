@@ -7,9 +7,23 @@ sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 import pytest
 
+pytest.importorskip("fastapi")
+from fastapi.testclient import TestClient
+
 import db as database
 import db.connection as db_connection
+from main import app
 from services.response import batch_meta, error_response, response_meta, success_response
+from validators.target_validator import validate_target_payload
+
+
+def _complete_target_payload(year=2026):
+    metric = {"year": 100, "quarter": [25] * 4, "month": [100 / 12] * 12}
+    lines = ["整体", "经代", "转型业务", "OTO", "证保", "蚁桥"]
+    categories = {}
+    for key in ["qjPremium", "value", "shangbao", "baozhang", "tenYear"]:
+        categories[key] = {"metrics": {line: dict(metric) for line in lines}}
+    return {"year": year, "categories": categories, "orgTargets": {}}
 
 
 def test_response_format():
@@ -82,6 +96,40 @@ def test_target_save_and_read(tmp_path):
     finally:
         database.DB_PATH = old_database_path
         db_connection.DB_PATH = old_connection_path
+
+
+def test_target_validation_rejects_incomplete_or_malformed_payloads():
+    assert validate_target_payload({"year": 2026, "categories": {}}).valid is False
+    incomplete = _complete_target_payload()
+    incomplete["categories"]["qjPremium"]["metrics"].pop("整体")
+    assert validate_target_payload(incomplete).valid is False
+    malformed = _complete_target_payload()
+    malformed["categories"]["value"]["metrics"]["整体"]["month"] = [1, 2]
+    assert validate_target_payload(malformed).valid is False
+    assert validate_target_payload(_complete_target_payload()).valid is True
+
+
+def test_target_api_uses_authenticated_username_and_rejects_year_mismatch(auth_db):
+    client = TestClient(app)
+    login = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "Test-only-admin-2026!"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['data']['token']}"}
+    payload = _complete_target_payload(2096)
+
+    saved = client.post("/api/targets?year=2096&updatedBy=spoofed-user", headers=headers, json=payload)
+    mismatch = client.post("/api/targets?year=2097", headers=headers, json=payload)
+
+    assert saved.status_code == 200
+    assert saved.json()["data"]["updated_by"] == "admin"
+    assert mismatch.status_code == 400
+
+    legacy_saved = client.put("/api/targets/2096", headers=headers, json=payload)
+    legacy_mismatch = client.put("/api/targets/2097", headers=headers, json=payload)
+    assert legacy_saved.status_code == 200
+    assert legacy_saved.json()["updated_by"] == "admin"
+    assert legacy_mismatch.status_code == 400
 
 
 def test_init_db_creates_raw_detail_tables(tmp_path):

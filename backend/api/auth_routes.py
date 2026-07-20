@@ -1,4 +1,8 @@
-from fastapi import APIRouter, Body, Header, HTTPException, Depends, Query
+import os
+import threading
+import time
+
+from fastapi import APIRouter, Body, Header, HTTPException, Depends, Query, Request
 
 from auth import (
     MODULE_KEYS,
@@ -23,6 +27,49 @@ from services.response import success_response
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
 
+LOGIN_ATTEMPT_LIMIT = max(1, int(os.getenv("AUTH_LOGIN_ATTEMPT_LIMIT", "5")))
+LOGIN_ATTEMPT_WINDOW_SECONDS = max(30, int(os.getenv("AUTH_LOGIN_ATTEMPT_WINDOW_SECONDS", "300")))
+LOGIN_LOCK_SECONDS = max(30, int(os.getenv("AUTH_LOGIN_LOCK_SECONDS", "900")))
+_login_attempts: dict[str, list[float]] = {}
+_login_locks: dict[str, float] = {}
+_login_attempt_guard = threading.Lock()
+
+
+def _login_attempt_key(request: Request, username: str) -> str:
+    host = request.client.host if request.client else "unknown"
+    return f"{host}|{str(username or '').strip().casefold()}"
+
+
+def _login_retry_after(key: str, now: float | None = None) -> int:
+    current = time.monotonic() if now is None else now
+    with _login_attempt_guard:
+        locked_until = _login_locks.get(key, 0.0)
+        if locked_until <= current:
+            _login_locks.pop(key, None)
+            return 0
+        return max(1, int(locked_until - current))
+
+
+def _record_login_failure(key: str, now: float | None = None) -> int:
+    current = time.monotonic() if now is None else now
+    threshold = current - LOGIN_ATTEMPT_WINDOW_SECONDS
+    with _login_attempt_guard:
+        attempts = [value for value in _login_attempts.get(key, []) if value >= threshold]
+        attempts.append(current)
+        _login_attempts[key] = attempts
+        if len(attempts) < LOGIN_ATTEMPT_LIMIT:
+            return 0
+        locked_until = current + LOGIN_LOCK_SECONDS
+        _login_locks[key] = locked_until
+        _login_attempts.pop(key, None)
+        return LOGIN_LOCK_SECONDS
+
+
+def _clear_login_failures(key: str) -> None:
+    with _login_attempt_guard:
+        _login_attempts.pop(key, None)
+        _login_locks.pop(key, None)
+
 
 def _active_admin_count(conn) -> int:
     row = conn.execute(
@@ -33,10 +80,33 @@ def _active_admin_count(conn) -> int:
 
 
 @router.post("/login")
-def login(payload: dict = Body(...)):
-    user = authenticate_user(payload.get("username", ""), payload.get("password", ""))
+def login(request: Request, payload: dict = Body(...)):
+    username = payload.get("username", "")
+    attempt_key = _login_attempt_key(request, username)
+    retry_after = _login_retry_after(attempt_key)
+    if retry_after:
+        raise HTTPException(
+            status_code=429,
+            detail="登录失败次数过多，请稍后再试",
+            headers={"Retry-After": str(retry_after)},
+        )
+    user = authenticate_user(username, payload.get("password", ""))
     if not user:
+        retry_after = _record_login_failure(attempt_key)
+        log_operation(
+            "login",
+            status="failed",
+            target_username=str(username or "")[:64],
+            detail={"reason": "invalid_credentials"},
+        )
+        if retry_after:
+            raise HTTPException(
+                status_code=429,
+                detail="登录失败次数过多，请稍后再试",
+                headers={"Retry-After": str(retry_after)},
+            )
         raise HTTPException(status_code=401, detail="用户名或密码错误")
+    _clear_login_failures(attempt_key)
     token = user.pop("token")
     expires_at = user.pop("expiresAt")
     return success_response({"token": token, "expiresAt": expires_at, "user": user})
@@ -205,6 +275,10 @@ def update_user(user_id: int, payload: dict = Body(...), admin=Depends(require_a
             conn.execute(
                 "UPDATE users SET password_salt = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (salt, password_hash, user_id),
+            )
+            conn.execute(
+                "UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL",
+                (user_id,),
             )
             password_changed = True
             password_target_username = username or row["username"]

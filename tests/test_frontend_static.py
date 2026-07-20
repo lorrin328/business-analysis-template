@@ -102,14 +102,14 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.104"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.104"></script>' in html
-    assert '<script src="js/export-excel.js?v=1.0.104"></script>' in html
-    assert '<script src="js/upload.js?v=1.0.104"></script>' in html
-    assert '<script src="js/target-modal.js?v=1.0.104"></script>' in html
-    assert '<script src="js/kpi-cards.js?v=1.0.104"></script>' in html
-    assert '<script src="js/platform-trend.js?v=1.0.104"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.104"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.105"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.105"></script>' in html
+    assert '<script src="js/export-excel.js?v=1.0.105"></script>' in html
+    assert '<script src="js/upload.js?v=1.0.105"></script>' in html
+    assert '<script src="js/target-modal.js?v=1.0.105"></script>' in html
+    assert '<script src="js/kpi-cards.js?v=1.0.105"></script>' in html
+    assert '<script src="js/platform-trend.js?v=1.0.105"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.105"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -174,6 +174,8 @@ def test_local_seed_data_is_development_only_when_api_is_slow_or_unavailable():
     assert "const teamMock =" not in html
     assert "const productData =" in seed
     assert "const teamMock =" in seed
+    assert "const productFallbackData = {};" in seed
+    assert "const teamMock = {};" in seed
     assert "ALLOW_LOCAL_FALLBACK" in data_integration
     assert "window.ALLOW_LOCAL_FALLBACK = ALLOW_LOCAL_FALLBACK" in data_integration
     assert "window.location.hostname" in data_integration
@@ -185,6 +187,17 @@ def test_local_seed_data_is_development_only_when_api_is_slow_or_unavailable():
     assert "clearRuntimeFallbackYear" in data_integration
     assert "已重新写入并刷新看板数据" in combined
     assert "await fetchTargetData(DEFAULT_DASHBOARD_YEAR_NUM);\n      const ok = await loadYearFromApi" in html
+
+
+def test_frontend_seed_files_do_not_publish_business_values():
+    seed = read_js("seed-data.js")
+    platform_seed = read_js("platform-seed-data.js")
+
+    assert "const platformMock = {};" in platform_seed
+    assert "const productFallbackData = {};" in seed
+    assert "const teamMock = {};" in seed
+    assert '"2026"' not in seed
+    assert '"2026"' not in platform_seed
 
 
 def test_upload_js_no_duplicate_vars():
@@ -258,7 +271,7 @@ def test_dashboard_config_is_loaded_before_kpi_cards():
     html = read_html()
     config = read_js("dashboard-config.js")
 
-    assert '<script src="js/dashboard-config.js?v=1.0.104"></script>' in html
+    assert '<script src="js/dashboard-config.js?v=1.0.105"></script>' in html
     assert html.index('js/dashboard-config.js') < html.index('js/kpi-cards.js')
     assert "await loadDashboardConfig();" in html
     assert "/api/config/metrics" in config
@@ -271,7 +284,7 @@ def test_product_config_modal_is_outside_html_shell():
     html = read_html()
     modal = read_js("product-config-modal.js")
 
-    assert '<script src="js/product-config-modal.js?v=1.0.104"></script>' in html
+    assert '<script src="js/product-config-modal.js?v=1.0.105"></script>' in html
     assert "async function openProductConfigModal()" not in html
     assert "async function saveProductConfig()" not in html
     assert "async function openProductConfigModal()" in modal
@@ -304,7 +317,7 @@ def test_dashboard_toolbar_actions_are_bound_by_runtime_module():
     actions = read_js("dashboard-actions.js")
     header = html.split('<div class="container">', 1)[0]
 
-    assert '<script src="js/dashboard-actions.js?v=1.0.104"></script>' in html
+    assert '<script src="js/dashboard-actions.js?v=1.0.105"></script>' in html
     assert html.index('js/target-modal.js') < html.index('js/dashboard-actions.js') < html.index('js/kpi-cards.js')
     assert 'data-dashboard-action="open-permission-admin"' in header
     assert 'data-dashboard-action="open-operation-logs"' in header
@@ -332,7 +345,7 @@ def test_excel_export_is_runtime_module():
     html = read_html()
     exporter = read_js("export-excel.js")
 
-    assert '<script src="js/export-excel.js?v=1.0.104"></script>' in html
+    assert '<script src="js/export-excel.js?v=1.0.105"></script>' in html
     assert 'id="exportExcelBtn"' in html
     assert "function exportDashboardExcel()" not in html
     assert "function exportDashboardExcel()" in exporter
@@ -387,8 +400,15 @@ def test_deploy_preserves_runtime_environment_files():
     assert 'DB_EXISTED_BEFORE=1' in deploy
     assert "默认不从 Excel 全量重建" in deploy
     assert "REBUILD_DATABASE=1" in deploy
-    assert "cp \"$APP_DIR/deploy/webhook.service\" /etc/systemd/system/webhook-deploy.service" in deploy
-    assert "systemctl enable webhook-deploy" in deploy
+    assert "systemctl disable --now webhook-deploy" in deploy
+    assert "rm -f /etc/sudoers.d/webhook-deploy" in deploy
+    assert "cp \"$APP_DIR/deploy/webhook.service\" /etc/systemd/system/webhook-deploy.service" not in deploy
+    assert "systemctl enable webhook-deploy" not in deploy
+    assert 'DATA_DIR="${DATA_DIR:-/var/lib/business-analysis}"' in deploy
+    assert 'python3 "$SRC_DIR/backend/backup_database.py"' in deploy
+    assert 'chown -R root:root "$APP_DIR"' in deploy
+    assert 'chown -R "$RUN_USER:$RUN_USER" "$DATA_DIR" "$LOG_DIR"' in deploy
+    assert "SQLite 原始表重建失败，部署已中止" in deploy
 
 
 def test_personnel_management_page_is_admin_only_calculator_runtime():
@@ -401,7 +421,7 @@ def test_personnel_management_page_is_admin_only_calculator_runtime():
 
     assert "人员管理</button>" in html
     assert 'data-permission="personnel_management"' in html
-    assert '<script src="/js/personnel-management.js?v=1.0.104"></script>' in page
+    assert '<script src="/js/personnel-management.js?v=1.0.105"></script>' in page
     assert "OTO 基本法测算" in page
     assert "证保基本法测算" in page
     assert "OTO 参数设置" in page
@@ -443,7 +463,7 @@ def test_honor_page_is_separate_runtime():
     assert 'data-permission="honor_view" data-dashboard-action="navigate" data-dashboard-href="/honor">荣誉体系</button>' in html
     assert "????" not in html
     assert "星钻联盟荣誉体系" in honor_html
-    assert '<script src="/js/honor.js?v=1.0.104"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.105"></script>' in honor_html
     assert "数据适配检查" in honor_html
     assert "数据审计" in honor_html
     assert "荣誉追踪" in honor_html
@@ -490,7 +510,7 @@ def test_scheme_calculator_page_is_separate_runtime():
     api = open(os.path.join(ROOT, "backend", "api", "scheme.py"), "r", encoding="utf-8").read()
 
     assert 'data-permission="scheme_calculation" data-dashboard-action="navigate" data-dashboard-href="/scheme-calculator.html">方案复核</button>' in html
-    assert '<script src="/js/scheme-calculator.js?v=1.0.104"></script>' in page
+    assert '<script src="/js/scheme-calculator.js?v=1.0.105"></script>' in page
     assert "方案计算" in page
     assert "2026年组发政策" in page
     assert "方案专用上传" in page
@@ -531,6 +551,28 @@ def test_static_cutoff_starts_empty_until_server_data_arrives():
     assert '统计范围：2026年5月</span>' not in html
 
 
+def test_dashboard_cache_reloads_after_server_normalizes_date_range():
+    trend = read_js("platform-trend-main.js")
+    load_fn = trend.split("async function loadYearFromApi", 1)[1].split("async function switchYear", 1)[0]
+    assert "let cacheKey" in load_fn
+    assert load_fn.count("cacheKey = typeof dashboardCacheKey") >= 2
+    assert load_fn.index("await fetchAPIData(yearNum)") < load_fn.rindex("cacheKey = typeof dashboardCacheKey")
+
+
+def test_per_capita_does_not_mix_daily_range_with_monthly_headcount():
+    cards = read_js("kpi-cards.js")
+    assert "completeMonthRange" in cards
+    assert "当前范围非完整月，人力按月统计，暂不计算" in cards
+    assert "window.ALLOW_LOCAL_FALLBACK && tm" in cards
+
+
+def test_incomplete_server_targets_are_not_marked_official():
+    targets = read_js("target-modal.js")
+    assert "function hasCompleteServerTarget(data)" in targets
+    assert "targetDataSource = completeServerTarget ? 'server'" in targets
+    assert "服务端目标不完整，暂不参与达成率" in targets
+
+
 def test_raw_table_runtime_reads_are_explicit_column_lists():
     paths = [
         os.path.join(ROOT, "backend", "api", "product_config.py"),
@@ -550,7 +592,7 @@ def test_kpi_modal_content_is_outside_html_shell():
     html = read_html()
     modal_content = read_js("kpi-modal-content.js")
 
-    assert '<script src="js/kpi-modal-content.js?v=1.0.104"></script>' in html
+    assert '<script src="js/kpi-modal-content.js?v=1.0.105"></script>' in html
     assert "function getModalContent(type)" not in html
     assert "function getModalContent(type)" in modal_content
 
@@ -569,7 +611,7 @@ def test_org_analysis_has_expand_mode_and_colored_indicators():
     org = read_js("org-analysis.js")
     combined = html + "\n" + org
 
-    assert 'src="js/org-analysis.js?v=1.0.104"' in html
+    assert 'src="js/org-analysis.js?v=1.0.105"' in html
     assert 'id="orgExpandBtn"' in html
     assert 'id="orgExpandBtn" type="button" aria-expanded="false"' in html
     assert 'id="orgExpandBtn" onclick=' not in html
@@ -725,7 +767,7 @@ def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
     kpi_section = html.split('<!-- 机构维度 -->', 1)[0]
 
     assert "function updateKPICards()" not in html
-    assert 'src="js/kpi-cards.js?v=1.0.104"' in html
+    assert 'src="js/kpi-cards.js?v=1.0.105"' in html
     assert 'onclick="openModal(' not in kpi_section
     for modal_type in ["overall", "value", "activity", "annuity", "protection", "10year", "longterm", "percapita"]:
         assert f'data-kpi-modal="{modal_type}"' in kpi_section
@@ -1068,7 +1110,7 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
 
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
-    assert '<script src="js/platform-trend-main.js?v=1.0.104"></script>' in html
+    assert '<script src="js/platform-trend-main.js?v=1.0.105"></script>' in html
     assert "Object.keys(platformMock).forEach(year => delete platformMock[year])" in platform_main
     assert "function refreshPlatformChart()" in platform_main
     assert "function switchYear(value)" in platform_main
@@ -1076,7 +1118,7 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
     assert "value === defaultMonth ? ' selected' : ''" in platform_main
     assert 'value="4" selected' not in platform_main
     assert "params.set('asOf', asOf)" not in platform_main
-    assert "const cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(yearNum) : yearLabel" in platform_main
+    assert "let cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(yearNum) : yearLabel" in platform_main
     assert "await fetchProductData(yearLabel)" in platform_main
     assert "convertApiToPlatformMock(cached.platform, yearLabel)" in platform_main
     assert "fetchProductData(yearKey)" not in platform_main
@@ -1215,6 +1257,11 @@ def test_production_static_serving_does_not_expose_repository_root():
 
     assert 'app.mount("/static", StaticFiles(directory=static_dir)' not in main_py
     assert 'app.mount("/js", StaticFiles(directory=js_dir)' in main_py
-    assert 'backend|deploy|docs|tests' in nginx
-    assert 'location = /VERSION { return 404; }' in nginx
-    assert 'location = /targets_import.json { return 404; }' in nginx
+    assert 'location /api/' in nginx
+    assert 'location ^~ /js/' in nginx
+    assert 'location = / {' in nginx
+    assert 'location = /webhook/deploy' in nginx
+    assert 'return 404;' in nginx
+    assert 'try_files $uri =404;' in nginx
+    assert 'try_files $uri $uri/ =404;' not in nginx
+    assert 'root /opt/business-analysis;' in nginx

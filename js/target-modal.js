@@ -155,8 +155,22 @@
 
     function targetSourceLabel() {
       if (targetDataSource === 'server') return '服务端目标';
+      if (targetDataSource === 'incomplete') return '服务端目标不完整，暂不参与达成率';
       if (targetDataSource === 'local') return '本机开发缓存目标';
       return '默认目标，服务端尚未配置正式目标';
+    }
+
+    function hasCompleteServerTarget(data) {
+      const requiredCategories = ['qjPremium', 'value', 'shangbao', 'baozhang', 'tenYear'];
+      return Boolean(data?.categories && requiredCategories.every(categoryKey => {
+        const metrics = data.categories[categoryKey]?.metrics;
+        return metrics && TARGET_BUSINESS_METRICS.every(line => {
+          const metric = metrics[line];
+          return metric && Number.isFinite(Number(metric.year)) &&
+            Array.isArray(metric.quarter) && metric.quarter.length === 4 &&
+            Array.isArray(metric.month) && metric.month.length === 12;
+        });
+      }));
     }
 
     function escapeTargetText(value) {
@@ -271,8 +285,9 @@
       try {
         const data = unwrapApiResponse(await fetchJson(`/api/targets?year=${desiredYear}`, { method: 'GET' }));
         const hasServerTarget = !!(data && data.categories);
+        const completeServerTarget = hasCompleteServerTarget(data);
         targetData = normalizeTargetData(hasServerTarget ? data : createDefaultTargetData(desiredYear), desiredYear);
-        targetDataSource = hasServerTarget ? 'server' : 'default';
+        targetDataSource = completeServerTarget ? 'server' : hasServerTarget ? 'incomplete' : 'default';
         if (allowLocalTargetCache()) {
           localStorage.setItem(targetStorageKey(desiredYear), JSON.stringify(targetData));
         }

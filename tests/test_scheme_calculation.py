@@ -10,7 +10,7 @@ from openpyxl import Workbook
 from main import app
 
 
-def _login(client, username="admin", password="Aaaaasynology8888%"):
+def _login(client, username="admin", password="Test-only-admin-2026!"):
     resp = client.post("/api/auth/login", json={"username": username, "password": password})
     assert resp.status_code == 200
     return resp.json()["data"]
@@ -33,7 +33,7 @@ def _build_scheme_workbook():
     params = wb.active
     params.title = "参数表"
     params["B1"] = datetime(2026, 7, 31)
-    params["B2"] = datetime(2000, 1, 1)
+    params["B2"] = datetime(2026, 7, 1)
     params["B3"] = 0.7
     params["B4"] = 0.02
 
@@ -112,7 +112,6 @@ def test_scheme_options_and_dedicated_upload(auth_db):
     assert data["summary"]["totalAward"] == 9080
     assert data["summary"]["organizationAward"] == 2000
     assert data["summary"]["starAward"] == 80
-    assert any(item["title"] == "方案统计人力起算日需修正" for item in data["warnings"])
     assert any(item["title"] == "推荐人奖励缺少独立字段" for item in data["warnings"])
 
     latest = client.get("/api/scheme/latest?schemeId=2026-org-dev-policy", headers=headers)
@@ -135,3 +134,34 @@ def test_scheme_upload_is_separate_permission(auth_db):
         files={"tracking": ("组织发展追踪模板.xlsx", _build_scheme_workbook(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
     )
     assert blocked.status_code == 403
+
+
+def test_scheme_upload_rejects_missing_sheets_without_replacing_latest(auth_db):
+    client = TestClient(app)
+    admin = _login(client)
+    headers = _headers(admin["token"])
+    valid = client.post(
+        "/api/scheme/upload",
+        headers=headers,
+        data={"schemeId": "2026-org-dev-policy"},
+        files={"tracking": ("valid.xlsx", _build_scheme_workbook(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    valid_batch_id = valid.json()["data"]["batch"]["id"]
+
+    wb = Workbook()
+    wb.active.title = "无关工作表"
+    bio = BytesIO()
+    wb.save(bio)
+    rejected = client.post(
+        "/api/scheme/upload",
+        headers=headers,
+        data={"schemeId": "2026-org-dev-policy"},
+        files={"tracking": ("invalid.xlsx", bio.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    latest = client.get("/api/scheme/latest?schemeId=2026-org-dev-policy", headers=headers)
+
+    assert rejected.status_code == 422
+    assert latest.json()["data"]["batch"]["id"] == valid_batch_id
+    titles = [item["title"] for item in rejected.json()["detail"]["warnings"]]
+    assert "缺少测算工作表" in titles
+    assert "测算明细为空" in titles

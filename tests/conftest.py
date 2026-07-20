@@ -4,7 +4,7 @@ import sys
 import pytest
 
 os.environ.setdefault("AUTH_TEST_BYPASS", "1")
-os.environ.setdefault("DEFAULT_ADMIN_PASSWORD", "Aaaaasynology8888%")
+os.environ.setdefault("DEFAULT_ADMIN_PASSWORD", "Test-only-admin-2026!")
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROOT, "backend"))

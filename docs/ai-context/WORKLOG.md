@@ -1,5 +1,15 @@
 # 工作日志
 
+## 2026-07-20 v1.0.105 审计缺陷整改
+
+- 统计范围：修复初次加载后缓存键仍使用归一前范围的问题；任意非完整自然月不再用日级保费除以月级人力，改为显示不可计算及口径说明。
+- 权限与账号：legacy 数据、KPI、产品和机构接口接入对应模块权限；登录按客户端和账号失败限流，密码重置撤销目标用户全部有效 Session。
+- 目标与方案：目标保存要求 5 类指标、6 条业务线及完整年/季/月数组，并由服务端记录登录账号；缺表、空明细或关键公式缓存缺失的方案底稿返回 422，不写入成功批次。
+- 数据安全：`seed-data.js` 与 `platform-seed-data.js` 仅保留空运行容器，不再向浏览器发布经营数值；nginx 静态范围改为四个页面和 `/js/` 白名单。
+- 部署安全：systemd 数据库迁至 `/var/lib/business-analysis/business_data.db`，日志迁至 `/var/log/business-analysis`；应用树归 root 只读，仅数据和日志目录授权 `www-data`；关闭 webhook 服务并移除对应 sudoers。
+- 备份与发布：新增 SQLite Online Backup API 备份、`integrity_check`、`quick_check`、SHA256 元数据；SQLite 原始表聚合失败时部署中止，不再带错继续上线。
+- 回归：新增统计范围、权限绕过、登录锁定、Session 撤销、目标完整性、方案失败批次保持、WAL 备份和部署白名单测试；全量回归 `304 passed, 1 warning`，数据质量 `issues=0`、preflight、JS/Python 语法、shell 语法和 `git diff --check` 均通过。
+
 ## 2026-07-20 v1.0.104 自由统计范围
 
 - 主看板：右上角从最近 3 日截止选择升级为统计年度 + 年度累计/按月/按日/自定义范围 + 起止日期 + 应用按钮；390×844 宽度下无页面横向溢出。

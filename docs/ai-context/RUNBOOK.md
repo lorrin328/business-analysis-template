@@ -65,7 +65,9 @@ curl http://127.0.0.1:45679/api/health
 当前非 Docker 部署路径：
 
 ```text
-/opt/business-analysis
+代码：/opt/business-analysis
+数据库：/var/lib/business-analysis/business_data.db
+日志：/var/log/business-analysis/app.log
 ```
 
 代码部署：
@@ -74,7 +76,7 @@ curl http://127.0.0.1:45679/api/health
 sudo bash deploy/deploy.sh
 ```
 
-已有生产数据库时，部署脚本默认不再使用 `/opt/business-analysis/` 根目录中的 Excel 全量重建数据库，避免旧 Excel 覆盖 Web 页面导入后的最新数据。脚本会备份当前库，并尝试基于 SQLite 原始明细表重建聚合。
+已有生产数据库时，部署脚本默认不再使用 `/opt/business-analysis/` 根目录中的 Excel 全量重建数据库，避免旧 Excel 覆盖 Web 页面导入后的最新数据。脚本会用 SQLite Online Backup API 备份当前库，校验完整性并生成 SHA256 元数据，再基于 SQLite 原始明细表重建聚合；重建失败时部署中止。
 
 如确需用服务器根目录 Excel 全量重建数据库，必须显式执行：
 
@@ -112,6 +114,8 @@ curl -I http://127.0.0.1/deploy/nginx.conf
 curl -I http://127.0.0.1/.git/config
 curl -I http://127.0.0.1/backend/business_data.db
 curl -I http://127.0.0.1/targets_import.json
+curl -I http://127.0.0.1/Dockerfile
+curl -I http://127.0.0.1/requirements.txt
 ```
 
 若任一敏感路径返回 200，立即停止对外访问，检查 `/etc/nginx/sites-enabled/business-analysis` 是否已同步仓库中的 `deploy/nginx.conf`，执行 `sudo nginx -t && sudo systemctl reload nginx` 后重新验证。
@@ -128,8 +132,9 @@ curl http://127.0.0.1:45679/api/health
 - 初始密码应仅通过临时环境变量或安全配置注入，不得写入仓库、日志或项目记忆。
 - 首次登录后建议立即修改管理员密码。
 - 生产环境默认关闭公开自助注册；确需开放时在 `/opt/business-analysis/deploy/.admin_env` 设置 `AUTH_ALLOW_PUBLIC_REGISTRATION=1` 并重启服务，关闭时改为 `0` 或移除该配置并重启服务。
-- `/opt/business-analysis/deploy/.admin_env`、`.ai_env`、`.webhook_env` 属于服务器运行时配置，部署脚本会保留这些文件；不得提交到 Git。
-- 自动部署 webhook 需要 `/opt/business-analysis/deploy/.webhook_env` 中的 `WEBHOOK_SECRET` 与 GitHub Webhook Secret 一致，并确认 `webhook-deploy` 服务为 `active`。
+- `/opt/business-analysis/deploy/.admin_env`、`.ai_env`、`.webhook_env` 属于服务器运行时配置，部署脚本会保留并收敛为 root 管理；不得提交到 Git。
+- webhook 自动部署已暂停。正常状态为 `webhook-deploy` disabled/inactive、`/etc/sudoers.d/webhook-deploy` 不存在、`/webhook/deploy` 返回 404。
+- `/opt/business-analysis` 应为 `root:root` 且 `www-data` 不可写；仅 `/var/lib/business-analysis` 和 `/var/log/business-analysis` 归 `www-data`。
 
 ## 方案计算
 
@@ -200,8 +205,9 @@ tracking=<.xlsx 文件>
 
 - Docker SQLite 数据库：`business-analysis-data` volume，对应容器内 `/data/business_data.db`。
 - Docker 应用日志：`business-analysis-logs` volume，对应容器内 `/app/backend/logs`。
-- systemd 部署数据库：`/opt/business-analysis/backend/business_data.db`。
+- systemd 部署数据库：`/var/lib/business-analysis/business_data.db`。
+- systemd 应用日志：`/var/log/business-analysis/app.log`。
 
 ## 回滚
 
-如某次镜像异常，优先回滚到上一个 tag 或 sha 镜像；systemd 部署优先恢复 `/opt/business-analysis-backups/` 中的数据库备份，再回退代码版本并重启服务。
+如某次镜像异常，优先回滚到上一个 tag 或 sha 镜像。systemd 回滚应先停服务，使用 `backend/backup_database.py` 将 `/opt/business-analysis-backups/` 中通过完整性校验的数据库备份恢复到新的临时文件，核验后原子替换 `/var/lib/business-analysis/business_data.db`，再回退代码版本并重启服务；不得直接把 WAL 运行库主文件相互覆盖。
