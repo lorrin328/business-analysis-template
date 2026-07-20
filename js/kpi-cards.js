@@ -386,26 +386,9 @@
         if (sub) sub.innerHTML = '<span style="color:var(--text-secondary)">暂无长险期交数据</span>';
       }
 
-      // 8. 人均保费（月均新单保费 / 月均在职人力）
-      // 人力只有月级精度；范围不是完整自然月时不将日级保费与整月人力混算。
-      const rangeStart = String(period.startDate || '');
-      const rangeEnd = String(period.endDate || '');
-      const rangeStartDate = /^\d{4}-\d{2}-\d{2}$/.test(rangeStart) ? new Date(`${rangeStart}T00:00:00`) : null;
-      const rangeEndDate = /^\d{4}-\d{2}-\d{2}$/.test(rangeEnd) ? new Date(`${rangeEnd}T00:00:00`) : null;
-      const rangeEndsAtMonthEnd = rangeEndDate
-        ? rangeEndDate.getDate() === new Date(rangeEndDate.getFullYear(), rangeEndDate.getMonth() + 1, 0).getDate()
-        : false;
-      const completeMonthRange = Boolean(
-        rangeStartDate && rangeEndDate && rangeStartDate.getDate() === 1 && rangeEndsAtMonthEnd
-      );
-      if (!completeMonthRange) {
-        const perCapitaEl = document.getElementById('kpi-percapita');
-        if (perCapitaEl) perCapitaEl.textContent = '--';
-        const perCapitaSubEl = document.getElementById('kpi-percapita-sub');
-        if (perCapitaSubEl) {
-          perCapitaSubEl.innerHTML = '<span style="color:var(--text-secondary)">当前范围非完整月，人力按月统计，暂不计算</span>';
-        }
-      } else if (hasApiKpi && kpi.qj_premium && kpi.hr && Object.keys(kpi.hr).length > 0) {
+      // 8. 人均保费：所选区间转型期交保费 ÷ 覆盖自然月数 ÷ 覆盖月份月均在职人力。
+      // 人力仍为月级精度；单日、月中截止和跨月自定义范围按其覆盖月份折算。
+      if (hasApiKpi && kpi.qj_premium && kpi.hr && Object.keys(kpi.hr).length > 0) {
         let 总保费 = kpi.qj_premium.total_transform || 0;
         let 总在职 = 0;
         let 统计月数 = 0;
@@ -421,7 +404,7 @@
         if (perCapitaEl) perCapitaEl.innerHTML = 人均保费 + '<span style="font-size:18px">万</span>';
         const perCapitaSubEl = document.getElementById('kpi-percapita-sub');
         if (perCapitaSubEl) {
-          perCapitaSubEl.innerHTML = '<span style="color:var(--text-secondary)">转型业务人均保费</span>';
+          perCapitaSubEl.innerHTML = `<span style="color:var(--text-secondary)">转型业务 · 区间保费按${统计月数}个覆盖月折算</span>`;
         }
       } else if (window.ALLOW_LOCAL_FALLBACK && tm) {
         const 保费OTO = sumArr(tm.premium['OTO']);

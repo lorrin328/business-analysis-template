@@ -7,15 +7,15 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/format-utils.js"></script>
-  <script src="js/api-client.js?v=1.0.105"></script>
-  <script src="js/auth-ui.js?v=1.0.105"></script>
-  <script src="js/export-excel.js?v=1.0.105"></script>
-  <script src="js/dashboard-config.js?v=1.0.105"></script>
-  <script src="js/upload.js?v=1.0.105"></script>
-  <script src="js/target-modal.js?v=1.0.105"></script>
-  <script src="js/dashboard-actions.js?v=1.0.105"></script>
-  <script src="js/kpi-cards.js?v=1.0.105"></script>
-  <script src="js/platform-trend.js?v=1.0.105"></script>
+  <script src="js/api-client.js?v=1.0.106"></script>
+  <script src="js/auth-ui.js?v=1.0.106"></script>
+  <script src="js/export-excel.js?v=1.0.106"></script>
+  <script src="js/dashboard-config.js?v=1.0.106"></script>
+  <script src="js/upload.js?v=1.0.106"></script>
+  <script src="js/target-modal.js?v=1.0.106"></script>
+  <script src="js/dashboard-actions.js?v=1.0.106"></script>
+  <script src="js/kpi-cards.js?v=1.0.106"></script>
+  <script src="js/platform-trend.js?v=1.0.106"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -75,6 +75,13 @@
       background: rgba(59,130,246,.28);
       border-color: rgba(96,165,250,.58);
     }
+    .header-recalculate {
+      color: #fff;
+      background: rgba(59,130,246,.22);
+      border-color: rgba(96,165,250,.52);
+      white-space: nowrap;
+    }
+    .header-recalculate:hover { background: rgba(59,130,246,.34); }
     .header-menu { position: relative; }
     .header-menu > summary {
       list-style: none;
@@ -824,7 +831,7 @@
       .logo span { display: none; }
       .tag { display: none; }
       .header-left { margin-bottom: 8px; }
-      .header-right { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; }
+      .header-right { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 6px; }
       .primary-nav { grid-column: 1 / -1; width: 100%; min-width: 0; }
       .primary-nav .chart-btn { flex: 0 0 auto; }
       .header-menu { position: static; }
@@ -1190,7 +1197,7 @@
       <div class="header-left">
         <div class="logo">太平人寿 <span>经营分析看板</span></div>
         <span class="tag">网电多元条线</span>
-        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.105</span>
+        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.106</span>
       </div>
       <div class="header-right">
         <nav class="primary-nav" aria-label="主要页面">
@@ -1198,6 +1205,7 @@
           <button class="chart-btn" type="button" data-permission="honor_view" data-dashboard-action="navigate" data-dashboard-href="/honor">荣誉体系</button>
           <button class="chart-btn" type="button" data-permission="scheme_calculation" data-dashboard-action="navigate" data-dashboard-href="/scheme-calculator.html">方案复核</button>
         </nav>
+        <button class="chart-btn header-recalculate" type="button" id="recalcBtn" data-dashboard-action="recalculate">重新计算</button>
         <details class="header-menu">
           <summary class="chart-btn">管理与工具</summary>
           <div class="header-tools">
@@ -1207,7 +1215,6 @@
             <button class="chart-btn" type="button" id="exportExcelBtn" data-permission="excel_export" data-dashboard-action="export-excel">导出 Excel</button>
             <button class="chart-btn" type="button" data-permission="product_config" data-dashboard-action="open-product-config">参数设置</button>
             <button class="chart-btn" type="button" data-permission="targets" data-dashboard-action="open-targets">设置目标</button>
-            <button class="chart-btn" type="button" id="recalcBtn" data-dashboard-action="recalculate">重新计算</button>
           </div>
         </details>
         <span class="user-pill" id="currentUserName"></span>
@@ -1743,7 +1750,7 @@
 
     // Product config modal lives in js/product-config-modal.js
   </script>
-  <script src="js/product-config-modal.js?v=1.0.105"></script>
+  <script src="js/product-config-modal.js?v=1.0.106"></script>
   <script>
     // KPI card rendering lives in js/kpi-cards.js
 
@@ -1752,24 +1759,24 @@
     // KPI detail modal content lives in js/kpi-modal-content.js
     // Local fallback seed data lives in js/seed-data.js
   </script>
-  <script src="js/kpi-modal-content.js?v=1.0.105"></script>
+  <script src="js/kpi-modal-content.js?v=1.0.106"></script>
   <script>
     // API integration lives in js/data-integration.js
   </script>
-  <script src="js/org-analysis.js?v=1.0.105"></script>
-  <script src="js/seed-data.js?v=1.0.105"></script>
-  <script src="js/platform-seed-data.js?v=1.0.105"></script>
-  <script src="js/data-integration.js?v=1.0.105"></script>
-  <script src="js/platform-trend-main.js?v=1.0.105"></script>
+  <script src="js/org-analysis.js?v=1.0.106"></script>
+  <script src="js/seed-data.js?v=1.0.106"></script>
+  <script src="js/platform-seed-data.js?v=1.0.106"></script>
+  <script src="js/data-integration.js?v=1.0.106"></script>
+  <script src="js/platform-trend-main.js?v=1.0.106"></script>
   <script>
   </script>
-  <script src="js/product-analysis.js?v=1.0.105"></script>
+  <script src="js/product-analysis.js?v=1.0.106"></script>
   <script>
   </script>
-  <script src="js/payperiod-chart.js?v=1.0.105"></script>
+  <script src="js/payperiod-chart.js?v=1.0.106"></script>
   <script>
   </script>
-  <script src="js/team-analysis.js?v=1.0.105"></script>
+  <script src="js/team-analysis.js?v=1.0.106"></script>
   <script>
     // ---------- Resize ----------
     window.addEventListener('resize', () => {
