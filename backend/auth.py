@@ -40,12 +40,14 @@ MODULE_KEYS = [
     "honor_export",
     "honor_admin",
     "honor_upload",
+    "scheme_calculation",
+    "scheme_upload",
 ]
 
 ROLE_DEFAULT_PERMISSIONS = {
     ROLE_ADMIN: {key: True for key in MODULE_KEYS},
     ROLE_SENIOR: {
-        key: key not in {"permission_admin", "personnel_management", "honor_admin", "honor_upload"}
+        key: key not in {"permission_admin", "personnel_management", "honor_admin", "honor_upload", "scheme_upload"}
         for key in MODULE_KEYS
     },
     ROLE_NORMAL: {
@@ -69,6 +71,8 @@ ROLE_DEFAULT_PERMISSIONS = {
         "honor_export": False,
         "honor_admin": False,
         "honor_upload": False,
+        "scheme_calculation": True,
+        "scheme_upload": False,
     },
 }
 

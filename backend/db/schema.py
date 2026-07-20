@@ -371,6 +371,22 @@ def init_db():
         )''')
         _migrate_honor_identity_tracks(c)
 
+        c.execute('''CREATE TABLE IF NOT EXISTS scheme_import_batches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scheme_id TEXT NOT NULL,
+            scheme_name TEXT NOT NULL,
+            rule_version TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            file_hash TEXT NOT NULL,
+            file_size INTEGER NOT NULL DEFAULT 0,
+            summary_json TEXT NOT NULL DEFAULT '{}',
+            detail_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'success',
+            error_message TEXT,
+            imported_by TEXT DEFAULT 'system',
+            imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+
         c.execute('''
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
             VALUES ('20260527_honor_domain', 0, 'Adds honor alliance tables and field audit foundation')
@@ -420,6 +436,8 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_honor_person_summary_batch ON honor_person_summary(batch_id, year)',
             'CREATE INDEX IF NOT EXISTS ix_honor_org_summary_batch ON honor_org_summary(batch_id, year, month)',
             'CREATE INDEX IF NOT EXISTS ix_honor_exceptions_batch ON honor_exceptions(batch_id, severity)',
+            'CREATE INDEX IF NOT EXISTS ix_scheme_batches_scheme ON scheme_import_batches(scheme_id, imported_at)',
+            'CREATE INDEX IF NOT EXISTS ix_scheme_batches_hash ON scheme_import_batches(file_hash)',
         ]:
             c.execute(sql)
 

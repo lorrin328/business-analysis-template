@@ -7,15 +7,15 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/format-utils.js"></script>
-  <script src="js/api-client.js?v=1.0.102"></script>
-  <script src="js/auth-ui.js?v=1.0.102"></script>
-  <script src="js/export-excel.js?v=1.0.102"></script>
-  <script src="js/dashboard-config.js?v=1.0.102"></script>
-  <script src="js/upload.js?v=1.0.102"></script>
-  <script src="js/target-modal.js?v=1.0.102"></script>
-  <script src="js/dashboard-actions.js?v=1.0.102"></script>
-  <script src="js/kpi-cards.js?v=1.0.102"></script>
-  <script src="js/platform-trend.js?v=1.0.102"></script>
+  <script src="js/api-client.js?v=1.0.103"></script>
+  <script src="js/auth-ui.js?v=1.0.103"></script>
+  <script src="js/export-excel.js?v=1.0.103"></script>
+  <script src="js/dashboard-config.js?v=1.0.103"></script>
+  <script src="js/upload.js?v=1.0.103"></script>
+  <script src="js/target-modal.js?v=1.0.103"></script>
+  <script src="js/dashboard-actions.js?v=1.0.103"></script>
+  <script src="js/kpi-cards.js?v=1.0.103"></script>
+  <script src="js/platform-trend.js?v=1.0.103"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -46,13 +46,16 @@
     .header {
       background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
       border-bottom: 1px solid var(--border);
-      padding: 16px 32px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      padding: 12px 32px;
       position: sticky;
       top: 0;
       z-index: 100;
+    }
+    .header-main {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
     }
     .header-left { display: flex; align-items: center; gap: 16px; }
     .logo { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
@@ -65,7 +68,45 @@
       font-size: 12px;
       border: 1px solid rgba(59,130,246,0.3);
     }
-    .header-right { display: flex; align-items: center; gap: 12px; }
+    .header-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+    .primary-nav { display: flex; align-items: center; gap: 6px; }
+    .primary-nav .chart-btn[aria-current="page"] {
+      color: #fff;
+      background: rgba(59,130,246,.28);
+      border-color: rgba(96,165,250,.58);
+    }
+    .header-menu { position: relative; }
+    .header-menu > summary {
+      list-style: none;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .header-menu > summary::-webkit-details-marker { display: none; }
+    .header-menu > summary::after { content: '⌄'; margin-left: 6px; color: var(--text-secondary); }
+    .header-menu[open] > summary { border-color: var(--accent); background: rgba(59,130,246,.14); }
+    .header-tools {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 10px);
+      width: min(430px, calc(100vw - 32px));
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      padding: 12px;
+      background: #162237;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 18px 45px rgba(0,0,0,.38);
+    }
+    .header-tools .chart-btn { width: 100%; text-align: left; margin: 0 !important; }
+    .header-context {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      margin-top: 8px;
+      min-height: 28px;
+    }
     .cutoff-control { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
     .cutoff-row { display: flex; align-items: center; gap: 6px; }
     .date-display { color: var(--text-secondary); font-size: 14px; white-space: nowrap; }
@@ -80,6 +121,23 @@
       outline: none;
     }
     .cutoff-note { color: #f59e0b; font-size: 12px; line-height: 1.2; }
+
+    .target-trust-banner {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      color: #fde7bd;
+      background: rgba(245,158,11,.10);
+      border: 1px solid rgba(245,158,11,.38);
+      border-radius: 10px;
+      line-height: 1.5;
+    }
+    .target-trust-banner[hidden] { display: none; }
+    .target-trust-banner strong { color: #fff1cf; }
+    .target-source-status { flex: 0 0 auto; color: var(--warning); font-size: 12px; white-space: nowrap; }
 
     /* Layout */
     .container { max-width: 1600px; margin: 0 auto; padding: 24px 32px; }
@@ -120,19 +178,24 @@
       box-shadow: 0 8px 24px rgba(0,0,0,0.3);
       border-color: var(--accent);
     }
+    .kpi-card:focus-visible {
+      outline: 3px solid rgba(96,165,250,.55);
+      outline-offset: 2px;
+      border-color: var(--accent-light);
+    }
     .kpi-card::after {
       content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
       opacity: 0; transition: opacity 0.2s;
     }
-    .kpi-card:hover::after { opacity: 1; }
-
-    .kpi-card:nth-child(1)::after { background: var(--accent); }
-    .kpi-card:nth-child(2)::after { background: var(--success); }
-    .kpi-card:nth-child(3)::after { background: var(--warning); }
-    .kpi-card:nth-child(4)::after { background: #8b5cf6; }
-    .kpi-card:nth-child(5)::after { background: #ec4899; }
-    .kpi-card:nth-child(6)::after { background: #06b6d4; }
-    .kpi-card:nth-child(7)::after { background: #f97316; }
+    .kpi-card:hover::after, .kpi-card:focus-visible::after { opacity: 1; }
+    .kpi-card::after { background: var(--accent); }
+    .kpi-card[data-kpi-modal="activity"]::after,
+    .kpi-card[data-kpi-modal="percapita"]::after { background: var(--success); }
+    .targets-unverified .kpi-card.target-dependent {
+      border-style: dashed;
+      border-color: rgba(245,158,11,.45);
+    }
+    .targets-unverified .kpi-card.target-dependent .kpi-big-value { color: var(--warning) !important; font-size: 22px; }
 
     .kpi-top-label {
       font-size: 12px;
@@ -714,7 +777,11 @@
       .kpi-grid { grid-template-columns: repeat(2, 1fr); }
       .upload-grid { grid-template-columns: 1fr; }
       .container { padding: 16px; }
-      .header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
+      .header { padding: 12px 16px; }
+      .header-main { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+      .header-right { width: 100%; justify-content: space-between; flex-wrap: wrap; }
+      .primary-nav { overflow-x: auto; max-width: 100%; padding-bottom: 2px; }
+      .header-context { justify-content: flex-start; }
       .modal-kpi-detail { grid-template-columns: 1fr; }
       .modal-kpi-detail.three-col { grid-template-columns: 1fr; }
       #teamEnhancedPanel .team-insight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -743,19 +810,29 @@
       /* 头部导航栏 */
       .header {
         padding: 10px 12px;
-        flex-wrap: nowrap;
-        gap: 6px;
       }
+      .header-main { display: block; }
       .logo { font-size: 16px; letter-spacing: 0; }
       .logo span { display: none; }
       .tag { display: none; }
-      .header-right { gap: 6px; flex-shrink: 0; }
-      .cutoff-control { display: none; }
+      .header-left { margin-bottom: 8px; }
+      .header-right { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; }
+      .primary-nav { grid-column: 1 / -1; width: 100%; min-width: 0; }
+      .primary-nav .chart-btn { flex: 0 0 auto; }
+      .header-menu { position: static; }
+      .header-tools { right: 12px; top: auto; margin-top: 10px; width: calc(100vw - 24px); }
+      .header-context { margin-top: 8px; }
+      .cutoff-control { width: 100%; }
+      .cutoff-row { width: 100%; justify-content: space-between; }
+      .cutoff-select { min-width: 0; max-width: 190px; }
       .header .chart-btn {
         padding: 6px 10px;
         font-size: 12px;
         min-height: 36px;
       }
+      .target-trust-banner { display: block; }
+      .target-trust-banner[hidden] { display: none; }
+      .target-source-status { display: block; margin-top: 6px; }
 
       /* KPI 卡片 */
       .kpi-grid {
@@ -1097,23 +1174,36 @@
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="header-left">
-      <div class="logo">太平人寿 <span>经营分析看板</span></div>
-      <span class="tag">网电多元条线</span>
-      <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.102</span>
+  <header class="header">
+    <div class="header-main">
+      <div class="header-left">
+        <div class="logo">太平人寿 <span>经营分析看板</span></div>
+        <span class="tag">网电多元条线</span>
+        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.103</span>
+      </div>
+      <div class="header-right">
+        <nav class="primary-nav" aria-label="主要页面">
+          <button class="chart-btn" type="button" aria-current="page">经营看板</button>
+          <button class="chart-btn" type="button" data-permission="honor_view" data-dashboard-action="navigate" data-dashboard-href="/honor">荣誉体系</button>
+          <button class="chart-btn" type="button" data-permission="scheme_calculation" data-dashboard-action="navigate" data-dashboard-href="/scheme-calculator.html">方案复核</button>
+        </nav>
+        <details class="header-menu">
+          <summary class="chart-btn">管理与工具</summary>
+          <div class="header-tools">
+            <button class="chart-btn" type="button" data-permission="permission_admin" data-dashboard-action="open-permission-admin">权限管理</button>
+            <button class="chart-btn" type="button" data-permission="permission_admin" data-dashboard-action="open-operation-logs">操作日志</button>
+            <button class="chart-btn" type="button" data-permission="personnel_management" data-dashboard-action="navigate" data-dashboard-href="/personnel-management.html">人员管理</button>
+            <button class="chart-btn" type="button" id="exportExcelBtn" data-permission="excel_export" data-dashboard-action="export-excel">导出 Excel</button>
+            <button class="chart-btn" type="button" data-permission="product_config" data-dashboard-action="open-product-config">参数设置</button>
+            <button class="chart-btn" type="button" data-permission="targets" data-dashboard-action="open-targets">设置目标</button>
+            <button class="chart-btn" type="button" id="recalcBtn" data-dashboard-action="recalculate">重新计算</button>
+          </div>
+        </details>
+        <span class="user-pill" id="currentUserName"></span>
+        <button class="chart-btn" type="button" data-dashboard-action="logout">退出</button>
+      </div>
     </div>
-    <div class="header-right">
-      <button class="chart-btn" data-permission="permission_admin" data-dashboard-action="open-permission-admin" style="margin-right:8px;">权限管理</button>
-      <button class="chart-btn" data-permission="permission_admin" data-dashboard-action="open-operation-logs" style="margin-right:8px;">操作日志</button>
-      <button class="chart-btn" data-permission="personnel_management" data-dashboard-action="navigate" data-dashboard-href="/personnel-management.html" style="margin-right:8px;">人员管理</button>
-      <button class="chart-btn" data-permission="honor_view" data-dashboard-action="navigate" data-dashboard-href="/honor" style="margin-right:8px;">荣誉体系</button>
-      <button class="chart-btn" id="exportExcelBtn" data-permission="excel_export" data-dashboard-action="export-excel" style="margin-right:8px;">导出Excel</button>
-      <button class="chart-btn" data-permission="product_config" data-dashboard-action="open-product-config" style="margin-right:8px;">参数设置</button>
-      <button class="chart-btn" data-permission="targets" data-dashboard-action="open-targets" style="margin-right:8px;">设置目标</button>
-      <button class="chart-btn" id="recalcBtn" data-dashboard-action="recalculate" style="margin-right:8px;">重新计算</button>
-      <span class="user-pill" id="currentUserName"></span>
-      <button class="chart-btn" data-dashboard-action="logout" style="margin-right:8px;">退出</button>
+    <div class="header-context">
       <div class="cutoff-control" id="dataCutoffControl">
         <div class="cutoff-row">
           <span class="date-display" id="dataCutoff">数据截止：--</span>
@@ -1122,22 +1212,26 @@
         <span class="cutoff-note" id="dataCutoffNote" style="display:none;"></span>
       </div>
     </div>
-  </div>
+  </header>
 
   <div class="container">
+    <div class="target-trust-banner" id="targetTrustBanner" role="status" aria-live="polite" hidden>
+      <div><strong>正式目标尚未配置。</strong>达成率卡片暂不展示参考目标计算结果，避免将系统默认值误作经营结论；实际保费和同比仍按当前数据口径展示。</div>
+      <span class="target-source-status" id="targetSourceStatus">目标来源待确认</span>
+    </div>
     <!-- KPI Section -->
     <div class="section" data-permission="kpi">
       <div class="section-title">KPI 概览</div>
       <div class="kpi-grid">
         <!-- 1. 整体达成率（期交保费） -->
-        <div class="kpi-card" data-kpi-modal="overall">
+        <div class="kpi-card target-dependent" data-kpi-modal="overall" role="button" tabindex="0" aria-label="查看期交保费达成率详情">
           <div class="kpi-top-label">期交保费达成率</div>
           <div class="kpi-big-value" id="kpi-qj-rate" style="color: var(--accent-light);">--</div>
           <div class="kpi-bottom-meta" id="kpi-qj-sub"></div>
         </div>
 
         <!-- 2. 价值达成率 -->
-        <div class="kpi-card" data-kpi-modal="value">
+        <div class="kpi-card target-dependent" data-kpi-modal="value" role="button" tabindex="0" aria-label="查看价值达成率详情">
           <div class="kpi-upload-badge">需上传</div>
           <div class="kpi-top-label">价值达成率</div>
           <div class="kpi-big-value" id="kpi-value-rate" style="color: var(--success);">--</div>
@@ -1145,42 +1239,42 @@
         </div>
 
         <!-- 3. 长险活动率 -->
-        <div class="kpi-card" data-kpi-modal="activity">
+        <div class="kpi-card" data-kpi-modal="activity" role="button" tabindex="0" aria-label="查看长险活动率详情">
           <div class="kpi-top-label">长险活动率</div>
           <div class="kpi-big-value" id="kpi-activity-rate" style="color: var(--warning);">--</div>
           <div class="kpi-bottom-meta" id="kpi-activity-sub"></div>
         </div>
 
         <!-- 4. 商保年金 -->
-        <div class="kpi-card" data-kpi-modal="annuity">
+        <div class="kpi-card target-dependent" data-kpi-modal="annuity" role="button" tabindex="0" aria-label="查看商保年金达成率详情">
           <div class="kpi-top-label">商保年金达成率</div>
           <div class="kpi-big-value" id="kpi-annuity-rate" style="color: #8b5cf6;">--</div>
           <div class="kpi-bottom-meta" id="kpi-annuity-sub"></div>
         </div>
 
         <!-- 5. 保障类产品 -->
-        <div class="kpi-card" data-kpi-modal="protection">
+        <div class="kpi-card target-dependent" data-kpi-modal="protection" role="button" tabindex="0" aria-label="查看保障类产品达成率详情">
           <div class="kpi-top-label">保障类产品达成率</div>
           <div class="kpi-big-value" id="kpi-protection-rate" style="color: #ec4899;">--</div>
           <div class="kpi-bottom-meta" id="kpi-protection-sub"></div>
         </div>
 
         <!-- 6. 10年期产品 -->
-        <div class="kpi-card" data-kpi-modal="10year">
+        <div class="kpi-card target-dependent" data-kpi-modal="10year" role="button" tabindex="0" aria-label="查看10年期产品达成率详情">
           <div class="kpi-top-label">10年期产品达成率</div>
           <div class="kpi-big-value" id="kpi-10year-rate" style="color: #06b6d4;">--</div>
           <div class="kpi-bottom-meta" id="kpi-10year-sub"></div>
         </div>
 
         <!-- 7. 长险期交达成率 -->
-        <div class="kpi-card" data-kpi-modal="longterm">
+        <div class="kpi-card target-dependent" data-kpi-modal="longterm" role="button" tabindex="0" aria-label="查看长险期交达成率详情">
           <div class="kpi-top-label">长险期交达成率</div>
           <div class="kpi-big-value" id="kpi-longterm-rate" style="color: #3b82f6;">--</div>
           <div class="kpi-bottom-meta" id="kpi-longterm-sub"></div>
         </div>
 
         <!-- 8. 人均保费（转型业务） -->
-        <div class="kpi-card" data-kpi-modal="percapita">
+        <div class="kpi-card" data-kpi-modal="percapita" role="button" tabindex="0" aria-label="查看人均保费详情">
           <div class="kpi-top-label">人均保费 <span style="font-size:10px;color:var(--text-secondary);">(月均)</span></div>
           <div class="kpi-big-value" id="kpi-percapita" style="color: #f97316;">--</div>
           <div class="kpi-bottom-meta" id="kpi-percapita-sub"></div>
@@ -1628,7 +1722,7 @@
 
     // Product config modal lives in js/product-config-modal.js
   </script>
-  <script src="js/product-config-modal.js?v=1.0.102"></script>
+  <script src="js/product-config-modal.js?v=1.0.103"></script>
   <script>
     // KPI card rendering lives in js/kpi-cards.js
 
@@ -1637,24 +1731,24 @@
     // KPI detail modal content lives in js/kpi-modal-content.js
     // Local fallback seed data lives in js/seed-data.js
   </script>
-  <script src="js/kpi-modal-content.js?v=1.0.102"></script>
+  <script src="js/kpi-modal-content.js?v=1.0.103"></script>
   <script>
     // API integration lives in js/data-integration.js
   </script>
-  <script src="js/org-analysis.js?v=1.0.102"></script>
-  <script src="js/seed-data.js?v=1.0.102"></script>
-  <script src="js/platform-seed-data.js?v=1.0.102"></script>
-  <script src="js/data-integration.js?v=1.0.102"></script>
-  <script src="js/platform-trend-main.js?v=1.0.102"></script>
+  <script src="js/org-analysis.js?v=1.0.103"></script>
+  <script src="js/seed-data.js?v=1.0.103"></script>
+  <script src="js/platform-seed-data.js?v=1.0.103"></script>
+  <script src="js/data-integration.js?v=1.0.103"></script>
+  <script src="js/platform-trend-main.js?v=1.0.103"></script>
   <script>
   </script>
-  <script src="js/product-analysis.js?v=1.0.102"></script>
+  <script src="js/product-analysis.js?v=1.0.103"></script>
   <script>
   </script>
-  <script src="js/payperiod-chart.js?v=1.0.102"></script>
+  <script src="js/payperiod-chart.js?v=1.0.103"></script>
   <script>
   </script>
-  <script src="js/team-analysis.js?v=1.0.102"></script>
+  <script src="js/team-analysis.js?v=1.0.103"></script>
   <script>
     // ---------- Resize ----------
     window.addEventListener('resize', () => {

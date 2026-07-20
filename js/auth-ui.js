@@ -21,7 +21,9 @@
     honor_recalculate: '星钻重算',
     honor_export: '星钻导出',
     honor_admin: '星钻规则管理',
-    honor_upload: '星钻上传'
+    honor_upload: '星钻上传',
+    scheme_calculation: '方案计算',
+    scheme_upload: '方案上传'
   };
   const ROLE_LABELS = { admin: '管理员组', senior: '高级用户组', normal: '普通用户组' };
   const ROLE_OPTIONS = ['normal', 'senior', 'admin'];
@@ -226,21 +228,21 @@
       <div class="auth-panel" id="authPanel" data-auth-mode="login">
         <div class="auth-title" id="authTitle">经营分析看板</div>
         <div class="auth-subtitle" id="authSubtitle">请登录后进入系统。账号由管理员开通。</div>
-        <label class="auth-label">用户名</label>
-        <input class="auth-input" id="authUsername" autocomplete="username" placeholder="请输入用户名">
-        <label class="auth-label">密码</label>
+        <label class="auth-label" for="authUsername">用户名</label>
+        <input class="auth-input" id="authUsername" type="text" autocomplete="username" placeholder="请输入用户名">
+        <label class="auth-label" for="authPassword">密码</label>
         <input class="auth-input" id="authPassword" type="password" autocomplete="current-password" placeholder="请输入密码">
-        <label class="auth-label auth-register-only">确认密码</label>
+        <label class="auth-label auth-register-only" for="authConfirmPassword">确认密码</label>
         <input class="auth-input auth-register-only" id="authConfirmPassword" type="password" autocomplete="new-password" placeholder="请再次输入密码">
         <div class="auth-actions auth-login-actions">
-          <button class="chart-btn auth-primary" id="authLoginBtn">登录</button>
-          <button class="chart-btn" id="authRegisterBtn" style="display:none;">注册</button>
+          <button class="chart-btn auth-primary" id="authLoginBtn" type="button">登录</button>
+          <button class="chart-btn" id="authRegisterBtn" type="button" style="display:none;">注册</button>
         </div>
         <div class="auth-actions auth-register-actions">
-          <button class="chart-btn auth-primary" id="authSubmitRegisterBtn">完成注册</button>
-          <button class="chart-btn" id="authBackLoginBtn">返回登录</button>
+          <button class="chart-btn auth-primary" id="authSubmitRegisterBtn" type="button">完成注册</button>
+          <button class="chart-btn" id="authBackLoginBtn" type="button">返回登录</button>
         </div>
-        <div class="auth-message" id="authMessage"></div>
+        <div class="auth-message" id="authMessage" role="status" aria-live="polite"></div>
       </div>`;
     document.body.appendChild(gate);
     switchAuthMode('login');
@@ -312,7 +314,8 @@
     honor_field_audit: '星钻数据适配',
     honor_recalculate: '星钻重算',
     honor_export: '星钻导出',
-    honor_view_batch: '星钻批次查看'
+    honor_view_batch: '星钻批次查看',
+    scheme_upload: '方案上传'
   };
 
   function formatOperationTime(value) {

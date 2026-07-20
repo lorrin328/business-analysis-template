@@ -98,6 +98,24 @@ sudo systemctl reload nginx
 sudo systemctl status nginx
 ```
 
+部署后静态资源边界验证：
+
+```bash
+curl -I http://127.0.0.1/
+curl -I http://127.0.0.1/honor
+curl -I http://127.0.0.1/scheme-calculator.html
+curl -I http://127.0.0.1/js/api-client.js
+
+# 以下路径必须返回 404
+curl -I http://127.0.0.1/backend/main.py
+curl -I http://127.0.0.1/deploy/nginx.conf
+curl -I http://127.0.0.1/.git/config
+curl -I http://127.0.0.1/backend/business_data.db
+curl -I http://127.0.0.1/targets_import.json
+```
+
+若任一敏感路径返回 200，立即停止对外访问，检查 `/etc/nginx/sites-enabled/business-analysis` 是否已同步仓库中的 `deploy/nginx.conf`，执行 `sudo nginx -t && sudo systemctl reload nginx` 后重新验证。
+
 健康检查：
 
 ```bash
@@ -112,6 +130,47 @@ curl http://127.0.0.1:45679/api/health
 - 生产环境默认关闭公开自助注册；确需开放时在 `/opt/business-analysis/deploy/.admin_env` 设置 `AUTH_ALLOW_PUBLIC_REGISTRATION=1` 并重启服务，关闭时改为 `0` 或移除该配置并重启服务。
 - `/opt/business-analysis/deploy/.admin_env`、`.ai_env`、`.webhook_env` 属于服务器运行时配置，部署脚本会保留这些文件；不得提交到 Git。
 - 自动部署 webhook 需要 `/opt/business-analysis/deploy/.webhook_env` 中的 `WEBHOOK_SECRET` 与 GitHub Webhook Secret 一致，并确认 `webhook-deploy` 服务为 `active`。
+
+## 方案计算
+
+### 页面入口
+
+1. 登录主看板。
+2. 点击顶部“方案计算”。
+3. 在方案选择弹层中选择“2026年组发政策”。
+4. 有 `scheme_upload` 权限时，可在“方案专用上传”区域上传 `组织发展追踪模板.xlsx`。
+
+### 接口
+
+```text
+GET  /api/scheme/options
+GET  /api/scheme/latest?schemeId=2026-org-dev-policy
+POST /api/scheme/upload
+```
+
+上传字段：
+
+```text
+schemeId=2026-org-dev-policy
+tracking=<.xlsx 文件>
+```
+
+### 权限
+
+- `scheme_calculation`：查看方案列表和最近一次测算结果。
+- `scheme_upload`：上传方案专用 Excel 并写入方案测算批次。
+
+### 本地验证
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_scheme_calculation.py tests\test_frontend_static.py -q
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+### 注意
+
+- 方案上传独立于主经营数据导入，不会写入 `/api/upload` 使用的 `data_imports` 或经营聚合表。
+- 当前“2026年组发政策”页面展示的是底稿测算结果与复核提示；推荐人奖励、有效保单 45 日观察、回执回访、犹豫期、自保互保等字段补齐前，不能视为全自动最终结算结果。
 
 ## 荣誉体系过程追踪
 

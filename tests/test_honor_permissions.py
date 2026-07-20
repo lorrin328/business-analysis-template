@@ -12,14 +12,18 @@ def test_honor_default_permissions():
     senior = default_permissions_for_role("senior")
     normal = default_permissions_for_role("normal")
 
-    assert all(admin[key] for key in ["honor_view", "honor_audit", "honor_recalculate", "honor_export", "honor_admin"])
+    assert all(admin[key] for key in ["honor_view", "honor_audit", "honor_recalculate", "honor_export", "honor_admin", "scheme_calculation", "scheme_upload"])
     assert senior["honor_view"] is True
     assert senior["honor_audit"] is True
     assert senior["honor_recalculate"] is True
     assert senior["honor_export"] is True
     assert senior["honor_admin"] is False
     assert senior["honor_upload"] is False
+    assert senior["scheme_calculation"] is True
+    assert senior["scheme_upload"] is False
     assert normal["honor_view"] is True
     assert normal["honor_audit"] is False
     assert normal["honor_recalculate"] is False
     assert normal["honor_export"] is False
+    assert normal["scheme_calculation"] is True
+    assert normal["scheme_upload"] is False

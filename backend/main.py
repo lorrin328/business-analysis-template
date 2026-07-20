@@ -24,6 +24,7 @@ from api.diagnostics import router as diagnostics_router
 from api.export import router as export_router
 from api.auth_routes import admin_router, router as auth_router
 from api.honor import router as honor_router
+from api.scheme import router as scheme_router
 from api.ai import router as ai_router
 from auth import get_current_user, require_permission
 from config.business_lines import DEFAULT_YEAR
@@ -137,7 +138,7 @@ if _cors_origins:
 # 初始化数据库
 init_db()
 
-for router in [auth_router, admin_router, kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, export_router, honor_router, ai_router, legacy_router]:
+for router in [auth_router, admin_router, kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, export_router, honor_router, scheme_router, ai_router, legacy_router]:
     app.include_router(router)
 
 
@@ -336,7 +337,6 @@ async def import_files(
 # 静态文件服务 - 生产HTML
 static_dir = os.path.join(os.path.dirname(__file__), '..')
 if os.path.exists(os.path.join(static_dir, '经营分析模板.html')):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
     js_dir = os.path.join(static_dir, 'js')
     if os.path.isdir(js_dir):
         app.mount("/js", StaticFiles(directory=js_dir), name="js")
@@ -348,6 +348,11 @@ if os.path.exists(os.path.join(static_dir, '经营分析模板.html')):
     @app.get("/honor")
     def honor_page():
         return FileResponse(os.path.join(static_dir, "honor.html"))
+
+    @app.get("/scheme-calculator")
+    @app.get("/scheme-calculator.html")
+    def scheme_calculator_page():
+        return FileResponse(os.path.join(static_dir, "scheme-calculator.html"))
 
     @app.get("/personnel-management")
     @app.get("/personnel-management.html")

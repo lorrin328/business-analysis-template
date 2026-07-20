@@ -8,6 +8,25 @@
         const pm = platformMock[year];
         const tm = teamMock[year];
         if (!pm) return;
+        const targetLabel = typeof targetSourceLabel === 'function' ? targetSourceLabel() : '目标来源待确认';
+        const targetsOfficial = targetLabel === '服务端目标';
+
+        function updateTargetTrustState() {
+          const banner = window.document.getElementById('targetTrustBanner');
+          const status = window.document.getElementById('targetSourceStatus');
+          window.document.body.classList.toggle('targets-unverified', !targetsOfficial);
+          if (banner) banner.hidden = targetsOfficial;
+          if (status) status.textContent = targetLabel;
+          window.document.querySelectorAll('.kpi-card.target-dependent').forEach(card => {
+            card.dataset.targetTrust = targetsOfficial ? 'official' : 'unverified';
+            if (!targetsOfficial) {
+              const value = card.querySelector('.kpi-big-value');
+              const meta = card.querySelector('.kpi-bottom-meta');
+              if (value) value.textContent = '目标待配置';
+              if (meta) meta.innerHTML = '<span>点击查看实际数据与口径</span>';
+            }
+          });
+        }
 
         function sumArr(arr) {
           if (!Array.isArray(arr)) return 0;
@@ -115,8 +134,13 @@
           } else {
             focus = `整体节奏可控，继续跟踪经代同比${yoyText(jdYoy)}、转型同比${yoyText(tfYoy)}及品质风险。`;
           }
-          const targetLabel = typeof targetSourceLabel === 'function' ? targetSourceLabel() : '目标来源待确认';
           const warningText = kpi?.as_of?.warningText ? `；${kpi.as_of.warningText}` : '';
+          if (!targetsOfficial) {
+            texts[0].textContent = `整体期交${fmtWan(overallActual)}，同比${yoyText(overallYoy)}；正式目标未配置，暂不判断达成进度。`;
+            texts[1].textContent = `经代贡献${fmtPct(jdShare)}、转型贡献${fmtPct(tfShare)}；继续跟踪经代同比${yoyText(jdYoy)}、转型同比${yoyText(tfYoy)}及品质风险。`;
+            texts[2].textContent = `KPI 按${formatAsOfLabel(asOf)}同日口径统计，目标来源：${targetLabel}${warningText}。`;
+            return;
+          }
           texts[0].textContent = `整体期交${fmtWan(overallActual)}，达成${fmtPct(overallRate)}，同比${yoyText(overallYoy)}；${progressText}。`;
           texts[1].textContent = `${focus} 经代贡献${fmtPct(jdShare)}、转型贡献${fmtPct(tfShare)}。`;
           texts[2].textContent = `KPI 按${formatAsOfLabel(asOf)}同日口径统计，目标来源：${targetLabel}${warningText}。`;
@@ -395,6 +419,7 @@
             <span>蚁桥 <span class="${yqPc >= 3 ? 'up' : 'down'}">${yqPc}万</span></span>`;
         }
       }
+        updateTargetTrustState();
       } catch (e) { console.error('updateKPICards error:', e); }
     }
 
@@ -412,6 +437,13 @@
           return;
         }
         window.openModal(modalType);
+      });
+      grid.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const card = event.target.closest('.kpi-card[data-kpi-modal]');
+        if (!card || !grid.contains(card)) return;
+        event.preventDefault();
+        card.click();
       });
     }
 

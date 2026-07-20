@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>星钻联盟荣誉体系</title>
-  <script src="/js/api-client.js?v=1.0.102"></script>
+  <script src="/js/api-client.js?v=1.0.103"></script>
   <style>
     :root {
       color-scheme: dark;
@@ -52,6 +52,10 @@
     }
     button { cursor: pointer; }
     button.primary { background: var(--blue); border-color: var(--blue); color: white; font-weight: 600; }
+    button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+      outline: 3px solid rgba(79,140,255,.55);
+      outline-offset: 2px;
+    }
     .page-title { font-size: 18px; font-weight: 700; }
     .version { color: var(--green); border: 1px solid rgba(37,194,133,.3); border-radius: 999px; padding: 2px 8px; font-size: 12px; margin-left: 10px; }
     .toolbar {
@@ -77,7 +81,17 @@
       display: inline-flex;
       align-items: center;
     }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .metric-groups { display: grid; gap: 12px; margin-bottom: 18px; }
+    .metric-group {
+      background: rgba(16,28,46,.48);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .metric-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+    .metric-group-title { font-size: 14px; font-weight: 700; color: #dceaff; }
+    .metric-group-note { font-size: 12px; color: var(--muted); }
+    .metric-group-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
     .metric-card {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -88,6 +102,9 @@
     .metric-label { color: var(--muted); font-size: 13px; }
     .metric-value { font-size: 26px; font-weight: 700; margin-top: 8px; color: #8bb8ff; }
     .metric-note { color: var(--muted); margin-top: 8px; font-size: 12px; }
+    .metric-card[data-tone="attention"] { border-color: rgba(238,90,90,.45); background: rgba(238,90,90,.06); }
+    .metric-card[data-tone="attention"] .metric-value { color: #ff9a9a; }
+    .metric-card[data-tone="result"] .metric-value { color: var(--gold); }
     .summary-strip {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -118,7 +135,7 @@
     .insight strong { color: #d9e8ff; font-size: 16px; }
     .summary-note strong { color: var(--text); }
     .tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--line); margin: 18px 0; overflow-x: auto; }
-    .tab { padding: 11px 16px; border-radius: 6px 6px 0 0; color: #bcd3ef; cursor: pointer; white-space: nowrap; }
+    .tab { width: auto; flex: 0 0 auto; padding: 11px 16px; border-radius: 6px 6px 0 0; color: #bcd3ef; cursor: pointer; white-space: nowrap; background: transparent; }
     .tab.active { background: var(--panel); color: #fff; font-weight: 600; }
     .panel {
       display: none;
@@ -285,7 +302,7 @@
 </head>
 <body>
   <header>
-    <div><span class="page-title">星钻联盟荣誉体系</span><span class="version">v1.0.102</span></div>
+    <div><span class="page-title">星钻联盟荣誉体系</span><span class="version">v1.0.103</span></div>
     <div><a href="/">返回经营看板</a></div>
   </header>
   <main>
@@ -305,30 +322,30 @@
       <div class="summary-note"><strong>数据来源：</strong>优先复用现有 performance 与 hr_data，不新增星钻专用上传。</div>
     </section>
 
-    <section class="cards" id="honorCards"></section>
+    <section class="metric-groups" id="honorCards" aria-label="荣誉核心指标"></section>
 
-    <nav class="tabs">
-      <div class="tab active" data-tab="tracking">荣誉追踪</div>
-      <div class="tab" data-tab="overview">总览驾驶舱</div>
-      <div class="tab" data-tab="orgs">机构追踪</div>
-      <div class="tab" data-tab="projects">项目分析</div>
-      <div class="tab" data-tab="specialists">专员级</div>
-      <div class="tab" data-tab="managers">管理职</div>
-      <div class="tab" data-tab="warnings">月度预警</div>
-      <div class="tab" data-tab="persons">人员明细</div>
-      <div class="tab" data-tab="audit">数据审计</div>
+    <nav class="tabs" role="tablist" aria-label="荣誉分析维度">
+      <button type="button" class="tab active" id="tab-tracking" role="tab" aria-selected="true" aria-controls="tracking" data-tab="tracking">荣誉追踪</button>
+      <button type="button" class="tab" id="tab-overview" role="tab" aria-selected="false" aria-controls="overview" data-tab="overview">总览驾驶舱</button>
+      <button type="button" class="tab" id="tab-orgs" role="tab" aria-selected="false" aria-controls="orgs" data-tab="orgs">机构追踪</button>
+      <button type="button" class="tab" id="tab-projects" role="tab" aria-selected="false" aria-controls="projects" data-tab="projects">项目分析</button>
+      <button type="button" class="tab" id="tab-specialists" role="tab" aria-selected="false" aria-controls="specialists" data-tab="specialists">专员级</button>
+      <button type="button" class="tab" id="tab-managers" role="tab" aria-selected="false" aria-controls="managers" data-tab="managers">管理职</button>
+      <button type="button" class="tab" id="tab-warnings" role="tab" aria-selected="false" aria-controls="warnings" data-tab="warnings">月度预警</button>
+      <button type="button" class="tab" id="tab-persons" role="tab" aria-selected="false" aria-controls="persons" data-tab="persons">人员明细</button>
+      <button type="button" class="tab" id="tab-audit" role="tab" aria-selected="false" aria-controls="audit" data-tab="audit">数据审计</button>
     </nav>
 
-    <section id="tracking" class="panel active"><div class="empty">正在加载荣誉追踪结果...</div></section>
-    <section id="overview" class="panel"><div class="empty">正在加载数据适配结果...</div></section>
-    <section id="orgs" class="panel"></section>
-    <section id="projects" class="panel"></section>
-    <section id="specialists" class="panel"></section>
-    <section id="managers" class="panel"></section>
-    <section id="warnings" class="panel"></section>
-    <section id="persons" class="panel"></section>
-    <section id="audit" class="panel"></section>
+    <section id="tracking" class="panel active" role="tabpanel" aria-labelledby="tab-tracking"><div class="empty">正在加载荣誉追踪结果...</div></section>
+    <section id="overview" class="panel" role="tabpanel" aria-labelledby="tab-overview"><div class="empty">正在加载数据适配结果...</div></section>
+    <section id="orgs" class="panel" role="tabpanel" aria-labelledby="tab-orgs"></section>
+    <section id="projects" class="panel" role="tabpanel" aria-labelledby="tab-projects"></section>
+    <section id="specialists" class="panel" role="tabpanel" aria-labelledby="tab-specialists"></section>
+    <section id="managers" class="panel" role="tabpanel" aria-labelledby="tab-managers"></section>
+    <section id="warnings" class="panel" role="tabpanel" aria-labelledby="tab-warnings"></section>
+    <section id="persons" class="panel" role="tabpanel" aria-labelledby="tab-persons"></section>
+    <section id="audit" class="panel" role="tabpanel" aria-labelledby="tab-audit"></section>
   </main>
-  <script src="/js/honor.js?v=1.0.102"></script>
+  <script src="/js/honor.js?v=1.0.103"></script>
 </body>
 </html>

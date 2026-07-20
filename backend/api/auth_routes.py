@@ -108,6 +108,7 @@ def operation_logs(
                 "honor_recalculate",
                 "honor_export",
                 "honor_view_batch",
+                "scheme_upload",
             ],
         }
     )

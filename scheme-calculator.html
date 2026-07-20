@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>方案底稿复核</title>
+  <script src="/js/api-client.js?v=1.0.103"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1320;
+      --panel: #152235;
+      --panel-2: #1f3046;
+      --panel-3: #253a54;
+      --line: #334b67;
+      --text: #f5f8fc;
+      --muted: #a8b7c8;
+      --blue: #5b8def;
+      --green: #26c281;
+      --orange: #f4a261;
+      --red: #ef6461;
+      --yellow: #e8c547;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Microsoft YaHei", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+    }
+    header {
+      min-height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 28px;
+      background: #121f33;
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 4;
+    }
+    main { padding: 24px; max-width: 1580px; margin: 0 auto; }
+    a { color: #a9c7ff; text-decoration: none; }
+    button, input, select {
+      font-family: inherit;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 6px;
+      min-height: 34px;
+    }
+    button { cursor: pointer; padding: 0 13px; }
+    button:hover { border-color: var(--blue); background: #294262; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+      outline: 3px solid rgba(91,141,239,.55);
+      outline-offset: 2px;
+    }
+    input, select { padding: 0 10px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid rgba(255,255,255,.08); padding: 9px 10px; text-align: left; white-space: nowrap; }
+    th { color: #d8e5f5; background: rgba(255,255,255,.04); font-weight: 600; position: sticky; top: 0; z-index: 1; }
+    .hidden { display: none !important; }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .title { font-size: 18px; font-weight: 700; white-space: nowrap; }
+    .tag, .version, .user-pill {
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .version { color: var(--green); border-color: rgba(38,194,129,.38); }
+    .header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .toolbar h1 { margin: 0; font-size: 24px; letter-spacing: 0; }
+    .toolbar-meta { color: var(--muted); margin-top: 6px; }
+    .review-banner {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      color: #f7dcc7;
+      background: rgba(244,162,97,.10);
+      border: 1px solid rgba(244,162,97,.38);
+      border-radius: 8px;
+      line-height: 1.55;
+    }
+    .review-banner strong { color: #fff0df; }
+    .upload-steps { margin: 0; padding-left: 20px; color: var(--muted); line-height: 1.65; font-size: 12px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.025);
+    }
+    .panel-title { font-size: 16px; font-weight: 700; }
+    .panel-body { padding: 16px; }
+    .rule-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .rule-item {
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 8px;
+      padding: 11px 12px;
+      background: var(--panel-2);
+      min-height: 78px;
+    }
+    .rule-label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+    .rule-value { color: var(--text); font-weight: 700; line-height: 1.45; }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .kpi {
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 8px;
+      background: var(--panel-2);
+      padding: 13px 14px;
+      min-height: 86px;
+    }
+    .kpi-label { color: var(--muted); font-size: 12px; }
+    .kpi-value { font-size: 25px; font-weight: 800; margin-top: 8px; letter-spacing: 0; }
+    .kpi-sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .layout > *, .panel, .panel-body, .scheme-list { min-width: 0; }
+    .scheme-list { display: grid; gap: 8px; }
+    .scheme-choice {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 12px;
+      min-height: 78px;
+      background: var(--panel-2);
+    }
+    .scheme-choice.active { border-color: var(--green); background: #173348; }
+    .scheme-choice strong { display: block; margin-bottom: 5px; }
+    .scheme-choice span { display: block; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .scheme-choice strong, .scheme-choice span { overflow-wrap: anywhere; }
+    .upload-box {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid rgba(91,141,239,.35);
+      border-radius: 8px;
+      background: #17263a;
+    }
+    .upload-box input { width: 100%; min-height: 38px; padding: 7px 10px; }
+    .status-line { color: var(--muted); font-size: 12px; min-height: 18px; }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 12px 16px 0;
+    }
+    .tab {
+      min-height: 34px;
+      background: transparent;
+      color: var(--muted);
+    }
+    .tab.active { color: var(--text); border-color: var(--blue); background: var(--panel-2); }
+    .warning-list { display: grid; gap: 8px; }
+    .warning {
+      border-left: 3px solid var(--orange);
+      background: rgba(244,162,97,.10);
+      padding: 10px 12px;
+      color: #f7dcc7;
+    }
+    .warning.high { border-left-color: var(--red); background: rgba(239,100,97,.10); color: #f6c8c8; }
+    .warning-title { font-weight: 700; margin-bottom: 4px; }
+    .table-wrapper { overflow: auto; max-height: 560px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; }
+    .empty {
+      padding: 32px 16px;
+      color: var(--muted);
+      text-align: center;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,.02);
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 22px;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+    }
+    .pill.ok { color: var(--green); border-color: rgba(38,194,129,.45); }
+    .pill.warn { color: var(--yellow); border-color: rgba(232,197,71,.45); }
+    .pill.bad { color: var(--red); border-color: rgba(239,100,97,.45); }
+    .selector {
+      position: fixed;
+      inset: 0;
+      background: rgba(4, 9, 18, .72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9;
+      padding: 24px;
+    }
+    .selector.active { display: flex; }
+    .selector-panel {
+      width: min(760px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0,0,0,.35);
+    }
+    .selector-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 14px 16px;
+      border-top: 1px solid rgba(255,255,255,.08);
+    }
+    .access-denied { padding: 60px 24px; max-width: 720px; margin: 0 auto; }
+    @media (max-width: 1100px) {
+      .layout, .rule-grid, .kpi-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 720px) {
+      header { align-items: flex-start; padding: 14px 16px; flex-direction: column; }
+      main { padding: 16px; }
+      .toolbar { align-items: flex-start; flex-direction: column; }
+      .layout, .rule-grid, .kpi-grid { grid-template-columns: 1fr; }
+      .header-actions { justify-content: flex-start; }
+      .review-banner { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="title">方案底稿复核</span>
+      <span class="tag">导入 · 测算 · 复核</span>
+      <span class="version">v1.0.103</span>
+    </div>
+    <div class="header-actions">
+      <span class="user-pill" id="currentUserName"></span>
+      <button data-scheme-action="open-selector">切换方案</button>
+      <button data-scheme-action="home">返回看板</button>
+    </div>
+  </header>
+
+  <main id="pageMain" class="hidden">
+    <div class="toolbar">
+      <div>
+        <h1 id="schemeTitle">2026年组发政策</h1>
+        <div class="toolbar-meta" id="schemeMeta">方案期：2026-07-01 至 2026-12-31；入司窗口：2026-07-01 至 2026-09-30</div>
+      </div>
+      <div class="status-line" id="batchStatus">暂无测算批次</div>
+    </div>
+
+    <div class="review-banner" role="note">
+      <div><strong>当前模块用于底稿导入、规则测算和结果复核。</strong>页面结果不替代正式结算，存在口径冲突时以正式通知及人工复核结论为准。</div>
+      <span class="pill warn">非最终发放结果</span>
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div class="panel-title">政策口径</div>
+        <span class="pill warn">正式通知优先</span>
+      </div>
+      <div class="panel-body">
+        <div class="rule-grid">
+          <div class="rule-item"><div class="rule-label">适用范围</div><div class="rule-value">网电多元系列 OTO 条线</div></div>
+          <div class="rule-item"><div class="rule-label">引才时间</div><div class="rule-value">2026-07-01 至 2026-09-30</div></div>
+          <div class="rule-item"><div class="rule-label">奖励期间</div><div class="rule-value">2026-07-01 至 2026-12-31</div></div>
+          <div class="rule-item"><div class="rule-label">保留资格</div><div class="rule-value">团队首期标保达到对应标准 70%</div></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="layout">
+      <aside>
+        <section class="panel">
+          <div class="panel-header">
+            <div class="panel-title">方案选择</div>
+          </div>
+          <div class="panel-body">
+            <div class="scheme-list" id="schemeList"></div>
+          </div>
+        </section>
+
+        <section class="panel" id="schemeUploadPanel" data-permission="scheme_upload">
+          <div class="panel-header">
+            <div class="panel-title">方案专用上传</div>
+          </div>
+          <div class="panel-body">
+            <div class="upload-box">
+              <div>
+                <div class="rule-label">测算模板</div>
+                <div class="rule-value">组织发展追踪模板.xlsx</div>
+              </div>
+              <ol class="upload-steps">
+                <li>确认使用当前方案对应的底稿模板。</li>
+                <li>保留原工作表名称与字段，不在经营数据入口上传。</li>
+                <li>导入后先处理“复核提示”，再使用汇总结果。</li>
+              </ol>
+              <input id="schemeTrackingFile" data-scheme-upload-input type="file" accept=".xlsx">
+              <button id="schemeUploadBtn" data-scheme-upload-button>导入并测算</button>
+              <div class="status-line" id="uploadStatus">本模块上传独立于经营数据导入。</div>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <section>
+        <div class="kpi-grid" id="kpiGrid">
+          <div class="kpi"><div class="kpi-label">测算团队</div><div class="kpi-value" id="kpiTotalTeams">--</div><div class="kpi-sub">三类测算对象合计</div></div>
+          <div class="kpi"><div class="kpi-label">达标团队</div><div class="kpi-value" id="kpiQualifiedTeams">--</div><div class="kpi-sub">任一月份达标</div></div>
+          <div class="kpi"><div class="kpi-label">保留资格</div><div class="kpi-value" id="kpiMaintainedTeams">--</div><div class="kpi-sub">维持方案资格</div></div>
+          <div class="kpi"><div class="kpi-label">已淘汰</div><div class="kpi-value" id="kpiEliminatedTeams">--</div><div class="kpi-sub">底稿状态口径</div></div>
+          <div class="kpi"><div class="kpi-label">测算奖励</div><div class="kpi-value" id="kpiTotalAward">--</div><div class="kpi-sub">按当前底稿汇总</div></div>
+        </div>
+
+        <section class="panel" style="margin-top:16px;">
+          <div class="panel-header">
+            <div class="panel-title">复核提示</div>
+            <span class="pill" id="warningCount">0项</span>
+          </div>
+          <div class="panel-body">
+            <div class="warning-list" id="warningList"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="tabs">
+            <button class="tab active" data-scheme-tab="overview">总览</button>
+            <button class="tab" data-scheme-tab="supervisor">引才奖-主管</button>
+            <button class="tab" data-scheme-tab="manager">引才奖-经理</button>
+            <button class="tab" data-scheme-tab="promotion">晋升育成</button>
+            <button class="tab" data-scheme-tab="definitions">口径与缺口</button>
+          </div>
+          <div class="panel-body">
+            <div id="tabOverview"><div class="table-wrapper"><table id="schemeOverviewTable"></table></div></div>
+            <div id="tabSupervisor" class="hidden"><div class="table-wrapper"><table id="schemeSupervisorTable"></table></div></div>
+            <div id="tabManager" class="hidden"><div class="table-wrapper"><table id="schemeManagerTable"></table></div></div>
+            <div id="tabPromotion" class="hidden"><div class="table-wrapper"><table id="schemePromotionTable"></table></div></div>
+            <div id="tabDefinitions" class="hidden"><div id="definitionList" class="warning-list"></div></div>
+          </div>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <main id="accessDenied" class="access-denied hidden">
+    <section class="panel">
+      <div class="panel-header"><div class="panel-title">无权访问</div></div>
+      <div class="panel-body">当前账号没有方案计算权限，请联系管理员开通。</div>
+    </section>
+  </main>
+
+  <div class="selector active" id="schemeSelector">
+    <div class="selector-panel">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">选择方案</div>
+          <div class="status-line">当前模块支持多方案扩展；本期先启用 2026 年组发政策。</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="scheme-list" id="schemeSelectorList"></div>
+      </div>
+      <div class="selector-actions">
+        <button id="confirmSchemeBtn">进入测算</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/scheme-calculator.js?v=1.0.103"></script>
+</body>
+</html>

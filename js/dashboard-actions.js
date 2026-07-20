@@ -31,6 +31,7 @@
     if (!action) return;
     event.preventDefault();
     action(button);
+    button.closest('details')?.removeAttribute('open');
   }
 
   document.addEventListener('DOMContentLoaded', () => {

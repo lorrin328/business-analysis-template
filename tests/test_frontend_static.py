@@ -102,14 +102,14 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.102"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.102"></script>' in html
-    assert '<script src="js/export-excel.js?v=1.0.102"></script>' in html
-    assert '<script src="js/upload.js?v=1.0.102"></script>' in html
-    assert '<script src="js/target-modal.js?v=1.0.102"></script>' in html
-    assert '<script src="js/kpi-cards.js?v=1.0.102"></script>' in html
-    assert '<script src="js/platform-trend.js?v=1.0.102"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.102"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.103"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.103"></script>' in html
+    assert '<script src="js/export-excel.js?v=1.0.103"></script>' in html
+    assert '<script src="js/upload.js?v=1.0.103"></script>' in html
+    assert '<script src="js/target-modal.js?v=1.0.103"></script>' in html
+    assert '<script src="js/kpi-cards.js?v=1.0.103"></script>' in html
+    assert '<script src="js/platform-trend.js?v=1.0.103"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.103"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -141,6 +141,8 @@ def test_permission_admin_can_manage_admin_role_with_batch_save_and_delete():
     auth_ui = read_js("auth-ui.js")
     assert "team_enhanced: '队伍结构与产能分析'" in auth_ui
     assert "personnel_management: '人员管理'" in auth_ui
+    assert "scheme_calculation: '方案计算'" in auth_ui
+    assert "scheme_upload: '方案上传'" in auth_ui
     assert "const ROLE_OPTIONS = ['normal', 'senior', 'admin']" in auth_ui
     assert "ROLE_OPTIONS.map(role" in auth_ui
     assert "user.role === 'admin' ? 'disabled'" not in auth_ui
@@ -256,7 +258,7 @@ def test_dashboard_config_is_loaded_before_kpi_cards():
     html = read_html()
     config = read_js("dashboard-config.js")
 
-    assert '<script src="js/dashboard-config.js?v=1.0.102"></script>' in html
+    assert '<script src="js/dashboard-config.js?v=1.0.103"></script>' in html
     assert html.index('js/dashboard-config.js') < html.index('js/kpi-cards.js')
     assert "await loadDashboardConfig();" in html
     assert "/api/config/metrics" in config
@@ -269,7 +271,7 @@ def test_product_config_modal_is_outside_html_shell():
     html = read_html()
     modal = read_js("product-config-modal.js")
 
-    assert '<script src="js/product-config-modal.js?v=1.0.102"></script>' in html
+    assert '<script src="js/product-config-modal.js?v=1.0.103"></script>' in html
     assert "async function openProductConfigModal()" not in html
     assert "async function saveProductConfig()" not in html
     assert "async function openProductConfigModal()" in modal
@@ -302,12 +304,13 @@ def test_dashboard_toolbar_actions_are_bound_by_runtime_module():
     actions = read_js("dashboard-actions.js")
     header = html.split('<div class="container">', 1)[0]
 
-    assert '<script src="js/dashboard-actions.js?v=1.0.102"></script>' in html
+    assert '<script src="js/dashboard-actions.js?v=1.0.103"></script>' in html
     assert html.index('js/target-modal.js') < html.index('js/dashboard-actions.js') < html.index('js/kpi-cards.js')
     assert 'data-dashboard-action="open-permission-admin"' in header
     assert 'data-dashboard-action="open-operation-logs"' in header
     assert 'data-dashboard-action="navigate" data-dashboard-href="/personnel-management.html"' in header
     assert 'data-dashboard-action="navigate" data-dashboard-href="/honor"' in header
+    assert 'data-dashboard-action="navigate" data-dashboard-href="/scheme-calculator.html"' in header
     assert 'data-dashboard-action="export-excel"' in header
     assert 'data-dashboard-action="open-product-config"' in header
     assert 'data-dashboard-action="open-targets"' in header
@@ -329,7 +332,7 @@ def test_excel_export_is_runtime_module():
     html = read_html()
     exporter = read_js("export-excel.js")
 
-    assert '<script src="js/export-excel.js?v=1.0.102"></script>' in html
+    assert '<script src="js/export-excel.js?v=1.0.103"></script>' in html
     assert 'id="exportExcelBtn"' in html
     assert "function exportDashboardExcel()" not in html
     assert "function exportDashboardExcel()" in exporter
@@ -354,6 +357,8 @@ def test_account_auth_replaces_admin_token_prompt():
     assert 'data-dashboard-action="navigate" data-dashboard-href="/personnel-management.html"' in html
     assert 'data-permission="honor_view"' in html
     assert 'data-dashboard-action="navigate" data-dashboard-href="/honor"' in html
+    assert 'data-permission="scheme_calculation"' in html
+    assert 'data-dashboard-action="navigate" data-dashboard-href="/scheme-calculator.html"' in html
     assert 'data-permission="upload"' in html
     assert 'data-permission="excel_export"' in html
     assert "/api/auth/${mode}" in auth_ui
@@ -365,6 +370,7 @@ def test_account_auth_replaces_admin_token_prompt():
     assert "新注册账号默认为普通用户" in auth_ui
     assert "honor_view: '星钻联盟查看'" in auth_ui
     assert "honor_recalculate: '星钻重算'" in auth_ui
+    assert "scheme_upload: '方案上传'" in auth_ui
     assert "/api/admin/users" in auth_ui
     assert "function ensureAuthClient()" in auth_ui
     assert "window.setAuthSession = function" in auth_ui
@@ -394,7 +400,7 @@ def test_personnel_management_page_is_admin_only_calculator_runtime():
 
     assert "人员管理</button>" in html
     assert 'data-permission="personnel_management"' in html
-    assert '<script src="/js/personnel-management.js?v=1.0.102"></script>' in page
+    assert '<script src="/js/personnel-management.js?v=1.0.103"></script>' in page
     assert "OTO 基本法测算" in page
     assert "证保基本法测算" in page
     assert "OTO 参数设置" in page
@@ -422,7 +428,7 @@ def test_personnel_management_page_is_admin_only_calculator_runtime():
     assert "DEFAULT_SCENARIOS" in js
     assert "ZB_RATE_DICT" in js
     assert '"personnel_management"' in auth
-    assert '{"permission_admin", "personnel_management", "honor_admin", "honor_upload"}' in auth
+    assert '{"permission_admin", "personnel_management", "honor_admin", "honor_upload", "scheme_upload"}' in auth
     assert '"personnel_management": False' in auth
 
 
@@ -433,10 +439,10 @@ def test_honor_page_is_separate_runtime():
         honor_html = f.read()
     honor_js = read_js("honor.js")
 
-    assert 'data-permission="honor_view" data-dashboard-action="navigate" data-dashboard-href="/honor" style="margin-right:8px;">荣誉体系</button>' in html
+    assert 'data-permission="honor_view" data-dashboard-action="navigate" data-dashboard-href="/honor">荣誉体系</button>' in html
     assert "????" not in html
     assert "星钻联盟荣誉体系" in honor_html
-    assert '<script src="/js/honor.js?v=1.0.102"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.103"></script>' in honor_html
     assert "数据适配检查" in honor_html
     assert "数据审计" in honor_html
     assert "荣誉追踪" in honor_html
@@ -473,6 +479,39 @@ def test_honor_page_is_separate_runtime():
     assert "return Number.isFinite(n) ? `${(n * 100).toFixed(1)}%`" in honor_js
 
 
+def test_scheme_calculator_page_is_separate_runtime():
+    html = read_html()
+    page_path = os.path.join(ROOT, "scheme-calculator.html")
+    with open(page_path, "r", encoding="utf-8") as f:
+        page = f.read()
+    js = read_js("scheme-calculator.js")
+    auth = open(os.path.join(ROOT, "backend", "auth.py"), "r", encoding="utf-8").read()
+    api = open(os.path.join(ROOT, "backend", "api", "scheme.py"), "r", encoding="utf-8").read()
+
+    assert 'data-permission="scheme_calculation" data-dashboard-action="navigate" data-dashboard-href="/scheme-calculator.html">方案复核</button>' in html
+    assert '<script src="/js/scheme-calculator.js?v=1.0.103"></script>' in page
+    assert "方案计算" in page
+    assert "2026年组发政策" in page
+    assert "方案专用上传" in page
+    assert "本模块上传独立于经营数据导入" in page
+    assert 'id="schemeSelector"' in page
+    assert 'id="schemeTrackingFile" data-scheme-upload-input type="file" accept=".xlsx"' in page
+    assert 'data-upload-input' not in page
+    assert '<script src="/js/upload.js' not in page
+    assert "/api/scheme/options" in js
+    assert "/api/scheme/latest?schemeId=" in js
+    assert "/api/scheme/upload" in js
+    assert "hasPermission('scheme_calculation')" in js
+    assert "hasPermission('scheme_upload')" in js
+    assert "function uploadWorkbook()" in js
+    assert "function renderSchemeChoices()" in js
+    assert "schemeTrackingFile" in js
+    assert '"scheme_calculation"' in auth
+    assert '"scheme_upload"' in auth
+    assert "require_permission(\"scheme_calculation\")" in api
+    assert "require_permission(\"scheme_upload\")" in api
+
+
 def test_static_cutoff_starts_empty_until_server_data_arrives():
     html = read_html()
     data_integration = read_js("data-integration.js")
@@ -507,7 +546,7 @@ def test_kpi_modal_content_is_outside_html_shell():
     html = read_html()
     modal_content = read_js("kpi-modal-content.js")
 
-    assert '<script src="js/kpi-modal-content.js?v=1.0.102"></script>' in html
+    assert '<script src="js/kpi-modal-content.js?v=1.0.103"></script>' in html
     assert "function getModalContent(type)" not in html
     assert "function getModalContent(type)" in modal_content
 
@@ -526,7 +565,7 @@ def test_org_analysis_has_expand_mode_and_colored_indicators():
     org = read_js("org-analysis.js")
     combined = html + "\n" + org
 
-    assert 'src="js/org-analysis.js?v=1.0.102"' in html
+    assert 'src="js/org-analysis.js?v=1.0.103"' in html
     assert 'id="orgExpandBtn"' in html
     assert 'id="orgExpandBtn" type="button" aria-expanded="false"' in html
     assert 'id="orgExpandBtn" onclick=' not in html
@@ -682,7 +721,7 @@ def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
     kpi_section = html.split('<!-- 机构维度 -->', 1)[0]
 
     assert "function updateKPICards()" not in html
-    assert 'src="js/kpi-cards.js?v=1.0.102"' in html
+    assert 'src="js/kpi-cards.js?v=1.0.103"' in html
     assert 'onclick="openModal(' not in kpi_section
     for modal_type in ["overall", "value", "activity", "annuity", "protection", "10year", "longterm", "percapita"]:
         assert f'data-kpi-modal="{modal_type}"' in kpi_section
@@ -1025,7 +1064,7 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
 
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
-    assert '<script src="js/platform-trend-main.js?v=1.0.102"></script>' in html
+    assert '<script src="js/platform-trend-main.js?v=1.0.103"></script>' in html
     assert "Object.keys(platformMock).forEach(year => delete platformMock[year])" in platform_main
     assert "function refreshPlatformChart()" in platform_main
     assert "function switchYear(value)" in platform_main
@@ -1105,3 +1144,72 @@ def test_per_capita_metrics_use_average_headcount_denominators():
     assert "res.ch[ch] = { prem: p, avg: a, pc: calcPC(p, a, periodMonths) }" in combined
     assert "res.totalPc = calcPC(res.totalPrem, res.totalAvg, periodMonths);" in combined
     assert "res.ch[ch] = { prem: p, avg: aSum, pc: calcPC(p, aSum) }" not in combined
+
+
+def test_dashboard_navigation_and_kpis_are_responsive_and_keyboard_accessible():
+    html = read_html()
+    actions = read_js("dashboard-actions.js")
+    kpi = read_js("kpi-cards.js")
+
+    assert 'class="primary-nav" aria-label="主要页面"' in html
+    assert '<summary class="chart-btn">管理与工具</summary>' in html
+    assert 'class="header-tools"' in html
+    assert 'class="kpi-card target-dependent"' in html
+    assert 'role="button" tabindex="0"' in html
+    assert "event.key !== 'Enter' && event.key !== ' '" in kpi
+    assert "button.closest('details')?.removeAttribute('open')" in actions
+    assert '.header-main { display: block; }' in html
+    assert 'width: calc(100vw - 24px)' in html
+
+
+def test_unverified_targets_do_not_render_as_formal_achievement_judgement():
+    html = read_html()
+    kpi = read_js("kpi-cards.js")
+
+    assert 'id="targetTrustBanner"' in html
+    assert '正式目标尚未配置' in html
+    assert "const targetsOfficial = targetLabel === '服务端目标'" in kpi
+    assert "value.textContent = '目标待配置'" in kpi
+    assert '正式目标未配置，暂不判断达成进度' in kpi
+
+
+def test_login_and_honor_tabs_expose_accessible_semantics():
+    auth_ui = read_js("auth-ui.js")
+    honor_page = open(os.path.join(ROOT, "honor.html"), "r", encoding="utf-8").read()
+    honor_js = read_js("honor.js")
+
+    assert 'for="authUsername"' in auth_ui
+    assert 'for="authPassword"' in auth_ui
+    assert 'id="authMessage" role="status" aria-live="polite"' in auth_ui
+    assert 'role="tablist"' in honor_page
+    assert 'role="tab" aria-selected="true"' in honor_page
+    assert 'role="tabpanel" aria-labelledby="tab-tracking"' in honor_page
+    assert "event.key === 'ArrowRight'" in honor_js
+    assert "item.setAttribute('aria-selected', String(selected))" in honor_js
+
+
+def test_honor_metrics_and_scheme_page_expose_decision_hierarchy_and_boundary():
+    honor_page = open(os.path.join(ROOT, "honor.html"), "r", encoding="utf-8").read()
+    honor_js = read_js("honor.js")
+    scheme_page = open(os.path.join(ROOT, "scheme-calculator.html"), "r", encoding="utf-8").read()
+    scheme_js = read_js("scheme-calculator.js")
+
+    assert 'class="metric-groups"' in honor_page
+    assert "title: '核心结果'" in honor_js
+    assert "title: '风险关注'" in honor_js
+    assert "title: '追踪基础'" in honor_js
+    assert '<title>方案底稿复核</title>' in scheme_page
+    assert '非最终发放结果' in scheme_page
+    assert '底稿导入、规则测算和结果复核' in scheme_page
+    assert '请先选择方案，并通过“方案专用上传”导入对应底稿' in scheme_js
+
+
+def test_production_static_serving_does_not_expose_repository_root():
+    main_py = open(os.path.join(ROOT, "backend", "main.py"), "r", encoding="utf-8").read()
+    nginx = open(os.path.join(ROOT, "deploy", "nginx.conf"), "r", encoding="utf-8").read()
+
+    assert 'app.mount("/static", StaticFiles(directory=static_dir)' not in main_py
+    assert 'app.mount("/js", StaticFiles(directory=js_dir)' in main_py
+    assert 'backend|deploy|docs|tests' in nginx
+    assert 'location = /VERSION { return 404; }' in nginx
+    assert 'location = /targets_import.json { return 404; }' in nginx

@@ -173,26 +173,40 @@
   }
 
   function renderMetricCards(overview = {}) {
-    const cards = [
-      ['追踪人力', numberText(overview.tracked_headcount), '当月月末在职'],
-      ['累计追踪池', numberText(overview.annual_tracked_headcount), '含历史已离职'],
-      ['离职/非在职清零', numberText(overview.departed_headcount), '不计当月追踪人力'],
-      ['会员人数', numberText(overview.member_count), `会员率 ${percentText(overview.member_rate)}`],
-      ['资深及以上', numberText(overview.senior_plus_count), '重点荣誉人群'],
-      ['本月获钻', numberText(overview.monthly_gain_count), '月度达标人力'],
-      ['本月扣减', numberText(overview.monthly_deduct_count), '需优先跟进'],
-      ['累计钻石', numberText(overview.total_diamond), '当前批次累计'],
-      ['新星人力', numberText(overview.new_star_count), '新人荣誉转化'],
-      ['测算奖励', `${numberText(overview.estimated_reward)}元`, '非最终发放金额'],
-      ['异常数量', numberText(overview.exception_count), '字段与规则异常'],
+    const groups = [
+      { title: '核心结果', note: '先看荣誉产出与转化', cards: [
+        ['会员人数', numberText(overview.member_count), `会员率 ${percentText(overview.member_rate)}`, 'result'],
+        ['累计钻石', numberText(overview.total_diamond), '当前批次累计', 'result'],
+        ['本月获钻', numberText(overview.monthly_gain_count), '月度达标人力', 'result'],
+        ['新星人力', numberText(overview.new_star_count), '新人荣誉转化', 'result'],
+      ]},
+      { title: '风险关注', note: '优先核验并跟进异常', cards: [
+        ['本月扣减', numberText(overview.monthly_deduct_count), '需优先跟进', 'attention'],
+        ['异常数量', numberText(overview.exception_count), '字段与规则异常', 'attention'],
+        ['离职/非在职清零', numberText(overview.departed_headcount), '不计当月追踪人力', 'attention'],
+      ]},
+      { title: '追踪基础', note: '用于理解规模与测算边界', cards: [
+        ['追踪人力', numberText(overview.tracked_headcount), '当月月末在职'],
+        ['累计追踪池', numberText(overview.annual_tracked_headcount), '含历史已离职'],
+        ['资深及以上', numberText(overview.senior_plus_count), '重点荣誉人群'],
+        ['测算奖励', `${numberText(overview.estimated_reward)}元`, '非最终发放金额'],
+      ]},
     ];
-    document.getElementById('honorCards').innerHTML = cards.map(([label, value, note]) => `
-      <article class="metric-card">
-        <div class="metric-label">${escapeHtml(label)}</div>
-        <div class="metric-value">${escapeHtml(value)}</div>
-        <div class="metric-note">${escapeHtml(note)}</div>
-      </article>
-    `).join('');
+    document.getElementById('honorCards').innerHTML = groups.map(group => `
+      <section class="metric-group">
+        <div class="metric-group-head">
+          <div class="metric-group-title">${escapeHtml(group.title)}</div>
+          <div class="metric-group-note">${escapeHtml(group.note)}</div>
+        </div>
+        <div class="metric-group-grid">
+          ${group.cards.map(([label, value, note, tone = 'context']) => `
+            <article class="metric-card" data-tone="${tone}">
+              <div class="metric-label">${escapeHtml(label)}</div>
+              <div class="metric-value">${escapeHtml(value)}</div>
+              <div class="metric-note">${escapeHtml(note)}</div>
+            </article>`).join('')}
+        </div>
+      </section>`).join('');
   }
 
   function renderTable(targetId, rows, columns, emptyText = '暂无数据') {
@@ -683,12 +697,28 @@
   }
 
   function bindTabs() {
-    document.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(item => item.classList.remove('active'));
-        document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById(tab.dataset.tab)?.classList.add('active');
+    const tabs = Array.from(document.querySelectorAll('.tab[role="tab"]'));
+    function activate(tab, focus = false) {
+      tabs.forEach(item => {
+        const selected = item === tab;
+        item.classList.toggle('active', selected);
+        item.setAttribute('aria-selected', String(selected));
+        item.tabIndex = selected ? 0 : -1;
+      });
+      document.querySelectorAll('.panel[role="tabpanel"]').forEach(panel => panel.classList.toggle('active', panel.id === tab.dataset.tab));
+      if (focus) tab.focus();
+    }
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => activate(tab));
+      tab.addEventListener('keydown', event => {
+        let nextIndex = null;
+        if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+        if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+        if (event.key === 'Home') nextIndex = 0;
+        if (event.key === 'End') nextIndex = tabs.length - 1;
+        if (nextIndex == null) return;
+        event.preventDefault();
+        activate(tabs[nextIndex], true);
       });
     });
   }
