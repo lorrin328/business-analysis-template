@@ -24,7 +24,7 @@
     }
 
     function populateDashboardYearSelects() {
-      [['yearSelect', selectedYear], ['payPeriodYearSelect', payPeriodFilters?.year], ['teamYearSelect', selectedTeamYear]]
+      [['yearSelect', selectedYear], ['rangeYearSelect', selectedYear], ['payPeriodYearSelect', payPeriodFilters?.year], ['teamYearSelect', selectedTeamYear]]
         .forEach(([id, selected]) => {
           const el = document.getElementById(id);
           if (el) el.innerHTML = buildRecentYearOptions(selected || DEFAULT_DASHBOARD_YEAR);

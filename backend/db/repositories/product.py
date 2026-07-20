@@ -4,9 +4,9 @@ import logging
 import sqlite3
 from db.connection import get_db
 from db.schema import init_db
-from services.cutoff_policy import build_as_of_context
+from services.cutoff_policy import build_period_context
 from services.raw_table_reader import (
-    append_cutoff_filter,
+    append_date_range_filter,
     append_period_filter,
     pick_existing_column,
     quote_identifier,
@@ -88,7 +88,8 @@ def _query_product_structure_raw(
     orgs: list[str] | None = None,
     months: list[int] | None = None,
     metric_type: str = 'qj',
-    as_of_cutoff: tuple[int, int] | None = None,
+    start_cutoff: tuple[int, int] | None = None,
+    end_cutoff: tuple[int, int] | None = None,
 ) -> list[dict]:
     """从原始明细表查询产品结构。依赖原始表列名和数据格式，查询失败时返回空列表并记录原因。"""
     rows: list[dict] = []
@@ -122,11 +123,12 @@ def _query_product_structure_raw(
                 'performance',
                 ['年月日', '入账时间', '日期', '出单日期', '投保日期', '承保日期', '年月'],
             ) or '年月'
-            cutoff = _common_mixed_cutoff(
+            common_cutoff = _common_mixed_cutoff(
                 conn, year, months, sorted(normalized_transform_lines), include_transform, include_jingdai
-            ) or as_of_cutoff
+            )
+            cutoff = min(common_cutoff, end_cutoff) if common_cutoff and end_cutoff else common_cutoff or end_cutoff
             extra_where = append_period_filter(transform_time_col, year, months, t_params)
-            extra_where += append_cutoff_filter(transform_time_col, cutoff, t_params)
+            extra_where += append_date_range_filter(transform_time_col, start_cutoff, cutoff, t_params)
             if orgs:
                 o_placeholders = ','.join(['?'] * len(orgs))
                 extra_where += f' AND "销售机构名称" IN ({o_placeholders})'
@@ -157,11 +159,12 @@ def _query_product_structure_raw(
                 'jingdai',
                 ['年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期', '时间', '年月'],
             ) or '时间'
-            cutoff = _common_mixed_cutoff(
+            common_cutoff = _common_mixed_cutoff(
                 conn, year, months, sorted(normalized_transform_lines), include_transform, include_jingdai
-            ) or as_of_cutoff
+            )
+            cutoff = min(common_cutoff, end_cutoff) if common_cutoff and end_cutoff else common_cutoff or end_cutoff
             jd_extra_where = append_period_filter(jingdai_time_col, year, months, jd_params)
-            jd_extra_where += append_cutoff_filter(jingdai_time_col, cutoff, jd_params)
+            jd_extra_where += append_date_range_filter(jingdai_time_col, start_cutoff, cutoff, jd_params)
             org_clause = ''
             if jingdai_orgs:
                 placeholders = ','.join(['?'] * len(jingdai_orgs))
@@ -215,7 +218,8 @@ def _query_top_products_by_business_line(
     include_jingdai: bool,
     orgs: list[str] | None = None,
     months: list[int] | None = None,
-    as_of_cutoff: tuple[int, int] | None = None,
+    start_cutoff: tuple[int, int] | None = None,
+    end_cutoff: tuple[int, int] | None = None,
 ) -> list[dict]:
     """按业务模式返回期交保费占比前三名产品，用于前端表格展示。"""
     rows: list[dict] = []
@@ -226,9 +230,10 @@ def _query_top_products_by_business_line(
     if '蚁桥' in normalized_transform_lines:
         raw_transform_lines.add('网服')
 
-    cutoff = _common_mixed_cutoff(
+    common_cutoff = _common_mixed_cutoff(
         conn, year, months, sorted(normalized_transform_lines), include_transform, include_jingdai
-    ) or as_of_cutoff
+    )
+    cutoff = min(common_cutoff, end_cutoff) if common_cutoff and end_cutoff else common_cutoff or end_cutoff
 
     if include_transform and raw_transform_lines:
         try:
@@ -239,7 +244,7 @@ def _query_top_products_by_business_line(
                 ['年月日', '入账时间', '日期', '出单日期', '投保日期', '承保日期', '年月'],
             ) or '年月'
             extra_where = append_period_filter(transform_time_col, year, months, t_params)
-            extra_where += append_cutoff_filter(transform_time_col, cutoff, t_params)
+            extra_where += append_date_range_filter(transform_time_col, start_cutoff, cutoff, t_params)
             if orgs:
                 o_placeholders = ','.join(['?'] * len(orgs))
                 extra_where += f' AND "销售机构名称" IN ({o_placeholders})'
@@ -278,7 +283,7 @@ def _query_top_products_by_business_line(
                 ['年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期', '时间', '年月'],
             ) or '时间'
             jd_extra_where = append_period_filter(jingdai_time_col, year, months, jd_params)
-            jd_extra_where += append_cutoff_filter(jingdai_time_col, cutoff, jd_params)
+            jd_extra_where += append_date_range_filter(jingdai_time_col, start_cutoff, cutoff, jd_params)
             org_clause = ''
             if jingdai_orgs:
                 placeholders = ','.join(['?'] * len(jingdai_orgs))
@@ -360,11 +365,24 @@ def get_product_structure(
     months: str | list[int] | None = None,
     metric_type: str = 'qj',
     as_of: str | None = None,
+    range_type: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ):
     with get_db() as conn:
-        as_of_context = build_as_of_context(conn, year, as_of)
-        selected_cutoff = as_of_context.get("selectedCutoff") or {}
-        as_of_cutoff = (int(selected_cutoff["month"]), int(selected_cutoff["day"])) if selected_cutoff else None
+        period_context = build_period_context(
+            conn,
+            year,
+            range_type=range_type,
+            start_date=start_date,
+            end_date=end_date,
+            as_of=as_of,
+        )
+        as_of_context = period_context["asOf"]
+        selected_start = period_context.get("startCutoff") or {}
+        selected_cutoff = period_context.get("endCutoff") or {}
+        start_cutoff = (int(selected_start["month"]), int(selected_start["day"])) if selected_start else None
+        end_cutoff = (int(selected_cutoff["month"]), int(selected_cutoff["day"])) if selected_cutoff else None
         transform_list = transform_lines if isinstance(transform_lines, list) else _split_csv(transform_lines)
         jingdai_org_list = jingdai_orgs if isinstance(jingdai_orgs, list) else _split_csv(jingdai_orgs)
         org_list = orgs if isinstance(orgs, list) else _split_csv(orgs) if isinstance(orgs, str) else None
@@ -376,18 +394,21 @@ def get_product_structure(
             rows = _query_product_structure_raw(
                 conn, year, transform_list, jingdai_org_list,
                 include_transform, include_jingdai,
-                orgs=org_list, months=month_list, metric_type=metric_type, as_of_cutoff=as_of_cutoff,
+                orgs=org_list, months=month_list, metric_type=metric_type,
+                start_cutoff=start_cutoff, end_cutoff=end_cutoff,
             )
             return {
                 'year': year,
                 'as_of': as_of_context,
+                'period': period_context,
                 'dimension': dimension,
                 'premium': [{'name': r['label'], 'value': round(r['premium'], 2)} for r in rows if round(r['premium'], 2) != 0],
                 'count': [{'name': r['label'], 'value': int(r['count'])} for r in rows if int(r['count']) != 0],
                 'topProducts': _query_top_products_by_business_line(
                     conn, year, transform_list, jingdai_org_list,
                     include_transform, include_jingdai,
-                    orgs=org_list, months=month_list, as_of_cutoff=as_of_cutoff,
+                    orgs=org_list, months=month_list,
+                    start_cutoff=start_cutoff, end_cutoff=end_cutoff,
                 ),
                 'jingdaiOrgs': get_jingdai_orgs(year),
             }
@@ -404,6 +425,7 @@ def get_product_structure(
         return {
             'year': year,
             'as_of': as_of_context,
+            'period': period_context,
             'dimension': dimension,
             'premium': [{'name': r['label'], 'value': round(r['premium'], 2)} for r in rows],
             'count': [{'name': r['label'], 'value': int(r['count'])} for r in rows],

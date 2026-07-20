@@ -15,12 +15,14 @@ from etl import (
     aggregate_jingdai_daily,
     aggregate_jingdai_longterm,
     aggregate_jingdai_payment_period,
+    aggregate_jingdai_payment_period_daily,
     aggregate_org_active_headcount,
     aggregate_org_daily_performance,
     aggregate_org_hr,
     aggregate_org_performance,
     aggregate_org_value,
     aggregate_payment_period,
+    aggregate_payment_period_daily,
     aggregate_performance,
     aggregate_product_structure,
     aggregate_transform_longterm,
@@ -103,6 +105,7 @@ def build_aggregate_rows_from_raw(raw_tables: dict[str, pd.DataFrame]) -> dict[s
         table_rows["agg_product_structure"] = aggregate_product_structure(perf)
         table_rows["agg_org_performance"] = aggregate_org_performance(perf)
         table_rows["agg_payment_period"].extend(aggregate_payment_period(perf))
+        table_rows["agg_payment_period_daily"].extend(aggregate_payment_period_daily(perf))
         table_rows["agg_longterm_qj"].extend(aggregate_transform_longterm(perf))
         active_rows = aggregate_active_headcount(perf)
         org_active_rows = aggregate_org_active_headcount(perf)
@@ -114,6 +117,7 @@ def build_aggregate_rows_from_raw(raw_tables: dict[str, pd.DataFrame]) -> dict[s
         table_rows["agg_jingdai"] = aggregate_jingdai(jingdai)
         table_rows["agg_jingdai_daily"] = aggregate_jingdai_daily(jingdai)
         table_rows["agg_payment_period"].extend(aggregate_jingdai_payment_period(jingdai))
+        table_rows["agg_payment_period_daily"].extend(aggregate_jingdai_payment_period_daily(jingdai))
         table_rows["agg_longterm_qj"].extend(aggregate_jingdai_longterm(jingdai))
 
     if hr is not None and not hr.empty:

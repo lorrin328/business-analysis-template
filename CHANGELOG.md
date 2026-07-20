@@ -1,4 +1,16 @@
 # 经营分析看板 - 需求与开发文档
+## v1.0.104 更新说明（2026-07-20）
+**类型**：feature / date-range / analytics / export
+
+**变更内容**：
+- 右上角数据截止控件升级为统一统计范围，支持年度累计、按月、按日和自定义起止日期。
+- `/api/kpi`、`/api/org-analysis`、`/api/product-analysis`、`/api/payment-period/{year}` 与 Excel 导出统一接收 `rangeType`、`startDate`、`endDate`，并保留 `asOf` 向后兼容。
+- KPI、机构、产品和长险指标按所选日级范围查询；上一年同比使用相同月日边界，避免把自定义区间与整年同期混比。
+- 新增 `agg_payment_period_daily`，Web 上传、SQLite 原始明细重建和全量 Excel 重建均同步生成日级交期结构。
+- 年度累计使用年度目标，按月使用月度目标；按日和自定义区间不硬套年度目标，显示“区间目标不可计算”。
+- Excel 导出写明统计范围和精度边界；平台趋势、队伍和产品设计分类继续保留年度/月度背景。
+- 完成 390×844 手机宽度无横向溢出验证；统一版本号到 `v1.0.104` 并刷新前端缓存参数。
+
 ## v1.0.103 更新说明（2026-07-20）
 **类型**：feature / scheme-review / frontend / security
 

@@ -280,14 +280,27 @@ def _product_config_rows() -> list[list[Any]]:
         return [[r["product_code"], r["product_name"], r["business_type"], r["is_annuity"], r["is_protection"]] for r in rows]
 
 
-def build_dashboard_export_workbook(year: int) -> bytes:
-    kpi = get_kpi_data(year)
+def build_dashboard_export_workbook(
+    year: int,
+    *,
+    as_of: str | None = None,
+    range_type: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> bytes:
+    period_args = {
+        "as_of": as_of,
+        "range_type": range_type,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    kpi = get_kpi_data(year, **period_args)
     platform = get_platform_data(year)
-    org_data = get_org_kpi_data(year)
+    org_data = get_org_kpi_data(year, **period_args)
     target_payload = get_target_config(year)
     product_design = get_product_structure(year, "design_cat")
-    product_mix = get_product_structure(year, "product_mix")
-    payment = get_payment_period_structure(year)
+    product_mix = get_product_structure(year, "product_mix", **period_args)
+    payment = get_payment_period_structure(year, **period_args)
 
     wb = Workbook()
     wb.remove(wb.active)
@@ -301,9 +314,10 @@ def build_dashboard_export_workbook(year: int) -> bytes:
         [
             ["导出时间", exported_at],
             ["数据年份", year],
+            ["统计范围", kpi.get("period", {}).get("label") or _format_cutoff(kpi)],
             ["数据截止", _format_cutoff(kpi)],
             ["目标来源", "target_config 服务端目标" if target_payload else "未配置服务端目标"],
-            ["说明", "本文件导出目标与各模块表格数据，不包含图表。金额单位为万元。"],
+            ["说明", "KPI、机构、产品明细和交期结构按所选范围导出；平台趋势、队伍和目标设置保留完整年度/月度背景。金额单位为万元。"],
         ],
     )
 
@@ -319,8 +333,8 @@ def build_dashboard_export_workbook(year: int) -> bytes:
     ws = wb.create_sheet("平台趋势")
     _sheet(ws, f"{year}年平台月度数据", ["月份", "业务线", "期交保费", "规模保费", "折算保费"], _platform_rows(platform))
 
-    ws = wb.create_sheet("产品结构")
-    _sheet(ws, f"{year}年产品结构-设计分类", ["分类", "保费"], _product_rows(product_design, "premium"))
+    ws = wb.create_sheet("产品设计分类（年度）")
+    _sheet(ws, f"{year}年产品设计分类（年度背景）", ["分类", "保费"], _product_rows(product_design, "premium"))
 
     ws = wb.create_sheet("产品明细")
     _sheet(ws, f"{year}年产品结构-产品明细", ["产品", "保费"], _product_rows(product_mix, "premium"))

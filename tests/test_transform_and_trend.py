@@ -18,7 +18,12 @@ from validators.org_validator import org_scope_note
 from db import get_platform_data
 from db import get_product_structure, get_jingdai_orgs
 from db.repositories.payment import get_payment_period_structure
-from etl.aggregates.payment import aggregate_payment_period, aggregate_jingdai_payment_period
+from etl.aggregates.payment import (
+    aggregate_payment_period,
+    aggregate_payment_period_daily,
+    aggregate_jingdai_payment_period,
+    aggregate_jingdai_payment_period_daily,
+)
 from db.repositories import product as product_repo
 
 
@@ -664,6 +669,11 @@ def test_payment_period_aggregates_classify_transform_and_jingdai():
     jingdai_rows = aggregate_jingdai_payment_period(jingdai)
     assert {row["category"] for row in jingdai_rows} == {"趸交", "5年交"}
 
+    transform_daily = aggregate_payment_period_daily(transform.assign(年月日=["2026-05-01", "2026-05-02"]))
+    jingdai_daily = aggregate_jingdai_payment_period_daily(jingdai)
+    assert [(row["month"], row["day"]) for row in transform_daily] == [(5, 1), (5, 2)]
+    assert [(row["month"], row["day"]) for row in jingdai_daily] == [(5, 1), (5, 2)]
+
 
 def test_payment_period_query_accepts_multiple_months(monkeypatch):
     """交期结构查询：季度模式可以按完整月份列表汇总。"""
@@ -698,6 +708,52 @@ def test_payment_period_query_accepts_multiple_months(monkeypatch):
     result = get_payment_period_structure(2026, months=[4, 5, 6])
     premium = {row["name"]: row["value"] for row in result["premium"]}
     assert premium == {"5年交": 30, "10年及以上": 30}
+
+
+def test_payment_period_query_uses_inclusive_daily_range(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("""
+        CREATE TABLE agg_payment_period (
+            year INTEGER, month INTEGER, business_type TEXT, channel TEXT, org TEXT,
+            category TEXT, qj_premium REAL, gm_premium REAL, count INTEGER
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE agg_payment_period_daily (
+            year INTEGER, month INTEGER, day INTEGER, business_type TEXT, channel TEXT, org TEXT,
+            category TEXT, qj_premium REAL, gm_premium REAL, count INTEGER
+        )
+    """)
+    conn.executemany(
+        "INSERT INTO agg_payment_period_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (2026, 6, 19, "转型", "OTO", "上海", "10年及以上", 99, 99, 9),
+            (2026, 6, 20, "转型", "OTO", "上海", "10年及以上", 10, 12, 1),
+            (2026, 7, 13, "经代", "", "支付宝", "5年交", 20, 24, 0),
+            (2026, 7, 14, "经代", "", "支付宝", "5年交", 88, 88, 0),
+        ],
+    )
+
+    @contextmanager
+    def fake_db():
+        yield conn
+
+    monkeypatch.setattr("db.repositories.payment.init_db", lambda: None)
+    monkeypatch.setattr("db.repositories.payment.get_db", fake_db)
+
+    result = get_payment_period_structure(
+        2026,
+        range_type="custom",
+        start_date="2026-06-20",
+        end_date="2026-07-13",
+    )
+
+    assert result["precision"] == "day"
+    assert result["premium"] == [
+        {"name": "5年交", "value": 20.0},
+        {"name": "10年及以上", "value": 10.0},
+    ]
 
 
 def test_get_platform_data_includes_year_and_ymd_in_jingdai_daily():

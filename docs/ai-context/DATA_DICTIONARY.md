@@ -1,5 +1,28 @@
 # 数据字典
 
+## 2026-07-20 全局统计范围
+
+| 参数/字段 | 说明 |
+|---|---|
+| `rangeType` | `ytd` 年度累计、`month` 整月、`day` 单日、`custom` 自定义区间。 |
+| `startDate` | 起始日，格式 `YYYY-MM-DD`，首尾均包含；`custom` 必填。 |
+| `endDate` | 结束日，格式 `YYYY-MM-DD`；超过最新日级数据日时按最新数据日截断。 |
+| `asOf` | 旧截止日参数，继续兼容；未提供 `endDate` 时作为结束日。 |
+| `period.targetMode` | `year` 使用年度目标、`month` 使用月度目标、`none` 不计算目标达成率。 |
+| `period.precision` | `premium/product/paymentPeriod=day`，`headcount/value=month`。 |
+
+### 表：`agg_payment_period_daily`
+
+| 字段 | 说明 |
+|---|---|
+| `year` / `month` / `day` | 交费期间聚合的自然日。 |
+| `business_type` | `转型` 或 `经代`。 |
+| `channel` / `org` | 业务模式、机构；经代业务模式为空，机构为经代机构。 |
+| `category` | 趸交、1年交、2年交、3年交、5年交、10年及以上、短期险等交期分类。 |
+| `qj_premium` / `gm_premium` / `count` | 当日分类期交保费、规模保费、件数；金额单位万元。 |
+
+统计范围接入接口：`/api/kpi`、`/api/org-analysis`、`/api/product-analysis`、`/api/payment-period/{year}`、`/api/export/excel`。平台趋势和队伍分析保留模块自身的年/季/月期间，不跟随非年度全局范围截断。
+
 ## 容器运行数据
 
 | 数据项 | 路径/变量 | 说明 |
@@ -73,7 +96,7 @@
 - 参数设置模块展示范围：仅经代产品；转型 OTO、证保、蚁桥不再在参数设置中展示或保存。
 - 日级截止：`agg_org_daily_performance` 同步保存 `product_10year`、`product_annuity`、`product_protection`；`agg_jingdai_daily` 同步保存 `product_annuity`、`product_protection`。KPI 概览和机构维度年度累计在有日级数据时按 `asOf` 截止日读取这些日级字段，无日级数据时回退月表。
 
-## 2026-06-19 全局截至日期口径
+## 2026-06-19 全局截至日期口径（已由 2026-07-20 统一统计范围替代）
 
 - 参数：`asOf=YYYY-MM-DD`，用于主看板全局数据截止日期。
 - 精准同比前端接入口径：`/api/kpi`、`/api/org-analysis`。
@@ -84,4 +107,4 @@
 - 同比公式：`同比 = 本年截至 asOf 的累计值 / 去年同月同日累计值 - 1`；例如选择 `2026-06-18` 时，去年同期映射为 `2025-06-18`。
 - 日级来源：KPI/机构维度同比优先使用 `agg_daily_performance`、`agg_jingdai_daily`、`agg_org_daily_performance` 按 `(month < cutoff_month OR month = cutoff_month AND day <= cutoff_day)` 截断。
 - 产品结构：`dimension=product_mix` 时从 `performance` / `jingdai` 原始明细按日期截断。
-- 交期结构：当前使用 `agg_payment_period` 月级聚合表，随 `asOf` 截至月份截断，暂不支持同月内按日精确截断。
+- 交期结构：历史版本使用 `agg_payment_period` 月级聚合表；v1.0.104 起由 `agg_payment_period_daily` 支持同月内按日精确截断。

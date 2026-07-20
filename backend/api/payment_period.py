@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from auth import require_permission
-from api.params import AsOfQuery
+from api.params import AsOfQuery, DateQuery, RangeTypeQuery
 from config.metrics import METRICS
 from db import get_payment_period_structure
 from services.response import response_meta, success_response
@@ -23,6 +23,9 @@ def payment_period_analysis(
     jingdaiOrgs: Optional[str] = Query(None),
     metric: str = Query("qj"),
     asOf: AsOfQuery = None,
+    rangeType: RangeTypeQuery = None,
+    startDate: DateQuery = None,
+    endDate: DateQuery = None,
     _user=Depends(require_permission("payment_period")),
 ):
     """获取交期结构数据。
@@ -53,6 +56,9 @@ def payment_period_analysis(
         jingdai_orgs=_split_csv(jingdaiOrgs) if jingdaiOrgs else None,
         metric=metric or "qj",
         as_of=asOf,
+        range_type=rangeType,
+        start_date=startDate,
+        end_date=endDate,
     )
     return success_response(
         data,
@@ -62,6 +68,9 @@ def payment_period_analysis(
             data_source="agg_payment_period",
             year=str(year),
             asOf=asOf,
+            rangeType=rangeType,
+            startDate=startDate,
+            endDate=endDate,
             definitions={
                 k: METRICS[k]
                 for k in ["achievement_rate", "yoy"]

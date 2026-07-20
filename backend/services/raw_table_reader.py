@@ -65,6 +65,31 @@ def append_cutoff_filter(column: str, cutoff: tuple[int, int] | None, params: li
     """
 
 
+def append_start_filter(column: str, cutoff: tuple[int, int] | None, params: list) -> str:
+    if not cutoff:
+        return ""
+    expr = compact_period_expr(column)
+    params.extend([cutoff[0], cutoff[0], cutoff[1]])
+    return f"""
+      AND (
+        CAST(substr({expr}, 5, 2) AS INTEGER) > ?
+        OR (
+          CAST(substr({expr}, 5, 2) AS INTEGER) = ?
+          AND COALESCE(NULLIF(CAST(substr({expr}, 7, 2) AS INTEGER), 0), 1) >= ?
+        )
+      )
+    """
+
+
+def append_date_range_filter(
+    column: str,
+    start: tuple[int, int] | None,
+    end: tuple[int, int] | None,
+    params: list,
+) -> str:
+    return append_start_filter(column, start, params) + append_cutoff_filter(column, end, params)
+
+
 def read_raw_table_dataframe(conn, table: str) -> pd.DataFrame:
     columns = raw_table_columns(conn, table)
     if not columns:

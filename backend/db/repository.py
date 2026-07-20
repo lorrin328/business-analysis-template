@@ -35,7 +35,7 @@ def replace_rows_incremental(conn, table, rows):
     if not rows:
         return
     _check_table(table)
-    scoped_tables = {'agg_payment_period', 'agg_longterm_qj'}
+    scoped_tables = {'agg_payment_period', 'agg_payment_period_daily', 'agg_longterm_qj'}
     if table in scoped_tables and all('business_type' in r for r in rows):
         scopes = {
             (int(r['year']), int(r['month']), str(r.get('business_type') or ''))

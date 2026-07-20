@@ -4,14 +4,22 @@ import sqlite3
 from db.connection import get_db
 from db.schema import init_db
 from services.cutoff_policy import (
-    build_as_of_context,
+    build_period_context,
     channel_cutoff_filter_sql,
     cutoff_min,
+    date_start_filter_sql,
     latest_daily_cutoff,
 )
 
 
-def get_org_kpi_data(year: int, as_of: str | None = None):
+def get_org_kpi_data(
+    year: int,
+    as_of: str | None = None,
+    *,
+    range_type: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+):
     """获取机构维度KPI数据。
 
     年度同比使用日累计至统计日截止：
@@ -21,8 +29,18 @@ def get_org_kpi_data(year: int, as_of: str | None = None):
     """
     with get_db() as conn:
         c = conn.cursor()
-        as_of_context = build_as_of_context(conn, year, as_of)
-        selected_cutoff = as_of_context.get("selectedCutoff")
+        period_context = build_period_context(
+            conn,
+            year,
+            range_type=range_type,
+            start_date=start_date,
+            end_date=end_date,
+            as_of=as_of,
+        )
+        as_of_context = period_context["asOf"]
+        selected_start = period_context["startCutoff"]
+        selected_cutoff = period_context["endCutoff"]
+        range_start_month = int(selected_start["month"])
 
         # 找到当前年度统计截止日（日表最新日期），用于截断同比基准
         org_source_cutoff = latest_daily_cutoff(conn, 'agg_org_daily_performance', year)
@@ -72,13 +90,15 @@ def get_org_kpi_data(year: int, as_of: str | None = None):
             if not channel_cutoffs:
                 return {}
             cutoff_sql, cutoff_params = channel_cutoff_filter_sql(channel_cutoffs)
+            start_sql, start_params = date_start_filter_sql(selected_start)
             c.execute(f'''
                 SELECT org, channel, SUM(qj_premium) AS qj_total
                 FROM agg_org_daily_performance
                 WHERE year = ?
                   AND {cutoff_sql}
+                  AND {start_sql}
                 GROUP BY org, channel
-            ''', [query_year, *cutoff_params])
+            ''', [query_year, *cutoff_params, *start_params])
             return {f"{r['org']}|{r['channel']}": round(r['qj_total'] or 0, 2)
                     for r in c.fetchall()}
 
@@ -89,6 +109,7 @@ def get_org_kpi_data(year: int, as_of: str | None = None):
             if not channel_cutoffs:
                 return {}
             cutoff_sql, cutoff_params = channel_cutoff_filter_sql(channel_cutoffs)
+            start_sql, start_params = date_start_filter_sql(selected_start)
             c.execute(f'''
                 SELECT org, channel,
                        SUM(product_10year) AS p10_total,
@@ -97,8 +118,9 @@ def get_org_kpi_data(year: int, as_of: str | None = None):
                 FROM agg_org_daily_performance
                 WHERE year = ?
                   AND {cutoff_sql}
+                  AND {start_sql}
                 GROUP BY org, channel
-            ''', [query_year, *cutoff_params])
+            ''', [query_year, *cutoff_params, *start_params])
             return {
                 f"{r['org']}|{r['channel']}": {
                     'product_10year': round(r['p10_total'] or 0, 2),
@@ -118,9 +140,9 @@ def get_org_kpi_data(year: int, as_of: str | None = None):
                        SUM(product_annuity) AS annuity_total,
                        SUM(product_protection) AS protection_total
                 FROM agg_org_performance
-                WHERE year = ? AND month <= ?
+                WHERE year = ? AND month BETWEEN ? AND ?
                 GROUP BY org, channel, month
-            ''', (query_year, ytd_end_month))
+            ''', (query_year, range_start_month, ytd_end_month))
             for r in c.fetchall():
                 key = f"{r['org']}|{r['channel']}"
                 month = int(r['month'])
@@ -172,9 +194,9 @@ def get_org_kpi_data(year: int, as_of: str | None = None):
             c.execute('''
                 SELECT org, channel, month, SUM(value_premium) AS value_total
                 FROM agg_org_value
-                WHERE year = ? AND month <= ?
+                WHERE year = ? AND month BETWEEN ? AND ?
                 GROUP BY org, channel, month
-            ''', (query_year, ytd_end_month))
+            ''', (query_year, range_start_month, ytd_end_month))
             result = {}
             for r in c.fetchall():
                 key = f"{r['org']}|{r['channel']}"
@@ -192,23 +214,25 @@ def get_org_kpi_data(year: int, as_of: str | None = None):
             result = {}
             if use_daily and channel_cutoffs:
                 cutoff_sql, cutoff_params = channel_cutoff_filter_sql(channel_cutoffs)
+                start_sql, start_params = date_start_filter_sql(selected_start)
                 c.execute(f'''
                     SELECT org, channel, SUM(qj_premium) AS total
                     FROM agg_longterm_qj
                     WHERE year = ?
                       AND business_type = '转型'
                       AND {cutoff_sql}
+                      AND {start_sql}
                     GROUP BY org, channel
-                ''', [query_year, *cutoff_params])
+                ''', [query_year, *cutoff_params, *start_params])
             else:
                 c.execute('''
                     SELECT org, channel, SUM(qj_premium) AS total
                     FROM agg_longterm_qj
                     WHERE year = ?
                       AND business_type = '转型'
-                      AND month <= ?
+                      AND month BETWEEN ? AND ?
                     GROUP BY org, channel
-                ''', (query_year, ytd_end_month))
+                ''', (query_year, range_start_month, ytd_end_month))
             for r in c.fetchall():
                 result[f"{r['org']}|{r['channel']}"] = {'year': round(r['total'] or 0, 2)}
             return result
@@ -230,4 +254,5 @@ def get_org_kpi_data(year: int, as_of: str | None = None):
             'perf_prev': org_perf_prev,
             'value_prev': org_value_prev,
             'as_of': as_of_context,
+            'period': period_context,
         }

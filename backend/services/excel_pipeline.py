@@ -15,12 +15,14 @@ from etl import (
     aggregate_jingdai_daily,
     aggregate_jingdai_longterm,
     aggregate_jingdai_payment_period,
+    aggregate_jingdai_payment_period_daily,
     aggregate_org_active_headcount,
     aggregate_org_daily_performance,
     aggregate_org_hr,
     aggregate_org_performance,
     aggregate_org_value,
     aggregate_payment_period,
+    aggregate_payment_period_daily,
     aggregate_performance,
     aggregate_product_structure,
     aggregate_transform_longterm,
@@ -48,6 +50,7 @@ AGGREGATE_TABLE_ORDER = [
     "agg_org_performance",
     "agg_org_value",
     "agg_payment_period",
+    "agg_payment_period_daily",
     "agg_longterm_qj",
 ]
 
@@ -172,6 +175,7 @@ def _parse_performance(source: ExcelSource, result: ExcelPipelineResult) -> None
     daily_rows = aggregate_daily_performance(frame)
     org_perf_rows = aggregate_org_performance(frame)
     pay_period_rows = aggregate_payment_period(frame)
+    pay_period_daily_rows = aggregate_payment_period_daily(frame)
     longterm_rows = aggregate_transform_longterm(frame)
 
     rows = result.rows_by_table
@@ -183,6 +187,7 @@ def _parse_performance(source: ExcelSource, result: ExcelPipelineResult) -> None
     _merge_rows(rows, "_org_active_headcount", aggregate_org_active_headcount(frame))
     _merge_rows(rows, "agg_org_performance", org_perf_rows)
     _merge_rows(rows, "agg_payment_period", pay_period_rows)
+    _merge_rows(rows, "agg_payment_period_daily", pay_period_daily_rows)
     _merge_rows(rows, "agg_longterm_qj", longterm_rows)
     result.source_summaries.append(
         f"performance: {source.filename} -> {len(perf_rows)} monthly, "
@@ -200,12 +205,14 @@ def _parse_jingdai(source: ExcelSource, result: ExcelPipelineResult) -> None:
     _require_valid_rows(jd_rows, ["year", "month"], ["year", "month"])
     jd_daily_rows = aggregate_jingdai_daily(frame)
     jd_pay_period_rows = aggregate_jingdai_payment_period(frame)
+    jd_pay_period_daily_rows = aggregate_jingdai_payment_period_daily(frame)
     jd_longterm_rows = aggregate_jingdai_longterm(frame)
 
     rows = result.rows_by_table
     _merge_rows(rows, "agg_jingdai", jd_rows)
     _merge_rows(rows, "agg_jingdai_daily", jd_daily_rows)
     _merge_rows(rows, "agg_payment_period", jd_pay_period_rows)
+    _merge_rows(rows, "agg_payment_period_daily", jd_pay_period_daily_rows)
     _merge_rows(rows, "agg_longterm_qj", jd_longterm_rows)
     result.source_summaries.append(
         f"jingdai: {source.filename} -> {len(jd_rows)} monthly, "

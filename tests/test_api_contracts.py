@@ -15,7 +15,11 @@ def test_product_analysis_forwards_filter_params(monkeypatch):
 
     captured = {}
 
-    def fake_get_product_structure(year, dimension, transform_lines, jingdai_orgs, include_transform, include_jingdai, orgs, months, metric, as_of=None):
+    def fake_get_product_structure(
+        year, dimension, transform_lines, jingdai_orgs, include_transform,
+        include_jingdai, orgs, months, metric, as_of=None, range_type=None,
+        start_date=None, end_date=None,
+    ):
         captured.update(
             {
                 "year": year,
@@ -28,6 +32,9 @@ def test_product_analysis_forwards_filter_params(monkeypatch):
                 "months": months,
                 "metric": metric,
                 "as_of": as_of,
+                "range_type": range_type,
+                "start_date": start_date,
+                "end_date": end_date,
             }
         )
         return {"premium": [], "count": []}
@@ -44,6 +51,9 @@ def test_product_analysis_forwards_filter_params(monkeypatch):
         months="4,5,6",
         metric="gm",
         asOf="2026-06-18",
+        rangeType="custom",
+        startDate="2026-04-01",
+        endDate="2026-06-18",
     )
 
     assert response["success"] is True
@@ -58,6 +68,9 @@ def test_product_analysis_forwards_filter_params(monkeypatch):
         "months": "4,5,6",
         "metric": "gm",
         "as_of": "2026-06-18",
+        "range_type": "custom",
+        "start_date": "2026-04-01",
+        "end_date": "2026-06-18",
     }
 
 

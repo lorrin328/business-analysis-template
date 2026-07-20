@@ -4,7 +4,10 @@
     const btn = document.getElementById('exportExcelBtn');
     const yearSelect = document.getElementById('yearSelect');
     const year = yearSelect?.value || window.CONSTANTS?.DEFAULT_YEAR || new Date().getFullYear();
-    const url = window.apiUrl(`/api/export/excel?year=${encodeURIComponent(year)}`);
+    const params = new URLSearchParams({ year: String(year) });
+    if (typeof window.appendDashboardRange === 'function') window.appendDashboardRange(params);
+    const range = typeof window.getDashboardRange === 'function' ? window.getDashboardRange() : null;
+    const url = window.apiUrl(`/api/export/excel?${params.toString()}`);
     const originalText = btn ? btn.textContent : '';
 
     try {
@@ -18,7 +21,8 @@
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = objectUrl;
-      link.download = `经营分析看板数据_${year}.xlsx`;
+      const rangeLabel = (range?.label || range?.endDate || year).replace(/[\\/:*?"<>|]/g, '-');
+      link.download = `经营分析看板数据_${rangeLabel}.xlsx`;
       document.body.appendChild(link);
       link.click();
       link.remove();

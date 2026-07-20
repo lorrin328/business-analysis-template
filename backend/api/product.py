@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 
 from auth import require_permission
-from api.params import AsOfQuery, DashboardYearQuery
+from api.params import AsOfQuery, DashboardYearQuery, DateQuery, RangeTypeQuery
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_product_structure
@@ -22,6 +22,9 @@ def product_analysis(
     months: str | None = None,
     metric: str = Query("qj", pattern="^(qj|gm)$"),
     asOf: AsOfQuery = None,
+    rangeType: RangeTypeQuery = None,
+    startDate: DateQuery = None,
+    endDate: DateQuery = None,
     _user=Depends(require_permission("product_structure")),
 ):
     return success_response(
@@ -36,6 +39,9 @@ def product_analysis(
             months,
             metric,
             as_of=asOf,
+            range_type=rangeType,
+            start_date=startDate,
+            end_date=endDate,
         ),
         meta=response_meta(
             metric="product-analysis",
@@ -43,6 +49,9 @@ def product_analysis(
             data_source="performance / jingdai",
             year=year,
             asOf=asOf,
+            rangeType=rangeType,
+            startDate=startDate,
+            endDate=endDate,
             definitions={
                 k: METRICS[k]
                 for k in ["achievement_rate", "yoy"]

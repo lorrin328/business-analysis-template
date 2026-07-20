@@ -8,21 +8,38 @@
         const pm = platformMock[year];
         const tm = teamMock[year];
         if (!pm) return;
+        const kpi = apiData.kpi;
+        const hasApiKpi = kpi && String(kpi.year) === year && kpi.qj_premium && (kpi.qj_premium.total > 0 || kpi.qj_premium.jingdai > 0);
+        const period = kpi?.period || {};
+        const targetMode = period.targetMode || 'year';
+        const targetMonthIndex = Math.max(0, Number((period.endDate || '').slice(5, 7) || 1) - 1);
         const targetLabel = typeof targetSourceLabel === 'function' ? targetSourceLabel() : '目标来源待确认';
         const targetsOfficial = targetLabel === '服务端目标';
+        const targetsComparable = targetsOfficial && targetMode !== 'none';
 
         function updateTargetTrustState() {
           const banner = window.document.getElementById('targetTrustBanner');
           const status = window.document.getElementById('targetSourceStatus');
-          window.document.body.classList.toggle('targets-unverified', !targetsOfficial);
-          if (banner) banner.hidden = targetsOfficial;
-          if (status) status.textContent = targetLabel;
+          window.document.body.classList.toggle('targets-unverified', !targetsComparable);
+          if (banner) {
+            banner.hidden = targetsComparable;
+            const message = banner.querySelector('div');
+            if (message && targetsOfficial && targetMode === 'none') {
+              message.innerHTML = '<strong>当前区间不计算目标达成率。</strong>按日或自定义日期范围没有可直接对应的正式目标，卡片保留实际值和同比，避免用年度目标形成误导。';
+            } else if (message) {
+              message.innerHTML = '<strong>正式目标尚未配置。</strong>达成率卡片暂不展示参考目标计算结果，避免将系统默认值误作经营结论；实际保费和同比仍按当前数据口径展示。';
+            }
+          }
+          if (status) status.textContent = targetsOfficial && targetMode === 'none' ? '区间目标不可计算' : targetLabel;
           window.document.querySelectorAll('.kpi-card.target-dependent').forEach(card => {
-            card.dataset.targetTrust = targetsOfficial ? 'official' : 'unverified';
-            if (!targetsOfficial) {
+            card.dataset.targetTrust = targetsComparable ? 'official' : 'unverified';
+            if (!targetsComparable) {
               const value = card.querySelector('.kpi-big-value');
               const meta = card.querySelector('.kpi-bottom-meta');
-              if (value) value.textContent = '目标待配置';
+              if (value) {
+                if (targetsOfficial) value.textContent = '区间目标不可计算';
+                else value.textContent = '目标待配置';
+              }
               if (meta) meta.innerHTML = '<span>点击查看实际数据与口径</span>';
             }
           });
@@ -74,6 +91,11 @@
           const arr = metricData[dim];
           return Array.isArray(arr) ? (arr[idx] || 0) : 0;
         }
+        function getPeriodTarget(catKey, metric) {
+          if (targetMode === 'year') return getTarget(catKey, metric, 'year');
+          if (targetMode === 'month') return getTarget(catKey, metric, 'month', targetMonthIndex);
+          return 0;
+        }
         function valueActuals() {
           const value = hasApiKpi && kpi.value ? kpi.value : {};
           const oto = value['OTO'] || 0;
@@ -117,8 +139,8 @@
             texts[2].textContent = window.ALLOW_LOCAL_FALLBACK ? '当前允许开发环境本地兜底数据。' : '当前生产口径不展示本地兜底数据。';
             return;
           }
-          const asOf = kpi?.as_of?.selectedDate || window.selectedAsOf || '';
-          const progress = calcTimeProgress(asOf, year);
+          const asOf = period.endDate || kpi?.as_of?.selectedDate || window.selectedAsOf || '';
+          const progress = targetMode === 'year' ? calcTimeProgress(asOf, year) : null;
           const gap = progress == null ? null : Math.round((overallRate - progress) * 10) / 10;
           const progressText = gap == null
             ? '暂无法计算时间进度'
@@ -135,21 +157,19 @@
             focus = `整体节奏可控，继续跟踪经代同比${yoyText(jdYoy)}、转型同比${yoyText(tfYoy)}及品质风险。`;
           }
           const warningText = kpi?.as_of?.warningText ? `；${kpi.as_of.warningText}` : '';
-          if (!targetsOfficial) {
-            texts[0].textContent = `整体期交${fmtWan(overallActual)}，同比${yoyText(overallYoy)}；正式目标未配置，暂不判断达成进度。`;
+          if (!targetsComparable) {
+            const reason = targetsOfficial ? '当前日期区间无可直接对应的正式目标' : '正式目标未配置';
+            texts[0].textContent = `整体期交${fmtWan(overallActual)}，同比${yoyText(overallYoy)}；${reason}，暂不判断达成进度。`;
             texts[1].textContent = `经代贡献${fmtPct(jdShare)}、转型贡献${fmtPct(tfShare)}；继续跟踪经代同比${yoyText(jdYoy)}、转型同比${yoyText(tfYoy)}及品质风险。`;
-            texts[2].textContent = `KPI 按${formatAsOfLabel(asOf)}同日口径统计，目标来源：${targetLabel}${warningText}。`;
+            texts[2].textContent = `KPI 按${period.label || formatAsOfLabel(asOf)}统计，目标来源：${targetLabel}${warningText}。`;
             return;
           }
           texts[0].textContent = `整体期交${fmtWan(overallActual)}，达成${fmtPct(overallRate)}，同比${yoyText(overallYoy)}；${progressText}。`;
           texts[1].textContent = `${focus} 经代贡献${fmtPct(jdShare)}、转型贡献${fmtPct(tfShare)}。`;
-          texts[2].textContent = `KPI 按${formatAsOfLabel(asOf)}同日口径统计，目标来源：${targetLabel}${warningText}。`;
+          texts[2].textContent = `KPI 按${period.label || formatAsOfLabel(asOf)}统计，目标来源：${targetLabel}${warningText}。`;
         }
 
         // 如果API数据可用且包含有效保费，优先使用
-        const kpi = apiData.kpi;
-        const hasApiKpi = kpi && String(kpi.year) === year && kpi.qj_premium && (kpi.qj_premium.total > 0 || kpi.qj_premium.jingdai > 0);
-
       // 1. 期交保费达成率
       let 经代实际, OTO实际, 证保实际, 蚁桥实际, 转型实际, 整体实际;
       if (hasApiKpi && kpi.qj_premium) {
@@ -169,10 +189,9 @@
         整体实际 = 经代实际 + 转型实际;
       }
 
-      const qjTargets = targetData.categories.qjPremium.metrics;
-      const 整体目标 = qjTargets['整体']?.year || 0;
-      const 经代目标 = qjTargets['经代']?.year || 0;
-      const 转型目标 = qjTargets['转型业务']?.year || 0;
+      const 整体目标 = getPeriodTarget('qjPremium', '整体');
+      const 经代目标 = getPeriodTarget('qjPremium', '经代');
+      const 转型目标 = getPeriodTarget('qjPremium', '转型业务');
       const 整体达成率 = calcRate(整体实际, 整体目标);
       const 经代达成率 = calcRate(经代实际, 经代目标);
       const 转型达成率 = calcRate(转型实际, 转型目标);
@@ -204,9 +223,9 @@
       // 2. 价值达成率
       if (hasApiKpi && kpi.value && Object.keys(kpi.value).length > 0) {
         const actual = valueActuals();
-        const valueTarget = getTarget('value', '整体', 'year');
-        const jingdaiTarget = getTarget('value', '经代', 'year');
-        const transformTarget = getTarget('value', '转型业务', 'year');
+        const valueTarget = getPeriodTarget('value', '整体');
+        const jingdaiTarget = getPeriodTarget('value', '经代');
+        const transformTarget = getPeriodTarget('value', '转型业务');
         const valueRate = calcRate(actual.total, valueTarget);
         const jingdaiRate = calcRate(actual.jingdai, jingdaiTarget);
         const transformRate = calcRate(actual.transform, transformTarget);
@@ -281,19 +300,16 @@
       }
 
       // 商保年金 / 保障类 / 10年期 / 长险期交 — 目标值
-      const targetOverall = targetData?.categories?.qjPremium?.metrics?.['整体']?.year || 0;
-      const targetShanbao = targetData?.categories?.shangbao?.metrics?.['整体']?.year || 0;
-      const targetBaozhang = targetData?.categories?.baozhang?.metrics?.['整体']?.year || 0;
-      const targetTenYear = targetData?.categories?.tenYear?.metrics?.['整体']?.year || 0;
+      const targetOverall = getPeriodTarget('qjPremium', '整体');
 
       // 4. 商保年金（转型读取业绩基表标识，经代读取参数设置）
       if (hasApiKpi && kpi.annuity_total !== undefined) {
         const actual = kpi.annuity_total || 0;
         const jdActual = kpi.annuity_jd || 0;
         const tfActual = kpi.annuity_tf || 0;
-        const totalTarget = targetData?.categories?.shangbao?.metrics?.['整体']?.year || 0;
-        const jdTarget = targetData?.categories?.shangbao?.metrics?.['经代']?.year || 0;
-        const tfTarget = targetData?.categories?.shangbao?.metrics?.['转型业务']?.year || 0;
+        const totalTarget = getPeriodTarget('shangbao', '整体');
+        const jdTarget = getPeriodTarget('shangbao', '经代');
+        const tfTarget = getPeriodTarget('shangbao', '转型业务');
         const totalRate = totalTarget > 0 ? Math.round(actual / totalTarget * 1000) / 10 : 0;
         const jdRate = jdTarget > 0 ? Math.round(jdActual / jdTarget * 1000) / 10 : 0;
         const tfRate = tfTarget > 0 ? Math.round(tfActual / tfTarget * 1000) / 10 : 0;
@@ -310,9 +326,9 @@
         const actual = kpi.protection_total || 0;
         const jdActual = kpi.protection_jd || 0;
         const tfActual = kpi.protection_tf || 0;
-        const totalTarget = targetData?.categories?.baozhang?.metrics?.['整体']?.year || 0;
-        const jdTarget = targetData?.categories?.baozhang?.metrics?.['经代']?.year || 0;
-        const tfTarget = targetData?.categories?.baozhang?.metrics?.['转型业务']?.year || 0;
+        const totalTarget = getPeriodTarget('baozhang', '整体');
+        const jdTarget = getPeriodTarget('baozhang', '经代');
+        const tfTarget = getPeriodTarget('baozhang', '转型业务');
         const totalRate = totalTarget > 0 ? Math.round(actual / totalTarget * 1000) / 10 : 0;
         const jdRate = jdTarget > 0 ? Math.round(jdActual / jdTarget * 1000) / 10 : 0;
         const tfRate = tfTarget > 0 ? Math.round(tfActual / tfTarget * 1000) / 10 : 0;
@@ -329,9 +345,9 @@
         const actual = kpi.tenyear_total || 0;
         const jdActual = kpi.tenyear_jd || 0;
         const tfActual = kpi.tenyear_tf || 0;
-        const totalTarget = targetData?.categories?.tenYear?.metrics?.['整体']?.year || 0;
-        const jdTarget = targetData?.categories?.tenYear?.metrics?.['经代']?.year || 0;
-        const tfTarget = targetData?.categories?.tenYear?.metrics?.['转型业务']?.year || 0;
+        const totalTarget = getPeriodTarget('tenYear', '整体');
+        const jdTarget = getPeriodTarget('tenYear', '经代');
+        const tfTarget = getPeriodTarget('tenYear', '转型业务');
         const totalRate = totalTarget > 0 ? Math.round(actual / totalTarget * 1000) / 10 : 0;
         const jdRate = jdTarget > 0 ? Math.round(jdActual / jdTarget * 1000) / 10 : 0;
         const tfRate = tfTarget > 0 ? Math.round(tfActual / tfTarget * 1000) / 10 : 0;
@@ -357,8 +373,8 @@
           const cls = yoy >= 0 ? 'up' : 'down';
           yoyStr = ` <span class="${cls}">同比 ${yoy >= 0 ? '+' : ''}${yoy}%</span>`;
         }
-        const jdTarget = targetData?.categories?.qjPremium?.metrics?.['经代']?.year || 0;
-        const tfTarget = targetData?.categories?.qjPremium?.metrics?.['转型业务']?.year || 0;
+        const jdTarget = getPeriodTarget('qjPremium', '经代');
+        const tfTarget = getPeriodTarget('qjPremium', '转型业务');
         const jdRate = jdTarget > 0 ? Math.round(ltJd / jdTarget * 1000) / 10 : 0;
         const tfRate = tfTarget > 0 ? Math.round(ltTf / tfTarget * 1000) / 10 : 0;
         const sub = document.getElementById('kpi-longterm-sub');

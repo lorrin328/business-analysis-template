@@ -188,8 +188,7 @@
       if (months && months.length === 1) params.set('month', months[0]);
       else if (months && months.length > 1) params.set('months', months.join(','));
       if (payPeriodFilters.metric !== 'qj') params.set('metric', payPeriodFilters.metric);
-      const asOf = typeof window.getDashboardAsOf === 'function' ? window.getDashboardAsOf() : null;
-      if (asOf) params.set('asOf', asOf);
+      if (typeof window.appendDashboardRange === 'function') window.appendDashboardRange(params);
       return `/api/payment-period/${year}?${params.toString()}`;
     }
 

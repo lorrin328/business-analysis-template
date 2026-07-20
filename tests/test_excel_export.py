@@ -33,7 +33,7 @@ def test_excel_export_returns_workbook_with_module_sheets():
         "目标设置",
         "机构维度",
         "平台趋势",
-        "产品结构",
+        "产品设计分类（年度）",
         "产品明细",
         "交期结构",
         "队伍分析",

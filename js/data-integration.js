@@ -16,20 +16,36 @@
     );
     window.ALLOW_LOCAL_FALLBACK = ALLOW_LOCAL_FALLBACK;
     let selectedAsOf = null;
-    let cutoffOptions = [];
-    window.getDashboardAsOf = () => selectedAsOf;
+    let dashboardRange = {
+      rangeType: 'ytd', startDate: '', endDate: '', label: '', latestDataDate: '',
+      targetMode: 'year', precision: {}
+    };
+    window.getDashboardAsOf = () => dashboardRange.endDate || selectedAsOf;
+    window.getDashboardRange = () => ({ ...dashboardRange });
 
     function dashboardAsOfQuery(prefix = '&') {
-      return selectedAsOf ? `${prefix}asOf=${encodeURIComponent(selectedAsOf)}` : '';
+      const params = appendDashboardRange(new URLSearchParams());
+      const query = params.toString();
+      return query ? `${prefix}${query}` : '';
     }
 
     function appendDashboardAsOf(params) {
-      if (selectedAsOf) params.set('asOf', selectedAsOf);
-      return params;
+      return appendDashboardRange(params);
     }
 
+    function appendDashboardRange(params) {
+      params.set('rangeType', dashboardRange.rangeType || 'ytd');
+      if (dashboardRange.startDate) params.set('startDate', dashboardRange.startDate);
+      if (dashboardRange.endDate) {
+        params.set('endDate', dashboardRange.endDate);
+        params.set('asOf', dashboardRange.endDate);
+      }
+      return params;
+    }
+    window.appendDashboardRange = appendDashboardRange;
+
     function dashboardCacheKey(year) {
-      return `${year}::${selectedAsOf || 'default'}`;
+      return `${year}::${dashboardRange.rangeType}::${dashboardRange.startDate || ''}::${dashboardRange.endDate || 'default'}`;
     }
 
     function clearDashboardApiCache() {
@@ -39,11 +55,23 @@
       }
     }
 
-    function syncDashboardAsOf(context) {
-      if (!context) return;
-      if (Array.isArray(context.options)) cutoffOptions = context.options.slice();
-      if (context.selectedDate) selectedAsOf = context.selectedDate;
+    function syncDashboardAsOf(context, period) {
+      if (period) {
+        dashboardRange = {
+          ...dashboardRange,
+          rangeType: period.rangeType || dashboardRange.rangeType,
+          startDate: period.startDate || '',
+          endDate: period.endDate || '',
+          label: period.label || '',
+          latestDataDate: period.latestDataDate || '',
+          targetMode: period.targetMode || 'none',
+          precision: period.precision || {}
+        };
+      }
+      if (context?.selectedDate) selectedAsOf = context.selectedDate;
+      if (!selectedAsOf && dashboardRange.endDate) selectedAsOf = dashboardRange.endDate;
       window.selectedAsOf = selectedAsOf;
+      window.dashboardRange = { ...dashboardRange };
     }
 
     function formatAsOfDate(value) {
@@ -129,7 +157,7 @@
         let kpi = null;
         try {
           kpi = unwrapApiResponse(await fetchJson(`/api/kpi?year=${year}${dashboardAsOfQuery()}`, { method: 'GET' }));
-          syncDashboardAsOf(kpi?.as_of);
+          syncDashboardAsOf(kpi?.as_of, kpi?.period);
         } catch (e) {
           kpi = null;
         }
@@ -172,54 +200,112 @@
 
     function updateCutoffLabel(year) {
       const el = document.getElementById('dataCutoff');
-      const select = document.getElementById('dataCutoffSelect');
       const note = document.getElementById('dataCutoffNote');
-      if (!el && !select) return;
-      const asOfContext = apiData?.kpi?.as_of;
-      if (asOfContext) syncDashboardAsOf(asOfContext);
-      if (select) {
-        const selected = selectedAsOf || asOfContext?.selectedDate || '';
-        const options = cutoffOptions.length > 0 ? cutoffOptions.slice() : (selected ? [selected] : []);
-        select.innerHTML = options.map(value => (
-          `<option value="${value}"${value === selected ? ' selected' : ''}>${formatAsOfDate(value)}</option>`
-        )).join('');
-        select.style.display = options.length > 0 ? '' : 'none';
-      }
-      if (note) {
-        const warningText = asOfContext?.warningText || '';
-        note.textContent = warningText;
-        note.style.display = warningText ? '' : 'none';
-      }
       if (!el) return;
-      if (selectedAsOf) {
-        el.textContent = '数据截止：';
+      const asOfContext = apiData?.kpi?.as_of;
+      const period = apiData?.kpi?.period;
+      syncDashboardAsOf(asOfContext, period);
+      syncDashboardRangeControls(year);
+      if (note) {
+        const precision = dashboardRange.precision || {};
+        const precisionText = precision.premium === 'day'
+          ? '保费、产品、交费期间按日统计；人力和价值按月统计。'
+          : '当前部分指标只能按月统计。';
+        const warningText = period?.warningText || asOfContext?.warningText || '';
+        note.textContent = [precisionText, warningText].filter(Boolean).join(' ');
+        note.style.display = '';
+      }
+      if (dashboardRange.label) {
+        el.textContent = `统计范围：${dashboardRange.label}`;
         return;
       }
       const cutoff = apiData?.kpi?.daily_cutoff;
       if (cutoff?.use_daily && cutoff.month && cutoff.day) {
-        el.textContent = `数据截止：${year}年${cutoff.month}月${cutoff.day}日`;
+        el.textContent = `统计范围：${year}年累计至${cutoff.month}月${cutoff.day}日`;
         return;
       }
       if (apiAvailable || ALLOW_LOCAL_FALLBACK) {
         const latest = getLatestMonthForYear(year);
-        el.textContent = `数据截止：${year}年${latest}月`;
+        el.textContent = `统计范围：${year}年累计至${latest}月`;
         return;
       }
-      el.textContent = '数据截止：--';
+      el.textContent = '统计范围：--';
     }
 
     async function switchDashboardAsOf(value) {
-      if (!value || value === selectedAsOf) return;
+      if (!value) return;
+      dashboardRange = { ...dashboardRange, rangeType: 'day', startDate: value, endDate: value, label: '' };
       selectedAsOf = value;
+      const typeSelect = document.getElementById('dashboardRangeType');
+      const endInput = document.getElementById('dashboardRangeEnd');
+      if (typeSelect) typeSelect.value = 'day';
+      if (endInput) endInput.value = value;
+      setRangeControlVisibility();
+      await applyDashboardRange();
+    }
+    window.switchDashboardAsOf = switchDashboardAsOf;
+
+    function setRangeControlVisibility() {
+      const type = document.getElementById('dashboardRangeType')?.value || dashboardRange.rangeType;
+      const month = document.getElementById('dashboardRangeMonth');
+      const start = document.getElementById('dashboardRangeStart');
+      const end = document.getElementById('dashboardRangeEnd');
+      if (month) month.hidden = type !== 'month';
+      if (start) start.hidden = type !== 'custom';
+      if (end) end.hidden = type === 'month';
+    }
+
+    function syncDashboardRangeControls(year) {
+      const yearSelect = document.getElementById('rangeYearSelect');
+      const typeSelect = document.getElementById('dashboardRangeType');
+      const monthInput = document.getElementById('dashboardRangeMonth');
+      const startInput = document.getElementById('dashboardRangeStart');
+      const endInput = document.getElementById('dashboardRangeEnd');
+      if (yearSelect && !yearSelect.options.length && typeof buildRecentYearOptions === 'function') {
+        yearSelect.innerHTML = buildRecentYearOptions(year || selectedYear || DEFAULT_DASHBOARD_YEAR);
+      }
+      if (yearSelect) yearSelect.value = String(year || dashboardRange.year || selectedYear || DEFAULT_DASHBOARD_YEAR);
+      if (typeSelect) typeSelect.value = dashboardRange.rangeType || 'ytd';
+      if (monthInput && dashboardRange.endDate) monthInput.value = dashboardRange.endDate.slice(0, 7);
+      if (startInput) startInput.value = dashboardRange.startDate || '';
+      if (endInput) endInput.value = dashboardRange.endDate || '';
+      setRangeControlVisibility();
+    }
+
+    async function applyDashboardRange() {
+      const year = document.getElementById('rangeYearSelect')?.value || selectedYear || DEFAULT_DASHBOARD_YEAR;
+      const rangeType = document.getElementById('dashboardRangeType')?.value || dashboardRange.rangeType || 'ytd';
+      const monthValue = document.getElementById('dashboardRangeMonth')?.value || '';
+      let startDate = document.getElementById('dashboardRangeStart')?.value || '';
+      let endDate = document.getElementById('dashboardRangeEnd')?.value || '';
+      if (rangeType === 'month' && monthValue) {
+        startDate = `${monthValue}-01`;
+        endDate = `${monthValue}-01`;
+      } else if (rangeType === 'day') {
+        startDate = endDate;
+      } else if (rangeType === 'ytd') {
+        startDate = `${year}-01-01`;
+      }
+      if (rangeType === 'custom' && (!startDate || !endDate)) {
+        alert('请选择开始日期和结束日期');
+        return;
+      }
+      dashboardRange = { ...dashboardRange, rangeType, startDate, endDate, label: '' };
+      selectedAsOf = endDate || null;
       window.selectedAsOf = selectedAsOf;
+      window.dashboardRange = { ...dashboardRange };
       clearDashboardApiCache();
-      const platformYear = selectedYear || DEFAULT_DASHBOARD_YEAR;
+      const platformYear = String(year);
+      selectedYear = platformYear;
+      const mainYearSelect = document.getElementById('yearSelect');
+      if (mainYearSelect) mainYearSelect.value = platformYear;
       await fetchTargetData(platformYear);
       if (selectedTeamYear && selectedTeamYear !== platformYear) {
         await loadYearFromApi(selectedTeamYear, { updateKpi: false, updateProduct: false });
       }
       await loadYearFromApi(platformYear, { updateKpi: true, updateProduct: true });
       updateCutoffLabel(platformYear);
+      if (typeof updatePlatformScopeNote === 'function') updatePlatformScopeNote();
       await refreshPlatformChart();
       productChart.setOption(getPieOption(currentPieType), true);
       teamChart.setOption(getTeamOption(), true);
@@ -228,13 +314,23 @@
       await fetchOrgKpiData(platformYear);
       updateKPICards();
     }
-    window.switchDashboardAsOf = switchDashboardAsOf;
+    window.applyDashboardRange = applyDashboardRange;
 
     function bindDashboardAsOfControl() {
-      const select = document.getElementById('dataCutoffSelect');
-      if (!select || select.dataset.boundDashboardAsOf === 'true') return;
-      select.dataset.boundDashboardAsOf = 'true';
-      select.addEventListener('change', () => switchDashboardAsOf(select.value));
+      const control = document.getElementById('dataCutoffControl');
+      if (!control || control.dataset.boundDashboardRange === 'true') return;
+      control.dataset.boundDashboardRange = 'true';
+      document.getElementById('dashboardRangeType')?.addEventListener('change', setRangeControlVisibility);
+      document.getElementById('rangeYearSelect')?.addEventListener('change', event => {
+        const year = event.target.value;
+        ['dashboardRangeStart', 'dashboardRangeEnd'].forEach(id => {
+          const input = document.getElementById(id);
+          if (input?.value) input.value = `${year}${input.value.slice(4)}`;
+        });
+        const month = document.getElementById('dashboardRangeMonth');
+        if (month?.value) month.value = `${year}${month.value.slice(4)}`;
+      });
+      document.getElementById('dashboardRangeApply')?.addEventListener('click', applyDashboardRange);
     }
     window.bindDashboardAsOfControl = bindDashboardAsOfControl;
     bindDashboardAsOfControl();

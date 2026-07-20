@@ -1,6 +1,7 @@
 """Shared cutoff policy for daily-grain business metrics."""
 from __future__ import annotations
 
+import calendar
 import sqlite3
 from datetime import date, datetime, timedelta
 from typing import Iterable
@@ -63,6 +64,22 @@ def date_filter_sql(cutoff: Cutoff) -> tuple[str, list[int]]:
         cutoff["month"],
         cutoff["day"],
     ]
+
+
+def date_start_filter_sql(cutoff: Cutoff) -> tuple[str, list[int]]:
+    """SQL condition and params for an inclusive lower month/day bound."""
+    return "(month > ? OR (month = ? AND day >= ?))", [
+        cutoff["month"],
+        cutoff["month"],
+        cutoff["day"],
+    ]
+
+
+def date_range_filter_sql(start: Cutoff, end: Cutoff) -> tuple[str, list[int]]:
+    """SQL condition and params for an inclusive month/day range."""
+    start_sql, start_params = date_start_filter_sql(start)
+    end_sql, end_params = date_filter_sql(end)
+    return f"({start_sql}) AND ({end_sql})", [*start_params, *end_params]
 
 
 def channel_cutoff_filter_sql(
@@ -133,6 +150,119 @@ def _option_dates(latest_date: date | None, days: int = 3) -> list[str]:
         return []
     start = latest_date - timedelta(days=max(days - 1, 0))
     return [(start + timedelta(days=i)).isoformat() for i in range(days)]
+
+
+def _date_for_year(value: date | None, year: int) -> date | None:
+    if not value:
+        return None
+    day = min(value.day, calendar.monthrange(year, value.month)[1])
+    return date(year, value.month, day)
+
+
+def _range_label(range_type: str, start: date, end: date) -> str:
+    if range_type == "day":
+        return f"{end.year}年{end.month}月{end.day}日"
+    if range_type == "month":
+        suffix = "" if end.day == calendar.monthrange(end.year, end.month)[1] else f"（截至{end.day}日）"
+        return f"{end.year}年{end.month}月{suffix}"
+    if range_type == "ytd":
+        return f"{end.year}年累计至{end.month}月{end.day}日"
+    return f"{start.year}年{start.month}月{start.day}日至{end.year}年{end.month}月{end.day}日"
+
+
+def build_period_context(
+    conn: sqlite3.Connection,
+    year: int,
+    *,
+    range_type: str | None = None,
+    start_date: str | date | None = None,
+    end_date: str | date | None = None,
+    as_of: str | date | None = None,
+    today: date | None = None,
+) -> dict:
+    """Build a normalized dashboard period while preserving the legacy ``asOf`` contract.
+
+    ``ytd`` is the backwards-compatible default. ``month`` and ``day`` derive
+    their bounds from the supplied end/start date. ``custom`` is an inclusive
+    range. All ranges are constrained to the selected dashboard year and the
+    latest available daily business date.
+    """
+    year = int(year)
+    mode = str(range_type or "ytd").strip().lower()
+    if mode not in {"ytd", "month", "day", "custom"}:
+        mode = "ytd"
+
+    def _parse(value: str | date | None) -> date | None:
+        parsed = parse_as_of(value) if isinstance(value, str) else value
+        return _date_for_year(parsed, year)
+
+    requested_start = _parse(start_date)
+    requested_end = _parse(end_date) or _parse(as_of)
+    as_of_context = build_as_of_context(conn, year, requested_end, today=today)
+    latest = parse_as_of(as_of_context.get("latestDataDate"))
+    default_end = parse_as_of(as_of_context.get("selectedDate")) or date(year, 12, 31)
+    anchor = requested_end or requested_start or default_end
+
+    if mode == "month":
+        start = date(year, anchor.month, 1)
+        end = date(year, anchor.month, calendar.monthrange(year, anchor.month)[1])
+    elif mode == "day":
+        start = anchor
+        end = anchor
+    elif mode == "custom":
+        start = requested_start or date(year, 1, 1)
+        end = requested_end or default_end
+    else:
+        start = date(year, 1, 1)
+        end = requested_end or default_end
+
+    if start > end:
+        start, end = end, start
+    if latest and end > latest:
+        end = latest
+    if latest and start > latest:
+        start = latest
+    if start > end:
+        start = end
+
+    start_cutoff = cutoff_from_date(start)
+    end_cutoff = cutoff_from_date(end)
+    previous_start = _date_for_year(start, year - 1)
+    previous_end = _date_for_year(end, year - 1)
+    target_mode = "year" if mode == "ytd" else "month" if mode == "month" else "none"
+
+    as_of_context.update(
+        {
+            "selectedDate": end.isoformat(),
+            "selectedCutoff": end_cutoff,
+            "options": [],
+        }
+    )
+    return {
+        "year": year,
+        "rangeType": mode,
+        "startDate": start.isoformat(),
+        "endDate": end.isoformat(),
+        "startCutoff": start_cutoff,
+        "endCutoff": end_cutoff,
+        "label": _range_label(mode, start, end),
+        "comparison": {
+            "startDate": previous_start.isoformat() if previous_start else None,
+            "endDate": previous_end.isoformat() if previous_end else None,
+        },
+        "targetMode": target_mode,
+        "precision": {
+            "premium": "day",
+            "product": "day",
+            "paymentPeriod": "day",
+            "headcount": "month",
+            "value": "month",
+        },
+        "latestDataDate": latest.isoformat() if latest else None,
+        "warning": bool(as_of_context.get("warning")),
+        "warningText": as_of_context.get("warningText") or "",
+        "asOf": as_of_context,
+    }
 
 
 def build_as_of_context(

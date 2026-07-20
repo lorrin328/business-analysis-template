@@ -3,7 +3,7 @@ import json
 import sqlite3
 from db.connection import get_db
 from db.schema import init_db
-from services.cutoff_policy import build_as_of_context
+from services.cutoff_policy import build_period_context, date_range_filter_sql
 
 
 def get_payment_period_structure(
@@ -16,18 +16,43 @@ def get_payment_period_structure(
     jingdai_orgs: list[str] | None = None,
     metric: str = 'qj',
     as_of: str | None = None,
+    range_type: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ):
     """获取交期结构数据，按交期分类聚合保费/件数"""
     init_db()
     premium_field = 'gm_premium' if metric == 'gm' else 'qj_premium'
     with get_db() as conn:
         c = conn.cursor()
-        as_of_context = build_as_of_context(conn, year, as_of)
-        selected_cutoff = as_of_context.get("selectedCutoff") or {}
+        period_context = build_period_context(
+            conn,
+            year,
+            range_type=range_type,
+            start_date=start_date,
+            end_date=end_date,
+            as_of=as_of,
+        )
+        as_of_context = period_context["asOf"]
+        selected_start = period_context["startCutoff"]
+        selected_cutoff = period_context["endCutoff"]
         cutoff_month = int(selected_cutoff["month"]) if selected_cutoff else 12
+        start_month = int(selected_start["month"]) if selected_start else 1
+        daily_table_exists = bool(c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agg_payment_period_daily'"
+        ).fetchone())
+        daily_available = daily_table_exists and bool(c.execute(
+            "SELECT 1 FROM agg_payment_period_daily WHERE year = ? LIMIT 1", (year,)
+        ).fetchone())
+        table = "agg_payment_period_daily" if daily_available else "agg_payment_period"
 
         conditions = ['year = ?']
         params = [year]
+
+        if daily_available:
+            range_sql, range_params = date_range_filter_sql(selected_start, selected_cutoff)
+            conditions.append(range_sql)
+            params.extend(range_params)
 
         month_list = [int(m) for m in (months or []) if 1 <= int(m) <= 12]
         if month_list:
@@ -45,8 +70,9 @@ def get_payment_period_structure(
             else:
                 conditions.append('1 = 0')
         else:
-            conditions.append('month <= ?')
-            params.append(cutoff_month)
+            if not daily_available:
+                conditions.append('month BETWEEN ? AND ?')
+                params.extend([start_month, cutoff_month])
 
         if business_types:
             placeholders = ','.join(['?'] * len(business_types))
@@ -74,7 +100,7 @@ def get_payment_period_structure(
             SELECT category,
                    SUM({premium_field}) AS premium_total,
                    SUM(count) AS count_total
-            FROM agg_payment_period
+            FROM {table}
             WHERE {where}
             GROUP BY category
             ORDER BY premium_total DESC
@@ -97,9 +123,12 @@ def get_payment_period_structure(
             ''', (year,))
             jd_orgs = [r['org'] for r in c2.fetchall()]
 
+        period_context['precision']['paymentPeriod'] = 'day' if daily_available else 'month'
         return {
             'year': year,
             'as_of': as_of_context,
+            'period': period_context,
+            'precision': 'day' if daily_available else 'month',
             'premium': premium_rows,
             'count': count_rows,
             'jingdai_orgs': jd_orgs,

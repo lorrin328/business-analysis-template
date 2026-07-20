@@ -12,8 +12,8 @@ from etl.columns import _pick_col
 from etl.classify import _classify_payment_period, _classify_jingdai_payment_period
 from config.business_lines import TRANSFORM_CHANNELS
 
-def aggregate_payment_period(df: pd.DataFrame) -> List[Dict]:
-    """转型业务交期结构聚合：按年月、渠道、机构、交期分类汇总"""
+def _aggregate_payment_period(df: pd.DataFrame, *, daily: bool) -> List[Dict]:
+    """转型业务交期结构聚合，可按月或按日输出。"""
     year_col = _pick_col(df, ['年'])
     date_col = _pick_col(df, ['年月日', '入账时间', '日期', '出单日期', '投保日期', '承保日期'])
     month_col = _pick_col(df, ['年月', '月', '月份'])
@@ -41,10 +41,16 @@ def aggregate_payment_period(df: pd.DataFrame) -> List[Dict]:
     )
     work = work[work['_category'].notna() & (work['_category'] != '')]
 
-    grouped = work.groupby(['_year', '_month', '_channel', '_org', '_category'], dropna=False)
+    group_cols = ['_year', '_month'] + (['_day'] if daily else []) + ['_channel', '_org', '_category']
+    grouped = work.groupby(group_cols, dropna=False)
     rows = []
-    for (year, month, channel, org, category), group in grouped:
-        rows.append({
+    for keys, group in grouped:
+        if daily:
+            year, month, day, channel, org, category = keys
+        else:
+            year, month, channel, org, category = keys
+            day = None
+        row = {
             'year': int(year),
             'month': int(month),
             'business_type': '转型',
@@ -54,12 +60,23 @@ def aggregate_payment_period(df: pd.DataFrame) -> List[Dict]:
             'qj_premium': _amount_to_wan(group['_qj'].sum()),
             'gm_premium': _amount_to_wan(group['_gm'].sum()),
             'count': int(group['_count'].sum()),
-        })
+        }
+        if daily:
+            row['day'] = int(day)
+        rows.append(row)
     return rows
 
 
-def aggregate_jingdai_payment_period(df: pd.DataFrame) -> List[Dict]:
-    """经代业务交期结构聚合：按年月、经代机构、交期分类汇总"""
+def aggregate_payment_period(df: pd.DataFrame) -> List[Dict]:
+    return _aggregate_payment_period(df, daily=False)
+
+
+def aggregate_payment_period_daily(df: pd.DataFrame) -> List[Dict]:
+    return _aggregate_payment_period(df, daily=True)
+
+
+def _aggregate_jingdai_payment_period(df: pd.DataFrame, *, daily: bool) -> List[Dict]:
+    """经代业务交期结构聚合，可按月或按日输出。"""
     time_col = _pick_col(df, ['时间', '年月'])
     qj_col = _pick_col(df, ['期交保费'])
     gm_col = _pick_col(df, ['承保年化规保', '年化规保', '规模保费'])
@@ -80,10 +97,16 @@ def aggregate_jingdai_payment_period(df: pd.DataFrame) -> List[Dict]:
     )
     work = work[work['_category'].notna() & (work['_category'] != '')]
 
-    grouped = work.groupby(['_year', '_month', '_org', '_category'], dropna=False)
+    group_cols = ['_year', '_month'] + (['_day'] if daily else []) + ['_org', '_category']
+    grouped = work.groupby(group_cols, dropna=False)
     rows = []
-    for (year, month, org, category), group in grouped:
-        rows.append({
+    for keys, group in grouped:
+        if daily:
+            year, month, day, org, category = keys
+        else:
+            year, month, org, category = keys
+            day = None
+        row = {
             'year': int(year),
             'month': int(month),
             'business_type': '经代',
@@ -93,6 +116,17 @@ def aggregate_jingdai_payment_period(df: pd.DataFrame) -> List[Dict]:
             'qj_premium': _amount_to_wan(group['_qj'].sum()),
             'gm_premium': _amount_to_wan(group['_gm'].sum()),
             'count': 0,
-        })
+        }
+        if daily:
+            row['day'] = int(day)
+        rows.append(row)
     return rows
+
+
+def aggregate_jingdai_payment_period(df: pd.DataFrame) -> List[Dict]:
+    return _aggregate_jingdai_payment_period(df, daily=False)
+
+
+def aggregate_jingdai_payment_period_daily(df: pd.DataFrame) -> List[Dict]:
+    return _aggregate_jingdai_payment_period(df, daily=True)
 

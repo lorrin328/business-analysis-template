@@ -12,8 +12,7 @@ let orgKpiData = null;
     async function fetchOrgKpiData(year) {
       try {
         const params = new URLSearchParams({ year: String(year) });
-        const asOf = typeof window.getDashboardAsOf === 'function' ? window.getDashboardAsOf() : null;
-        if (asOf) params.set('asOf', asOf);
+        if (typeof window.appendDashboardRange === 'function') window.appendDashboardRange(params);
         orgKpiData = unwrapApiResponse(await fetchJson(`/api/org-analysis?${params.toString()}`));
         renderOrgTable();
       } catch (e) {
@@ -221,6 +220,8 @@ let orgKpiData = null;
     }
 
     function getOrgTarget(org, channel, metric, dim, idx) {
+      const targetMode = orgKpiData?.period?.targetMode || 'year';
+      if (targetMode === 'none') return 0;
       const metricMap = {
         'qj': 'qjPremium',
         'longterm': 'qjPremium',
@@ -237,6 +238,10 @@ let orgKpiData = null;
       if (!orgTargets || !orgTargets[key] || !orgTargets[key][catKey]) return 0;
 
       const item = orgTargets[key][catKey];
+      if (targetMode === 'month') {
+        const monthIdx = Math.max(0, Number((orgKpiData?.period?.endDate || '').slice(5, 7) || 1) - 1);
+        return item.month?.[monthIdx] || 0;
+      }
       if (metric === 'longterm') return item.year || 0;
       if (dim === 'year') return item.year || 0;
       if (dim === 'quarter') return item.quarter?.[idx] || 0;
@@ -327,9 +332,20 @@ let orgKpiData = null;
       }
 
       const orgs = selectedOrgs.includes('all') ? ORG_LIST : selectedOrgs;
-      const dim = orgTimeDim;
+      const globalRangeActive = orgKpiData?.period?.rangeType && orgKpiData.period.rangeType !== 'ytd';
+      const dim = globalRangeActive ? 'year' : orgTimeDim;
       const qIdx = orgSubPeriod;
       const mIdx = orgSubMonth;
+      const dimControls = document.getElementById('orgDimBtns');
+      const qControl = document.getElementById('orgSubPeriod');
+      const mControl = document.getElementById('orgSubMonth');
+      if (dimControls) {
+        dimControls.style.opacity = globalRangeActive ? '0.45' : '';
+        dimControls.style.pointerEvents = globalRangeActive ? 'none' : '';
+        dimControls.title = globalRangeActive ? '当前使用顶部全局统计范围' : '';
+      }
+      if (qControl) qControl.disabled = globalRangeActive;
+      if (mControl) mControl.disabled = globalRangeActive;
 
       // 构建行数据
       let rows = [];
@@ -432,7 +448,9 @@ let orgKpiData = null;
       totalRow.valueYoy = calcOrgYoy(totalRow.valueActual, totalValuePrev);
 
       // 渲染表格
-      const periodLabel = dim === 'year' ? '年度' : dim === 'quarter' ? `Q${qIdx+1}` : `${mIdx+1}月`;
+      const periodLabel = globalRangeActive
+        ? (orgKpiData?.period?.label || '自定义区间')
+        : dim === 'year' ? '年度' : dim === 'quarter' ? `Q${qIdx+1}` : `${mIdx+1}月`;
       const html = `
         <table class="org-table">
           <thead>
@@ -441,7 +459,7 @@ let orgKpiData = null;
               <th rowspan="2" style="min-width:60px;">${orgExpanded ? '业务模式' : '维度'}</th>
               <th colspan="4" class="group-header">期交保费 (${periodLabel})</th>
               <th colspan="4" class="group-header">价值保费</th>
-              <th colspan="3" class="group-header">长险期交（年度）</th>
+              <th colspan="3" class="group-header">长险期交${globalRangeActive ? '' : '（年度）'}</th>
               <th colspan="3" class="group-header">10年期产品</th>
               <th colspan="3" class="group-header">商保年金</th>
               <th colspan="3" class="group-header">保障类产品</th>

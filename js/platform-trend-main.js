@@ -46,7 +46,11 @@
       const selected = selectedPlatformOrgNames();
       const rangeText = orgFiltered ? `当前机构范围：${selected.join('、') || '未选择机构'}。` : '当前机构范围：全部机构。';
       const jdText = orgFiltered && includesJingdai ? '经代暂无机构维度，当前经代数据按整体口径展示。' : '';
-      el.textContent = [rangeText, jdText].filter(Boolean).join(' ');
+      const globalRange = typeof window.getDashboardRange === 'function' ? window.getDashboardRange() : null;
+      const trendText = globalRange?.rangeType && globalRange.rangeType !== 'ytd'
+        ? `顶部统计范围当前为“${globalRange.label || globalRange.rangeType}”；本趋势图仍按本模块的年/季/月维度展示完整趋势。`
+        : '';
+      el.textContent = [rangeText, jdText, trendText].filter(Boolean).join(' ');
     }
 
     // Local fallback platformMock lives in js/platform-seed-data.js.
