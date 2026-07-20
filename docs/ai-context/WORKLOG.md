@@ -8,6 +8,10 @@
 - 页面体验：KPI 卡片补齐键盘操作；登录表单补齐标签关联与状态播报；荣誉指标按核心结果、风险关注、追踪基础分组，页签支持 ARIA 和方向键切换；方案页明确“底稿导入与复核、非最终发放结果”并补充上传步骤和空状态指引。
 - 安全：FastAPI 取消项目根目录 `/static` 挂载，仅保留 `/js`；nginx 拒绝源码、部署文件、内部文档、数据库、Excel、环境文件、日志、版本文件和目标导入文件。
 - 本地验证：全量测试 `290 passed, 1 warning`；`git diff --check` 通过；桌面 1280px 与手机 390×844 浏览器回归通过，主看板、荣誉页、方案页均无页面级横向溢出，荣誉页方向键切换正常；本地 `/static/backend/main.py`、`/backend/main.py`、`/VERSION`、`/targets_import.json` 均为 `404`。
+- GitHub：发布提交 `138fa20 feat: release scheme review and UI refinements` 已推送至 `origin/master`；对应 GitHub Actions Docker 镜像构建成功。
+- 生产部署：将提交 `138fa20` 的归档包上传 `192.168.50.6` 并执行现有 `deploy/deploy.sh`；部署未使用服务器旧 Excel 强制重建数据库，保留生产运行库并从 SQLite 原始明细表重建聚合；最终部署前备份为 `/opt/business-analysis-backups/business_data.db.20260720_124704`。
+- 线上验证：Windows 客户端、nginx 和后端直连健康检查均返回 `status=ok`，`app_version/page_version=v1.0.103`、`latest_period=202607`、`table_count=37`、`missing_tables=[]`；SQLite `integrity_check` 与 `quick_check` 均为 `ok`，新增 `scheme_import_batches` 表已存在；`business-analysis`、nginx、webhook 服务均为 `active`，nginx 配置校验通过且部署后无 warning 以上应用日志。
+- 线上安全验证：主看板、荣誉体系、方案复核、人员管理页面均返回 `200`；`/.git/config`、`/backend/main.py`、`/backend/business_data.db`、`/deploy/.admin_env`、`/deploy/.webhook_env`、内部文档、`/VERSION` 和目标导入文件均返回 `404`，后端直连也不再暴露项目根目录静态文件。
 
 ## 2026-07-16 v1.0.102 队伍分析筛选失效修复
 
