@@ -8,6 +8,11 @@
 - 展示边界：年度累计使用年度目标，按月使用月度目标，按日/自定义不计算目标达成率；人力和价值明确为月级精度；平台趋势保留模块自身完整趋势并显示范围说明。
 - 不改范围：人员管理、荣誉体系和方案复核不改业务功能或页面样式，仅同步公共版本号和脚本缓存参数。
 - 本地验证：SQLite 原始明细重建生成 `37,695` 行日级交期聚合；四种期间均完成 KPI、机构、产品和交期真实查询，区间 Excel 导出成功；全量测试 `292 passed, 1 warning`，数据质量 `issues=0`、`preflight ok`、JS/Python 语法校验和 `git diff --check` 通过；浏览器验证四种控件显隐正确，390×844 页面 `bodyScrollWidth=390`。
+- GitHub：功能提交 `9a93eb2 feat: add flexible dashboard date ranges` 已推送至 `origin/master`；对应 GitHub Actions `Build Docker image` 构建成功。
+- 生产部署：将功能提交归档上传 `192.168.50.6` 并执行现有 `deploy/deploy.sh`，使用 `REBUILD_DATABASE=0` 保护生产运行库，再从 SQLite 原始明细表重建聚合；部署前备份为 `/opt/business-analysis-backups/business_data.db.20260720_140147`。
+- 线上验证：`/api/health` 返回 `status=ok`、`app_version/page_version=v1.0.104`、`latest_period=202607`、`table_count=38`、`missing_tables=[]`；日级交期表共 `37,959` 行，范围为 `2022-01-01` 至 `2026-07-13`，数据库 `integrity_check` 与 `quick_check` 均为 `ok`。
+- 区间实测：生产库按 `2026-06-20` 至 `2026-07-13` 自定义范围查询，KPI 期交合计 `9,699.49` 万元，交期结构返回 `5` 个分类且精度为日；主页面、核心脚本、人员管理、荣誉体系和方案复核页面均可访问。
+- 运维与安全：`business-analysis`、nginx、webhook 服务均为 `active`，nginx 配置校验通过，部署后无 warning 以上应用日志；源码、数据库、部署密钥、内部文档、版本文件和目标导入文件的外部探测均返回 `404`。
 
 ## 2026-07-20 v1.0.103 方案复核、页面体验与静态资源安全加固
 
