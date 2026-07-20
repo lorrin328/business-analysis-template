@@ -9,6 +9,12 @@
 - 部署安全：systemd 数据库迁至 `/var/lib/business-analysis/business_data.db`，日志迁至 `/var/log/business-analysis`；应用树归 root 只读，仅数据和日志目录授权 `www-data`；关闭 webhook 服务并移除对应 sudoers。
 - 备份与发布：新增 SQLite Online Backup API 备份、`integrity_check`、`quick_check`、SHA256 元数据；SQLite 原始表聚合失败时部署中止，不再带错继续上线。
 - 回归：新增统计范围、权限绕过、登录锁定、Session 撤销、目标完整性、方案失败批次保持、WAL 备份和部署白名单测试；全量回归 `304 passed, 1 warning`，数据质量 `issues=0`、preflight、JS/Python 语法、shell 语法和 `git diff --check` 均通过。
+- GitHub：整改提交 `3d492f2 fix: harden dashboard data and deployment` 已推送 `origin/master`；GitHub Actions `Build Docker image` 运行 `29727672682` 成功。
+- 生产部署：使用提交归档在 `192.168.50.6` 手工部署，`REBUILD_DATABASE=0` 保护现有库；旧库迁移至 `/var/lib/business-analysis/business_data.db`，备份为 `/opt/business-analysis-backups/business_data.db.20260720_162428`，迁移库与备份均为 `integrity_check=ok`、`quick_check=ok`、`table_count=38`。
+- 生产验收：健康检查为 `v1.0.105`，`business-analysis/nginx=active`，`webhook-deploy=inactive/disabled`，对应 sudoers 不存在；应用账号对 `/opt/business-analysis` 不可写，对数据和日志目录可写，部署后 warning 以上 journal 与应用日志为空。
+- 数据验收：生产原始明细重建覆盖 `2022—2026`，日级最新数据为 `2026-07-20`；自定义范围 `2026-06-20—2026-07-13` 返回期交合计 `9,946.84` 万元、`targetMode=none`，2026 正式目标通过完整性校验。
+- 发布边界：四个业务页面和 `/js/` 返回 200，Dockerfile、requirements、后端源码、部署配置、Git、VERSION、目标导入文件和 webhook 返回 404；两个 seed 文件仅 `510/130` 字节且不含经营数值。
+- 历史日志：15 个 nginx 日志文件中，敏感路径历史共出现 `11` 次 200、来自 `2` 个私网客户端；虽未发现公网客户端，但无法证明旧运行密钥未被读取，仍应轮换 `.ai_env` 等现用凭据并撤销旧 Session。
 
 ## 2026-07-20 v1.0.104 自由统计范围
 

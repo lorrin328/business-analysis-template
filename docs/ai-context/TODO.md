@@ -3,7 +3,7 @@
 ## 2026-07-14 审计整改
 
 - 【已完成 2026-07-20】修复 nginx 与 FastAPI 静态目录：取消 FastAPI 项目根目录 `/static` 挂载，nginx 禁止匿名访问 `/backend`、`/deploy`、`/.git`、数据库、环境文件、目标 JSON、Excel 和内部文档，只发布业务页面与前端资源。
-- 【P0/立即】轮换已暴露的生产运行密钥，撤销现有 Session，检查 nginx 访问日志；修复完成前暂停 webhook 自动部署。
+- 【P0/立即】nginx 历史日志已确认敏感路径曾有 `11` 次 200、来自 `2` 个私网客户端；轮换 `.ai_env` 等现用生产凭据并撤销旧 Session。webhook 自动部署已暂停且 sudoers 已移除。
 - 【已完成 2026-07-20】移除 `www-data` 对部署脚本的写权限和免密 sudo；代码树归 root 只读，仅 `/var/lib/business-analysis` 与 `/var/log/business-analysis` 可写，webhook 自动部署暂停。
 - 【已完成 2026-07-20】SQLite 备份改为 Online Backup API，生成 SHA256 元数据并执行 `integrity_check`、`quick_check`；仍需安排一次独立恢复演练。
 - 【已完成 2026-07-20】legacy 只读 API 补齐模块权限并增加权限绕过回归测试；后续可评估正式下线旧路由。
