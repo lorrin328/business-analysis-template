@@ -2,6 +2,7 @@
 
 ## 2026-07-14 审计整改
 
+- 【P0/立即】2026-07-20 首轮手工部署的 PTY 将 Ubuntu SSH 口令回显到本地执行日志。应立即轮换该服务器 SSH 密码；如该口令在其他系统复用，同步轮换，并更新受保护的凭据存储。后续部署固定使用无 PTY、关闭回显的凭据输入方式。
 - 【已完成 2026-07-20】修复 nginx 与 FastAPI 静态目录：取消 FastAPI 项目根目录 `/static` 挂载，nginx 禁止匿名访问 `/backend`、`/deploy`、`/.git`、数据库、环境文件、目标 JSON、Excel 和内部文档，只发布业务页面与前端资源。
 - 【P0/立即】nginx 历史日志已确认敏感路径曾有 `11` 次 200、来自 `2` 个私网客户端；轮换 `.ai_env` 等现用生产凭据并撤销旧 Session。webhook 自动部署已暂停且 sudoers 已移除。
 - 【已完成 2026-07-20】移除 `www-data` 对部署脚本的写权限和免密 sudo；代码树归 root 只读，仅 `/var/lib/business-analysis` 与 `/var/log/business-analysis` 可写，webhook 自动部署暂停。

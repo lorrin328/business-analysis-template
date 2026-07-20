@@ -6,6 +6,11 @@
 - 顶部操作：“重新计算”从“管理与工具”下拉菜单移出，放在下拉入口左侧直接展示；复用原 `recalculateDashboard` 事件，不新增重复处理。
 - 不改范围：人员管理功能与页面保持不变，仅随版本统一刷新公共缓存参数。
 - 本地验证：全量回归 `304 passed, 1 warning`，数据质量 `issues=0`、preflight、JS/Python 与部署脚本语法、`git diff --check` 均通过；桌面与 390×844 手机端实测按钮位置正确，手机端页面宽度为 `390px`、无横向溢出。
+- GitHub：功能提交 `3179cdf fix: calculate per-capita for custom ranges` 已推送 `origin/master`；GitHub Actions `Build Docker image #33` 运行 `29729713227` 成功，耗时 28 秒。
+- 生产部署：以提交 `3179cdf` 的可信归档手工部署至 `192.168.50.6`，`REBUILD_DATABASE=0` 保留生产库，并从 SQLite 原始明细重建聚合；有效部署前备份为 `/opt/business-analysis-backups/business_data.db.20260720_170135`。
+- 生产验收：健康检查为 `v1.0.106`，数据库 `integrity_check=ok`、`quick_check=ok`、`table_count=38`；`business-analysis/nginx=active`、webhook 为 `inactive/disabled`，nginx 配置正常，部署后 warning 以上 journal 为空。
+- 口径实测：生产库自定义单日 `2026-07-08` 按 1 个覆盖月计算人均保费 `0.1` 万元；跨月范围 `2026-06-20—2026-07-13` 按 2 个覆盖月计算 `2.7` 万元。生产页面确认“重新计算”位于下拉菜单外，旧的非完整月停算提示已移除。
+- 部署过程：首轮部署在依赖安装阶段因本地终端编码异常中断，服务短暂处于 inactive；重新执行完整部署后恢复并通过上述验收。首轮 PTY 曾将 SSH 口令回显到本地执行日志，未写入代码、GitHub 或项目文档，需按安全待办轮换。
 
 ## 2026-07-20 v1.0.105 审计缺陷整改
 
