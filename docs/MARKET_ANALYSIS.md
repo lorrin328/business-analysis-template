@@ -62,6 +62,8 @@ systemctl list-timers market-analysis.timer --all
 
 发布门禁还会阻止：页面标题不符、最终 URL 不一致、非公开地址、敏感查询参数、非标准端口、正文不可提取、事实与证据片段不匹配、事实数字未出现在证据、历史主题跳过最新一期或篡改 `history.since`。
 
+独立抓取完成后，程序以实际页面内容校准标题、可核验发布日期和证据摘录；每个模块的“事实”直接采用最匹配的已核验原文锚点，模型的业务解释仅保留在判断、影响、复核条件和行动字段。该处理不会把证据不足的模型转述自动认定为事实。
+
 ## 日常运维
 
 ```bash
@@ -70,6 +72,8 @@ systemctl status market-analysis.service --no-pager
 journalctl -u market-analysis.service --since '7 days ago' --no-pager
 sudo systemctl start market-analysis.service
 ```
+
+失败后优先查看 journal 中的校验错误。6小时内的修复检查点会复用已完成研究，来源元数据类错误不会再次调用模型；服务仅自动重试一次，防止网络或模型故障形成无限循环和重复费用。
 
 报告目录：
 

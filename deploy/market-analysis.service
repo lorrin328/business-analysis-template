@@ -2,9 +2,13 @@
 Description=Evidence-backed life-insurance market research
 After=network-online.target business-analysis.service
 Wants=network-online.target
+StartLimitIntervalSec=3h
+StartLimitBurst=2
 
 [Service]
 Type=oneshot
+Restart=on-failure
+RestartSec=2min
 User=market-ai
 Group=market-analysis
 WorkingDirectory=/opt/business-analysis

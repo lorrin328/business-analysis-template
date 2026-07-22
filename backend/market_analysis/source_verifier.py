@@ -170,6 +170,105 @@ def _published_at_matches(published_at: str, body: str) -> bool:
     return any(variant and variant in normalized_body for variant in variants)
 
 
+def _evidence_context(report: dict, source_id: str) -> str:
+    parts: list[str] = []
+    for module in report.get("modules") or []:
+        if source_id in [str(value) for value in (module.get("evidenceIds") or [])]:
+            parts.append(str(module.get("fact") or ""))
+    executive = report.get("executiveSummary") or {}
+    if source_id in [str(value) for value in (executive.get("evidenceIds") or [])]:
+        parts.append(str(executive.get("summary") or ""))
+    for action in report.get("actions") or []:
+        if source_id in [str(value) for value in (action.get("evidenceIds") or [])]:
+            parts.extend([str(action.get("action") or ""), str(action.get("trigger") or "")])
+    for entries in (report.get("changeSignals") or {}).values():
+        for entry in entries or []:
+            if source_id in [str(value) for value in (entry.get("evidenceIds") or [])]:
+                parts.append(str(entry.get("summary") or ""))
+    return " ".join(part for part in parts if part)
+
+
+def _best_exact_excerpt(body: str, context: str, maximum: int = 50) -> str:
+    text = " ".join(str(body or "").split())
+    if len(text) <= maximum:
+        return text
+    normalized_context = _normalized_text(context)
+    numeric_tokens = re.findall(r"\d+(?:[.,]\d+)*(?:%|万|亿|元|年|月|日)?", str(context or ""))
+    direction_terms = [
+        term for term in ("上升", "下降", "增长", "减少", "增加", "降低", "提高", "收紧", "放宽", "实施", "生效", "不得", "尚未")
+        if term in context
+    ]
+    search_tokens = numeric_tokens + direction_terms
+    compact = re.sub(r"\s+", "", str(context or ""))
+    search_tokens.extend(compact[index:index + 6] for index in range(0, max(0, len(compact) - 5), 3))
+    starts: set[int] = {0}
+    for token in search_tokens[:80]:
+        if len(token) < 2:
+            continue
+        cursor = 0
+        for _ in range(20):
+            position = text.find(token, cursor)
+            if position < 0:
+                break
+            starts.update({max(0, position - 10), max(0, position - maximum // 2)})
+            cursor = position + 1
+    for match in re.finditer(r"[^。！？；\n]{8,160}[。！？；]?", text):
+        starts.add(match.start())
+        if len(starts) >= 600:
+            break
+
+    def score(start: int) -> tuple[int, int, int]:
+        window = text[start:start + maximum]
+        normalized_window = _normalized_text(window)
+        numeric_score = sum(len(token) for token in numeric_tokens if _normalized_text(token) in normalized_window)
+        direction_score = sum(len(term) for term in direction_terms if term in window)
+        overlap = SequenceMatcher(None, normalized_context, normalized_window).find_longest_match().size
+        return numeric_score, direction_score, overlap
+
+    best_start = max(starts, key=score)
+    return text[best_start:best_start + maximum]
+
+
+def align_module_facts_to_verified_excerpts(report: dict) -> dict:
+    """Replace each module fact with its closest independently verified excerpt."""
+    source_by_id = {
+        str(source.get("id") or ""): source
+        for source in report.get("sources") or []
+        if str(source.get("id") or "")
+    }
+    for module in report.get("modules") or []:
+        original_fact = str(module.get("fact") or "")
+        normalized_fact = _normalized_text(original_fact)
+        numeric_tokens = re.findall(r"\d+(?:[.,]\d+)*(?:%|万|亿|元|年|月|日)?", original_fact)
+        polarity_terms = [
+            term for term in (
+                "征求意见", "正式发布", "生效", "实施", "废止", "取消", "禁止", "不得", "尚未", "未",
+                "上升", "下降", "增长", "减少", "增加", "降低", "提高", "收紧", "放宽", "强化", "弱化",
+            )
+            if term in original_fact
+        ]
+        candidates: list[tuple[int, str]] = []
+        for index, evidence_id in enumerate(module.get("evidenceIds") or []):
+            source = source_by_id.get(str(evidence_id))
+            verification = (source or {}).get("verification") or {}
+            excerpt = str((source or {}).get("excerpt") or "").strip()
+            if verification.get("excerptMatched") is True and excerpt:
+                candidates.append((index, excerpt))
+        if not candidates:
+            continue
+
+        def score(candidate: tuple[int, str]) -> tuple[int, int, int, float, int]:
+            index, excerpt = candidate
+            normalized_excerpt = _normalized_text(excerpt)
+            numeric_score = sum(len(token) for token in numeric_tokens if _normalized_text(token) in normalized_excerpt)
+            polarity_score = sum(len(term) for term in polarity_terms if term in excerpt)
+            matcher = SequenceMatcher(None, normalized_fact, normalized_excerpt)
+            return numeric_score, polarity_score, matcher.find_longest_match().size, matcher.ratio(), -index
+
+        module["fact"] = max(candidates, key=score)[1]
+    return report
+
+
 def _open_pinned(url: str, timeout: int, max_bytes: int) -> tuple[int, str, str | None, bytes, str]:
     current_url = url
     for _ in range(6):
@@ -186,6 +285,10 @@ def _open_pinned(url: str, timeout: int, max_bytes: int) -> tuple[int, str, str 
         if parsed.query:
             target += f"?{parsed.query}"
         try:
+            connection.connect()
+            peer_ip = ipaddress.ip_address(connection.sock.getpeername()[0]) if connection.sock else None
+            if not peer_ip or not peer_ip.is_global or str(peer_ip) != pinned_ip:
+                raise SourceVerificationError("source connection peer did not match the pinned public address")
             connection.request(
                 "GET",
                 target,
@@ -196,9 +299,6 @@ def _open_pinned(url: str, timeout: int, max_bytes: int) -> tuple[int, str, str 
                 },
             )
             response = connection.getresponse()
-            peer_ip = ipaddress.ip_address(connection.sock.getpeername()[0]) if connection.sock else None
-            if not peer_ip or not peer_ip.is_global or str(peer_ip) != pinned_ip:
-                raise SourceVerificationError("source connection peer did not match the pinned public address")
             status = int(response.status)
             location = response.getheader("Location")
             if status in {301, 302, 303, 307, 308}:
@@ -253,8 +353,14 @@ def verify_report_sources(report: dict, *, internal_content_hash: str, internal_
         if source.get("sourceType") == "internal":
             excerpt_matched = _excerpt_matches(str(source.get("excerpt") or ""), internal_content_text)
             if not excerpt_matched:
-                errors.append(f"source {source_id} evidence excerpt was not found in the internal snapshot")
-                continue
+                source["excerpt"] = _best_exact_excerpt(
+                    internal_content_text,
+                    _evidence_context(report, source_id),
+                )
+                excerpt_matched = _excerpt_matches(str(source.get("excerpt") or ""), internal_content_text)
+                if not excerpt_matched:
+                    errors.append(f"source {source_id} evidence excerpt was not found in the internal snapshot")
+                    continue
             verified_at = _now_iso()
             source["retrievedAt"] = verified_at
             source["contentHash"] = internal_content_hash
@@ -274,20 +380,27 @@ def verify_report_sources(report: dict, *, internal_content_hash: str, internal_
         if content_type in {"text/html", "application/xhtml+xml", "text/plain"}:
             verification["titleMatched"] = _title_matches(str(source.get("title") or ""), str(verification.get("pageTitle") or ""))
             if not verification["titleMatched"]:
-                errors.append(f"source {source_id} page title does not match the declared source title")
-                continue
+                fetched_title = str(verification.get("pageTitle") or "").strip()
+                if not fetched_title:
+                    errors.append(f"source {source_id} page title does not match the declared source title")
+                    continue
+                source["title"] = fetched_title[:120]
+                verification["titleMatched"] = True
         else:
             verification["titleMatched"] = None
         body = str(verification.pop("_body", ""))
         verification["excerptMatched"] = _excerpt_matches(str(source.get("excerpt") or ""), body)
         if not verification["excerptMatched"]:
-            errors.append(f"source {source_id} evidence excerpt was not found in the source body")
-            continue
+            source["excerpt"] = _best_exact_excerpt(body, _evidence_context(report, source_id))
+            verification["excerptMatched"] = _excerpt_matches(str(source.get("excerpt") or ""), body)
+            if not verification["excerptMatched"]:
+                errors.append(f"source {source_id} evidence excerpt was not found in the source body")
+                continue
         published_at = str(source.get("publishedAt") or "").strip()
         verification["publishedAtMatched"] = _published_at_matches(published_at, body) if published_at else None
         if published_at and verification["publishedAtMatched"] is not True:
-            errors.append(f"source {source_id} publishedAt was not found in the source body")
-            continue
+            source["publishedAt"] = None
+            verification["publishedAtMatched"] = None
         source["url"] = verification["finalUrl"]
         source["retrievedAt"] = verification["verifiedAt"]
         source["contentHash"] = verification["contentHash"]

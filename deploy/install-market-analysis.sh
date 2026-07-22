@@ -2,6 +2,7 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/business-analysis}"
+CLAUDE_INSTALL_DIR="${CLAUDE_INSTALL_DIR:-/opt/claude-code}"
 MARKET_USER="${MARKET_USER:-market-ai}"
 MARKET_GROUP="${MARKET_GROUP:-market-analysis}"
 MARKET_DATA_DIR="${MARKET_ANALYSIS_DATA_DIR:-/var/lib/business-analysis-market}"
@@ -37,13 +38,30 @@ if ! command -v claude >/dev/null 2>&1; then
   fi
   apt-get update
   apt-get install -y curl ca-certificates
+  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    echo "ERROR: npm 安装路径需要 Node.js 18+ 和 npm；请先按 Node.js 官方方式安装。" >&2
+    exit 1
+  fi
+  NODE_MAJOR="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
+  if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 18 ]; then
+    echo "ERROR: Claude Code 要求 Node.js 18+，当前版本为 $(node --version)。" >&2
+    exit 1
+  fi
   INSTALLER="$(mktemp)"
   trap 'rm -f "$INSTALLER"' EXIT
-  curl --proto '=https' --tlsv1.2 -fsSL https://claude.ai/install.sh -o "$INSTALLER"
-  bash "$INSTALLER" stable
+  if curl --proto '=https' --tlsv1.2 -fsSL https://claude.ai/install.sh -o "$INSTALLER"; then
+    bash "$INSTALLER" stable
+  else
+    echo "Claude Code 原生安装器不可达，改用 Anthropic 官方 npm 包。"
+    install -d -o root -g root -m 0755 "$CLAUDE_INSTALL_DIR"
+    npm install --omit=dev --prefix "$CLAUDE_INSTALL_DIR" @anthropic-ai/claude-code@latest
+  fi
   CLAUDE_SOURCE="$(command -v claude 2>/dev/null || true)"
   if [ -z "$CLAUDE_SOURCE" ] && [ -x /root/.local/bin/claude ]; then
     CLAUDE_SOURCE=/root/.local/bin/claude
+  fi
+  if [ -z "$CLAUDE_SOURCE" ] && [ -x "$CLAUDE_INSTALL_DIR/node_modules/.bin/claude" ]; then
+    CLAUDE_SOURCE="$CLAUDE_INSTALL_DIR/node_modules/.bin/claude"
   fi
   if [ -z "$CLAUDE_SOURCE" ]; then
     echo "ERROR: Claude Code 官方安装器执行后未找到 claude" >&2
@@ -65,7 +83,11 @@ install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis.service" /etc/s
 install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis.timer" /etc/systemd/system/market-analysis.timer
 systemctl daemon-reload
 
-if grep -Eq '^ANTHROPIC_AUTH_TOKEN=.+$' "$MARKET_ENV_FILE" && grep -Eq '^AI_READONLY_TOKEN=.+$' "$MARKET_ENV_FILE"; then
+has_env_value() {
+  tr -d '\r' < "$MARKET_ENV_FILE" | grep -Eq "^${1}=[^[:space:]]+$"
+}
+
+if has_env_value ANTHROPIC_AUTH_TOKEN && has_env_value AI_READONLY_TOKEN; then
   systemctl enable --now market-analysis.timer
   echo "市场研判定时器已启用。"
 else

@@ -4,7 +4,7 @@ import json
 import os
 import re
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from market_analysis.config import data_dir
@@ -153,3 +153,33 @@ class MarketAnalysisRepository:
 
     def write_status(self, status: dict) -> None:
         self._atomic_write(self.root / "status.json", status)
+
+    def repair_checkpoint(self, *, max_age_hours: int = 6) -> dict | None:
+        path = self.root / "repair-checkpoint.json"
+        try:
+            payload = self._read_json(path)
+            saved_at = datetime.fromisoformat(str((payload or {}).get("savedAt") or "").replace("Z", "+00:00"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            payload = None
+            saved_at = None
+        now = datetime.now(timezone.utc).astimezone()
+        if not payload or not saved_at or saved_at.tzinfo is None or now - saved_at > timedelta(hours=max_age_hours):
+            path.unlink(missing_ok=True)
+            return None
+        if payload.get("stage") not in {"repair", "verify"} or not isinstance(payload.get("report"), dict):
+            path.unlink(missing_ok=True)
+            return None
+        return payload
+
+    def write_repair_checkpoint(self, *, stage: str, report: dict, errors: list[str] | None = None) -> None:
+        if stage not in {"repair", "verify"}:
+            raise ValueError("unsupported repair checkpoint stage")
+        self._atomic_write(self.root / "repair-checkpoint.json", {
+            "stage": stage,
+            "savedAt": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+            "errors": list(errors or [])[:30],
+            "report": report,
+        })
+
+    def clear_repair_checkpoint(self) -> None:
+        (self.root / "repair-checkpoint.json").unlink(missing_ok=True)

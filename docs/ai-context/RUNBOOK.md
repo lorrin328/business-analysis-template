@@ -7,6 +7,8 @@
 - 运行数据：`/var/lib/business-analysis-market`；受保护配置：`/etc/business-analysis-market/market-analysis.env`。
 - 手工触发：`sudo systemctl start market-analysis.service`；查看结果：`sudo systemctl status market-analysis.service --no-pager` 和 `sudo journalctl -u market-analysis.service -n 100 --no-pager`。
 - 失败处置：先查看 `status.json` 和 journal；不要删除 `latest.json`，模型失败时网页应继续展示上一期有效报告。
+- 失败恢复：服务保留6小时修复检查点；来源标题、日期、摘录等确定性错误会复用已有报告，不重新执行整轮模型研究。systemd 只进行一次延迟2分钟的自动重试，连续失败后应读取校验错误再处理。
+- 证据边界：独立抓取负责确定真实标题、发布日期、内容哈希和50字内原文锚点；发布前模块“事实”会收敛为最接近的已核验原文，判断、影响和行动属于模型推演，页面不得把二者混为同一事实层。
 - 凭据轮换：同时更新 DeepSeek Key 和主应用/研究服务的 AI 只读 Token；验证旧值失效后再启用 timer。
 
 ## Windows 本地开发环境

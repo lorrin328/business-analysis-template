@@ -7,11 +7,13 @@
 - 新增确定性发布门禁：四层完整、至少8项去重来源、至少8组查询主题、宏观/监管 A 级官方证据、同业 A/B 级一手证据、正文/PDF证据锚点、标题与发布日期匹配、事实数字与方向词对应、历史主题最近一期连续引用；失败不覆盖上一期有效报告。
 - 新增 Claude Code 非交互执行器和项目级 `life-insurance-market-research` Skill；模型固定使用 DeepSeek V4 Pro，研究工具只允许 WebSearch、WebFetch，内部经营数据只通过标准输入传入的聚合 AI 只读快照提供。
 - 新增 `market-ai` 隔离账号、报告与日志目录、受保护环境文件、oneshot service 和 `OnUnitActiveSec=3d` timer；无凭据时定时器不启用。
-- 市场模块专项 `12 passed`，项目全量与预检均为 `316 passed, 1 warning`，数据质量 `issues=0`；Python/JavaScript 语法、Skill官方结构校验和 `git diff --check` 通过。本机无 Bash，Linux脚本和真实 Claude Code 调用留待服务器验证。
+- 市场模块专项 `19 passed`，项目全量 `323 passed, 1 warning`；Python 语法和 `git diff --check` 通过。真实 Ubuntu、Claude Code、DeepSeek、证据抓取、检查点恢复和发布链路已完成生产前向验证。
 - 1440×1000 与 390×844 浏览器实测均渲染4张研究卡、5类变化卡，页面宽度分别为1440和390，无横向溢出。
-- 安全边界：用户在聊天中提供的模型 API Key 未写入代码、文档、命令或日志；因已暴露，必须吊销并通过受保护渠道提供新 Key 后才能启用真实定时任务。
+- 安全边界：用户在聊天中提供的模型 API Key 未写入代码、文档、命令或日志；生产凭据仅存于受保护环境文件。用户明确要求继续使用当前 Key，聊天暴露后的轮换风险仍保留在待办，不将其误记为已消除。
 - GitHub：功能提交 `2172277 feat: add rolling life insurance market research` 已推送 `origin/master`；GitHub Actions `Build Docker image #34`（运行 `29886859015`）成功。
-- 生产核验：`192.168.50.6` 健康检查正常但仍为 `v1.0.106`；当前执行环境没有可用 SSH 密钥或服务器凭据，密码认证被拒绝，因此本轮未在生产安装 v1.0.107，也未运行真实模型或启用三天定时器。
+- 生产部署：`192.168.50.6` 已部署 `v1.0.107`；Claude Code `2.1.217` 通过服务器既有 Node/npm 安装，研究账号、受保护配置、oneshot service 和 timer 已启用。安装过程修复了 Ubuntu npm 依赖冲突、环境文件 CRLF、主服务重启竞争、模型 JSON 包络、证据修复预算、DNS 固定连接校验和来源元数据偏差。
+- 首期发布：2026-07-22 15:33:49 成功发布 `market-20260722-153346`。来源标题、发布日期和 50 字内摘录由独立抓取结果确定；模块“事实”收敛为最匹配的已核验原文摘录，模型仅保留判断、影响和行动推演。失败检查点可在6小时内复用，服务只允许一次受控自动重试。
+- 生产验收：`business-analysis`、nginx 均为 active，`/api/health` 与 `/market-analysis.html` 返回200，未登录报告接口返回401；后端源码、环境文件、Git配置和市场数据目录的HTTP探测均返回404。timer 为 enabled/active，下一次触发为 2026-07-25 15:39:14 CST。
 
 ## 2026-07-20 v1.0.106 人均保费与顶部操作优化
 

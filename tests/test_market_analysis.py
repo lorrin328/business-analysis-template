@@ -8,10 +8,10 @@ from fastapi.testclient import TestClient
 
 from main import app
 from market_analysis.repository import MarketAnalysisRepository
-from market_analysis.source_verifier import SourceVerificationError, _ensure_public_url, _published_at_matches, _title_matches
+from market_analysis.source_verifier import SourceVerificationError, _ensure_public_url, _open_pinned, _published_at_matches, _title_matches, align_module_facts_to_verified_excerpts, verify_report_sources
 from market_analysis.validator import ReportValidationError, validate_report
 import run_market_research
-from run_market_research import parse_claude_result, redact
+from run_market_research import clamp_source_excerpts, parse_claude_result, redact
 
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -184,7 +184,19 @@ def test_claude_result_parser_and_secret_redaction():
     report = valid_report()
     envelope = {"type": "result", "result": __import__("json").dumps(report, ensure_ascii=False)}
     assert parse_claude_result(__import__("json").dumps(envelope, ensure_ascii=False))["reportId"] == report["reportId"]
+    wrapped = {"type": "result", "result": f"<think>已完成核验</think>\n```json\n{json.dumps(report, ensure_ascii=False)}\n```"}
+    assert parse_claude_result(json.dumps(wrapped, ensure_ascii=False))["reportId"] == report["reportId"]
     assert "sk-example-secret-value" not in redact("token=sk-example-secret-value")
+
+
+def test_long_source_excerpt_is_clamped_to_best_fact_window():
+    report = valid_report()
+    report["modules"][3]["fact"] = "内部快照显示2026年期交保费123.45万元"
+    internal = next(source for source in report["sources"] if source["id"] == "S4")
+    internal["excerpt"] = "无关背景" * 20 + "内部快照显示2026年期交保费123.45万元，业务保持稳定"
+    clamp_source_excerpts(report)
+    assert len(internal["excerpt"]) <= 50
+    assert "2026年期交保费123.45万元" in internal["excerpt"]
 
 
 def test_worker_passes_private_context_over_stdin_and_restricts_tools(tmp_path, monkeypatch):
@@ -214,8 +226,81 @@ def test_worker_passes_private_context_over_stdin_and_restricts_tools(tmp_path, 
     assert captured["command"][0] == "/usr/local/bin/claude"
     assert "Read" not in captured["command"]
     assert "WebSearch" in captured["command"] and "WebFetch" in captured["command"]
+    schema_index = captured["command"].index("--json-schema") + 1
+    assert json.loads(captured["command"][schema_index])["properties"]["sources"]["minItems"] == 8
     assert "research_context" in captured["input"]
     assert captured["input"] not in " ".join(captured["command"])
+
+
+def test_worker_runs_bounded_evidence_repair_before_publication(tmp_path, monkeypatch):
+    invalid_report = valid_report()
+    invalid_report["modules"][1]["evidenceIds"] = ["S3"]
+    invalid_report["modules"][2]["evidenceIds"] = ["S8"]
+    repaired_report = valid_report()
+    prompts = []
+
+    def fake_run(command, **kwargs):
+        prompts.append(kwargs.get("input"))
+        payload = invalid_report if len(prompts) == 1 else repaired_report
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps({"result": json.dumps(payload, ensure_ascii=False)}), stderr="")
+
+    def fake_verify(report, **kwargs):
+        verified_at = run_market_research.now_iso()
+        for source in report["sources"]:
+            source["retrievedAt"] = verified_at
+            source["verification"]["verifiedAt"] = verified_at
+        return report
+
+    monkeypatch.setattr(run_market_research, "fetch_internal_snapshot", lambda: {"year": 2026})
+    monkeypatch.setattr(run_market_research.shutil, "which", lambda value: "/usr/local/bin/claude")
+    monkeypatch.setattr(run_market_research.subprocess, "run", fake_run)
+    monkeypatch.setattr(run_market_research, "verify_report_sources", fake_verify)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+
+    result = run_market_research.run_research(MarketAnalysisRepository(tmp_path))
+    assert result["reviewStatus"] == "machine_validated"
+    assert len(prompts) == 2
+    assert "validationErrors" in prompts[1]
+    assert "Regulation modules must cite" in prompts[1]
+    assert "internalBusinessSnapshot" in prompts[1]
+
+
+def test_private_repair_checkpoint_is_resumable_and_clearable(tmp_path):
+    repository = MarketAnalysisRepository(tmp_path)
+    report = valid_report()
+    repository.write_repair_checkpoint(stage="repair", report=report, errors=["evidence repair required"])
+    checkpoint = repository.repair_checkpoint()
+    assert checkpoint["stage"] == "repair"
+    assert checkpoint["report"]["reportId"] == report["reportId"]
+    assert checkpoint["errors"] == ["evidence repair required"]
+    repository.clear_repair_checkpoint()
+    assert repository.repair_checkpoint() is None
+
+
+def test_metadata_only_checkpoint_skips_another_model_call(tmp_path, monkeypatch):
+    repository = MarketAnalysisRepository(tmp_path)
+    report = valid_report()
+    repository.write_repair_checkpoint(
+        stage="repair",
+        report=report,
+        errors=["source S1 evidence excerpt was not found in the source body"],
+    )
+
+    def fake_verify(candidate, **kwargs):
+        verified_at = run_market_research.now_iso()
+        for source in candidate["sources"]:
+            source["retrievedAt"] = verified_at
+            source["verification"]["verifiedAt"] = verified_at
+        return candidate
+
+    monkeypatch.setattr(run_market_research, "fetch_internal_snapshot", lambda: {"year": 2026})
+    monkeypatch.setattr(run_market_research.shutil, "which", lambda value: "/usr/local/bin/claude")
+    monkeypatch.setattr(run_market_research.subprocess, "run", lambda *args, **kwargs: pytest.fail("model should not run"))
+    monkeypatch.setattr(run_market_research, "verify_report_sources", fake_verify)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+    result = run_market_research.run_research(repository)
+    assert result["reviewStatus"] == "machine_validated"
+    assert repository.repair_checkpoint() is None
 
 
 def test_source_verifier_rejects_private_and_credentialed_urls():
@@ -227,6 +312,94 @@ def test_source_verifier_rejects_private_and_credentialed_urls():
     assert not _title_matches("保险业经营情况", "网站登录验证")
     assert _published_at_matches("2026-07-21T09:00:00+08:00", "发布时间：2026年7月21日")
     assert not _published_at_matches("2026-07-21", "发布时间：2026年7月20日")
+
+
+def test_pinned_source_peer_is_checked_before_connection_close(monkeypatch):
+    class FakeSocket:
+        def getpeername(self):
+            return ("93.184.216.34", 80)
+
+    class FakeHeaders:
+        def get_content_charset(self):
+            return "utf-8"
+
+    class FakeResponse:
+        status = 200
+        headers = FakeHeaders()
+
+        def getheader(self, name):
+            return "text/plain" if name == "Content-Type" else None
+
+        def read(self, _limit):
+            return b"verified body"
+
+    class FakeConnection:
+        def __init__(self, *_args, **_kwargs):
+            self.sock = None
+
+        def connect(self):
+            self.sock = FakeSocket()
+
+        def request(self, *_args, **_kwargs):
+            return None
+
+        def getresponse(self):
+            self.sock = None
+            return FakeResponse()
+
+        def close(self):
+            self.sock = None
+
+    monkeypatch.setattr("market_analysis.source_verifier._ensure_public_url", lambda _url: ["93.184.216.34"])
+    monkeypatch.setattr("market_analysis.source_verifier.http.client.HTTPConnection", FakeConnection)
+    status, content_type, charset, body, final_url = _open_pinned("http://example.com/source", 5, 1024)
+    assert (status, content_type, charset, body, final_url) == (
+        200, "text/plain", "utf-8", b"verified body", "http://example.com/source"
+    )
+
+
+def test_source_verifier_canonicalizes_metadata_but_keeps_fact_gate(monkeypatch):
+    report = valid_report()
+    source = report["sources"][0]
+    source["title"] = "模型声明的错误标题"
+    source["publishedAt"] = "2026-07-20"
+    source["excerpt"] = "模型生成但网页中不存在的摘录"
+    report["modules"][0]["fact"] = "官方正文确认2026年保费增长12.3%"
+    body = "网站导航。官方正文确认2026年保费增长12.3%，并披露统计范围。其他内容。"
+
+    def fake_fetch(_url):
+        return {
+            "status": "verified",
+            "httpStatus": 200,
+            "finalUrl": source["url"],
+            "pageTitle": "实际网页标题",
+            "contentType": "text/html",
+            "verifiedAt": "2026-07-22T14:00:00+08:00",
+            "contentHash": "b" * 64,
+            "bytesRead": len(body.encode("utf-8")),
+            "truncated": False,
+            "_body": body,
+        }
+
+    monkeypatch.setattr("market_analysis.source_verifier._fetch_external", fake_fetch)
+    verify_report_sources({"sources": [source], "modules": [report["modules"][0]]}, internal_content_hash="a" * 64, internal_content_text="{}")
+    assert source["title"] == "实际网页标题"
+    assert source["publishedAt"] is None
+    assert "2026年保费增长12.3%" in source["excerpt"]
+    assert source["verification"]["excerptMatched"] is True
+
+
+def test_module_facts_are_aligned_to_the_closest_verified_excerpt():
+    report = valid_report()
+    report["modules"][0]["fact"] = "官方数据显示2026年保费增长12.3%，趋势进一步增强。"
+    report["modules"][0]["evidenceIds"] = ["S1", "S2"]
+    report["sources"][0]["excerpt"] = "官方数据显示2026年保费增长12.3%"
+    report["sources"][1]["excerpt"] = "另一项无关但已核验的市场事实"
+
+    align_module_facts_to_verified_excerpts(report)
+
+    assert report["modules"][0]["fact"] == "官方数据显示2026年保费增长12.3%"
+    validate_report(report)
 
 
 def test_market_analysis_page_is_modular_and_whitelisted():
@@ -251,9 +424,20 @@ def test_market_timer_runs_every_three_days_and_template_has_no_secret():
     timer = open(os.path.join(ROOT, "deploy", "market-analysis.timer"), "r", encoding="utf-8").read()
     env_template = open(os.path.join(ROOT, "deploy", "market-analysis.env.example"), "r", encoding="utf-8").read()
     service = open(os.path.join(ROOT, "deploy", "market-analysis.service"), "r", encoding="utf-8").read()
+    installer = open(os.path.join(ROOT, "deploy", "install-market-analysis.sh"), "r", encoding="utf-8").read()
+    configurator = open(os.path.join(ROOT, "deploy", "configure-market-analysis.sh"), "r", encoding="utf-8").read()
     assert "OnUnitActiveSec=3d" in timer
     assert "Persistent=true" in timer
     assert "ANTHROPIC_AUTH_TOKEN=\n" in env_template
     assert "AI_READONLY_TOKEN=\n" in env_template
     assert "NoNewPrivileges=true" in service
     assert "ProtectSystem=strict" in service
+    assert "Restart=on-failure" in service
+    assert "StartLimitBurst=2" in service
+    assert "tr -d '\\r'" in installer
+    assert "apt-get install -y curl ca-certificates nodejs npm" not in installer
+    assert "@anthropic-ai/claude-code@latest" in installer
+    assert "set +x" in configurator
+    assert "read -r -s" in configurator
+    assert "openssl rand -hex 32" in configurator
+    assert configurator.index("/api/health") < configurator.index("systemctl start --no-block market-analysis.service")

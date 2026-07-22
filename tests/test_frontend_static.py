@@ -50,7 +50,7 @@ def test_product_config_does_not_embed_admin_token_and_uses_protection_kpi():
     kpi = read_js("kpi-cards.js")
     combined = html + "\n" + kpi
     api_client = read_js("api-client.js")
-    assert "Aaaaa8888%" not in api_client
+    assert "example-server-password" not in api_client
     assert "DEFAULT_ADMIN_TOKEN" not in api_client
     assert "kpi.protection_total" in combined
     assert "未配置保障类目标" in combined
