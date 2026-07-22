@@ -10,6 +10,8 @@
 - 市场模块专项 `12 passed`，项目全量与预检均为 `316 passed, 1 warning`，数据质量 `issues=0`；Python/JavaScript 语法、Skill官方结构校验和 `git diff --check` 通过。本机无 Bash，Linux脚本和真实 Claude Code 调用留待服务器验证。
 - 1440×1000 与 390×844 浏览器实测均渲染4张研究卡、5类变化卡，页面宽度分别为1440和390，无横向溢出。
 - 安全边界：用户在聊天中提供的模型 API Key 未写入代码、文档、命令或日志；因已暴露，必须吊销并通过受保护渠道提供新 Key 后才能启用真实定时任务。
+- GitHub：功能提交 `2172277 feat: add rolling life insurance market research` 已推送 `origin/master`；GitHub Actions `Build Docker image #34`（运行 `29886859015`）成功。
+- 生产核验：`192.168.50.6` 健康检查正常但仍为 `v1.0.106`；当前执行环境没有可用 SSH 密钥或服务器凭据，密码认证被拒绝，因此本轮未在生产安装 v1.0.107，也未运行真实模型或启用三天定时器。
 
 ## 2026-07-20 v1.0.106 人均保费与顶部操作优化
 
