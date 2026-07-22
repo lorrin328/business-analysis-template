@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>寿险市场研判</title>
+  <script src="/js/api-client.js?v=1.0.107"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #08111f;
+      --panel: #111f32;
+      --panel-2: #172a42;
+      --line: #29415f;
+      --text: #edf5ff;
+      --muted: #9bb0c9;
+      --blue: #69a4ff;
+      --cyan: #47d7cf;
+      --green: #47c98a;
+      --gold: #f2bd59;
+      --red: #ff7c7c;
+      --purple: #ab8bff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: radial-gradient(circle at 12% 0, #102b45 0, var(--bg) 42%); color: var(--text); font: 14px/1.6 "Microsoft YaHei", Arial, sans-serif; }
+    button, select { font: inherit; color: inherit; }
+    button:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid rgba(105,164,255,.55); outline-offset: 2px; }
+    .header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 64px; padding: 10px 28px; background: rgba(8,17,31,.93); border-bottom: 1px solid var(--line); backdrop-filter: blur(16px); }
+    .brand { display: flex; align-items: baseline; gap: 12px; }
+    .brand strong { font-size: 19px; }
+    .brand span { color: var(--cyan); font-size: 12px; border: 1px solid rgba(71,215,207,.35); border-radius: 999px; padding: 2px 8px; }
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+    .btn, select { min-height: 38px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); cursor: pointer; }
+    .btn.primary { background: #2e67c7; border-color: #4784e7; }
+    main { max-width: 1500px; margin: 0 auto; padding: 24px; }
+    .hero { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(300px, .7fr); gap: 16px; margin-bottom: 16px; }
+    .hero-main, .run-card, .signal-card, .module-card, .action-card, .source-card, .empty { background: linear-gradient(145deg, rgba(23,42,66,.96), rgba(13,27,45,.96)); border: 1px solid var(--line); border-radius: 14px; }
+    .hero-main { padding: 24px; position: relative; overflow: hidden; }
+    .hero-main::after { content: ""; position: absolute; width: 260px; height: 260px; right: -110px; top: -130px; border-radius: 50%; background: rgba(71,215,207,.11); }
+    .eyebrow { color: var(--cyan); letter-spacing: .12em; font-size: 12px; font-weight: 700; }
+    h1 { font-size: clamp(24px, 3vw, 36px); line-height: 1.25; margin: 10px 0; max-width: 980px; }
+    .hero-summary { color: #c6d5e8; max-width: 980px; margin: 0; }
+    .hero-evidence { margin-top: 14px; position: relative; z-index: 1; }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; color: var(--muted); border: 1px solid var(--line); background: rgba(8,17,31,.4); border-radius: 999px; padding: 3px 9px; font-size: 12px; }
+    .run-card { padding: 18px; display: grid; align-content: start; gap: 12px; }
+    .run-card h2, .section-head h2 { margin: 0; font-size: 17px; }
+    .run-state { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+    .dot.success { background: var(--green); box-shadow: 0 0 0 5px rgba(71,201,138,.1); }
+    .dot.running { background: var(--gold); box-shadow: 0 0 0 5px rgba(242,189,89,.1); }
+    .dot.failed { background: var(--red); box-shadow: 0 0 0 5px rgba(255,124,124,.1); }
+    .run-message, .run-note { color: var(--muted); }
+    .history-control { display: grid; gap: 6px; }
+    .history-control select { width: 100%; }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin: 28px 0 12px; }
+    .section-head p { color: var(--muted); margin: 4px 0 0; }
+    .signal-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+    .signal-card { padding: 14px; min-height: 150px; }
+    .signal-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; margin-bottom: 10px; }
+    .signal-count { color: var(--blue); }
+    .signal-list { display: grid; gap: 8px; }
+    .signal-item { padding-top: 8px; border-top: 1px solid rgba(41,65,95,.65); }
+    .signal-item strong { display: block; font-size: 13px; }
+    .signal-item span { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .signal-empty { color: var(--muted); font-size: 12px; }
+    .signal-more { border-top: 1px solid rgba(41,65,95,.65); padding-top: 8px; }
+    .signal-more > summary { color: var(--blue); cursor: pointer; font-size: 12px; }
+    .research-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 14px; }
+    .research-tab { border: 1px solid var(--line); background: rgba(17,31,50,.75); border-radius: 999px; padding: 8px 14px; cursor: pointer; }
+    .research-tab.active { background: #285da9; border-color: #4d88df; }
+    .module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .module-card { padding: 18px; display: grid; gap: 14px; position: relative; overflow: hidden; }
+    .module-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--blue); }
+    .module-card[data-section="regulation"]::before { background: var(--gold); }
+    .module-card[data-section="peers"]::before { background: var(--purple); }
+    .module-card[data-section="business_line"]::before { background: var(--green); }
+    .module-top { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+    .module-top h3 { margin: 0; font-size: 17px; }
+    .module-question { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .confidence { flex: 0 0 auto; border-radius: 999px; padding: 2px 8px; border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+    .confidence.high { color: var(--green); border-color: rgba(71,201,138,.35); }
+    .confidence.medium { color: var(--gold); border-color: rgba(242,189,89,.35); }
+    .module-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .history-badge { flex: 0 0 auto; border-radius: 999px; padding: 2px 8px; border: 1px solid rgba(171,139,255,.4); color: #c9b9ff; font-size: 12px; }
+    .module-fields { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+    .field { background: rgba(8,17,31,.38); border: 1px solid rgba(41,65,95,.75); border-radius: 10px; padding: 12px; }
+    .field span { display: block; color: var(--muted); font-size: 11px; letter-spacing: .08em; margin-bottom: 5px; }
+    .field p { margin: 0; }
+    .field.judgment { border-color: rgba(105,164,255,.45); }
+    .field.impact { border-color: rgba(71,201,138,.4); }
+    .evidence-row { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+    .evidence-row > span { color: var(--muted); font-size: 12px; }
+    .evidence-chip { color: #b9d5ff; border: 1px solid rgba(105,164,255,.35); border-radius: 999px; padding: 2px 8px; font-size: 12px; background: rgba(105,164,255,.08); text-decoration: none; }
+    .topic-history { border-top: 1px solid rgba(41,65,95,.7); padding-top: 9px; }
+    .topic-history summary { color: var(--purple); cursor: pointer; font-size: 12px; }
+    .timeline { display: grid; gap: 8px; margin-top: 9px; }
+    .timeline-item { border-left: 2px solid rgba(171,139,255,.5); padding: 5px 0 5px 10px; }
+    .timeline-item strong { font-size: 12px; }
+    .timeline-item span { display: block; color: var(--muted); font-size: 11px; }
+    .previous-link { border: 0; padding: 0; background: transparent; color: var(--blue); cursor: pointer; font-size: 12px; }
+    .actions-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .action-card { padding: 16px; }
+    .action-top { display: flex; justify-content: space-between; gap: 10px; }
+    .action-card h3 { margin: 0; font-size: 15px; }
+    .priority { color: var(--gold); font-weight: 700; }
+    .action-text { margin: 12px 0; color: #d4e0ef; }
+    .action-meta { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+    details.sources { margin-top: 24px; }
+    details.sources > summary { cursor: pointer; color: var(--blue); font-weight: 700; padding: 12px 0; }
+    .source-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+    .source-card { padding: 14px; }
+    .source-card a { color: #c9ddff; font-weight: 700; text-decoration: none; }
+    .source-card p { color: var(--muted); margin: 6px 0; font-size: 12px; }
+    .source-meta { display: flex; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 11px; }
+    .limitations { color: var(--muted); margin-top: 16px; }
+    .empty { padding: 38px; text-align: center; color: var(--muted); }
+    .hidden { display: none !important; }
+    @media (max-width: 1100px) { .hero { grid-template-columns: 1fr; } .signal-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } .actions-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 760px) { .header { align-items: flex-start; padding: 12px 16px; } .brand { display: grid; gap: 2px; } main { padding: 16px; } .module-grid, .source-grid, .actions-grid, .signal-grid { grid-template-columns: 1fr; } .module-fields { grid-template-columns: 1fr; } .hero-main { padding: 18px; } }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="brand"><strong>寿险市场研判</strong><span>每3天滚动更新</span></div>
+    <div class="header-actions"><button class="btn" id="backButton" type="button">返回经营看板</button><button class="btn primary" id="refreshButton" type="button">刷新</button></div>
+  </header>
+  <main>
+    <section class="hero">
+      <article class="hero-main">
+        <div class="eyebrow">EXECUTIVE JUDGMENT</div>
+        <h1 id="reportHeadline">正在读取最新市场研判…</h1>
+        <p class="hero-summary" id="reportSummary"></p>
+        <div class="hero-evidence" id="executiveEvidence"></div>
+        <div class="meta-row" id="reportMeta"></div>
+      </article>
+      <aside class="run-card">
+        <h2>研究运行状态</h2>
+        <div class="run-state"><span class="dot" id="runDot"></span><span id="runState">读取中</span></div>
+        <div class="run-message" id="runMessage"></div>
+        <div class="history-control"><label for="historySelect">历史期次</label><select id="historySelect" aria-label="选择历史研究期次"><option value="">最新一期</option></select></div>
+        <div class="run-note" id="coverageNote"></div>
+      </aside>
+    </section>
+
+    <div id="emptyState" class="empty hidden">尚无通过证据校验的报告。定时研究完成后，本页会自动展示第一期结果。</div>
+    <div id="reportContent" class="hidden">
+      <section>
+        <div class="section-head"><div><h2>本期变化信号</h2><p>历史判断经当前证据重新核验后，只保留发生了什么变化。</p></div></div>
+        <div class="signal-grid" id="signalGrid"></div>
+      </section>
+
+      <section>
+        <div class="section-head"><div><h2>四层研判模块</h2><p>一个模块只回答一个问题；事实、判断、影响与复核条件分开呈现。</p></div></div>
+        <nav class="research-nav" id="researchNav" aria-label="研究模块筛选"></nav>
+        <div class="module-grid" id="moduleGrid"></div>
+      </section>
+
+      <section>
+        <div class="section-head"><div><h2>条线行动提示</h2><p>建议不是事实结论，按触发条件和复核节奏执行。</p></div></div>
+        <div class="actions-grid" id="actionsGrid"></div>
+      </section>
+
+      <details class="sources">
+        <summary id="sourceSummary">展开证据与来源</summary>
+        <div class="source-grid" id="sourceGrid"></div>
+        <div class="limitations" id="limitations"></div>
+      </details>
+    </div>
+  </main>
+  <script src="/js/market-analysis.js?v=1.0.107"></script>
+</body>
+</html>

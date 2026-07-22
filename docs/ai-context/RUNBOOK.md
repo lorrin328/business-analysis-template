@@ -1,5 +1,14 @@
 # 运行手册
 
+## 市场研判服务
+
+- 安装与完整运维流程见 `docs/MARKET_ANALYSIS.md`。
+- 生产服务：`market-analysis.service`；定时器：`market-analysis.timer`，按 `OnUnitActiveSec=3d` 滚动运行。
+- 运行数据：`/var/lib/business-analysis-market`；受保护配置：`/etc/business-analysis-market/market-analysis.env`。
+- 手工触发：`sudo systemctl start market-analysis.service`；查看结果：`sudo systemctl status market-analysis.service --no-pager` 和 `sudo journalctl -u market-analysis.service -n 100 --no-pager`。
+- 失败处置：先查看 `status.json` 和 journal；不要删除 `latest.json`，模型失败时网页应继续展示上一期有效报告。
+- 凭据轮换：同时更新 DeepSeek Key 和主应用/研究服务的 AI 只读 Token；验证旧值失效后再启用 timer。
+
 ## Windows 本地开发环境
 
 ### 前置工具

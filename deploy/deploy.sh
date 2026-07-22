@@ -205,6 +205,15 @@ for runtime_env in "$APP_DIR/deploy/.admin_env" "$APP_DIR/deploy/.ai_env" "$APP_
   fi
 done
 
+# Claude Code 已安装时同步市场研判的隔离账号、目录、服务和三天定时器；
+# 未安装时不影响经营看板主服务，首次安装使用 deploy/install-market-analysis.sh。
+if command -v claude >/dev/null 2>&1 || [ -x /usr/local/bin/claude ]; then
+  bash "$APP_DIR/deploy/install-market-analysis.sh" --skip-cli-install || \
+    echo "⚠ 市场研判服务同步失败，经营看板继续部署；请单独检查 install-market-analysis.sh"
+else
+  echo "⚠ 尚未安装 Claude Code CLI；市场研判页面可用，但定时研究尚未启用"
+fi
+
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"

@@ -37,8 +37,15 @@ bak/
 ~$*.docx
 
 # === 工具配置 ===
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/skills/life-insurance-market-research/
+!.claude/skills/life-insurance-market-research/**
 .cursor/
+
+# 市场研判运行数据与本地密钥
+backend/market_analysis_data/
+deploy/.market_analysis_env
 
 # === OS ===
 .DS_Store

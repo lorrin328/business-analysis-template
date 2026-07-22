@@ -2,6 +2,11 @@
 
 ## 2026-07-14 审计整改
 
+- 【P0/上线阻塞】吊销聊天中已暴露的 DeepSeek API Key，生成新 Key 后以 root 可读、`market-analysis` 组只读的方式写入 `/etc/business-analysis-market/market-analysis.env`；不得写入代码、文档、聊天、Git 或命令历史。
+- 【P0/上线阻塞】轮换生产 `AI_READONLY_TOKEN`，同步更新主应用 `.ai_env` 与市场研判受保护环境文件，然后验证旧 Token 已失效。
+- 【P1】在服务器执行 `deploy/install-market-analysis.sh`，验证 Claude Code 版本、DeepSeek V4 Pro 连通、WebSearch/WebFetch、Skill 自动发现、报告证据门禁、timer `OnUnitActiveSec=3d` 和失败保留上一期。
+- 【P1】真实运行首三期检查来源覆盖、微信公众号可达率、重复模块、历史反转判断和条线行动可执行性，再决定是否将 Skill 从“待真实任务前向验证”转为稳定观察期。
+
 - 【P0/立即】2026-07-20 首轮手工部署的 PTY 将 Ubuntu SSH 口令回显到本地执行日志。应立即轮换该服务器 SSH 密码；如该口令在其他系统复用，同步轮换，并更新受保护的凭据存储。后续部署固定使用无 PTY、关闭回显的凭据输入方式。
 - 【已完成 2026-07-20】修复 nginx 与 FastAPI 静态目录：取消 FastAPI 项目根目录 `/static` 挂载，nginx 禁止匿名访问 `/backend`、`/deploy`、`/.git`、数据库、环境文件、目标 JSON、Excel 和内部文档，只发布业务页面与前端资源。
 - 【P0/立即】nginx 历史日志已确认敏感路径曾有 `11` 次 200、来自 `2` 个私网客户端；轮换 `.ai_env` 等现用生产凭据并撤销旧 Session。webhook 自动部署已暂停且 sudoers 已移除。

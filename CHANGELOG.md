@@ -1,4 +1,16 @@
 # 经营分析看板 - 需求与开发文档
+## v1.0.107 更新说明（2026-07-22）
+**类型**：feature / market-research / claude-code / frontend / automation
+
+**变更内容**：
+- 新增 `market-analysis.html` 和 `js/market-analysis.js`，以执行摘要、五类历史变化、四层原子研判、条线行动和证据台账分区展示，避免长文本和数据堆叠。
+- 新增 `/api/market-analysis/latest|history|reports/{id}|status` 只读接口及 `market_analysis` 权限；高级用户默认可读，普通用户默认关闭，管理员可单独授权。
+- 新增文件型报告仓库与发布校验器；模型输出只有在四层完整、至少八项来源、正文证据锚点、事实与数字对应、历史引用连续等门禁全部通过时才更新 latest，失败继续保留上一期。
+- 新增 `backend/run_market_research.py`，通过 Claude Code 非交互模式调用 DeepSeek Anthropic 兼容端点；工具只开放 WebSearch、WebFetch，不开放本地 Read、Bash、Edit、Write、Task。
+- 新增项目 `.claude/skills/life-insurance-market-research`，并在 AISKILL 保存源码真相源；搜索矩阵覆盖政府/监管/统计/公司官网/官方微信公众号/协会/权威研究与媒体。
+- 新增隔离的 `market-ai` systemd oneshot 和每三天 timer；报告存储、运行账号、模型凭据与主应用分离。真实凭据不进入项目、Git、日志或网页。
+- 版本号和前端缓存参数统一到 `v1.0.107`。
+
 ## v1.0.106 更新说明（2026-07-20）
 **类型**：fix / kpi / usability
 

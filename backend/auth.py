@@ -42,6 +42,7 @@ MODULE_KEYS = [
     "honor_upload",
     "scheme_calculation",
     "scheme_upload",
+    "market_analysis",
 ]
 
 ROLE_DEFAULT_PERMISSIONS = {
@@ -73,6 +74,7 @@ ROLE_DEFAULT_PERMISSIONS = {
         "honor_upload": False,
         "scheme_calculation": True,
         "scheme_upload": False,
+        "market_analysis": False,
     },
 }
 

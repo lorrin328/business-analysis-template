@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-本项目是太平人寿网电多元条线经营分析看板，服务经营分析、目标追踪、机构与队伍分析、产品结构分析、Excel 数据导入、权限管理、AI 只读接口、星钻联盟荣誉体系和人员管理等场景。
+本项目是太平人寿网电多元条线经营分析看板，服务经营分析、目标追踪、机构与队伍分析、产品结构分析、Excel 数据导入、权限管理、AI 只读接口、星钻联盟荣誉体系、人员管理和寿险市场滚动研判等场景。
 
 ## 技术栈
 
@@ -21,6 +21,8 @@
 - 首次初始化管理员必须通过 `DEFAULT_ADMIN_PASSWORD` 环境变量提供密码。
 - 生产环境默认关闭公开自助注册；如需临时开放，必须显式设置 `AUTH_ALLOW_PUBLIC_REGISTRATION=1`。
 - 默认镜像发布目标为 `ghcr.io/lorrin328/business-analysis-template`。
+- 市场研判由独立 `market-ai` 账号调用 Claude Code + DeepSeek V4 Pro，每三天生成一次结构化报告；FastAPI 只读取已通过证据校验的 JSON，不在请求线程中启动模型。
+- 市场研判生产数据目录为 `/var/lib/business-analysis-market`，受保护配置为 `/etc/business-analysis-market/market-analysis.env`，不得进入代码树。
 
 ## 关键约束
 

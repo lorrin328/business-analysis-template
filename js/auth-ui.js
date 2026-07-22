@@ -23,7 +23,8 @@
     honor_admin: '星钻规则管理',
     honor_upload: '星钻上传',
     scheme_calculation: '方案计算',
-    scheme_upload: '方案上传'
+    scheme_upload: '方案上传',
+    market_analysis: '市场研判'
   };
   const ROLE_LABELS = { admin: '管理员组', senior: '高级用户组', normal: '普通用户组' };
   const ROLE_OPTIONS = ['normal', 'senior', 'admin'];

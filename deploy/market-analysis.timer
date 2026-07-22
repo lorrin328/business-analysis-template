@@ -1,0 +1,12 @@
+[Unit]
+Description=Run life-insurance market research every three days
+
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=3d
+RandomizedDelaySec=20min
+Persistent=true
+Unit=market-analysis.service
+
+[Install]
+WantedBy=timers.target

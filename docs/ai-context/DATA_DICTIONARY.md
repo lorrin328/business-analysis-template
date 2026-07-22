@@ -1,5 +1,17 @@
 # 数据字典
 
+## 2026-07-22 市场研判报告
+
+| 数据项 | 规则 |
+|---|---|
+| 生产目录 | `/var/lib/business-analysis-market`；`reports/*.json` 保存历史，`latest.json` 指向最近有效报告，`status.json` 保存最近运行状态。 |
+| `modules` | 原子研究卡片；`section` 仅为 `macro`、`regulation`、`peers`、`business_line`，每项包含 `fact`、`judgment`、`impact`、`watchCondition`、`confidence`、`evidenceIds`。 |
+| `changeSignals` | `persistent`、`strengthened`、`reversed`、`new`、`expired` 五类滚动历史判断。 |
+| `sources` | 证据台账；A=政府/监管/统计原文，B=协会/公司官网或官方微信，C=权威研究/媒体，D=转载或线索；D 不得单独支撑判断。 |
+| 发布门禁 | 四层均至少1个模块；至少8项去重来源与8组查询主题；宏观、监管含 A 级证据；同业含 A/B 级一手证据；所有引用必须可解析。 |
+| 内部数据 | 使用 `internal://dashboard-snapshot/<year>` 标识聚合经营快照，不保存客户级、保单级和个人级明细。 |
+| 权限 | API 统一使用 `market_analysis`；管理员和高级用户默认可读，普通用户默认关闭。 |
+
 ## 2026-07-20 可信计算与运行存储边界
 
 | 数据项 | 规则 |
