@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from db.connection import get_db
+from services.raw_table_reader import quote_identifier, raw_table_column_set
 
 from .config import MONTHLY_RULES, TEAM_RULES
 from .normalizers import (
@@ -46,6 +47,12 @@ def _month_end(year: int, month: int) -> datetime:
     return datetime(int(year), int(month), calendar.monthrange(int(year), int(month))[1], 23, 59, 59)
 
 
+def _source_column_expr(columns: set[str], column: str) -> str:
+    if column in columns:
+        return quote_identifier(column)
+    return f"NULL AS {quote_identifier(column)}"
+
+
 def load_staff(year: int, month: int) -> tuple[
     dict[tuple[int, int], dict[tuple[str, str], dict[str, Any]]],
     list[dict[str, Any]],
@@ -54,6 +61,29 @@ def load_staff(year: int, month: int) -> tuple[
     staff_rows: dict[tuple[int, int], dict[tuple[str, str], dict[str, Any]]] = defaultdict(dict)
     source_rows: list[dict[str, Any]] = []
     with get_db() as conn:
+        columns = raw_table_column_set(conn, "hr_data")
+        required_columns = [
+            "统计年",
+            "统计月",
+            "销售机构名称",
+            "业务模式名称",
+            "人员代码",
+            "月末在职人力",
+        ]
+        missing_required = [column for column in required_columns if column not in columns]
+        if missing_required:
+            raise ValueError(f"人力基表缺少星钻计算必要列：{', '.join(missing_required)}")
+        selected_columns = [
+            *required_columns,
+            "人员姓名",
+            "职等",
+            "职级",
+            "入职年",
+            "入职月",
+            "营业组CODE",
+            "营业部CODE",
+        ]
+        select_list = ", ".join(_source_column_expr(columns, column) for column in selected_columns)
         latest = conn.execute(
             """
             SELECT CAST("统计年" AS INTEGER) AS year, CAST("统计月" AS INTEGER) AS month
@@ -68,9 +98,8 @@ def load_staff(year: int, month: int) -> tuple[
         status_month = min(int(month), latest_month)
         load_until = int(month)
         rows = conn.execute(
-            """
-            SELECT "统计年", "统计月", "销售机构名称", "业务模式名称", "人员代码", "人员姓名",
-                   "职等", "职级", "入职年", "入职月", "月末在职人力", "营业组CODE", "营业部CODE"
+            f"""
+            SELECT {select_list}
             FROM hr_data
             WHERE CAST("统计年" AS INTEGER) = ? AND CAST("统计月" AS INTEGER) <= ?
             """,

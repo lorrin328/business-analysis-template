@@ -38,6 +38,71 @@ def _setup_source_tables(db_path):
     conn.close()
 
 
+def _setup_source_tables_without_entry_columns(db_path):
+    _setup_source_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute("ALTER TABLE hr_data RENAME TO hr_data_with_entry_columns")
+    conn.execute(
+        """
+        CREATE TABLE hr_data AS
+        SELECT "统计年", "统计月", "销售机构名称", "业务模式名称",
+               "人员代码", "人员姓名", "职等", "职级",
+               "月末在职人力", "营业组CODE", "营业部CODE"
+        FROM hr_data_with_entry_columns
+        WHERE 0
+        """
+    )
+    conn.execute("DROP TABLE hr_data_with_entry_columns")
+    conn.commit()
+    conn.close()
+
+
+def test_honor_calculator_tolerates_missing_entry_date_columns(tmp_path, monkeypatch):
+    db_path = tmp_path / "honor_calc_missing_entry_columns.db"
+    _setup_source_tables_without_entry_columns(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        INSERT INTO hr_data (
+            "统计年", "统计月", "销售机构名称", "业务模式名称", "人员代码",
+            "人员姓名", "职等", "职级", "月末在职人力", "营业组CODE", "营业部CODE"
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (2026, 7, "上海", "OTO", "1001", "张三", "客户经理", "", 1, "G1", "D1"),
+    )
+    conn.execute(
+        "INSERT INTO performance VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "2026-07-01",
+            "上海",
+            "OTO",
+            "1001",
+            "P1",
+            "2026-07-10 00:00:00",
+            "2026-07-11 00:00:00",
+            "",
+            "一年期以上",
+            10,
+            20000,
+            20000,
+            20000,
+            "A",
+            "产品A",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    _patch_db(monkeypatch, db_path)
+
+    from honor.calculator import calculate_personal_mvp
+
+    result = calculate_personal_mvp(batch_id=1, year=2026, month=7)
+    summary = next(row for row in result["person_summary"] if row["staff_code"] == "00001001")
+
+    assert summary["diamond_balance"] == 1
+    assert summary["is_new_star"] == 0
+
+
 def test_honor_calculator_excludes_yiqiao_and_calculates_oto_zhengbao(tmp_path, monkeypatch):
     db_path = tmp_path / "honor_calc.db"
     _setup_source_tables(db_path)
