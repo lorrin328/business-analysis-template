@@ -8,6 +8,12 @@
 - 复现影响：四表重建成功，但星钻重算因硬读取已删除的入职年月字段失败。
 - 修订 `backend/honor/sources.py`：人力核心字段继续强校验，入职年月及其他非核心字段改为缺失时返回空值；新星人力不可计算但不再阻断其余星钻轨道。
 - 新增缺入职年月字段的荣誉计算回归测试，并同步更新数据字典和待办。
+- 本地验证：全量回归 `324 passed, 1 warning`；临时数据库重建、数据质量审计、健康检查、核心 API 和星钻重算均通过，数据质量 `issues=0`。
+- GitHub：已将与本地提交 `2713e87 fix: support updated Excel baselines` 相同的代码树同步至 `origin/master`，远端提交为 `6bf2670`。
+- 生产部署：使用可信提交归档部署至 `192.168.50.6`，显式设置 `REBUILD_DATABASE=1` 并安装四份 `20260724` 新基表；部署前 SQLite Online Backup 为 `/opt/business-analysis-backups/business_data.db.20260724_214538`，旧基表另存至 `/opt/business-analysis-backups/excels-20260724_214457`。
+- 生产数据：原始表行数为业绩 `38,793`、经代 `135,078`、人力 `17,186`、价值 `192`；四份服务器文件 SHA256 与本地一致；证券营业网点和销售人员字段已入库，人力入职年月字段确认不存在。
+- 生产验收：健康检查为 `v1.0.108`、最新期间 `202607`、`table_count=38`、缺表为空；数据库 `integrity_check=ok`、`quick_check=ok`，数据质量 `issues=0`，`business-analysis/nginx=active`，webhook 不存在，部署后 warning 以上 journal 为空。
+- 荣誉验收：按 `sourceCutoff=2026-07-24` 重算成功，批次 `121`，覆盖个人 `727`、机构 `13`，生成业务异常 `133` 条；缺入职年月只影响“新星”判定，不再阻断其他星钻结果。
 
 ## 2026-07-22 v1.0.107 寿险市场滚动研判
 
