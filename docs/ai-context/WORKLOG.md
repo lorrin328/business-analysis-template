@@ -7,7 +7,7 @@
 - 统计口径：六档均左闭右开，季度/年度按期间个人累计期交保费且人员去重；人数占比和保费占比分别以同组全部月末在职样本人数、累计期交保费为分母。
 - 本地验证：全量回归 `326 passed, 1 warning`，数据质量 `issues=0`，Python/JS 语法和 `git diff --check` 通过；桌面端和 390px 手机端均无页面级横向溢出，业务模式筛选联动实测通过。
 - GitHub：功能提交 `cfe1d8a feat: add high productivity team bands` 已推送分支 `codex/team-high-productivity-bands`，草稿 PR 为 `#1`。
-- 生产部署：使用提交 `cfe1d8a` 的可信归档部署至 `192.168.50.6`，`REBUILD_DATABASE=0` 保留生产库；部署前备份为 `/opt/business-analysis-backups/business_data.db.20260727_102949`。
+- 生产部署：先使用功能提交 `cfe1d8a`、再使用含发布权限修复的提交 `4ec5a80` 可信归档部署至 `192.168.50.6`，两次均设置 `REBUILD_DATABASE=0` 保留生产库；对应备份为 `/opt/business-analysis-backups/business_data.db.20260727_102949` 和 `/opt/business-analysis-backups/business_data.db.20260727_104146`。
 - 部署修复：首次从 `mktemp` 解压目录发布时，rsync 将应用根目录继承为 `0700`，导致 `www-data` 无法进入工作目录并短暂返回 502；现场恢复为 `0755` 后服务正常，同时在 `deploy.sh` 中固化显式 `chmod 755 "$APP_DIR"` 并增加回归断言。
 - 生产验收：健康检查为 `v1.0.109`、最新期间 `202607`、`table_count=38`、缺表为空；数据库 `integrity_check=ok`、`quick_check=ok`，`business-analysis/nginx=active`，nginx 配置正常，服务恢复后 warning 以上 journal 为空。
 - 高产能口径实测：2026 年生产库返回六个约定分档、OTO/证保两类业务模式和 `13` 个机构+模式组合；同组人数分母分别为 OTO `494` 人、证保 `68` 人，60 万元及以上人数分别为 `55` 人、`21` 人。
