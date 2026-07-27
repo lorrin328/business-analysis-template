@@ -46,7 +46,13 @@ def _latest_hr_month(conn, year: int) -> int | None:
     return _to_int(row["month"], None)
 
 
-def _period_months(conn, year: int, period_type: str, period_value: int | None) -> list[int]:
+def _period_months(
+    conn,
+    year: int,
+    period_type: str,
+    period_value: int | None,
+    explicit_months: list[int] | None = None,
+) -> list[int]:
     available = [
         _to_int(row["month"], None)
         for row in conn.execute(
@@ -56,6 +62,9 @@ def _period_months(conn, year: int, period_type: str, period_value: int | None) 
         ).fetchall()
     ]
     available = [month for month in available if month]
+    if explicit_months:
+        requested = {month for month in explicit_months if 1 <= month <= 12}
+        return [month for month in available if month in requested]
     if period_type == "year":
         return available
     if period_type == "quarter":
@@ -362,7 +371,7 @@ def _high_productivity_analysis(sample: list[dict[str, Any]]) -> dict[str, Any]:
             "bands": [label for label, _, _ in HIGH_PRODUCTIVITY_BANDS],
             "headcountShare": "分档人数 / 同一业务模式或同一机构+业务模式的月末在职样本人数",
             "premiumShare": "分档人员累计期交保费 / 同一业务模式或同一机构+业务模式全部月末在职样本的累计期交保费",
-            "periodAggregation": "月度按当月个人期交保费；季度/年度按所选月份个人累计期交保费，同一人员只计1人",
+            "periodAggregation": "单月按当月个人期交保费；多月按所选月份个人累计期交保费，同一人员只计1人",
         },
     }
 
@@ -505,7 +514,7 @@ def _standard_manpower_analysis(
             "证保": "月末在职且当月折算保费/标准保费大于等于3万元",
             "specialProductRules": "2026年产品代码4281按10年及以上交期处理，标准人力计算时标准保费按期交保费全额计入",
             "premiumContribution": "保费贡献按标准人力对应的期交保费计算",
-            "periodAggregation": "季度/年度为所选月份的人月口径汇总，月度为当月人数口径",
+            "periodAggregation": "单月为当月人数口径；多月按所选月份逐月判断并以人月口径汇总",
         },
     }
 
@@ -583,6 +592,7 @@ def get_team_enhanced_analysis(
     month: int | None = None,
     period_type: str = "month",
     period_value: int | None = None,
+    months: list[int] | None = None,
     business_lines: list[str] | None = None,
     orgs: list[str] | None = None,
     scope: str = "all",
@@ -616,7 +626,7 @@ def get_team_enhanced_analysis(
                 org_filter=org_filter,
                 scope=scope,
             )
-        selected_months = _period_months(conn, year, period_type, period_value)
+        selected_months = _period_months(conn, year, period_type, period_value, months)
         if not selected_months:
             return _empty_team_analysis_response(
                 year=year,
@@ -641,7 +651,9 @@ def get_team_enhanced_analysis(
             "year": year,
             "month": selected_months[-1],
             "periodType": period_type,
-            "periodValue": period_value or (selected_months[-1] if period_type == "month" else None),
+            "periodValue": None if months else (
+                period_value or (selected_months[-1] if period_type == "month" else None)
+            ),
             "months": selected_months,
             "summary": _percentile_summary("整体", sample),
             "tenureStructure": _group_structure(sample, "tenure"),

@@ -1,9 +1,11 @@
 // org-analysis.js - organization KPI loading, filters, and table rendering
-let orgKpiData = null;
+    let orgKpiData = null;
     let selectedOrgs = ['all'];
     let orgTimeDim = 'year';
-    let orgSubPeriod = 1; // Q2 default
-    let orgSubMonth = 3;  // 4月 default
+    const orgSelectedMonths = {
+      quarter: [],
+      month: []
+    };
     let orgExpanded = false;
 
     const ORG_LIST = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
@@ -14,6 +16,7 @@ let orgKpiData = null;
         const params = new URLSearchParams({ year: String(year) });
         if (typeof window.appendDashboardRange === 'function') window.appendDashboardRange(params);
         orgKpiData = unwrapApiResponse(await fetchJson(`/api/org-analysis?${params.toString()}`));
+        renderOrgMonthFilter();
         renderOrgTable();
       } catch (e) {
         console.error('fetchOrgKpiData error:', e);
@@ -64,21 +67,44 @@ let orgKpiData = null;
       const button = activeButton || document.querySelector(`#orgDimBtns [data-org-dim="${dim}"]`);
       if (button) button.classList.add('active');
 
-      const qSelect = document.getElementById('orgSubPeriod');
-      const mSelect = document.getElementById('orgSubMonth');
-      if (dim === 'year') {
-        qSelect.style.display = 'none';
-        mSelect.style.display = 'none';
-      } else if (dim === 'quarter') {
-        qSelect.style.display = 'inline-block';
-        mSelect.style.display = 'none';
-        orgSubPeriod = parseInt(qSelect.value);
-      } else {
-        qSelect.style.display = 'none';
-        mSelect.style.display = 'inline-block';
-        orgSubMonth = parseInt(mSelect.value);
-      }
+      renderOrgMonthFilter();
       renderOrgTable();
+    }
+
+    function getOrgMaxMonth() {
+      const year = String(orgKpiData?.year || selectedYear || DEFAULT_DASHBOARD_YEAR);
+      return typeof getLatestMonthForYear === 'function' ? getLatestMonthForYear(year) : 12;
+    }
+
+    function getOrgSelectedMonths() {
+      if (orgTimeDim === 'year') return [];
+      const maxMonth = getOrgMaxMonth();
+      const selected = MonthMultiSelect.normalizeMonths(orgSelectedMonths[orgTimeDim], maxMonth);
+      if (selected.length > 0) return selected;
+      const fallback = MonthMultiSelect.defaultMonths(orgTimeDim, maxMonth);
+      orgSelectedMonths[orgTimeDim] = fallback;
+      return fallback;
+    }
+
+    function renderOrgMonthFilter() {
+      const group = document.getElementById('orgMonthFilterGroup');
+      const container = document.getElementById('orgMonthMultiSelect');
+      if (!group || !container) return;
+      if (orgTimeDim === 'year') {
+        group.style.display = 'none';
+        container.hidden = true;
+        return;
+      }
+      group.style.display = 'flex';
+      orgSelectedMonths[orgTimeDim] = MonthMultiSelect.render(container, {
+        dimension: orgTimeDim,
+        maxMonth: getOrgMaxMonth(),
+        selectedMonths: getOrgSelectedMonths(),
+        onChange: months => {
+          orgSelectedMonths[orgTimeDim] = months;
+          renderOrgTable();
+        }
+      });
     }
 
     function bindOrgFilterControls() {
@@ -106,22 +132,7 @@ let orgKpiData = null;
     }
 
     function bindOrgPeriodControls() {
-      const qSelect = document.getElementById('orgSubPeriod');
-      if (qSelect && qSelect.dataset.boundOrgPeriod !== 'true') {
-        qSelect.dataset.boundOrgPeriod = 'true';
-        qSelect.addEventListener('change', () => {
-          orgSubPeriod = parseInt(qSelect.value, 10);
-          renderOrgTable();
-        });
-      }
-      const mSelect = document.getElementById('orgSubMonth');
-      if (mSelect && mSelect.dataset.boundOrgMonth !== 'true') {
-        mSelect.dataset.boundOrgMonth = 'true';
-        mSelect.addEventListener('change', () => {
-          orgSubMonth = parseInt(mSelect.value, 10);
-          renderOrgTable();
-        });
-      }
+      renderOrgMonthFilter();
     }
 
     function syncOrgExpandButton() {
@@ -182,6 +193,9 @@ let orgKpiData = null;
       if (typeof item[field] === 'number') return item[field] || 0;
 
       if (dim === 'year') return item.year?.[field] || 0;
+      if (Array.isArray(idx)) {
+        return idx.reduce((sum, month) => sum + Number(item.month?.[String(month)]?.[field] || 0), 0);
+      }
       const periodKey = getOrgPeriodKey(dim, idx);
       return item[dim]?.[periodKey]?.[field] || 0;
     }
@@ -193,21 +207,27 @@ let orgKpiData = null;
       if (item == null) return 0;
       if (typeof item === 'number') return item || 0;
       if (dim === 'year') return item.year || 0;
+      if (Array.isArray(idx)) {
+        return idx.reduce((sum, month) => sum + Number(item.month?.[String(month)] || 0), 0);
+      }
       const periodKey = getOrgPeriodKey(dim, idx);
       return item[dim]?.[periodKey] || 0;
     }
 
-    function getOrgLongtermMetric(source, org, channel) {
+    function getOrgLongtermMetric(source, org, channel, dim = 'year', idx = null) {
       if (!source) return 0;
       const item = source[`${org}|${channel}`];
       if (!item) return 0;
       if (typeof item === 'number') return item || 0;
+      if (dim !== 'year' && Array.isArray(idx)) {
+        return idx.reduce((sum, month) => sum + Number(item.month?.[String(month)] || 0), 0);
+      }
       return item.year || 0;
     }
 
     function getOrgActual(org, channel, metric, dim, idx) {
       if (!orgKpiData) return 0;
-      if (metric === 'longterm') return getOrgLongtermMetric(orgKpiData.longterm, org, channel);
+      if (metric === 'longterm') return getOrgLongtermMetric(orgKpiData.longterm, org, channel, dim, idx);
       if (metric === 'value') return getOrgValueMetric(orgKpiData.value, org, channel, dim, idx);
       return getOrgPerfMetric(orgKpiData.perf, org, channel, metric, dim, idx);
     }
@@ -238,6 +258,9 @@ let orgKpiData = null;
       if (!orgTargets || !orgTargets[key] || !orgTargets[key][catKey]) return 0;
 
       const item = orgTargets[key][catKey];
+      if (dim !== 'year' && Array.isArray(idx)) {
+        return idx.reduce((sum, month) => sum + Number(item.month?.[month - 1] || 0), 0);
+      }
       if (targetMode === 'month') {
         const monthIdx = Math.max(0, Number((orgKpiData?.period?.endDate || '').slice(5, 7) || 1) - 1);
         return item.month?.[monthIdx] || 0;
@@ -334,24 +357,24 @@ let orgKpiData = null;
       const orgs = selectedOrgs.includes('all') ? ORG_LIST : selectedOrgs;
       const globalRangeActive = orgKpiData?.period?.rangeType && orgKpiData.period.rangeType !== 'ytd';
       const dim = globalRangeActive ? 'year' : orgTimeDim;
-      const qIdx = orgSubPeriod;
-      const mIdx = orgSubMonth;
+      const selectedMonths = dim === 'year' ? null : getOrgSelectedMonths();
       const dimControls = document.getElementById('orgDimBtns');
-      const qControl = document.getElementById('orgSubPeriod');
-      const mControl = document.getElementById('orgSubMonth');
+      const monthControl = document.getElementById('orgMonthMultiSelect');
       if (dimControls) {
         dimControls.style.opacity = globalRangeActive ? '0.45' : '';
         dimControls.style.pointerEvents = globalRangeActive ? 'none' : '';
         dimControls.title = globalRangeActive ? '当前使用顶部全局统计范围' : '';
       }
-      if (qControl) qControl.disabled = globalRangeActive;
-      if (mControl) mControl.disabled = globalRangeActive;
+      if (monthControl) {
+        monthControl.style.opacity = globalRangeActive ? '0.45' : '';
+        monthControl.style.pointerEvents = globalRangeActive ? 'none' : '';
+      }
 
       // 构建行数据
       let rows = [];
       orgs.forEach(org => {
         CHANNEL_LIST.forEach(ch => {
-          const periodIdx = dim === 'month' ? mIdx : qIdx;
+          const periodIdx = selectedMonths;
           const qjActual = getOrgActual(org, ch, 'qj', dim, periodIdx);
           const valueActual = getOrgActual(org, ch, 'value', dim, periodIdx);
           const longtermActual = getOrgActual(org, ch, 'longterm', dim, periodIdx);
@@ -400,7 +423,7 @@ let orgKpiData = null;
 
       Object.keys(orgGroups).sort().forEach(org => {
         const group = orgGroups[org];
-        const periodIdx = dim === 'month' ? mIdx : qIdx;
+        const periodIdx = selectedMonths;
         if (orgExpanded) {
           group.forEach(r => displayRows.push(r));
           if (group.length > 1) displayRows.push(aggregateOrgRows(org, group, dim, periodIdx));
@@ -410,7 +433,7 @@ let orgKpiData = null;
       });
 
       // 总计行
-      const totalPeriodIdx = dim === 'month' ? mIdx : qIdx;
+      const totalPeriodIdx = selectedMonths;
       const totalRow = {
         org: '合计', channel: '', isTotal: true,
         qjTarget: 0, qjActual: 0, qjRate: null, qjYoy: null,
@@ -450,7 +473,7 @@ let orgKpiData = null;
       // 渲染表格
       const periodLabel = globalRangeActive
         ? (orgKpiData?.period?.label || '自定义区间')
-        : dim === 'year' ? '年度' : dim === 'quarter' ? `Q${qIdx+1}` : `${mIdx+1}月`;
+        : dim === 'year' ? '年度' : `${selectedMonths.join('、')}月`;
       const html = `
         <table class="org-table">
           <thead>
@@ -459,7 +482,7 @@ let orgKpiData = null;
               <th rowspan="2" style="min-width:60px;">${orgExpanded ? '业务模式' : '维度'}</th>
               <th colspan="4" class="group-header">期交保费 (${periodLabel})</th>
               <th colspan="4" class="group-header">价值保费</th>
-              <th colspan="3" class="group-header">长险期交${globalRangeActive ? '' : '（年度）'}</th>
+              <th colspan="3" class="group-header">长险期交</th>
               <th colspan="3" class="group-header">10年期产品</th>
               <th colspan="3" class="group-header">商保年金</th>
               <th colspan="3" class="group-header">保障类产品</th>

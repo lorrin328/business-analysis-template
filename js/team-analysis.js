@@ -3,7 +3,10 @@
     let currentTeamMetric = 'headcount';
     let currentTeamDim = 'year';
     let selectedTeamYear = DEFAULT_DASHBOARD_YEAR;
-    let selectedTeamQuarter = 'Q2';
+    const selectedTeamMonths = {
+      quarter: [],
+      month: []
+    };
     const selectedTeamSeries = { 'OTO': true, '证保': true, '蚁桥': true };
     const ORG_LIST_TEAM = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
     const selectedTeamOrgs = {};
@@ -25,7 +28,6 @@
     let teamEnhancedLoading = false;
     let teamEnhancedRequestSerial = 0;
     let selectedTeamEnhancedPeriodType = 'month';
-    let selectedTeamEnhancedPeriodValue = null;
     const selectedTeamEnhancedBusinessLines = { OTO: true, '证保': true, '蚁桥': true };
 
     const teamChart = echarts.init(document.getElementById('teamChart'));
@@ -90,18 +92,72 @@
       return { byLine, total };
     }
 
+    function getTeamMaxMonth() {
+      const latest = latestTeamMonthIndex(String(selectedTeamYear || DEFAULT_DASHBOARD_YEAR)) + 1;
+      return latest || (
+        typeof getLatestMonthForYear === 'function'
+          ? getLatestMonthForYear(String(selectedTeamYear || DEFAULT_DASHBOARD_YEAR))
+          : 12
+      );
+    }
+
+    function getSelectedTeamMonths(dimension = currentTeamDim) {
+      if (dimension === 'year') return [];
+      const selected = MonthMultiSelect.normalizeMonths(selectedTeamMonths[dimension], getTeamMaxMonth());
+      if (selected.length > 0) return selected;
+      const fallback = MonthMultiSelect.defaultMonths(dimension, getTeamMaxMonth());
+      selectedTeamMonths[dimension] = fallback;
+      return fallback;
+    }
+
+    function renderTeamMonthFilter() {
+      const container = document.getElementById('teamMonthMultiSelect');
+      if (!container) return;
+      if (currentTeamDim === 'year') {
+        container.hidden = true;
+        return;
+      }
+      selectedTeamMonths[currentTeamDim] = MonthMultiSelect.render(container, {
+        dimension: currentTeamDim,
+        maxMonth: getTeamMaxMonth(),
+        selectedMonths: getSelectedTeamMonths(currentTeamDim),
+        onChange: months => {
+          selectedTeamMonths[currentTeamDim] = months;
+          selectedTeamEnhancedPeriodType = currentTeamDim;
+          teamChart.clear();
+          teamChart.setOption(getTeamOption(), true);
+          refreshTeamEnhancedPanel();
+        }
+      });
+    }
+
+    function renderTeamEnhancedMonthFilter() {
+      const container = document.getElementById('teamEnhancedMonthMultiSelect');
+      if (!container || selectedTeamEnhancedPeriodType === 'year') return;
+      selectedTeamMonths[selectedTeamEnhancedPeriodType] = MonthMultiSelect.render(container, {
+        dimension: selectedTeamEnhancedPeriodType,
+        maxMonth: getTeamMaxMonth(),
+        selectedMonths: getSelectedTeamMonths(selectedTeamEnhancedPeriodType),
+        onChange: months => {
+          selectedTeamMonths[selectedTeamEnhancedPeriodType] = months;
+          currentTeamDim = selectedTeamEnhancedPeriodType;
+          renderTeamMonthFilter();
+          teamChart.clear();
+          teamChart.setOption(getTeamOption(), true);
+          refreshTeamEnhancedPanel();
+        }
+      });
+    }
+
     function buildTeamEnhancedParams() {
       const params = new URLSearchParams({
         year: String(selectedTeamYear || DEFAULT_DASHBOARD_YEAR),
         periodType: selectedTeamEnhancedPeriodType,
         scope: 'all'
       });
-      const defaultMonth = latestTeamMonthIndex(String(selectedTeamYear || DEFAULT_DASHBOARD_YEAR)) + 1 || 12;
-      const periodValue = selectedTeamEnhancedPeriodValue || (
-        selectedTeamEnhancedPeriodType === 'quarter' ? Math.ceil(defaultMonth / 3) :
-        selectedTeamEnhancedPeriodType === 'month' ? defaultMonth : null
-      );
-      if (periodValue) params.set('periodValue', String(periodValue));
+      if (selectedTeamEnhancedPeriodType !== 'year') {
+        params.set('months', getSelectedTeamMonths(selectedTeamEnhancedPeriodType).join(','));
+      }
       const selectedOrgs = Object.keys(selectedTeamOrgs).filter(k => selectedTeamOrgs[k]);
       const selectedLines = getSelectedTeamEnhancedBusinessLines();
       if (selectedLines.length === 0) {
@@ -121,32 +177,23 @@
       if (!data) return '';
       const year = String(data.year || selectedTeamYear || DEFAULT_DASHBOARD_YEAR);
       if (data.periodType === 'year') return `${year}年`;
-      if (data.periodType === 'quarter') return `${year}年Q${data.periodValue || ''}`;
-      return `${year}年${data.month}月`;
+      return MonthMultiSelect.periodLabel(year, data.months || []);
     }
 
     function renderTeamEnhancedControls(data) {
       const periodType = data?.periodType || selectedTeamEnhancedPeriodType;
-      const periodValue = data?.periodValue || selectedTeamEnhancedPeriodValue || data?.month || '';
       const selectedLines = getSelectedTeamEnhancedBusinessLines();
       const allSelected = selectedLines.length === Object.keys(selectedTeamEnhancedBusinessLines).length;
-      const quarterOptions = [1, 2, 3, 4].map(q => `<option value="${q}" ${Number(periodValue) === q ? 'selected' : ''}>Q${q}</option>`).join('');
-      const monthOptions = Array.from({ length: 12 }, (_, idx) => {
-        const month = idx + 1;
-        return `<option value="${month}" ${Number(periodValue) === month ? 'selected' : ''}>${month}月</option>`;
-      }).join('');
-      const selectHtml = periodType === 'year' ? '' : `
-        <select class="chart-select" data-team-enhanced-period-value>
-          ${periodType === 'quarter' ? quarterOptions : monthOptions}
-        </select>
-      `;
+      const monthControlHtml = periodType === 'year'
+        ? ''
+        : '<div id="teamEnhancedMonthMultiSelect" class="team-enhanced-month-filter"></div>';
       return `
         <div class="chart-controls team-enhanced-controls">
           <span class="team-enhanced-control-label">统计期间</span>
           <button class="chart-btn ${periodType === 'year' ? 'active' : ''}" data-team-enhanced-period-type="year">年度</button>
           <button class="chart-btn ${periodType === 'quarter' ? 'active' : ''}" data-team-enhanced-period-type="quarter">季度</button>
           <button class="chart-btn ${periodType === 'month' ? 'active' : ''}" data-team-enhanced-period-type="month">月度</button>
-          ${selectHtml}
+          ${monthControlHtml}
           <span class="team-enhanced-control-label">业务模式</span>
           <label class="check-label team-enhanced-check">
             <input type="checkbox" ${allSelected ? 'checked' : ''} data-team-enhanced-line="全部">
@@ -164,15 +211,13 @@
 
     function switchTeamEnhancedPeriodType(periodType) {
       selectedTeamEnhancedPeriodType = periodType;
-      const defaultMonth = latestTeamMonthIndex(String(selectedTeamYear || DEFAULT_DASHBOARD_YEAR)) + 1 || 12;
-      if (periodType === 'year') selectedTeamEnhancedPeriodValue = null;
-      else if (periodType === 'quarter') selectedTeamEnhancedPeriodValue = Math.ceil(defaultMonth / 3);
-      else selectedTeamEnhancedPeriodValue = defaultMonth;
-      refreshTeamEnhancedPanel();
-    }
-
-    function switchTeamEnhancedPeriodValue(value) {
-      selectedTeamEnhancedPeriodValue = Number(value);
+      currentTeamDim = periodType;
+      document.querySelectorAll('#teamDimBtns button').forEach(button => {
+        button.classList.toggle('active', button.dataset.teamDim === periodType);
+      });
+      renderTeamMonthFilter();
+      teamChart.clear();
+      teamChart.setOption(getTeamOption(), true);
       refreshTeamEnhancedPanel();
     }
 
@@ -517,7 +562,7 @@
           </table>
         </div>
         <div class="team-insight-note" style="margin-top:8px;">
-          仅展示OTO、证保。每格第一行是“人数 · 人数占比”，第二行是“累计期交保费 · 保费占比”；占比分母分别为同一业务模式或同一机构+业务模式的全部月末在职样本人数和累计期交保费。月度按当月累计，季度/年度按所选期间个人累计，同一人员只计1人。
+          仅展示OTO、证保。每格第一行是“人数 · 人数占比”，第二行是“累计期交保费 · 保费占比”；占比分母分别为同一业务模式或同一机构+业务模式的全部月末在职样本人数和累计期交保费。单月按当月累计，多月按所选月份个人累计，同一人员只计1人。
         </div>
         <div class="structure-block-title">标准人力贡献分析</div>
         <div class="team-insight-layout" style="margin-top:10px;">
@@ -589,12 +634,13 @@
           </div>
         </div>
         <div class="team-insight-note" style="margin-top:8px;">
-          标准人力口径：OTO 为月末在职且当月折算保费/标准保费≥2万元；证保为月末在职且当月折算保费/标准保费≥3万元。2026年产品4281按10年及以上交期处理，标准保费按期交保费全额计入。标准人力贡献按对应人员期交保费统计；季度/年度按所选月份人月汇总。
+          标准人力口径：OTO 为月末在职且当月折算保费/标准保费≥2万元；证保为月末在职且当月折算保费/标准保费≥3万元。2026年产品4281按10年及以上交期处理，标准保费按期交保费全额计入。标准人力贡献按对应人员期交保费统计；多月按所选月份人月汇总。
         </div>
         <div class="team-insight-note" style="margin-top:12px;">
-          口径：月度仅纳入当月月末在职人员；季度/年度纳入期间内任一统计月月末在职过的人员，同一期间内同一人员只计 1 人；P 值人数为达到该分位阈值及以上的人数。当前筛选机构数：${selectedOrgCount}。
+          口径：单月仅纳入当月月末在职人员；多月纳入所选月份内任一月末在职过的人员，同一人员只计 1 人，人员属性取最后一个所选月；P 值人数为达到该分位阈值及以上的人数。当前筛选机构数：${selectedOrgCount}。
         </div>
       `;
+      renderTeamEnhancedMonthFilter();
     }
 
     function bindTeamEnhancedControls() {
@@ -610,12 +656,6 @@
       });
 
       panel.addEventListener('change', event => {
-        const select = event.target.closest('select[data-team-enhanced-period-value]');
-        if (select && panel.contains(select)) {
-          switchTeamEnhancedPeriodValue(select.value);
-          return;
-        }
-
         const input = event.target.closest('input[data-team-enhanced-line]');
         if (!input || !panel.contains(input)) return;
         toggleTeamEnhancedBusinessLine(input.dataset.teamEnhancedLine, input.checked);
@@ -690,21 +730,21 @@
         };
       }
 
-      // quarter mode
-      const quarter = selectedTeamQuarter;
-      const qMonths = { 'Q1': [0,1,2], 'Q2': [3,4,5], 'Q3': [6,7,8], 'Q4': [9,10,11] }[quarter];
-      const qMonthNames = qMonths.map(i => months[i]);
+      const selectedMonths = getSelectedTeamMonths(currentTeamDim);
+      const selectedIndexes = selectedMonths.map(month => month - 1);
+      const selectedMonthNames = selectedIndexes.map(index => months[index]);
+      const periodText = selectedMonths.join('、') + '月';
       const currentFull = getTeamAggregated(year, metric);
-      const currentData = qMonths.map(i => currentFull[i]);
+      const currentData = selectedIndexes.map(index => currentFull[index]);
 
       const seriesList = [
-        { name: year + '年' + quarter, type: 'line', data: currentData, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
+        { name: year + '年' + periodText, type: 'line', data: currentData, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
       ];
 
       if (teamMock[prevYear]) {
         const prevFull = getTeamAggregated(prevYear, metric);
-        const prevData = qMonths.map(i => prevFull[i]);
-        seriesList.push({ name: prevYear + '年' + quarter, type: 'line', data: prevData, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
+        const prevData = selectedIndexes.map(index => prevFull[index]);
+        seriesList.push({ name: prevYear + '年' + periodText, type: 'line', data: prevData, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
       }
 
       return {
@@ -717,7 +757,7 @@
         },
         legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
         grid: { left: 50, right: 20, top: 20, bottom: 40 },
-        xAxis: { type: 'category', data: qMonthNames, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
+        xAxis: { type: 'category', data: selectedMonthNames, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
         yAxis: { type: 'value', name: unit, axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8', formatter: isPercent ? '{value}%' : '{value}' } },
         series: seriesList
       };
@@ -730,6 +770,7 @@
     async function switchTeamYear(value) {
       selectedTeamYear = value;
       await loadYearFromApi(value, { updateKpi: false, updateProduct: false });
+      renderTeamMonthFilter();
       teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
       refreshTeamEnhancedPanel();
@@ -750,13 +791,8 @@
         btn.classList.add('active');
       }
       currentTeamDim = dim;
-      document.getElementById('teamQuarterSelect').style.display = dim === 'quarter' ? 'inline-block' : 'none';
-      teamChart.clear();
-      teamChart.setOption(getTeamOption(), true);
-      refreshTeamEnhancedPanel();
-    }
-    function switchTeamQuarter(value) {
-      selectedTeamQuarter = value;
+      selectedTeamEnhancedPeriodType = dim;
+      renderTeamMonthFilter();
       teamChart.clear();
       teamChart.setOption(getTeamOption(), true);
       refreshTeamEnhancedPanel();
@@ -814,12 +850,6 @@
         });
       }
 
-      const quarterSelect = document.getElementById('teamQuarterSelect');
-      if (quarterSelect && quarterSelect.dataset.boundTeamQuarter !== 'true') {
-        quarterSelect.dataset.boundTeamQuarter = 'true';
-        quarterSelect.addEventListener('change', () => switchTeamQuarter(quarterSelect.value));
-      }
-
       const seriesChecks = document.getElementById('teamSeriesChecks');
       if (seriesChecks && seriesChecks.dataset.boundTeamSeries !== 'true') {
         seriesChecks.dataset.boundTeamSeries = 'true';
@@ -842,3 +872,4 @@
     }
 
     bindTeamTrendControls();
+    renderTeamMonthFilter();

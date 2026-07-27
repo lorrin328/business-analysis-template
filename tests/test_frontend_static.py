@@ -102,14 +102,15 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/api-client.js?v=1.0.109"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.109"></script>' in html
-    assert '<script src="js/export-excel.js?v=1.0.109"></script>' in html
-    assert '<script src="js/upload.js?v=1.0.109"></script>' in html
-    assert '<script src="js/target-modal.js?v=1.0.109"></script>' in html
-    assert '<script src="js/kpi-cards.js?v=1.0.109"></script>' in html
-    assert '<script src="js/platform-trend.js?v=1.0.109"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.109"></script>' in html
+    assert '<script src="js/month-multi-select.js?v=1.0.110"></script>' in html
+    assert '<script src="js/api-client.js?v=1.0.110"></script>' in html
+    assert '<script src="js/auth-ui.js?v=1.0.110"></script>' in html
+    assert '<script src="js/export-excel.js?v=1.0.110"></script>' in html
+    assert '<script src="js/upload.js?v=1.0.110"></script>' in html
+    assert '<script src="js/target-modal.js?v=1.0.110"></script>' in html
+    assert '<script src="js/kpi-cards.js?v=1.0.110"></script>' in html
+    assert '<script src="js/platform-trend.js?v=1.0.110"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.110"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -239,9 +240,10 @@ def test_runtime_js_boundary_is_explicit():
     html = read_html()
     refs = [ref.split("?", 1)[0] for ref in re.findall(r'src="(js/[^"]+)"', html)]
     assert refs == [
-        "js/constants.js",
-        "js/format-utils.js",
-        "js/api-client.js",
+            "js/constants.js",
+            "js/format-utils.js",
+            "js/month-multi-select.js",
+            "js/api-client.js",
         "js/auth-ui.js",
         "js/export-excel.js",
         "js/dashboard-config.js",
@@ -261,6 +263,38 @@ def test_runtime_js_boundary_is_explicit():
         "js/payperiod-chart.js",
         "js/team-analysis.js",
     ]
+
+
+def test_dashboard_month_multi_select_is_shared_by_all_required_modules():
+    html = read_html()
+    control = read_js("month-multi-select.js")
+    combined = "\n".join([
+        read_js("platform-trend-main.js"),
+        read_js("org-analysis.js"),
+        read_js("product-analysis.js"),
+        read_js("payperiod-chart.js"),
+        read_js("team-analysis.js"),
+    ])
+
+    for control_id in [
+        "platformMonthMultiSelect",
+        "orgMonthMultiSelect",
+        "productMonthMultiSelect",
+        "payPeriodMonthMultiSelect",
+        "teamMonthMultiSelect",
+        "teamEnhancedMonthMultiSelect",
+    ]:
+        assert control_id in html + combined
+    assert "input[data-month-value]:checked" in control
+    assert "if (normalized.length === 0) return false;" in control
+    assert "data-month-quarter" in control
+    assert "全部可用月份" in control
+    assert "最新月" in control
+    assert "MonthMultiSelect.render" in combined
+    assert "subPeriodSelect" not in html + combined
+    assert "productSubSelect" not in html + combined
+    assert "payPeriodSubSelect" not in html + combined
+    assert "teamQuarterSelect" not in html + combined
     with open(os.path.join(JS_DIR, "README.md"), "r", encoding="utf-8") as f:
         note = f.read()
     assert "Current production runtime" in note
@@ -271,7 +305,7 @@ def test_dashboard_config_is_loaded_before_kpi_cards():
     html = read_html()
     config = read_js("dashboard-config.js")
 
-    assert '<script src="js/dashboard-config.js?v=1.0.109"></script>' in html
+    assert '<script src="js/dashboard-config.js?v=1.0.110"></script>' in html
     assert html.index('js/dashboard-config.js') < html.index('js/kpi-cards.js')
     assert "await loadDashboardConfig();" in html
     assert "/api/config/metrics" in config
@@ -284,7 +318,7 @@ def test_product_config_modal_is_outside_html_shell():
     html = read_html()
     modal = read_js("product-config-modal.js")
 
-    assert '<script src="js/product-config-modal.js?v=1.0.109"></script>' in html
+    assert '<script src="js/product-config-modal.js?v=1.0.110"></script>' in html
     assert "async function openProductConfigModal()" not in html
     assert "async function saveProductConfig()" not in html
     assert "async function openProductConfigModal()" in modal
@@ -317,7 +351,7 @@ def test_dashboard_toolbar_actions_are_bound_by_runtime_module():
     actions = read_js("dashboard-actions.js")
     header = html.split('<div class="container">', 1)[0]
 
-    assert '<script src="js/dashboard-actions.js?v=1.0.109"></script>' in html
+    assert '<script src="js/dashboard-actions.js?v=1.0.110"></script>' in html
     assert html.index('js/target-modal.js') < html.index('js/dashboard-actions.js') < html.index('js/kpi-cards.js')
     assert 'data-dashboard-action="open-permission-admin"' in header
     assert 'data-dashboard-action="open-operation-logs"' in header
@@ -345,7 +379,7 @@ def test_excel_export_is_runtime_module():
     html = read_html()
     exporter = read_js("export-excel.js")
 
-    assert '<script src="js/export-excel.js?v=1.0.109"></script>' in html
+    assert '<script src="js/export-excel.js?v=1.0.110"></script>' in html
     assert 'id="exportExcelBtn"' in html
     assert "function exportDashboardExcel()" not in html
     assert "function exportDashboardExcel()" in exporter
@@ -422,7 +456,7 @@ def test_personnel_management_page_is_admin_only_calculator_runtime():
 
     assert "人员管理</button>" in html
     assert 'data-permission="personnel_management"' in html
-    assert '<script src="/js/personnel-management.js?v=1.0.109"></script>' in page
+    assert '<script src="/js/personnel-management.js?v=1.0.110"></script>' in page
     assert "OTO 基本法测算" in page
     assert "证保基本法测算" in page
     assert "OTO 参数设置" in page
@@ -464,7 +498,7 @@ def test_honor_page_is_separate_runtime():
     assert 'data-permission="honor_view" data-dashboard-action="navigate" data-dashboard-href="/honor">荣誉体系</button>' in html
     assert "????" not in html
     assert "星钻联盟荣誉体系" in honor_html
-    assert '<script src="/js/honor.js?v=1.0.109"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.110"></script>' in honor_html
     assert "数据适配检查" in honor_html
     assert "数据审计" in honor_html
     assert "荣誉追踪" in honor_html
@@ -511,7 +545,7 @@ def test_scheme_calculator_page_is_separate_runtime():
     api = open(os.path.join(ROOT, "backend", "api", "scheme.py"), "r", encoding="utf-8").read()
 
     assert 'data-permission="scheme_calculation" data-dashboard-action="navigate" data-dashboard-href="/scheme-calculator.html">方案复核</button>' in html
-    assert '<script src="/js/scheme-calculator.js?v=1.0.109"></script>' in page
+    assert '<script src="/js/scheme-calculator.js?v=1.0.110"></script>' in page
     assert "方案计算" in page
     assert "2026年组发政策" in page
     assert "方案专用上传" in page
@@ -595,7 +629,7 @@ def test_kpi_modal_content_is_outside_html_shell():
     html = read_html()
     modal_content = read_js("kpi-modal-content.js")
 
-    assert '<script src="js/kpi-modal-content.js?v=1.0.109"></script>' in html
+    assert '<script src="js/kpi-modal-content.js?v=1.0.110"></script>' in html
     assert "function getModalContent(type)" not in html
     assert "function getModalContent(type)" in modal_content
 
@@ -614,7 +648,7 @@ def test_org_analysis_has_expand_mode_and_colored_indicators():
     org = read_js("org-analysis.js")
     combined = html + "\n" + org
 
-    assert 'src="js/org-analysis.js?v=1.0.109"' in html
+    assert 'src="js/org-analysis.js?v=1.0.110"' in html
     assert 'id="orgExpandBtn"' in html
     assert 'id="orgExpandBtn" type="button" aria-expanded="false"' in html
     assert 'id="orgExpandBtn" onclick=' not in html
@@ -658,21 +692,23 @@ def test_org_filter_controls_are_bound_by_org_analysis_js():
     assert "label[data-org-filter]" in org
     assert "button[data-org-dim]" in org
     assert "switchOrgDim(button.dataset.orgDim, button)" in org
-    assert "orgSubPeriod = parseInt(qSelect.value, 10)" in org
-    assert "orgSubMonth = parseInt(mSelect.value, 10)" in org
+    assert 'id="orgMonthMultiSelect"' in org_section
+    assert "function renderOrgMonthFilter()" in org
+    assert "MonthMultiSelect.render(container" in org
+    assert "orgSelectedMonths[orgTimeDim] = months" in org
     assert "event.target.classList.add('active')" not in org
 
 
-def test_org_analysis_includes_annual_longterm_qj_metric():
+def test_org_analysis_includes_multimonth_longterm_qj_metric():
     org = read_js("org-analysis.js")
 
-    assert "function getOrgLongtermMetric(source, org, channel)" in org
+    assert "function getOrgLongtermMetric(source, org, channel, dim = 'year', idx = null)" in org
     assert "'longterm': 'qjPremium'" in org
-    assert "if (metric === 'longterm') return item.year || 0;" in org
+    assert "return idx.reduce((sum, month) => sum + Number(item.month?.[String(month)] || 0), 0);" in org
     assert "longtermTarget" in org
     assert "longtermActual" in org
     assert "longtermRate" in org
-    assert "长险期交${globalRangeActive ? '' : '（年度）'}" in org
+    assert '<th colspan="3" class="group-header">长险期交</th>' in org
 
 
 def test_upload_js_exposes_handle_file():
@@ -770,7 +806,7 @@ def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
     kpi_section = html.split('<!-- 机构维度 -->', 1)[0]
 
     assert "function updateKPICards()" not in html
-    assert 'src="js/kpi-cards.js?v=1.0.109"' in html
+    assert 'src="js/kpi-cards.js?v=1.0.110"' in html
     assert 'onclick="openModal(' not in kpi_section
     for modal_type in ["overall", "value", "activity", "annuity", "protection", "10year", "longterm", "percapita"]:
         assert f'data-kpi-modal="{modal_type}"' in kpi_section
@@ -896,7 +932,10 @@ def test_product_structure_controls_are_bound_by_product_module():
     assert "input[data-product-jingdai-org]" in product
     assert "input[data-product-org]" in product
     assert "button[data-product-dim]" in product
-    assert "subSelect.addEventListener('change', () => switchProductSub(subSelect.value))" in product
+    assert 'id="productMonthMultiSelect"' in product_section
+    assert "function renderProductMonthFilter()" in product
+    assert "MonthMultiSelect.render(container" in product
+    assert "params.set('months', months.join(','))" in data_integration
     assert "button[data-product-metric]" in product
     assert "input.dataset[datasetKey] = String(labelText || '')" in data_integration
     assert "'productJingdaiOrg'" in data_integration
@@ -930,7 +969,9 @@ def test_pay_period_controls_are_bound_by_payperiod_module():
     assert "button[data-pay-period-pie-type]" in payperiod
     assert "yearSelect.addEventListener('change', () => switchPayPeriodYear(yearSelect.value))" in payperiod
     assert "button[data-pay-period-dim]" in payperiod
-    assert "subSelect.addEventListener('change', () => switchPayPeriodSub(subSelect.value))" in payperiod
+    assert 'id="payPeriodMonthMultiSelect"' in payperiod_section
+    assert "function renderPayPeriodMonthFilter()" in payperiod
+    assert "MonthMultiSelect.render(container" in payperiod
     assert "input[data-pay-period-biz]" in payperiod
     assert "input[data-pay-period-channel]" in payperiod
     assert "input[data-pay-period-org]" in payperiod
@@ -967,7 +1008,10 @@ def test_team_trend_controls_are_bound_by_team_module():
     assert "switchTeamMetric(button, button.dataset.teamMetric)" in team
     assert "button[data-team-dim]" in team
     assert "switchTeamDim(button, button.dataset.teamDim)" in team
-    assert "quarterSelect.addEventListener('change', () => switchTeamQuarter(quarterSelect.value))" in team
+    assert 'id="teamMonthMultiSelect"' in team_trend_section
+    assert 'data-team-dim="month"' in team_trend_section
+    assert "function renderTeamMonthFilter()" in team
+    assert "MonthMultiSelect.render(container" in team
     assert "input[data-team-series]" in team
     assert "toggleTeamSeries(input.dataset.teamSeries, input.checked)" in team
     assert "input[data-team-org]" in team
@@ -1020,7 +1064,7 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert "证保为月末在职且当月折算保费/标准保费≥3万元" in team
     assert "2026年产品4281按10年及以上交期处理" in team
     assert "switchTeamEnhancedPeriodType" in team
-    assert "switchTeamEnhancedPeriodValue" in team
+    assert "switchTeamEnhancedPeriodValue" not in team
     assert "selectedTeamEnhancedBusinessLines = { OTO: true, '证保': true, '蚁桥': true }" in team
     assert "toggleTeamEnhancedBusinessLine" in team
     assert "getSelectedTeamEnhancedBusinessLines" in team
@@ -1036,7 +1080,7 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert 'onchange="switchTeamEnhancedPeriodValue' not in team
     assert 'onclick="switchTeamEnhancedPeriodType' not in team
     assert 'onchange="toggleTeamEnhancedBusinessLine' not in team
-    assert 'data-team-enhanced-period-value' in team
+    assert 'id="teamEnhancedMonthMultiSelect"' in team
     assert 'data-team-enhanced-period-type="year"' in team
     assert 'data-team-enhanced-period-type="quarter"' in team
     assert 'data-team-enhanced-period-type="month"' in team
@@ -1044,8 +1088,8 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert 'data-team-enhanced-line="${escapeTeamText(line)}"' in team
     assert "button[data-team-enhanced-period-type]" in team
     assert "switchTeamEnhancedPeriodType(button.dataset.teamEnhancedPeriodType)" in team
-    assert "select[data-team-enhanced-period-value]" in team
-    assert "switchTeamEnhancedPeriodValue(select.value)" in team
+    assert "function renderTeamEnhancedMonthFilter()" in team
+    assert "params.set('months', getSelectedTeamMonths(selectedTeamEnhancedPeriodType).join(','))" in team
     assert "input[data-team-enhanced-line]" in team
     assert "toggleTeamEnhancedBusinessLine(input.dataset.teamEnhancedLine, input.checked)" in team
     assert ".team-enhanced-check" in html
@@ -1053,7 +1097,7 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert "业务模式" in team
     assert "Object.keys(selectedTeamEnhancedBusinessLines).map(line" in team
     assert "periodType" in team
-    assert "periodValue" in team
+    assert "selectedTeamMonths" in team
     assert "≥P25人数" in team
     assert "≥P50人数" in team
     assert "≥P75人数" in team
@@ -1114,12 +1158,13 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
 
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
-    assert '<script src="js/platform-trend-main.js?v=1.0.109"></script>' in html
+    assert '<script src="js/platform-trend-main.js?v=1.0.110"></script>' in html
     assert "Object.keys(platformMock).forEach(year => delete platformMock[year])" in platform_main
     assert "function refreshPlatformChart()" in platform_main
     assert "function switchYear(value)" in platform_main
-    assert "let selectedMonth = String(new Date().getMonth() + 1)" in platform_main
-    assert "value === defaultMonth ? ' selected' : ''" in platform_main
+    assert "const selectedPlatformMonths = {" in platform_main
+    assert "function renderPlatformMonthFilter()" in platform_main
+    assert "function getSelectedPlatformMonths()" in platform_main
     assert 'value="4" selected' not in platform_main
     assert "params.set('asOf', asOf)" not in platform_main
     assert "let cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(yearNum) : yearLabel" in platform_main
@@ -1152,7 +1197,9 @@ def test_platform_trend_controls_are_bound_by_platform_module():
     assert "yearSelect.addEventListener('change', () => switchYear(yearSelect.value))" in platform_main
     assert "button[data-platform-time-dim]" in platform_main
     assert "switchTimeDim(button, button.dataset.platformTimeDim)" in platform_main
-    assert "subPeriodSelect.addEventListener('change', () => switchSubPeriod(subPeriodSelect.value))" in platform_main
+    assert 'id="platformMonthMultiSelect"' in platform_section
+    assert "MonthMultiSelect.render(container" in platform_main
+    assert "selectedPlatformMonths[currentTimeDim] = months" in platform_main
     assert "input[data-platform-series]" in platform_main
     assert "toggleSeries(input.dataset.platformSeries, input.checked)" in platform_main
     assert "input[data-platform-org]" in platform_main

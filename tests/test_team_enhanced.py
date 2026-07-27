@@ -177,6 +177,17 @@ def test_team_enhanced_quarter_deduplicates_staff_across_months(tmp_path, monkey
     assert result["summary"]["qjPremium"] == 7.0
     assert {row["label"] for row in result["orgPercentiles"]} == {"上海", "北京"}
 
+    explicit = get_team_enhanced_analysis(
+        2026,
+        period_type="month",
+        period_value=6,
+        months=[5, 4, 6, 5],
+    )
+    assert explicit["months"] == [4, 5]
+    assert explicit["periodValue"] is None
+    assert explicit["summary"]["sampleCount"] == 2
+    assert explicit["summary"]["qjPremium"] == 7.0
+
 
 def test_team_enhanced_scope_active_excludes_zero_productivity(tmp_path, monkeypatch):
     from db import connection
