@@ -407,6 +407,7 @@ def test_deploy_preserves_runtime_environment_files():
     assert 'DATA_DIR="${DATA_DIR:-/var/lib/business-analysis}"' in deploy
     assert 'python3 "$SRC_DIR/backend/backup_database.py"' in deploy
     assert 'chown -R root:root "$APP_DIR"' in deploy
+    assert 'chmod 755 "$APP_DIR"' in deploy
     assert 'chown -R "$RUN_USER:$RUN_USER" "$DATA_DIR" "$LOG_DIR"' in deploy
     assert "SQLite 原始表重建失败，部署已中止" in deploy
 

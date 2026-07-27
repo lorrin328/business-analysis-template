@@ -357,14 +357,9 @@
       ], '暂无标准人力分月数据');
       const standardCountLabel = Number(standardManpower.periodMonths || 0) > 1 ? '人月' : '人';
       const highProductivity = data.highProductivity || {};
-      const highProductivityBands = highProductivity.definitions?.bands || [
-        '[60万,100万)',
-        '[100万,150万)',
-        '[150万,300万)',
-        '[300万,500万)',
-        '[500万,1000万)',
-        '[1000万,+)'
-      ];
+      const highProductivityBands = highProductivity.definitions?.bands
+        || highProductivity.byBusinessLine?.[0]?.bands?.map(item => item.label)
+        || ['60万—100万', '100万—150万', '150万—300万', '300万—500万', '500万—1000万', '1000万及以上'];
       const highProductivityHeaders = highProductivityBands
         .map(label => `<th class="num">${escapeTeamText(label)}</th>`)
         .join('');
