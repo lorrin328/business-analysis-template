@@ -269,6 +269,82 @@ def test_team_enhanced_business_line_filter(tmp_path, monkeypatch):
     assert result["filters"]["businessLines"] == ["证保"]
 
 
+def test_team_enhanced_high_productivity_by_line_and_org_uses_full_group_denominators(tmp_path, monkeypatch):
+    from db import connection
+    import db as db_module
+    from db.repositories import team_enhanced
+    from db.repositories.team_enhanced import get_team_enhanced_analysis
+
+    db_path = tmp_path / "team_enhanced_high_productivity.db"
+    monkeypatch.setattr(connection, "DB_PATH", str(db_path))
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    monkeypatch.setattr(team_enhanced, "init_db", lambda: None)
+
+    with connection.get_db() as conn:
+        conn.execute(
+            """CREATE TABLE hr_data (
+                "统计年" INTEGER, "统计月" INTEGER, "销售机构名称" TEXT,
+                "业务模式名称" TEXT, "职等" TEXT, "人员代码" TEXT,
+                "月末司龄区间" TEXT, "月初在职人力" INTEGER, "月末在职人力" INTEGER
+            )"""
+        )
+        conn.execute(
+            """CREATE TABLE performance (
+                "年" INTEGER, "年月" TEXT, "业务模式" TEXT, "销售机构名称" TEXT,
+                "人员工号" TEXT, "投保单号" TEXT, "期交保费" REAL
+            )"""
+        )
+        staff_rows = [
+            (2026, 5, "上海", "OTO", "F1", "A000", "1年以内", 1, 1),
+            (2026, 5, "上海", "OTO", "F1", "A001", "1年以内", 1, 1),
+            (2026, 5, "上海", "OTO", "F1", "A002", "1年以内", 1, 1),
+            (2026, 5, "上海", "证券", "F2", "B001", "1年以内", 1, 1),
+            (2026, 5, "北京", "证券", "F2", "B002", "1年以内", 1, 1),
+            (2026, 5, "上海", "网服", "F3", "C001", "1年以内", 1, 1),
+        ]
+        conn.executemany('INSERT INTO hr_data VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', staff_rows)
+        conn.executemany(
+            'INSERT INTO performance VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [
+                (2026, "202605", "OTO", "上海", "A000", "P0", 500000),
+                (2026, "202605", "OTO", "上海", "A001", "P1", 600000),
+                (2026, "202605", "OTO", "上海", "A002", "P2", 1000000),
+                (2026, "202605", "证券", "上海", "B001", "P3", 1490000),
+                (2026, "202605", "证券", "北京", "B002", "P4", 10000000),
+                (2026, "202605", "网服", "上海", "C001", "P5", 20000000),
+            ],
+        )
+        conn.commit()
+
+    result = get_team_enhanced_analysis(2026, period_type="month", period_value=5)
+    high = result["highProductivity"]
+
+    by_line = {row["businessLine"]: row for row in high["byBusinessLine"]}
+    assert set(by_line) == {"OTO", "证保"}
+    assert by_line["OTO"]["trackedHeadcount"] == 3
+    assert by_line["OTO"]["qjPremium"] == 210.0
+    oto_bands = {row["label"]: row for row in by_line["OTO"]["bands"]}
+    assert oto_bands["[60万,100万)"] == {
+        "label": "[60万,100万)",
+        "count": 1,
+        "headcountShare": 33.3,
+        "qjPremium": 60.0,
+        "premiumShare": 28.6,
+    }
+    assert oto_bands["[100万,150万)"]["count"] == 1
+    assert oto_bands["[100万,150万)"]["qjPremium"] == 100.0
+    assert oto_bands["[1000万,+)"]["count"] == 0
+
+    by_org_line = {(row["org"], row["businessLine"]): row for row in high["byOrgBusinessLine"]}
+    assert set(by_org_line) == {("上海", "OTO"), ("上海", "证保"), ("北京", "证保")}
+    beijing_zhengbao = by_org_line[("北京", "证保")]
+    top_band = next(row for row in beijing_zhengbao["bands"] if row["label"] == "[1000万,+)")
+    assert top_band["count"] == 1
+    assert top_band["headcountShare"] == 100.0
+    assert top_band["qjPremium"] == 1000.0
+    assert top_band["premiumShare"] == 100.0
+
+
 def test_team_enhanced_uses_end_month_headcount_scope(tmp_path, monkeypatch):
     from db import connection
     import db as db_module

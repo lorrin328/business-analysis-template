@@ -245,6 +245,34 @@
       ], emptyText);
     }
 
+    function fmtTeamOptionalPercent(value, digits = 1) {
+      return value === null || value === undefined ? '--' : `${fmtTeamNumber(value, digits)}%`;
+    }
+
+    function renderHighProductivityBandCell(group, bandLabel) {
+      const band = (group?.bands || []).find(item => item.label === bandLabel) || {};
+      const headcountShare = fmtTeamOptionalPercent(band.headcountShare);
+      const premiumShare = fmtTeamOptionalPercent(band.premiumShare);
+      return `
+        <div class="primary-text">${fmtTeamNumber(band.count)}人 · ${headcountShare}</div>
+        <div class="muted">${fmtTeamNumber(band.qjPremium, 1)}万 · ${premiumShare}</div>
+      `;
+    }
+
+    function renderHighProductivityRows(groups, bandLabels, emptyText, includeOrg = false) {
+      const columns = [
+        ...(includeOrg ? [
+          { render: row => `<span class="primary-text">${escapeTeamText(row.org || '未列明')}</span>` }
+        ] : []),
+        { render: row => `<span class="primary-text">${escapeTeamText(row.businessLine || row.label || '未列明')}</span>` },
+        ...bandLabels.map(bandLabel => ({
+          className: 'num',
+          render: row => renderHighProductivityBandCell(row, bandLabel)
+        }))
+      ];
+      return renderRows(groups || [], columns, emptyText);
+    }
+
     function renderTeamEnhancedPanel() {
       const wrapper = document.getElementById('teamEnhancedPanel');
       if (!wrapper) return;
@@ -328,6 +356,29 @@
         { className: 'num', render: row => `${fmtTeamNumber(row.premiumContributionRate, 1)}%` }
       ], '暂无标准人力分月数据');
       const standardCountLabel = Number(standardManpower.periodMonths || 0) > 1 ? '人月' : '人';
+      const highProductivity = data.highProductivity || {};
+      const highProductivityBands = highProductivity.definitions?.bands || [
+        '[60万,100万)',
+        '[100万,150万)',
+        '[150万,300万)',
+        '[300万,500万)',
+        '[500万,1000万)',
+        '[1000万,+)'
+      ];
+      const highProductivityHeaders = highProductivityBands
+        .map(label => `<th class="num">${escapeTeamText(label)}</th>`)
+        .join('');
+      const highProductivityLineRows = renderHighProductivityRows(
+        highProductivity.byBusinessLine || [],
+        highProductivityBands,
+        '当前筛选未包含OTO或证保高产能人力'
+      );
+      const highProductivityOrgLineRows = renderHighProductivityRows(
+        highProductivity.byOrgBusinessLine || [],
+        highProductivityBands,
+        '当前筛选暂无分机构、分模式高产能人力',
+        true
+      );
 
       wrapper.innerHTML = `
         ${controlsHtml}
@@ -445,6 +496,33 @@
             </thead>
             <tbody>${orgRows}</tbody>
           </table>
+        </div>
+        <div class="structure-block-title">累计期交保费60万元及以上人力分档</div>
+        <div class="structure-table-wrapper" style="margin-top:10px;">
+          <table class="structure-table" id="teamHighProductivityBusinessLineTable">
+            <thead>
+              <tr>
+                <th>业务模式</th>
+                ${highProductivityHeaders}
+              </tr>
+            </thead>
+            <tbody>${highProductivityLineRows}</tbody>
+          </table>
+        </div>
+        <div class="structure-table-wrapper" style="margin-top:10px;">
+          <table class="structure-table" id="teamHighProductivityOrgLineTable">
+            <thead>
+              <tr>
+                <th>机构</th>
+                <th>业务模式</th>
+                ${highProductivityHeaders}
+              </tr>
+            </thead>
+            <tbody>${highProductivityOrgLineRows}</tbody>
+          </table>
+        </div>
+        <div class="team-insight-note" style="margin-top:8px;">
+          仅展示OTO、证保。每格第一行是“人数 · 人数占比”，第二行是“累计期交保费 · 保费占比”；占比分母分别为同一业务模式或同一机构+业务模式的全部月末在职样本人数和累计期交保费。月度按当月累计，季度/年度按所选期间个人累计，同一人员只计1人。
         </div>
         <div class="structure-block-title">标准人力贡献分析</div>
         <div class="team-insight-layout" style="margin-top:10px;">
