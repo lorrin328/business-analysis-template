@@ -4,8 +4,10 @@
     let currentTimeDim = 'year';
     let currentPremiumType = 'qj';
     let selectedYear = DEFAULT_DASHBOARD_YEAR;
-    let selectedQuarter = 'Q2';
-    let selectedMonth = String(new Date().getMonth() + 1);
+    const selectedPlatformMonths = {
+      quarter: [],
+      month: []
+    };
     const selectedSeries = { '经代': true, 'OTO': true, '证保': true, '蚁桥': true };
     const seriesColors = { '经代': '#8b5cf6', 'OTO': '#3b82f6', '证保': '#10b981', '蚁桥': '#f59e0b' };
     const ORG_LIST_PLATFORM = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
@@ -268,34 +270,44 @@
       const year = parseInt(selectedYear);
       platformChart.clear();
       platformChart.setOption(getPlatformOption(), true);
-      if (currentTimeDim === 'month') {
-        const month = parseInt(selectedMonth);
-        await fetchPlatformTrendDaily(year, 'month', month);
-        await fetchPlatformTrendDaily(year - 1, 'month', month);
-        if (month > 1) {
-          await fetchPlatformTrendDaily(year, 'month', month - 1);
-        }
-      } else if (currentTimeDim === 'quarter') {
-        const quarter = Number(String(selectedQuarter).replace('Q', ''));
-        await fetchPlatformTrendDaily(year, 'quarter', quarter);
-        await fetchPlatformTrendDaily(year - 1, 'quarter', quarter);
-        if (quarter > 1) {
-          await fetchPlatformTrendDaily(year, 'quarter', quarter - 1);
-        }
+      if (currentTimeDim !== 'year') {
+        const months = getSelectedPlatformMonths();
+        await Promise.all(months.flatMap(month => [
+          fetchPlatformTrendDaily(year, 'month', month),
+          fetchPlatformTrendDaily(year - 1, 'month', month)
+        ]));
       }
       platformChart.setOption(getPlatformOption(), true);
     }
 
-    function buildDailyTrendOption(monthList, currentName, prevName, emptyMessage) {
+    function getSelectedMonthSetTrendData(year, monthList) {
       const selectedKeys = Object.keys(selectedSeries).filter(k => selectedSeries[k]);
+      const labels = [];
+      const values = [];
+      let offset = 0;
+      let hasAny = false;
+      monthList.forEach(month => {
+        const key = platformTrendCacheKey(year, currentPremiumType, selectedKeys, 'month', month);
+        const cached = hasPlatformOrgFilter() ? null : platformTrendDailyCache[key];
+        const chunk = cached || getPeriodDailyCumulative(year, currentPremiumType, selectedKeys, [month]);
+        if (!chunk || chunk.values.length === 0) return;
+        hasAny = true;
+        chunk.labels.forEach((label, index) => {
+          labels.push(label);
+          values.push(Math.round((offset + Number(chunk.values[index] || 0)) * 10) / 10);
+        });
+        offset += Number(chunk.values[chunk.values.length - 1] || 0);
+      });
+      return hasAny ? { labels, values } : { labels: [], values: [] };
+    }
+
+    function buildDailyTrendOption(monthList, currentName, prevName, emptyMessage) {
       const year = parseInt(selectedYear);
       const prevYear = year - 1;
-      const periodType = monthList.length === 1 ? 'month' : 'quarter';
-      const periodValue = periodType === 'month' ? monthList[0] : Math.floor((monthList[0] - 1) / 3) + 1;
-      const currentKey = platformTrendCacheKey(year, currentPremiumType, selectedKeys, periodType, periodValue);
-      const prevKey = platformTrendCacheKey(prevYear, currentPremiumType, selectedKeys, periodType, periodValue);
-      const current = platformTrendDailyCache[currentKey] || getPeriodDailyCumulative(year, currentPremiumType, selectedKeys, monthList);
-      const prev = platformTrendDailyCache[prevKey] || (platformMock[prevYear] ? getPeriodDailyCumulative(prevYear, currentPremiumType, selectedKeys, monthList) : { labels: [], values: [] });
+      const current = getSelectedMonthSetTrendData(year, monthList);
+      const prev = platformMock[prevYear]
+        ? getSelectedMonthSetTrendData(prevYear, monthList)
+        : { labels: [], values: [] };
       if (current.values.length === 0 && prev.values.length === 0) return {
         title: { text: emptyMessage, left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } },
         xAxis: { type: 'category', data: [] },
@@ -412,149 +424,14 @@
         };
       }
 
-      if (currentTimeDim === 'quarter') {
-        const quarter = selectedQuarter;
-        const qNum = parseInt(quarter.replace('Q', ''));
-        const qStartMonth = { 'Q1': 1, 'Q2': 4, 'Q3': 7, 'Q4': 10 };
-        const startM = qStartMonth[quarter];
-        const monthList = [startM, startM + 1, startM + 2];
-
-        const current = getTrendDataFromCache(year, 'quarter', qNum, monthList);
-        const prevYearSame = getTrendDataFromCache(prevYear, 'quarter', qNum, monthList);
-        let prevQ = null;
-        if (qNum > 1) {
-          const prevStartM = startM - 3;
-          prevQ = getTrendDataFromCache(year, 'quarter', qNum - 1, [prevStartM, prevStartM + 1, prevStartM + 2]);
-        }
-
-        const hasCurrent = current.values.length > 0;
-        const hasPrevYear = prevYearSame.values.length > 0;
-        const hasPrevQ = prevQ && prevQ.values.length > 0;
-
-        if (!hasCurrent && !hasPrevYear && !hasPrevQ) {
-          return emptyOption('暂无该季度日累计数据');
-        }
-
-        const maxLen = Math.max(
-          current.values.length,
-          prevYearSame.values.length,
-          hasPrevQ ? prevQ.values.length : 0
-        );
-        const labels = Array.from({length: maxLen}, (_, i) => '第' + (i + 1) + '日');
-        const seriesList = [];
-
-        if (hasCurrent) {
-          seriesList.push({
-            name: year + '年' + quarter,
-            type: 'line',
-            data: current.values,
-            smooth: true,
-            symbol: 'circle',
-            symbolSize: 4,
-            lineStyle: { width: 3 },
-            itemStyle: { color: '#3b82f6' }
-          });
-        }
-        if (hasPrevQ) {
-          seriesList.push({
-            name: year + '年Q' + (qNum - 1),
-            type: 'line',
-            data: prevQ.values,
-            smooth: true,
-            symbol: 'none',
-            lineStyle: { width: 2, type: 'dashed' },
-            itemStyle: { color: '#f59e0b' }
-          });
-        }
-        if (hasPrevYear) {
-          seriesList.push({
-            name: prevYear + '年' + quarter,
-            type: 'line',
-            data: prevYearSame.values,
-            smooth: true,
-            symbol: 'none',
-            lineStyle: { width: 2, type: 'dashed' },
-            itemStyle: { color: '#94a3b8' }
-          });
-        }
-
-        return {
-          tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
-          legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
-          grid: { left: 50, right: 20, top: 20, bottom: 48 },
-          xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8', interval: 'auto' } },
-          yAxis: { type: 'value', name: '累计(万)', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
-          series: seriesList
-        };
-      }
-
-      const month = parseInt(selectedMonth);
-      const currentM = getTrendDataFromCache(year, 'month', month, [month]);
-      const prevYearSameM = getTrendDataFromCache(prevYear, 'month', month, [month]);
-      let prevM = null;
-      if (month > 1) {
-        prevM = getTrendDataFromCache(year, 'month', month - 1, [month - 1]);
-      }
-
-      const hasCurrentM = currentM.values.length > 0;
-      const hasPrevYearM = prevYearSameM.values.length > 0;
-      const hasPrevM = prevM && prevM.values.length > 0;
-
-      if (!hasCurrentM && !hasPrevYearM && !hasPrevM) {
-        return emptyOption('暂无该月份日累计数据');
-      }
-
-      const maxLenM = Math.max(
-        currentM.values.length,
-        prevYearSameM.values.length,
-        hasPrevM ? prevM.values.length : 0
+      const selectedMonths = getSelectedPlatformMonths();
+      const monthText = selectedMonths.join('、');
+      return buildDailyTrendOption(
+        selectedMonths,
+        `${year}年${monthText}月`,
+        `${prevYear}年${monthText}月`,
+        '暂无所选月份日累计数据'
       );
-      const labelsM = Array.from({length: maxLenM}, (_, i) => '第' + (i + 1) + '日');
-      const seriesListM = [];
-
-      if (hasCurrentM) {
-        seriesListM.push({
-          name: year + '年' + month + '月',
-          type: 'line',
-          data: currentM.values,
-          smooth: true,
-          symbol: 'circle',
-          symbolSize: 4,
-          lineStyle: { width: 3 },
-          itemStyle: { color: '#3b82f6' }
-        });
-      }
-      if (hasPrevM) {
-        seriesListM.push({
-          name: year + '年' + (month - 1) + '月',
-          type: 'line',
-          data: prevM.values,
-          smooth: true,
-          symbol: 'none',
-          lineStyle: { width: 2, type: 'dashed' },
-          itemStyle: { color: '#f59e0b' }
-        });
-      }
-      if (hasPrevYearM) {
-        seriesListM.push({
-          name: prevYear + '年' + month + '月',
-          type: 'line',
-          data: prevYearSameM.values,
-          smooth: true,
-          symbol: 'none',
-          lineStyle: { width: 2, type: 'dashed' },
-          itemStyle: { color: '#94a3b8' }
-        });
-      }
-
-      return {
-        tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
-        legend: { data: seriesListM.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
-        grid: { left: 50, right: 20, top: 20, bottom: 48 },
-        xAxis: { type: 'category', data: labelsM, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8', interval: 'auto' } },
-        yAxis: { type: 'value', name: '累计(万)', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
-        series: seriesListM
-      };
     }
 
     if (!window.ALLOW_LOCAL_FALLBACK) {
@@ -620,6 +497,7 @@
       await loadYearFromApi(value, { updateKpi: true, updateProduct: true });
       updateCutoffLabel(value);
       updatePlatformScopeNote();
+      renderPlatformMonthFilter();
       await refreshPlatformChart();
       productChart.setOption(getPieOption(currentPieType), true);
       fetchPayPeriodData(value);
@@ -632,32 +510,40 @@
         btn.classList.add('active');
       }
       currentTimeDim = dim;
-
-      const subSelect = document.getElementById('subPeriodSelect');
-      subSelect.innerHTML = '';
-      if (dim === 'year') {
-        subSelect.innerHTML = '<option value="all">全年</option>';
-        subSelect.style.display = 'none';
-      } else if (dim === 'quarter') {
-        subSelect.innerHTML = '<option value="Q1">Q1</option><option value="Q2" selected>Q2</option><option value="Q3">Q3</option><option value="Q4">Q4</option>';
-        subSelect.style.display = 'inline-block';
-      } else if (dim === 'month') {
-        const defaultMonth = selectedMonth || String(new Date().getMonth() + 1);
-        selectedMonth = defaultMonth;
-        subSelect.innerHTML = Array.from({ length: 12 }, (_, i) => {
-          const value = String(i + 1);
-          return `<option value="${value}"${value === defaultMonth ? ' selected' : ''}>${value}月</option>`;
-        }).join('');
-        subSelect.style.display = 'inline-block';
-      }
-
+      renderPlatformMonthFilter();
       await refreshPlatformChart();
     }
 
-    async function switchSubPeriod(value) {
-      if (currentTimeDim === 'quarter') selectedQuarter = value;
-      else if (currentTimeDim === 'month') selectedMonth = value;
-      await refreshPlatformChart();
+    function getSelectedPlatformMonths() {
+      if (currentTimeDim === 'year') return [];
+      const maxMonth = typeof getLatestMonthForYear === 'function'
+        ? getLatestMonthForYear(String(selectedYear))
+        : 12;
+      const selected = MonthMultiSelect.normalizeMonths(selectedPlatformMonths[currentTimeDim], maxMonth);
+      if (selected.length > 0) return selected;
+      const fallback = MonthMultiSelect.defaultMonths(currentTimeDim, maxMonth);
+      selectedPlatformMonths[currentTimeDim] = fallback;
+      return fallback;
+    }
+
+    function renderPlatformMonthFilter() {
+      const container = document.getElementById('platformMonthMultiSelect');
+      if (!container) return;
+      if (currentTimeDim === 'year') {
+        container.hidden = true;
+        return;
+      }
+      selectedPlatformMonths[currentTimeDim] = MonthMultiSelect.render(container, {
+        dimension: currentTimeDim,
+        maxMonth: typeof getLatestMonthForYear === 'function'
+          ? getLatestMonthForYear(String(selectedYear))
+          : 12,
+        selectedMonths: getSelectedPlatformMonths(),
+        onChange: async months => {
+          selectedPlatformMonths[currentTimeDim] = months;
+          await refreshPlatformChart();
+        }
+      });
     }
 
     async function switchPremiumType(btn, type) {
@@ -700,12 +586,6 @@
         });
       }
 
-      const subPeriodSelect = document.getElementById('subPeriodSelect');
-      if (subPeriodSelect && subPeriodSelect.dataset.boundPlatformPeriod !== 'true') {
-        subPeriodSelect.dataset.boundPlatformPeriod = 'true';
-        subPeriodSelect.addEventListener('change', () => switchSubPeriod(subPeriodSelect.value));
-      }
-
       const seriesChecks = document.getElementById('seriesChecks');
       if (seriesChecks && seriesChecks.dataset.boundPlatformSeries !== 'true') {
         seriesChecks.dataset.boundPlatformSeries = 'true';
@@ -739,6 +619,7 @@
     }
 
     bindPlatformTrendControls();
+    renderPlatformMonthFilter();
 
     // 根据机构筛选获取某渠道某月的数值（null 表示无数据；经代无机构维度，始终返回整体数据）
     function getChannelValue(year, premiumType, channel, monthIndex) {

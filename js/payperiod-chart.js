@@ -11,7 +11,10 @@
       metric: 'qj',
       timeDim: 'year',
       year: DEFAULT_DASHBOARD_YEAR,
-      subPeriod: 'all',
+      selectedMonths: {
+        quarter: [],
+        month: []
+      },
       currentPieType: 'premium'
     };
     ORG_LIST.forEach(o => payPeriodFilters.orgs[o] = true);
@@ -164,10 +167,35 @@
 
     function _buildPeriodMonths() {
       const dim = payPeriodFilters.timeDim;
-      const sub = payPeriodFilters.subPeriod;
-      if (dim === 'year' || sub === 'all') return null;
-      if (dim === 'quarter') { const q = parseInt(sub.replace('Q','')); return Array.from({length:3},(_,i)=>(q-1)*3+i+1); }
-      return [parseInt(sub)];
+      if (dim === 'year') return null;
+      const maxMonth = typeof getLatestMonthForYear === 'function'
+        ? getLatestMonthForYear(String(payPeriodFilters.year))
+        : 12;
+      const selected = MonthMultiSelect.normalizeMonths(payPeriodFilters.selectedMonths[dim], maxMonth);
+      if (selected.length > 0) return selected;
+      const fallback = MonthMultiSelect.defaultMonths(dim, maxMonth);
+      payPeriodFilters.selectedMonths[dim] = fallback;
+      return fallback;
+    }
+
+    function renderPayPeriodMonthFilter() {
+      const container = document.getElementById('payPeriodMonthMultiSelect');
+      if (!container) return;
+      if (payPeriodFilters.timeDim === 'year') {
+        container.hidden = true;
+        return;
+      }
+      payPeriodFilters.selectedMonths[payPeriodFilters.timeDim] = MonthMultiSelect.render(container, {
+        dimension: payPeriodFilters.timeDim,
+        maxMonth: typeof getLatestMonthForYear === 'function'
+          ? getLatestMonthForYear(String(payPeriodFilters.year))
+          : 12,
+        selectedMonths: _buildPeriodMonths(),
+        onChange: months => {
+          payPeriodFilters.selectedMonths[payPeriodFilters.timeDim] = months;
+          refreshPayPeriodChart();
+        }
+      });
     }
 
     function buildPayPeriodQuery(year) {
@@ -245,20 +273,15 @@
         btn.classList.add('active');
       }
       payPeriodFilters.timeDim = dim;
-      const sub = document.getElementById('payPeriodSubSelect');
-      if (dim === 'year') { sub.style.display = 'none'; payPeriodFilters.subPeriod = 'all'; }
-      else if (dim === 'quarter') {
-        sub.style.display = ''; sub.innerHTML = '<option value="all">全部</option>'+['Q1','Q2','Q3','Q4'].map(q => `<option value="${q}">${q}</option>`).join('');
-        payPeriodFilters.subPeriod = 'all';
-      } else {
-        sub.style.display = ''; sub.innerHTML = '<option value="all">全年</option>'+Array.from({length:12},(_,i)=>`<option value="${i+1}">${i+1}月</option>`).join('');
-        payPeriodFilters.subPeriod = 'all';
-      }
+      renderPayPeriodMonthFilter();
       refreshPayPeriodChart();
     }
 
-    function switchPayPeriodSub(value) { payPeriodFilters.subPeriod = value; refreshPayPeriodChart(); }
-    function switchPayPeriodYear(value) { payPeriodFilters.year = value; refreshPayPeriodChart(); }
+    function switchPayPeriodYear(value) {
+      payPeriodFilters.year = value;
+      renderPayPeriodMonthFilter();
+      refreshPayPeriodChart();
+    }
 
     function switchPayPeriodMetric(btn, metric) {
       if (btn?.parentElement) {
@@ -308,12 +331,6 @@
           event.preventDefault();
           switchPayPeriodDim(button, button.dataset.payPeriodDim);
         });
-      }
-
-      const subSelect = document.getElementById('payPeriodSubSelect');
-      if (subSelect && subSelect.dataset.boundPayPeriodSub !== 'true') {
-        subSelect.dataset.boundPayPeriodSub = 'true';
-        subSelect.addEventListener('change', () => switchPayPeriodSub(subSelect.value));
       }
 
       const bizChecks = document.getElementById('payPeriodBizChecks');
@@ -369,4 +386,5 @@
     }
 
     bindPayPeriodControls();
+    renderPayPeriodMonthFilter();
 

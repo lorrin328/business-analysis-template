@@ -10,6 +10,7 @@ from services.team_analysis_utils import (
     band_label,
     clean_staff_id,
     clean_text,
+    high_productivity_band_label,
     normalize_line,
     percentile,
     performance_year_month,
@@ -40,3 +41,14 @@ def test_team_utils_distribution_helpers():
     assert band_label(0) == "0及以下"
     assert band_label(0.5) == "0-0.5万"
     assert band_label(10.01) == "10万以上"
+
+
+def test_team_utils_high_productivity_band_boundaries_are_left_closed():
+    assert high_productivity_band_label(59.9999) is None
+    assert high_productivity_band_label(60) == "[60万,100万)"
+    assert high_productivity_band_label(99.9999) == "[60万,100万)"
+    assert high_productivity_band_label(100) == "[100万,150万)"
+    assert high_productivity_band_label(150) == "[150万,300万)"
+    assert high_productivity_band_label(300) == "[300万,500万)"
+    assert high_productivity_band_label(500) == "[500万,1000万)"
+    assert high_productivity_band_label(1000) == "[1000万,+)"

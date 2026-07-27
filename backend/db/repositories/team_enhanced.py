@@ -9,11 +9,13 @@ from db.schema import init_db
 from metrics.business_rules import standard_premium_for_manpower
 from services.raw_table_reader import quote_identifier, raw_table_columns, read_raw_table_rows
 from services.team_analysis_utils import (
+    HIGH_PRODUCTIVITY_BANDS,
     PRODUCTIVITY_BANDS,
     STANDARD_MANPOWER_THRESHOLDS,
     band_label as _band_label,
     clean_staff_id as _clean_staff_id,
     clean_text as _clean_text,
+    high_productivity_band_label as _high_productivity_band_label,
     normalize_line as _normalize_line,
     performance_year_month as _performance_year_month,
     percentile as _percentile,
@@ -44,7 +46,13 @@ def _latest_hr_month(conn, year: int) -> int | None:
     return _to_int(row["month"], None)
 
 
-def _period_months(conn, year: int, period_type: str, period_value: int | None) -> list[int]:
+def _period_months(
+    conn,
+    year: int,
+    period_type: str,
+    period_value: int | None,
+    explicit_months: list[int] | None = None,
+) -> list[int]:
     available = [
         _to_int(row["month"], None)
         for row in conn.execute(
@@ -54,6 +62,9 @@ def _period_months(conn, year: int, period_type: str, period_value: int | None) 
         ).fetchall()
     ]
     available = [month for month in available if month]
+    if explicit_months:
+        requested = {month for month in explicit_months if 1 <= month <= 12}
+        return [month for month in available if month in requested]
     if period_type == "year":
         return available
     if period_type == "quarter":
@@ -269,6 +280,102 @@ def _productivity_bands(sample: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+def _high_productivity_group(
+    label: str,
+    rows: list[dict[str, Any]],
+    dimension: str,
+    *,
+    org: str | None = None,
+    business_line: str | None = None,
+) -> dict[str, Any]:
+    tracked = [
+        row
+        for row in rows
+        if row.get("endHeadcount", 0) > 0 and row.get("businessLine") in STANDARD_MANPOWER_THRESHOLDS
+    ]
+    total_headcount = len(tracked)
+    total_qj = sum(float(row.get("qjPremium") or 0) for row in tracked)
+    grouped = {
+        band_label: {"count": 0, "premium": 0.0}
+        for band_label, _, _ in HIGH_PRODUCTIVITY_BANDS
+    }
+    for row in tracked:
+        band_label = _high_productivity_band_label(float(row.get("qjPremium") or 0))
+        if not band_label:
+            continue
+        grouped[band_label]["count"] += 1
+        grouped[band_label]["premium"] += float(row.get("qjPremium") or 0)
+
+    return {
+        "label": label,
+        "dimension": dimension,
+        "org": org,
+        "businessLine": business_line,
+        "trackedHeadcount": total_headcount,
+        "qjPremium": _round(total_qj, 2),
+        "bands": [
+            {
+                "label": band_label,
+                "count": values["count"],
+                "headcountShare": _round(_ratio(values["count"], total_headcount), 1),
+                "qjPremium": _round(values["premium"], 2),
+                "premiumShare": _round(_ratio(values["premium"], total_qj), 1),
+            }
+            for band_label, values in grouped.items()
+        ],
+    }
+
+
+def _high_productivity_analysis(sample: list[dict[str, Any]]) -> dict[str, Any]:
+    supported_rows = [
+        row for row in sample if row.get("businessLine") in STANDARD_MANPOWER_THRESHOLDS
+    ]
+    grouped_by_line: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    grouped_by_org_line: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in supported_rows:
+        line = row["businessLine"]
+        org = row.get("org") or "未列明"
+        grouped_by_line[line].append(row)
+        grouped_by_org_line[(org, line)].append(row)
+
+    line_order = {"OTO": 0, "证保": 1}
+    by_business_line = [
+        _high_productivity_group(
+            line,
+            grouped_by_line[line],
+            "business_line",
+            business_line=line,
+        )
+        for line in ("OTO", "证保")
+        if grouped_by_line.get(line)
+    ]
+    by_org_business_line = [
+        _high_productivity_group(
+            f"{org} / {line}",
+            rows,
+            "org_business_line",
+            org=org,
+            business_line=line,
+        )
+        for (org, line), rows in sorted(
+            grouped_by_org_line.items(),
+            key=lambda item: (item[0][0], line_order.get(item[0][1], 99)),
+        )
+    ]
+
+    return {
+        "byBusinessLine": by_business_line,
+        "byOrgBusinessLine": by_org_business_line,
+        "definitions": {
+            "businessLines": ["OTO", "证保"],
+            "bands": [label for label, _, _ in HIGH_PRODUCTIVITY_BANDS],
+            "headcountShare": "分档人数 / 同一业务模式或同一机构+业务模式的月末在职样本人数",
+            "premiumShare": "分档人员累计期交保费 / 同一业务模式或同一机构+业务模式全部月末在职样本的累计期交保费",
+            "periodAggregation": "单月按当月个人期交保费；多月按所选月份个人累计期交保费，同一人员只计1人",
+        },
+    }
+
+
 def _percentile_summary(label: str, sample: list[dict[str, Any]]) -> dict[str, Any]:
     values = [row["qjPremium"] for row in sample]
     active_count = sum(1 for row in sample if row["qjPremium"] > 0)
@@ -407,7 +514,7 @@ def _standard_manpower_analysis(
             "证保": "月末在职且当月折算保费/标准保费大于等于3万元",
             "specialProductRules": "2026年产品代码4281按10年及以上交期处理，标准人力计算时标准保费按期交保费全额计入",
             "premiumContribution": "保费贡献按标准人力对应的期交保费计算",
-            "periodAggregation": "季度/年度为所选月份的人月口径汇总，月度为当月人数口径",
+            "periodAggregation": "单月为当月人数口径；多月按所选月份逐月判断并以人月口径汇总",
         },
     }
 
@@ -458,6 +565,14 @@ def _empty_team_analysis_response(
         "productivityBands": [],
         "percentiles": [],
         "orgPercentiles": [],
+        "highProductivity": {
+            "byBusinessLine": [],
+            "byOrgBusinessLine": [],
+            "definitions": {
+                "businessLines": ["OTO", "证保"],
+                "bands": [label for label, _, _ in HIGH_PRODUCTIVITY_BANDS],
+            },
+        },
         "standardManpower": {
             "periodMonths": 0,
             "summary": [],
@@ -477,6 +592,7 @@ def get_team_enhanced_analysis(
     month: int | None = None,
     period_type: str = "month",
     period_value: int | None = None,
+    months: list[int] | None = None,
     business_lines: list[str] | None = None,
     orgs: list[str] | None = None,
     scope: str = "all",
@@ -510,7 +626,7 @@ def get_team_enhanced_analysis(
                 org_filter=org_filter,
                 scope=scope,
             )
-        selected_months = _period_months(conn, year, period_type, period_value)
+        selected_months = _period_months(conn, year, period_type, period_value, months)
         if not selected_months:
             return _empty_team_analysis_response(
                 year=year,
@@ -535,7 +651,9 @@ def get_team_enhanced_analysis(
             "year": year,
             "month": selected_months[-1],
             "periodType": period_type,
-            "periodValue": period_value or (selected_months[-1] if period_type == "month" else None),
+            "periodValue": None if months else (
+                period_value or (selected_months[-1] if period_type == "month" else None)
+            ),
             "months": selected_months,
             "summary": _percentile_summary("整体", sample),
             "tenureStructure": _group_structure(sample, "tenure"),
@@ -543,6 +661,7 @@ def get_team_enhanced_analysis(
             "productivityBands": _productivity_bands(sample),
             "percentiles": _percentiles_by_line(sample),
             "orgPercentiles": _percentiles_by_org(sample),
+            "highProductivity": _high_productivity_analysis(sample),
             "standardManpower": standard_manpower,
             "trend": _trend(conn, year, perf_map, line_filter or None, org_filter or None, scope),
             "filters": {

@@ -216,25 +216,32 @@ def get_org_kpi_data(
                 cutoff_sql, cutoff_params = channel_cutoff_filter_sql(channel_cutoffs)
                 start_sql, start_params = date_start_filter_sql(selected_start)
                 c.execute(f'''
-                    SELECT org, channel, SUM(qj_premium) AS total
+                    SELECT org, channel, month, SUM(qj_premium) AS total
                     FROM agg_longterm_qj
                     WHERE year = ?
                       AND business_type = '转型'
                       AND {cutoff_sql}
                       AND {start_sql}
-                    GROUP BY org, channel
+                    GROUP BY org, channel, month
                 ''', [query_year, *cutoff_params, *start_params])
             else:
                 c.execute('''
-                    SELECT org, channel, SUM(qj_premium) AS total
+                    SELECT org, channel, month, SUM(qj_premium) AS total
                     FROM agg_longterm_qj
                     WHERE year = ?
                       AND business_type = '转型'
                       AND month BETWEEN ? AND ?
-                    GROUP BY org, channel
+                    GROUP BY org, channel, month
                 ''', (query_year, range_start_month, ytd_end_month))
             for r in c.fetchall():
-                result[f"{r['org']}|{r['channel']}"] = {'year': round(r['total'] or 0, 2)}
+                key = f"{r['org']}|{r['channel']}"
+                month = int(r['month'])
+                value = round(r['total'] or 0, 2)
+                item = result.setdefault(key, {'year': 0, 'month': {}, 'quarter': {}})
+                item['year'] = round(item['year'] + value, 2)
+                item['month'][str(month)] = value
+                quarter = f"Q{((month - 1) // 3) + 1}"
+                item['quarter'][quarter] = round(item['quarter'].get(quarter, 0) + value, 2)
             return result
 
         org_perf = collect_perf(year)

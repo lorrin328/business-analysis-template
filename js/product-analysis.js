@@ -148,8 +148,47 @@
     productFilters.orgs = { 'all': true };
     ORG_LIST.forEach(o => productFilters.orgs[o] = true);
     productFilters.timeDim = 'year';
-    productFilters.subPeriod = 'all';
+    productFilters.selectedMonths = {
+      quarter: [],
+      month: []
+    };
     productFilters.metric = 'qj';
+
+    function getProductMaxMonth() {
+      const year = String(selectedYear || DEFAULT_DASHBOARD_YEAR);
+      return typeof getLatestMonthForYear === 'function' ? getLatestMonthForYear(year) : 12;
+    }
+
+    function getProductSelectedMonths() {
+      if (productFilters.timeDim === 'year') return [];
+      const maxMonth = getProductMaxMonth();
+      const selected = MonthMultiSelect.normalizeMonths(
+        productFilters.selectedMonths[productFilters.timeDim],
+        maxMonth
+      );
+      if (selected.length > 0) return selected;
+      const fallback = MonthMultiSelect.defaultMonths(productFilters.timeDim, maxMonth);
+      productFilters.selectedMonths[productFilters.timeDim] = fallback;
+      return fallback;
+    }
+
+    function renderProductMonthFilter() {
+      const container = document.getElementById('productMonthMultiSelect');
+      if (!container) return;
+      if (productFilters.timeDim === 'year') {
+        container.hidden = true;
+        return;
+      }
+      productFilters.selectedMonths[productFilters.timeDim] = MonthMultiSelect.render(container, {
+        dimension: productFilters.timeDim,
+        maxMonth: getProductMaxMonth(),
+        selectedMonths: getProductSelectedMonths(),
+        onChange: months => {
+          productFilters.selectedMonths[productFilters.timeDim] = months;
+          refreshProductChart();
+        }
+      });
+    }
 
     function toggleProductOrg(org, checked) {
       if (org === 'all') {
@@ -173,20 +212,7 @@
         btn.classList.add('active');
       }
       productFilters.timeDim = dim;
-      const sub = document.getElementById('productSubSelect');
-      if (dim === 'year') { sub.style.display = 'none'; productFilters.subPeriod = 'all'; }
-      else if (dim === 'quarter') {
-        sub.style.display = ''; sub.innerHTML = '<option value="all">全部</option>'+['Q1','Q2','Q3','Q4'].map(q => `<option value="${q}">${q}</option>`).join('');
-        productFilters.subPeriod = 'all';
-      } else {
-        sub.style.display = ''; sub.innerHTML = '<option value="all">全年</option>'+Array.from({length:12},(_,i)=>`<option value="${i+1}">${i+1}月</option>`).join('');
-        productFilters.subPeriod = 'all';
-      }
-      refreshProductChart();
-    }
-
-    function switchProductSub(value) {
-      productFilters.subPeriod = value;
+      renderProductMonthFilter();
       refreshProductChart();
     }
 
@@ -262,12 +288,6 @@
         });
       }
 
-      const subSelect = document.getElementById('productSubSelect');
-      if (subSelect && subSelect.dataset.boundProductSub !== 'true') {
-        subSelect.dataset.boundProductSub = 'true';
-        subSelect.addEventListener('change', () => switchProductSub(subSelect.value));
-      }
-
       const metricBtns = document.getElementById('productMetricBtns');
       if (metricBtns && metricBtns.dataset.boundProductMetrics !== 'true') {
         metricBtns.dataset.boundProductMetrics = 'true';
@@ -281,3 +301,4 @@
     }
 
     bindProductStructureControls();
+    renderProductMonthFilter();
