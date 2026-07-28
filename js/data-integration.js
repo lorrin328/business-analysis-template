@@ -137,14 +137,11 @@
         const o = Object.keys(productFilters.orgs).filter(k => k !== 'all' && productFilters.orgs[k]);
         if (o.length > 0) params.set('orgs', o.join(','));
       }
-      if (productFilters.timeDim && productFilters.timeDim !== 'year' && productFilters.subPeriod !== 'all') {
-        if (productFilters.timeDim === 'quarter') {
-          const qNum = parseInt(productFilters.subPeriod.replace('Q',''));
-          const m = Array.from({length:3},(_,i)=>(qNum-1)*3+i+1).join(',');
-          params.set('months', m);
-        } else {
-          params.set('months', productFilters.subPeriod);
-        }
+      if (productFilters.timeDim && productFilters.timeDim !== 'year') {
+        const months = typeof getProductSelectedMonths === 'function'
+          ? getProductSelectedMonths()
+          : (productFilters.selectedMonths?.[productFilters.timeDim] || []);
+        if (months.length > 0) params.set('months', months.join(','));
       }
       if (productFilters.metric && productFilters.metric !== 'qj') params.set('metric', productFilters.metric);
       params.set('year', String(year));

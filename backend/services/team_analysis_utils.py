@@ -27,6 +27,15 @@ PRODUCTIVITY_BANDS = [
     ("10万以上", 10, None),
 ]
 
+HIGH_PRODUCTIVITY_BANDS = [
+    ("[60万,100万)", 60, 100),
+    ("[100万,150万)", 100, 150),
+    ("[150万,300万)", 150, 300),
+    ("[300万,500万)", 300, 500),
+    ("[500万,1000万)", 500, 1000),
+    ("[1000万,+)", 1000, None),
+]
+
 
 def to_int(value: Any, default: int | None = 0) -> int | None:
     if value is None or value == "":
@@ -144,3 +153,10 @@ def band_label(value: float) -> str:
         if high is None or value <= high:
             return label
     return PRODUCTIVITY_BANDS[-1][0]
+
+
+def high_productivity_band_label(value: float) -> str | None:
+    for label, low, high in HIGH_PRODUCTIVITY_BANDS:
+        if value >= low and (high is None or value < high):
+            return label
+    return None

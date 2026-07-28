@@ -193,6 +193,9 @@ fi
 
 # 应用代码只读；仅独立的数据目录和日志目录允许应用账号写入。
 chown -R root:root "$APP_DIR"
+# rsync 会继承可信发布包解压目录的根目录权限；mktemp 默认为 0700，
+# 必须显式恢复应用根目录的可遍历权限，否则 www-data 无法进入 WorkingDirectory。
+chmod 755 "$APP_DIR"
 chown -R "$RUN_USER:$RUN_USER" "$DATA_DIR" "$LOG_DIR"
 chmod 750 "$DATA_DIR" "$LOG_DIR"
 if [ -f "$DB_PATH" ]; then

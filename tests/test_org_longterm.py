@@ -44,6 +44,8 @@ def test_org_analysis_returns_annual_longterm_qj_with_daily_cutoff(tmp_path, mon
     data = get_org_kpi_data(2098)
 
     assert data["longterm"]["上海|OTO"]["year"] == 3
+    assert data["longterm"]["上海|OTO"]["month"] == {"5": 3}
+    assert data["longterm"]["上海|OTO"]["quarter"] == {"Q2": 3}
     assert "经代|经代" not in data["longterm"]
     assert "上海" in data["orgs"]
 
