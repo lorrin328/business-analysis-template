@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>星钻联盟荣誉体系</title>
-  <script src="/js/api-client.js?v=1.0.108"></script>
+  <title>星钻联盟</title>
+  <script src="/js/api-client.js?v=1.0.109"></script>
   <style>
     :root {
       color-scheme: dark;
@@ -81,7 +81,12 @@
       display: inline-flex;
       align-items: center;
     }
-    .metric-groups { display: grid; gap: 12px; margin-bottom: 18px; }
+    .metric-groups {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px;
+      margin-bottom: 18px;
+    }
     .metric-group {
       background: rgba(16,28,46,.48);
       border: 1px solid var(--line);
@@ -105,6 +110,36 @@
     .metric-card[data-tone="attention"] { border-color: rgba(238,90,90,.45); background: rgba(238,90,90,.06); }
     .metric-card[data-tone="attention"] .metric-value { color: #ff9a9a; }
     .metric-card[data-tone="result"] .metric-value { color: var(--gold); }
+    .structure-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .structure-item {
+      background: rgba(13,24,41,.72);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .structure-item span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+    .structure-item strong { color: #dceaff; font-size: 22px; }
+    .section-stack { display: grid; gap: 14px; }
+    .section-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .result-count { color: var(--muted); font-size: 12px; margin: -2px 0 10px; }
+    details {
+      background: rgba(13,24,41,.58);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 14px 14px;
+    }
+    details > summary {
+      cursor: pointer;
+      color: #dceaff;
+      font-weight: 700;
+      padding: 14px 0;
+    }
+    details[open] > summary { margin-bottom: 2px; }
     .summary-strip {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -302,50 +337,47 @@
 </head>
 <body>
   <header>
-    <div><span class="page-title">星钻联盟荣誉体系</span><span class="version">v1.0.108</span></div>
+    <div><span class="page-title">星钻联盟</span><span class="version">v1.0.109</span></div>
     <div><a href="/">返回经营看板</a></div>
   </header>
   <main>
     <div class="toolbar">
       <label>年份 <input id="honorYear" type="number" min="2020" max="2100" value="2026"></label>
       <label>月份 <input id="honorMonth" type="number" min="1" max="12" value="6"></label>
-      <label>过程截至 <input id="honorAsOf" type="date"></label>
-      <button id="auditBtn" data-permission="honor_audit">数据适配检查</button>
-      <button id="recalcBtn" class="primary" data-permission="honor_recalculate">重新计算</button>
-      <button id="exportBtn" data-permission="honor_export">导出Excel</button>
-      <span id="honorStatus" class="status-pill">等待加载</span>
+      <label>数据截至日 <input id="honorAsOf" type="date"></label>
+      <span id="honorStatus" class="status-pill" role="status" aria-live="polite">正在加载</span>
     </div>
-
-    <section class="summary-strip">
-      <div class="summary-note"><strong>适用范围：</strong>星钻仅覆盖 OTO、证保；经代和蚁桥（网服）不涉及星钻。</div>
-      <div class="summary-note"><strong>团队口径：</strong>后续团队星钻只归集 OTO、证保；团队内网服/蚁桥人员及业绩均排除。</div>
-      <div class="summary-note"><strong>数据来源：</strong>优先复用现有 performance 与 hr_data，不新增星钻专用上传。</div>
-    </section>
 
     <section class="metric-groups" id="honorCards" aria-label="荣誉核心指标"></section>
 
-    <nav class="tabs" role="tablist" aria-label="荣誉分析维度">
-      <button type="button" class="tab active" id="tab-tracking" role="tab" aria-selected="true" aria-controls="tracking" data-tab="tracking">荣誉追踪</button>
-      <button type="button" class="tab" id="tab-overview" role="tab" aria-selected="false" aria-controls="overview" data-tab="overview">总览驾驶舱</button>
-      <button type="button" class="tab" id="tab-orgs" role="tab" aria-selected="false" aria-controls="orgs" data-tab="orgs">机构追踪</button>
-      <button type="button" class="tab" id="tab-projects" role="tab" aria-selected="false" aria-controls="projects" data-tab="projects">项目分析</button>
-      <button type="button" class="tab" id="tab-specialists" role="tab" aria-selected="false" aria-controls="specialists" data-tab="specialists">专员级</button>
-      <button type="button" class="tab" id="tab-managers" role="tab" aria-selected="false" aria-controls="managers" data-tab="managers">管理职</button>
-      <button type="button" class="tab" id="tab-warnings" role="tab" aria-selected="false" aria-controls="warnings" data-tab="warnings">月度预警</button>
-      <button type="button" class="tab" id="tab-persons" role="tab" aria-selected="false" aria-controls="persons" data-tab="persons">人员明细</button>
-      <button type="button" class="tab" id="tab-audit" role="tab" aria-selected="false" aria-controls="audit" data-tab="audit">数据审计</button>
+    <nav class="tabs" role="tablist" aria-label="星钻联盟分析维度">
+      <button type="button" class="tab active" id="tab-tracking" role="tab" aria-selected="true" aria-controls="tracking" data-tab="tracking">总览</button>
+      <button type="button" class="tab" id="tab-analysis" role="tab" aria-selected="false" aria-controls="analysis" data-tab="analysis">机构与项目</button>
+      <button type="button" class="tab" id="tab-people" role="tab" aria-selected="false" aria-controls="people" data-tab="people">人员追踪</button>
+      <button type="button" class="tab" id="tab-data" role="tab" aria-selected="false" aria-controls="data" data-tab="data">数据与规则</button>
     </nav>
 
-    <section id="tracking" class="panel active" role="tabpanel" aria-labelledby="tab-tracking"><div class="empty">正在加载荣誉追踪结果...</div></section>
-    <section id="overview" class="panel" role="tabpanel" aria-labelledby="tab-overview"><div class="empty">正在加载数据适配结果...</div></section>
-    <section id="orgs" class="panel" role="tabpanel" aria-labelledby="tab-orgs"></section>
-    <section id="projects" class="panel" role="tabpanel" aria-labelledby="tab-projects"></section>
-    <section id="specialists" class="panel" role="tabpanel" aria-labelledby="tab-specialists"></section>
-    <section id="managers" class="panel" role="tabpanel" aria-labelledby="tab-managers"></section>
-    <section id="warnings" class="panel" role="tabpanel" aria-labelledby="tab-warnings"></section>
-    <section id="persons" class="panel" role="tabpanel" aria-labelledby="tab-persons"></section>
-    <section id="audit" class="panel" role="tabpanel" aria-labelledby="tab-audit"></section>
+    <section id="tracking" class="panel active" role="tabpanel" aria-labelledby="tab-tracking"><div class="empty">正在加载总览...</div></section>
+    <section id="analysis" class="panel" role="tabpanel" aria-labelledby="tab-analysis"></section>
+    <section id="people" class="panel" role="tabpanel" aria-labelledby="tab-people"></section>
+    <section id="data" class="panel" role="tabpanel" aria-labelledby="tab-data">
+      <div class="panel-head">
+        <div><h2>数据与规则</h2><p>查看统计范围、数据来源和批次信息；有权限的用户可在这里检查数据、重新测算或导出明细。</p></div>
+        <div class="section-actions">
+          <button id="auditBtn" data-permission="honor_audit">检查数据</button>
+          <button id="recalcBtn" class="primary" data-permission="honor_recalculate">重新测算</button>
+          <button id="exportBtn" data-permission="honor_export">导出明细</button>
+        </div>
+      </div>
+      <section class="summary-strip">
+        <div class="summary-note"><strong>适用业务：</strong>OTO、证保；经代和蚁桥不纳入。</div>
+        <div class="summary-note"><strong>团队统计：</strong>仅统计 OTO、证保人员及业绩。</div>
+        <div class="summary-note"><strong>数据来源：</strong>业绩基表、人力基表。</div>
+      </section>
+      <div id="batchSummary" class="summary-note">正在读取批次信息...</div>
+      <div id="auditResult" class="detail-section"><div class="empty">需要时点击“检查数据”查看源表字段是否完整。</div></div>
+    </section>
   </main>
-  <script src="/js/honor.js?v=1.0.108"></script>
+  <script src="/js/honor.js?v=1.0.109"></script>
 </body>
 </html>

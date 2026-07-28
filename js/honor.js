@@ -13,6 +13,7 @@
       managerHistory: { keyword: '', org: 'all', businessLine: 'all', roleType: 'all' },
       warnings: { keyword: '', org: 'all', businessLine: 'all', type: 'all' },
       persons: { keyword: '', org: 'all', businessLine: 'all', roleType: 'all', level: 'all' },
+      analysis: { keyword: '', businessLine: 'all' },
     },
   };
 
@@ -172,41 +173,23 @@
     return keys.some(key => String(row[key] || '').toLowerCase().includes(text));
   }
 
-  function renderMetricCards(overview = {}) {
-    const groups = [
-      { title: '核心结果', note: '先看荣誉产出与转化', cards: [
-        ['会员人数', numberText(overview.member_count), `会员率 ${percentText(overview.member_rate)}`, 'result'],
-        ['累计钻石', numberText(overview.total_diamond), '当前批次累计', 'result'],
-        ['本月获钻', numberText(overview.monthly_gain_count), '月度达标人力', 'result'],
-        ['新星人力', numberText(overview.new_star_count), '新人荣誉转化', 'result'],
-      ]},
-      { title: '风险关注', note: '优先核验并跟进异常', cards: [
-        ['本月扣减', numberText(overview.monthly_deduct_count), '需优先跟进', 'attention'],
-        ['异常数量', numberText(overview.exception_count), '字段与规则异常', 'attention'],
-        ['离职/非在职清零', numberText(overview.departed_headcount), '不计当月追踪人力', 'attention'],
-      ]},
-      { title: '追踪基础', note: '用于理解规模与测算边界', cards: [
-        ['追踪人力', numberText(overview.tracked_headcount), '当月月末在职'],
-        ['累计追踪池', numberText(overview.annual_tracked_headcount), '含历史已离职'],
-        ['资深及以上', numberText(overview.senior_plus_count), '重点荣誉人群'],
-        ['测算奖励', `${numberText(overview.estimated_reward)}元`, '非最终发放金额'],
-      ]},
+  function renderMetricCards(data = {}) {
+    const overview = data.overview || {};
+    const tracking = data.tracking || {};
+    const trackingOverview = tracking.overview || {};
+    const cards = [
+      ['会员总数', numberText(trackingOverview.total_members ?? overview.member_count), `会员率 ${percentText(overview.member_rate)}`, 'result'],
+      ['累计钻石', numberText(overview.total_diamond), '当前统计期', 'result'],
+      ['本月新入会', numberText(trackingOverview.new_member_count), '首次达到会员标准', 'result'],
+      ['本月晋级', numberText(trackingOverview.promotion_count), '会员等级提升', 'result'],
+      ['待跟进人员', numberText((data.warnings || []).length), '本月等级下降', 'attention'],
     ];
-    document.getElementById('honorCards').innerHTML = groups.map(group => `
-      <section class="metric-group">
-        <div class="metric-group-head">
-          <div class="metric-group-title">${escapeHtml(group.title)}</div>
-          <div class="metric-group-note">${escapeHtml(group.note)}</div>
-        </div>
-        <div class="metric-group-grid">
-          ${group.cards.map(([label, value, note, tone = 'context']) => `
-            <article class="metric-card" data-tone="${tone}">
-              <div class="metric-label">${escapeHtml(label)}</div>
-              <div class="metric-value">${escapeHtml(value)}</div>
-              <div class="metric-note">${escapeHtml(note)}</div>
-            </article>`).join('')}
-        </div>
-      </section>`).join('');
+    document.getElementById('honorCards').innerHTML = cards.map(([label, value, note, tone]) => `
+      <article class="metric-card" data-tone="${tone}">
+        <div class="metric-label">${escapeHtml(label)}</div>
+        <div class="metric-value">${escapeHtml(value)}</div>
+        <div class="metric-note">${escapeHtml(note)}</div>
+      </article>`).join('');
   }
 
   function renderTable(targetId, rows, columns, emptyText = '暂无数据') {
@@ -274,71 +257,39 @@
     const orgMembers = tracking.orgMembers || [];
     const newMembers = tracking.newMembers || [];
     const promotions = tracking.promotions || [];
-    const roster = tracking.memberRoster || [];
-    const f = state.filters.tracking;
-    const filteredRoster = roster.filter(row => (
-      matchesKeyword(row, f.keyword, ['staff_code', 'staff_name', 'org'])
-      && (f.org === 'all' || row.org === f.org)
-      && (f.businessLine === 'all' || row.business_line === f.businessLine)
-      && (f.roleType === 'all' || row.role_type === f.roleType)
-    ));
-    const sourceNote = tracking.sourceCutoff ? `过程截至 ${tracking.sourceCutoff}` : '月底最终口径';
+    const sourceNote = tracking.sourceCutoff ? `数据截至 ${tracking.sourceCutoff}` : '月底数据';
     document.getElementById('tracking').innerHTML = `
       <div class="panel-head">
-        <div><h2>星钻联盟荣誉追踪</h2><p>${escapeHtml(tracking.periodLabel || '-')} · ${escapeHtml(sourceNote)}</p></div>
+        <div><h2>本月概况</h2><p>${escapeHtml(tracking.periodLabel || '-')} · ${escapeHtml(sourceNote)}</p></div>
       </div>
-      <section class="tracking-hero">
-        <div class="tracking-total">
-          <span>“星钻联盟”会员数</span>
-          <strong>${numberText(overview.total_members)}</strong>
-          <em>${escapeHtml(tracking.trackingMode || '月底最终')}</em>
-        </div>
-        <div class="tracking-metrics">
-          <div><span>OTO</span><strong>${numberText(overview.oto_members)}</strong><em>人</em></div>
-          <div><span>证保</span><strong>${numberText(overview.zhengbao_members)}</strong><em>人</em></div>
-          <div><span>个人</span><strong>${numberText(overview.personal_members)}</strong><em>人</em></div>
-          <div><span>主管</span><strong>${numberText(overview.supervisor_members)}</strong><em>人</em></div>
-          <div><span>经理</span><strong>${numberText(overview.manager_members)}</strong><em>人</em></div>
-          <div><span>管理职</span><strong>${numberText(overview.management_members)}</strong><em>人</em></div>
-        </div>
+      <section class="structure-strip" aria-label="会员结构">
+        <div class="structure-item"><span>OTO会员</span><strong>${numberText(overview.oto_members)}</strong></div>
+        <div class="structure-item"><span>证保会员</span><strong>${numberText(overview.zhengbao_members)}</strong></div>
+        <div class="structure-item"><span>个人会员</span><strong>${numberText(overview.personal_members)}</strong></div>
+        <div class="structure-item"><span>管理职会员</span><strong>${numberText(overview.management_members)}</strong></div>
       </section>
       <div class="dashboard-grid">
         <section class="panel-block">
-          <h2>机构会员追踪</h2>
+          <h2>机构会员</h2>
           <div id="trackingOrgBars"></div>
         </section>
         <section class="panel-block">
-          <h2>当月贡献TOP3会员</h2>
+          <h2>本月贡献前三</h2>
           <div id="trackingTopContributors"></div>
         </section>
         <section class="panel-block wide">
-          <h2>当月新晋入围会员</h2>
+          <h2>本月新入会</h2>
           <div id="trackingNewMembers"></div>
         </section>
         <section class="panel-block wide">
-          <h2>当月晋升会员</h2>
+          <h2>本月晋级</h2>
           <div id="trackingPromotions"></div>
-        </section>
-        <section class="panel-block wide">
-          <h2>当月“星钻联盟”会员</h2>
-          <div class="filter-bar">
-            ${searchControl('trackingKeyword', '人员', f.keyword, '姓名/代码/机构')}
-            ${selectControl('trackingOrg', '机构', f.org, optionValues(roster, 'org'))}
-            ${selectControl('trackingBusinessLine', '项目', f.businessLine, optionValues(roster, 'business_line'))}
-            ${selectControl('trackingRoleType', '轨道', f.roleType, optionValues(roster, 'role_type'))}
-          </div>
-          <div id="trackingRoster"></div>
         </section>
       </div>`;
     renderBarList('trackingOrgBars', orgMembers, 'org', 'member_count', numberText, 12);
     renderTopContributors('trackingTopContributors', tracking.topContributors || []);
-    renderTable('trackingNewMembers', newMembers, ['rank', 'org', 'staff_name', 'business_line', 'role_type', 'membership_level', 'diamond_balance', 'standard_premium', 'tracking_policy_count'], '暂无当月新晋入围会员');
-    renderTable('trackingPromotions', promotions, ['rank', 'org', 'staff_name', 'business_line', 'role_type', 'previous_level', 'membership_level', 'diamond_balance', 'diamond_delta'], '暂无当月晋升会员');
-    renderTable('trackingRoster', filteredRoster, ['rank', 'staff_code', 'staff_name', 'org', 'business_line', 'role_type', 'membership_level', 'diamond_balance', 'standard_premium', 'tracking_policy_count', 'qualified_months']);
-    bindFilter('trackingKeyword', 'input', () => { state.filters.tracking.keyword = document.getElementById('trackingKeyword').value; renderTracking(); });
-    bindFilter('trackingOrg', 'change', () => { state.filters.tracking.org = document.getElementById('trackingOrg').value; renderTracking(); });
-    bindFilter('trackingBusinessLine', 'change', () => { state.filters.tracking.businessLine = document.getElementById('trackingBusinessLine').value; renderTracking(); });
-    bindFilter('trackingRoleType', 'change', () => { state.filters.tracking.roleType = document.getElementById('trackingRoleType').value; renderTracking(); });
+    renderMiniTable('trackingNewMembers', newMembers, ['rank', 'org', 'staff_name', 'business_line', 'role_type', 'membership_level', 'diamond_balance'], '本月暂无新入会会员');
+    renderMiniTable('trackingPromotions', promotions, ['rank', 'org', 'staff_name', 'business_line', 'role_type', 'previous_level', 'membership_level'], '本月暂无晋级会员');
   }
 
   function renderTopContributors(targetId, rows) {
@@ -601,6 +552,126 @@
     bindFilter('personLevel', 'change', () => { state.filters.persons.level = document.getElementById('personLevel').value; renderPersons(); });
   }
 
+  function renderAnalysis() {
+    const orgRows = state.dashboard?.orgs || [];
+    const projectRows = state.dashboard?.projects || [];
+    const f = state.filters.analysis;
+    const businessLines = [...new Set([
+      ...orgRows.map(row => row.business_line),
+      ...projectRows.map(row => row.dimension || row.business_line),
+    ].filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'));
+    const filteredOrgs = orgRows.filter(row => (
+      matchesKeyword(row, f.keyword, ['org', 'business_line'])
+      && (f.businessLine === 'all' || row.business_line === f.businessLine)
+    ));
+    const filteredProjects = projectRows.filter(row => (
+      matchesKeyword(row, f.keyword, ['dimension', 'business_line'])
+      && (f.businessLine === 'all' || row.dimension === f.businessLine || row.business_line === f.businessLine)
+    ));
+    document.getElementById('analysis').innerHTML = `
+      <div class="panel-head">
+        <div><h2>机构与项目</h2><p>比较 OTO、证保及各机构的会员、获钻和扣钻情况。</p></div>
+        <div class="filter-bar">
+          ${searchControl('analysisKeyword', '筛选', f.keyword, '机构/项目')}
+          ${selectControl('analysisBusinessLine', '项目', f.businessLine, businessLines)}
+        </div>
+      </div>
+      <div class="section-stack">
+        <section class="panel-block">
+          <h3>机构表现</h3>
+          <div class="result-count">共 ${numberText(filteredOrgs.length)} 条</div>
+          <div id="analysisOrgTable"></div>
+        </section>
+        <section class="panel-block">
+          <h3>项目表现</h3>
+          <div class="result-count">共 ${numberText(filteredProjects.length)} 条</div>
+          <div id="analysisProjectTable"></div>
+        </section>
+      </div>`;
+    renderTable('analysisOrgTable', filteredOrgs, ['rank', 'org', 'business_line', 'tracked_headcount', 'member_count', 'member_rate', 'monthly_gain_count', 'monthly_deduct_count', 'estimated_reward']);
+    renderTable('analysisProjectTable', filteredProjects, ['rank', 'dimension', 'tracked_headcount', 'member_count', 'member_rate', 'monthly_gain_count', 'monthly_deduct_count', 'estimated_reward']);
+    bindFilter('analysisKeyword', 'input', () => {
+      state.filters.analysis.keyword = document.getElementById('analysisKeyword').value;
+      renderAnalysis();
+    });
+    bindFilter('analysisBusinessLine', 'change', () => {
+      state.filters.analysis.businessLine = document.getElementById('analysisBusinessLine').value;
+      renderAnalysis();
+    });
+  }
+
+  function renderPeople() {
+    const tracking = state.dashboard?.tracking || {};
+    const roster = tracking.memberRoster || [];
+    const warnings = state.dashboard?.warnings || [];
+    const specialistHistory = state.dashboard?.specialistHistory || [];
+    const managerHistory = state.dashboard?.managerHistory || [];
+    const f = state.filters.persons;
+    const allRows = [...roster, ...warnings, ...specialistHistory, ...managerHistory];
+    const filteredRoster = roster.filter(row => (
+      matchesKeyword(row, f.keyword, ['staff_code', 'staff_name', 'org'])
+      && (f.org === 'all' || row.org === f.org)
+      && (f.businessLine === 'all' || row.business_line === f.businessLine)
+      && (f.roleType === 'all' || row.role_type === f.roleType)
+      && (f.level === 'all' || row.membership_level === f.level)
+    ));
+    const filteredWarnings = warnings.filter(row => (
+      matchesKeyword(row, f.keyword, ['staff_code', 'staff_name', 'org', 'suggested_action'])
+      && (f.org === 'all' || row.org === f.org)
+      && (f.businessLine === 'all' || row.business_line === f.businessLine)
+      && (f.roleType === 'all' || row.role_type === f.roleType)
+    ));
+    const filteredSpecialists = specialistHistory.filter(row => (
+      matchesKeyword(row, f.keyword, ['staff_code', 'staff_name', 'org'])
+      && (f.org === 'all' || row.org === f.org)
+      && (f.businessLine === 'all' || row.business_line === f.businessLine)
+    ));
+    const filteredManagers = managerHistory.filter(row => (
+      matchesKeyword(row, f.keyword, ['manager_code', 'manager_name', 'org', 'team_code'])
+      && (f.org === 'all' || row.org === f.org)
+      && (f.businessLine === 'all' || row.business_line === f.businessLine)
+      && (f.roleType === 'all' || row.role_type === f.roleType)
+    ));
+    document.getElementById('people').innerHTML = `
+      <div class="panel-head">
+        <div><h2>人员追踪</h2><p>统一查询会员、待跟进人员和历史表现。</p></div>
+      </div>
+      <div class="filter-bar">
+        ${searchControl('peopleKeyword', '人员', f.keyword, '姓名/代码/机构')}
+        ${selectControl('peopleOrg', '机构', f.org, optionValues(allRows, 'org'))}
+        ${selectControl('peopleBusinessLine', '项目', f.businessLine, optionValues(allRows, 'business_line'))}
+        ${selectControl('peopleRoleType', '层级', f.roleType, optionValues(allRows, 'role_type'))}
+        ${selectControl('peopleLevel', '会员等级', f.level, optionValues(roster, 'membership_level'))}
+      </div>
+      <div class="section-stack">
+        <details open>
+          <summary>待跟进人员（${numberText(filteredWarnings.length)}）</summary>
+          <div id="peopleWarningTable"></div>
+        </details>
+        <details>
+          <summary>会员名单（${numberText(filteredRoster.length)}）</summary>
+          <div id="peopleRosterTable"></div>
+        </details>
+        <details>
+          <summary>专员历史（${numberText(filteredSpecialists.length)}）</summary>
+          <div id="peopleSpecialistTable"></div>
+        </details>
+        <details>
+          <summary>主管和经理历史（${numberText(filteredManagers.length)}）</summary>
+          <div id="peopleManagerTable"></div>
+        </details>
+      </div>`;
+    renderTable('peopleWarningTable', filteredWarnings, ['warning_type', 'org', 'business_line', 'staff_name', 'role_type', 'previous_level', 'current_level', 'standard_premium_gap', 'suggested_action'], '当前筛选范围内没有待跟进人员');
+    renderTable('peopleRosterTable', filteredRoster, ['rank', 'staff_code', 'staff_name', 'org', 'business_line', 'role_type', 'membership_level', 'diamond_balance', 'tracking_policy_count', 'qualified_months']);
+    renderTable('peopleSpecialistTable', filteredSpecialists, ['org', 'business_line', 'staff_code', 'staff_name', 'month', 'standard_premium', 'longterm_policy_count', 'diamond_delta', 'diamond_balance', 'membership_level']);
+    renderTable('peopleManagerTable', filteredManagers, ['org', 'business_line', 'role_type', 'manager_code', 'manager_name', 'month', 'team_tracked_headcount', 'star_manpower_count', 'team_diamond_balance', 'manager_diamond_balance', 'monthly_gain_count', 'monthly_deduct_count']);
+    bindFilter('peopleKeyword', 'input', () => { state.filters.persons.keyword = document.getElementById('peopleKeyword').value; renderPeople(); });
+    bindFilter('peopleOrg', 'change', () => { state.filters.persons.org = document.getElementById('peopleOrg').value; renderPeople(); });
+    bindFilter('peopleBusinessLine', 'change', () => { state.filters.persons.businessLine = document.getElementById('peopleBusinessLine').value; renderPeople(); });
+    bindFilter('peopleRoleType', 'change', () => { state.filters.persons.roleType = document.getElementById('peopleRoleType').value; renderPeople(); });
+    bindFilter('peopleLevel', 'change', () => { state.filters.persons.level = document.getElementById('peopleLevel').value; renderPeople(); });
+  }
+
   function renderAudit(audit) {
     state.audit = audit;
     const rows = [];
@@ -615,15 +686,15 @@
         fallbackStrategy: field.fallbackStrategy,
       }));
     });
-    document.getElementById('audit').innerHTML = `
+    document.getElementById('auditResult').innerHTML = `
       <div class="panel-head">
-        <div><h2>数据审计</h2><p>用于说明现有 Excel 与 raw 表是否支撑荣誉体系计算，不作为经营结果排名。</p></div>
+        <div><h2>数据检查结果</h2><p>检查源表字段是否完整，供重新测算前核对使用。</p></div>
       </div>
       <div class="summary-strip">
-        <div class="summary-note"><strong>复用现有数据：</strong>${audit.canReuseExistingData ? '可以' : '不完整'}</div>
+        <div class="summary-note"><strong>现有数据：</strong>${audit.canReuseExistingData ? '可以使用' : '需要补充'}</div>
         <div class="summary-note"><strong>必需字段覆盖：</strong>${audit.requiredCoverage?.available || 0}/${audit.requiredCoverage?.total || 0}</div>
         <div class="summary-note"><strong>可选字段覆盖：</strong>${audit.optionalCoverage?.available || 0}/${audit.optionalCoverage?.total || 0}</div>
-        <div class="summary-note"><strong>是否新增上传：</strong>${audit.needsHonorUpload ? '建议补充' : '本阶段不需要'}</div>
+        <div class="summary-note"><strong>是否需要补充数据：</strong>${audit.needsHonorUpload ? '需要' : '不需要'}</div>
       </div>
       <div id="auditTable"></div>`;
     renderTable('auditTable', rows, ['tableName', 'requiredField', 'matchedColumn', 'requiredLevel', 'available', 'impact', 'fallbackStrategy']);
@@ -631,15 +702,16 @@
 
   function renderAll() {
     const data = state.dashboard || {};
-    renderMetricCards(data.overview || {});
+    renderMetricCards(data);
     renderTracking();
-    renderOverview();
-    renderOrgs();
-    renderProjects();
-    renderSpecialists();
-    renderManagers();
-    renderWarnings();
-    renderPersons();
+    renderAnalysis();
+    renderPeople();
+    const batch = data.batch || {};
+    const cutoff = batch.source_cutoff ? `，数据截至 ${batch.source_cutoff}` : '，月底数据';
+    const batchSummary = document.getElementById('batchSummary');
+    if (batchSummary) {
+      batchSummary.innerHTML = `<strong>当前数据：</strong>${escapeHtml(`${batch.year || '-'}年${batch.month || '-'}月${cutoff}`)}；规则版本 ${escapeHtml(batch.rule_version || '-') }；批次 ${escapeHtml(batch.id || '-')}`;
+    }
   }
 
   async function loadDashboard(batchId) {
@@ -654,8 +726,8 @@
     if (data.batch?.month) document.getElementById('honorMonth').value = data.batch.month;
     if (data.batch?.source_cutoff) document.getElementById('honorAsOf').value = data.batch.source_cutoff;
     renderAll();
-    const cutoff = data.batch?.source_cutoff ? `，过程截至 ${data.batch.source_cutoff}` : '';
-    setStatus(`已加载批次 ${currentBatchId}${cutoff}`, 'ok');
+    const cutoff = data.batch?.source_cutoff ? `，截至 ${data.batch.source_cutoff}` : '，月底数据';
+    setStatus(`数据更新至 ${data.batch?.year || '-'}年${data.batch?.month || '-'}月${cutoff}`, 'ok');
   }
 
   async function loadLatestOrAudit() {
@@ -667,30 +739,30 @@
   }
 
   async function runAudit() {
-    setStatus('数据适配检查中...');
+    setStatus('正在检查数据...');
     const audit = await api('/api/honor/field-audit');
     currentBatchId = audit.batchId;
     renderAudit(audit);
-    setStatus(`数据适配检查完成，批次 ${currentBatchId}`, 'ok');
+    setStatus('数据检查完成', 'ok');
   }
 
   async function recalculate() {
     const year = Number(document.getElementById('honorYear').value || 2026);
     const month = Number(document.getElementById('honorMonth').value || 12);
     const asOf = document.getElementById('honorAsOf')?.value || '';
-    setStatus('星钻重算中...');
+    setStatus('正在重新测算...');
     const result = await api('/api/honor/recalculate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ year, month, asOf, scope: 'all', force: true }),
     });
     await loadDashboard(result.batchId);
-    setStatus(`重算完成，批次 ${result.batchId}，人员 ${result.personCount}，异常 ${result.exceptionCount}`, 'ok');
+    setStatus(`测算完成：${result.personCount}人，${result.exceptionCount}条待核对记录`, 'ok');
   }
 
   function exportExcel() {
     if (!currentBatchId) {
-      setStatus('请先执行重算或加载批次后再导出。', 'warn');
+      setStatus('请先加载数据或重新测算后再导出。', 'warn');
       return;
     }
     window.location.href = `/api/honor/export?batchId=${currentBatchId}`;
