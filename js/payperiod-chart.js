@@ -21,6 +21,10 @@
       },
       currentPieType: 'premium'
     };
+    const payPeriodAverageFilters = {
+      org: 'all',
+      businessMode: 'all'
+    };
     ORG_LIST.forEach(o => payPeriodFilters.orgs[o] = true);
 
     // Init org checkboxes for 交期结构
@@ -159,24 +163,79 @@
     function renderPayPeriodAverageTable() {
       const wrapper = document.getElementById('payPeriodAverageWrapper');
       const scopeNote = document.getElementById('payPeriodAverageScopeNote');
+      const orgSelect = document.getElementById('payPeriodAverageOrgSelect');
+      const modeBtns = document.getElementById('payPeriodAverageModeBtns');
+      const resetBtn = document.getElementById('payPeriodAverageResetBtn');
+      const filterSummary = document.getElementById('payPeriodAverageFilterSummary');
       if (!wrapper) return;
 
       const payload = payPeriodData.averagePremium || {};
       const categories = Array.isArray(payload.categories) ? payload.categories : [];
-      const rows = Array.isArray(payload.rows) ? payload.rows.slice() : [];
+      const allRows = Array.isArray(payload.rows) ? payload.rows.slice() : [];
       const premiumLabel = payload.premium_label || (payPeriodFilters.metric === 'gm' ? '规模保费' : '期交保费');
       const modeOrder = { 'OTO': 1, '证保': 2, '蚁桥': 3 };
+      const orgOrder = new Map([...ORG_LIST, '其他'].map((org, index) => [org, index]));
+      const availableOrgs = Array.from(new Set(allRows.map(row => row.org || '未知')))
+        .sort((a, b) => {
+          const rankGap = (orgOrder.get(a) ?? 99) - (orgOrder.get(b) ?? 99);
+          return rankGap || String(a).localeCompare(String(b), 'zh-CN');
+        });
+      const availableModes = new Set(allRows.map(row => row.business_mode || '未分类'));
+
+      if (payPeriodAverageFilters.org !== 'all' && !availableOrgs.includes(payPeriodAverageFilters.org)) {
+        payPeriodAverageFilters.org = 'all';
+      }
+      if (payPeriodAverageFilters.businessMode !== 'all' && !availableModes.has(payPeriodAverageFilters.businessMode)) {
+        payPeriodAverageFilters.businessMode = 'all';
+      }
+
+      if (orgSelect) {
+        orgSelect.innerHTML = [
+          '<option value="all">全部机构</option>',
+          ...availableOrgs.map(org => `<option value="${escapePayPeriodText(org)}">${escapePayPeriodText(org)}</option>`)
+        ].join('');
+        orgSelect.value = payPeriodAverageFilters.org;
+      }
+      if (modeBtns) {
+        modeBtns.querySelectorAll('button[data-pay-period-average-mode]').forEach(button => {
+          const mode = button.dataset.payPeriodAverageMode;
+          const active = mode === payPeriodAverageFilters.businessMode;
+          button.classList.toggle('active', active);
+          button.setAttribute('aria-pressed', active ? 'true' : 'false');
+          button.disabled = mode !== 'all' && !availableModes.has(mode);
+        });
+      }
+      if (resetBtn) {
+        resetBtn.disabled = payPeriodAverageFilters.org === 'all'
+          && payPeriodAverageFilters.businessMode === 'all';
+      }
+
+      const rows = allRows.filter(row => {
+        const orgMatches = payPeriodAverageFilters.org === 'all'
+          || row.org === payPeriodAverageFilters.org;
+        const modeMatches = payPeriodAverageFilters.businessMode === 'all'
+          || row.business_mode === payPeriodAverageFilters.businessMode;
+        return orgMatches && modeMatches;
+      });
       rows.sort((a, b) => {
         const modeGap = (modeOrder[a.business_mode] || 9) - (modeOrder[b.business_mode] || 9);
         if (modeGap !== 0) return modeGap;
-        return String(a.org || '').localeCompare(String(b.org || ''), 'zh-CN');
+        const rankGap = (orgOrder.get(a.org) ?? 99) - (orgOrder.get(b.org) ?? 99);
+        return rankGap || String(a.org || '').localeCompare(String(b.org || ''), 'zh-CN');
       });
 
       if (scopeNote) {
-        scopeNote.textContent = `转型业务口径：${premiumLabel}净额 ÷ 承保件数净额；单位：万元/件；件数净额小于或等于0时不计算。单元格悬停可查看分子和分母。`;
+        scopeNote.textContent = `转型业务口径：${premiumLabel}净额 ÷ 承保件数净额；单位：万元/件；件数净额小于或等于0时不计算。本表可继续按机构、业务模式筛选。`;
+      }
+      if (filterSummary) {
+        filterSummary.textContent = `显示 ${rows.length} / ${allRows.length} 条`;
+      }
+      if (allRows.length === 0) {
+        wrapper.innerHTML = '<div class="structure-empty">当前筛选范围暂无可展示的转型业务件均保费</div>';
+        return;
       }
       if (rows.length === 0) {
-        wrapper.innerHTML = '<div class="structure-empty">当前筛选范围暂无可展示的转型业务件均保费</div>';
+        wrapper.innerHTML = '<div class="structure-empty">当前表内筛选条件下暂无件均保费数据，请调整机构或业务模式</div>';
         return;
       }
 
@@ -195,15 +254,16 @@
       const headerCells = categories
         .map(category => `<th class="num">${escapePayPeriodText(category)}</th>`)
         .join('');
-      const bodyRows = rows.map(row => {
+      const bodyRows = rows.map((row, index) => {
         const termMap = new Map((row.terms || []).map(item => [item.category, item]));
         const termCells = categories
           .map(category => `<td class="num">${averageCell(termMap.get(category))}</td>`)
           .join('');
+        const modeStart = index > 0 && rows[index - 1].business_mode !== row.business_mode;
         return `
-          <tr>
+          <tr${modeStart ? ' class="mode-start"' : ''}>
             <td class="primary-text">${escapePayPeriodText(row.org || '未知')}</td>
-            <td>${escapePayPeriodText(row.business_mode || '未分类')}</td>
+            <td><span class="pay-period-mode-badge">${escapePayPeriodText(row.business_mode || '未分类')}</span></td>
             ${termCells}
             <td class="num total-cell">${averageCell(row.total)}</td>
           </tr>
@@ -458,6 +518,37 @@
           if (!button || !metricBtns.contains(button)) return;
           event.preventDefault();
           switchPayPeriodMetric(button, button.dataset.payPeriodMetric);
+        });
+      }
+
+      const averageOrgSelect = document.getElementById('payPeriodAverageOrgSelect');
+      if (averageOrgSelect && averageOrgSelect.dataset.boundPayPeriodAverageOrg !== 'true') {
+        averageOrgSelect.dataset.boundPayPeriodAverageOrg = 'true';
+        averageOrgSelect.addEventListener('change', () => {
+          payPeriodAverageFilters.org = averageOrgSelect.value || 'all';
+          renderPayPeriodAverageTable();
+        });
+      }
+
+      const averageModeBtns = document.getElementById('payPeriodAverageModeBtns');
+      if (averageModeBtns && averageModeBtns.dataset.boundPayPeriodAverageMode !== 'true') {
+        averageModeBtns.dataset.boundPayPeriodAverageMode = 'true';
+        averageModeBtns.addEventListener('click', event => {
+          const button = event.target.closest('button[data-pay-period-average-mode]');
+          if (!button || !averageModeBtns.contains(button) || button.disabled) return;
+          event.preventDefault();
+          payPeriodAverageFilters.businessMode = button.dataset.payPeriodAverageMode || 'all';
+          renderPayPeriodAverageTable();
+        });
+      }
+
+      const averageResetBtn = document.getElementById('payPeriodAverageResetBtn');
+      if (averageResetBtn && averageResetBtn.dataset.boundPayPeriodAverageReset !== 'true') {
+        averageResetBtn.dataset.boundPayPeriodAverageReset = 'true';
+        averageResetBtn.addEventListener('click', () => {
+          payPeriodAverageFilters.org = 'all';
+          payPeriodAverageFilters.businessMode = 'all';
+          renderPayPeriodAverageTable();
         });
       }
     }

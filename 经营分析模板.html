@@ -7,16 +7,16 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/format-utils.js"></script>
-  <script src="js/month-multi-select.js?v=1.0.115"></script>
-  <script src="js/api-client.js?v=1.0.115"></script>
-  <script src="js/auth-ui.js?v=1.0.115"></script>
-  <script src="js/export-excel.js?v=1.0.115"></script>
-  <script src="js/dashboard-config.js?v=1.0.115"></script>
-  <script src="js/upload.js?v=1.0.115"></script>
-  <script src="js/target-modal.js?v=1.0.115"></script>
-  <script src="js/dashboard-actions.js?v=1.0.115"></script>
-  <script src="js/kpi-cards.js?v=1.0.115"></script>
-  <script src="js/platform-trend.js?v=1.0.115"></script>
+  <script src="js/month-multi-select.js?v=1.0.116"></script>
+  <script src="js/api-client.js?v=1.0.116"></script>
+  <script src="js/auth-ui.js?v=1.0.116"></script>
+  <script src="js/export-excel.js?v=1.0.116"></script>
+  <script src="js/dashboard-config.js?v=1.0.116"></script>
+  <script src="js/upload.js?v=1.0.116"></script>
+  <script src="js/target-modal.js?v=1.0.116"></script>
+  <script src="js/dashboard-actions.js?v=1.0.116"></script>
+  <script src="js/kpi-cards.js?v=1.0.116"></script>
+  <script src="js/platform-trend.js?v=1.0.116"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -564,6 +564,47 @@
       line-height: 1.6;
       margin-top: 4px;
     }
+    .structure-average-filterbar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.42);
+    }
+    .structure-average-filter-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 30px;
+    }
+    .structure-average-filter-label {
+      color: var(--text-secondary);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    #payPeriodAverageOrgSelect { min-width: 136px; }
+    .structure-average-mode-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+    .structure-average-mode-btns .chart-btn {
+      min-width: 50px;
+      min-height: 28px;
+    }
+    .structure-average-reset {
+      min-height: 28px;
+      background: transparent;
+    }
+    .structure-average-reset:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+    .structure-average-filter-summary {
+      margin-left: auto;
+      color: var(--text-secondary);
+      font-size: 12px;
+      white-space: nowrap;
+    }
     #payPeriodAverageWrapper { overflow-x: auto; }
     #payPeriodAverageTable { min-width: 920px; table-layout: auto; }
     #payPeriodAverageTable th:first-child,
@@ -574,6 +615,21 @@
       color: var(--accent-light);
       font-weight: 700;
       background: rgba(59,130,246,0.06);
+    }
+    #payPeriodAverageTable tr.mode-start:not(:first-child) td {
+      border-top: 2px solid rgba(96, 165, 250, 0.28);
+    }
+    .pay-period-mode-badge {
+      display: inline-flex;
+      align-items: center;
+      min-width: 42px;
+      justify-content: center;
+      padding: 2px 7px;
+      border-radius: 999px;
+      color: #bfdbfe;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(96, 165, 250, 0.24);
+      font-weight: 600;
     }
     .pay-period-average-value {
       color: var(--text);
@@ -864,6 +920,8 @@
       .header-right { width: 100%; justify-content: space-between; flex-wrap: wrap; }
       .primary-nav { overflow-x: auto; max-width: 100%; padding-bottom: 2px; }
       .control-row { align-items: flex-start; flex-wrap: wrap; }
+      .structure-average-filterbar { align-items: flex-start; }
+      .structure-average-filter-summary { width: 100%; margin-left: 0; }
       .month-multi-select { width: 100%; padding: 8px; }
       .month-preset-btn, .month-check-label { min-height: 30px; padding: 5px 8px; }
       .header-context { justify-content: flex-start; }
@@ -1262,7 +1320,7 @@
       <div class="header-left">
         <div class="logo">太平人寿 <span>经营分析看板</span></div>
         <span class="tag">网电多元条线</span>
-        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.115</span>
+        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.116</span>
       </div>
       <div class="header-right">
         <nav class="primary-nav" aria-label="主要页面">
@@ -1602,9 +1660,28 @@
           <div>
             <span class="chart-title">转型业务件均保费</span>
             <div class="structure-average-note" id="payPeriodAverageScopeNote">
-              与交期结构共用年度、季度、月度、机构、业务模式和保费口径筛选。
+              沿用上方交期结构统计范围，并可在本表继续筛选机构和业务模式。
             </div>
           </div>
+        </div>
+        <div class="structure-average-filterbar" aria-label="件均保费表格筛选">
+          <label class="structure-average-filter-group" for="payPeriodAverageOrgSelect">
+            <span class="structure-average-filter-label">机构</span>
+            <select class="period-select" id="payPeriodAverageOrgSelect">
+              <option value="all">全部机构</option>
+            </select>
+          </label>
+          <div class="structure-average-filter-group">
+            <span class="structure-average-filter-label">业务模式</span>
+            <div class="structure-average-mode-btns" id="payPeriodAverageModeBtns" role="group" aria-label="筛选业务模式">
+              <button type="button" class="chart-btn active" data-pay-period-average-mode="all" aria-pressed="true">全部</button>
+              <button type="button" class="chart-btn" data-pay-period-average-mode="OTO" aria-pressed="false">OTO</button>
+              <button type="button" class="chart-btn" data-pay-period-average-mode="证保" aria-pressed="false">证保</button>
+              <button type="button" class="chart-btn" data-pay-period-average-mode="蚁桥" aria-pressed="false">蚁桥</button>
+            </div>
+          </div>
+          <button type="button" class="chart-btn structure-average-reset" id="payPeriodAverageResetBtn" disabled>重置筛选</button>
+          <span class="structure-average-filter-summary" id="payPeriodAverageFilterSummary" aria-live="polite">正在加载...</span>
         </div>
         <div class="structure-table-wrapper" id="payPeriodAverageWrapper">
           <div class="structure-empty">正在加载分机构、分业务模式、分交期件均保费...</div>
@@ -1792,7 +1869,7 @@
 
     // Product config modal lives in js/product-config-modal.js
   </script>
-  <script src="js/product-config-modal.js?v=1.0.115"></script>
+  <script src="js/product-config-modal.js?v=1.0.116"></script>
   <script>
     // KPI card rendering lives in js/kpi-cards.js
 
@@ -1801,24 +1878,24 @@
     // KPI detail modal content lives in js/kpi-modal-content.js
     // Local fallback seed data lives in js/seed-data.js
   </script>
-  <script src="js/kpi-modal-content.js?v=1.0.115"></script>
+  <script src="js/kpi-modal-content.js?v=1.0.116"></script>
   <script>
     // API integration lives in js/data-integration.js
   </script>
-  <script src="js/org-analysis.js?v=1.0.115"></script>
-  <script src="js/seed-data.js?v=1.0.115"></script>
-  <script src="js/platform-seed-data.js?v=1.0.115"></script>
-  <script src="js/data-integration.js?v=1.0.115"></script>
-  <script src="js/platform-trend-main.js?v=1.0.115"></script>
+  <script src="js/org-analysis.js?v=1.0.116"></script>
+  <script src="js/seed-data.js?v=1.0.116"></script>
+  <script src="js/platform-seed-data.js?v=1.0.116"></script>
+  <script src="js/data-integration.js?v=1.0.116"></script>
+  <script src="js/platform-trend-main.js?v=1.0.116"></script>
   <script>
   </script>
-  <script src="js/product-analysis.js?v=1.0.115"></script>
+  <script src="js/product-analysis.js?v=1.0.116"></script>
   <script>
   </script>
-  <script src="js/payperiod-chart.js?v=1.0.115"></script>
+  <script src="js/payperiod-chart.js?v=1.0.116"></script>
   <script>
   </script>
-  <script src="js/team-analysis.js?v=1.0.115"></script>
+  <script src="js/team-analysis.js?v=1.0.116"></script>
   <script>
     // ---------- Resize ----------
     window.addEventListener('resize', () => {
