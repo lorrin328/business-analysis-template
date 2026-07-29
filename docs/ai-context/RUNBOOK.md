@@ -9,7 +9,9 @@
 - 导入成功后依次检查“数据校验”“模式与机构”“费用构成”。项目源表未勾稽时，不使用项目执行率做经营结论。
 - 重复上传相同 SHA256 文件不会新建批次。错误文件不会替换最近成功批次。
 - 独立性核验：`variable_expense_batches` 可增加记录；`data_imports`、业绩原始表和 `agg_*` 表不应因费用月报上传发生变化。
-- 发布时须同步 FastAPI 与 nginx 白名单路由；本次实现尚未部署生产。
+- 发布时须同步 FastAPI 与 nginx 白名单路由；生产已从 `v1.0.113` 起提供该模块。
+- 部署后至少验证 `/variable-expense`、`/variable-expense.html`、`/js/variable-expense.js` 返回 200，未登录访问 `/api/variable-expense/latest` 和 `/api/variable-expense/upload` 返回 401。
+- 首次部署后 `variable_expense_batches` 应存在且为空；只有通过页面上传并完成强校验后才会产生成功批次。
 
 ## 市场研判服务
 

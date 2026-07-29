@@ -1,12 +1,16 @@
 # 工作日志
 
-## 2026-07-29 v1.0.113 独立变动费用分析发布准备
+## 2026-07-29 v1.0.113 独立变动费用分析发布
 
 - 将独立变动费用分析模块合并到GitHub最新 `v1.0.112` 基线，保留市场研判手动运行、星钻页面精简、月份复选和高产能人力分档等已上线能力。
 - 新增独立页面、API、解析校验、批次表、查看/导入权限和主看板入口；费用数据不进入经营业绩导入、聚合、荣誉或方案计算链路。
 - 财务月报执行文件名、期间、必要工作表、公式缓存和关键汇总强校验；错误文件不覆盖最近成功批次，重复文件按SHA256去重。
 - 公开仓库发布不包含财务月报、网点参考表、经营数据Demo、预测工作簿、SQLite运行库、日志或凭据；上述内部成果仅保留在本地或生产受保护数据目录。
 - 本地全量回归 `338 passed, 1 warning`，2026年数据质量审计 `issues=0`，`scripts/preflight.ps1`、版本一致性和公开提交敏感信息检查通过；唯一警告为既有 `python_multipart` 弃用提示。
+- GitHub：功能提交 `c1cdfa8 feat: add isolated variable expense analysis` 已快进同步到 `origin/master`；对应 Actions 运行 `30420108885` 成功。
+- 生产部署：使用提交 `c1cdfa8` 的可信归档部署至 `192.168.50.6`，显式设置 `REBUILD_DATABASE=0` 保留生产库；部署前在线备份为 `/opt/business-analysis-backups/business_data.db.20260729_114104`，元数据记录 `integrity_check=ok`、`quick_check=ok` 和原有 38 张表。
+- 生产验收：应用、页面版本均为 `v1.0.113`，`business-analysis`、nginx、`market-analysis.timer` 均为 active；数据库完整性复核为 `ok`，迁移后 39 张表且 `variable_expense_batches` 初始批次数为 0。
+- 安全验收：应用目录保持 `root:root 0755` 且 `www-data` 不可写，数据库为 `www-data:www-data 0640`；费用查询和上传接口未登录均返回 401，源码、配置、数据库及 Git 路径均返回 404，webhook 仍为禁用状态，部署后服务 warning 以上 journal 为空。
 
 ## 2026-07-29 v1.0.112 市场研判手动运行与失败修复
 
