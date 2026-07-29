@@ -60,6 +60,13 @@ METRICS = {
         "definition": "新单保费 / 月均活动人力",
         "uncalculable_rule": "月均活动人力为 0 或缺失",
     },
+    "avg_policy_premium": {
+        "name": "件均保费",
+        "unit": "万元/件",
+        "definition": "所选范围保费净额 / 承保件数净额",
+        "uncalculable_rule": "承保件数净额为空、小于或等于 0",
+        "note": "当前仅转型业务具备承保件数来源；期交和规模口径分别使用期交保费、年化规保作为分子。",
+    },
     "conversion_rate": {
         "name": "转化率",
         "unit": "%",

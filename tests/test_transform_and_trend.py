@@ -708,6 +708,89 @@ def test_payment_period_query_accepts_multiple_months(monkeypatch):
     result = get_payment_period_structure(2026, months=[4, 5, 6])
     premium = {row["name"]: row["value"] for row in result["premium"]}
     assert premium == {"5年交": 30, "10年及以上": 30}
+    average = result["average_premium"]
+    assert average["scope"] == "转型"
+    assert average["metric"] == "qj"
+    assert average["categories"] == ["趸交", "短期险", "3年交", "5年交", "10年及以上"]
+    assert average["rows"] == [
+        {
+            "org": "上海",
+            "business_mode": "OTO",
+            "terms": [
+                {
+                    "category": "5年交",
+                    "premium": 30.0,
+                    "count": 3,
+                    "average": 10.0,
+                    "calculable": True,
+                    "reason": None,
+                },
+                {
+                    "category": "10年及以上",
+                    "premium": 30.0,
+                    "count": 3,
+                    "average": 10.0,
+                    "calculable": True,
+                    "reason": None,
+                },
+            ],
+            "total": {
+                "premium": 60.0,
+                "count": 6,
+                "average": 10.0,
+                "calculable": True,
+                "reason": None,
+            },
+        }
+    ]
+
+
+def test_payment_period_average_supports_gm_and_excludes_jingdai(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("""
+        CREATE TABLE agg_payment_period (
+            year INTEGER, month INTEGER, business_type TEXT, channel TEXT, org TEXT,
+            category TEXT, qj_premium REAL, gm_premium REAL, count INTEGER
+        )
+    """)
+    conn.executemany(
+        "INSERT INTO agg_payment_period VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (2026, 4, "转型", "证保", "北京", "短期险", 9, 12, 0),
+            (2026, 4, "转型", "OTO", "上海", "10年及以上", 10, 12, 1),
+            (2026, 5, "转型", "OTO", "上海", "10年及以上", 20, 24, 2),
+            (2026, 5, "经代", "", "支付宝", "5年交", 100, 120, 0),
+        ],
+    )
+
+    @contextmanager
+    def fake_db():
+        yield conn
+
+    monkeypatch.setattr("db.repositories.payment.init_db", lambda: None)
+    monkeypatch.setattr("db.repositories.payment.get_db", fake_db)
+
+    result = get_payment_period_structure(2026, months=[4, 5], metric="gm")
+    rows = result["average_premium"]["rows"]
+    assert result["average_premium"]["metric"] == "gm"
+    assert result["average_premium"]["premium_label"] == "规模保费"
+    assert rows[0]["business_mode"] == "OTO"
+    assert rows[0]["total"]["premium"] == 36.0
+    assert rows[0]["total"]["count"] == 3
+    assert rows[0]["total"]["average"] == 12.0
+    assert rows[1]["business_mode"] == "证保"
+    assert rows[1]["total"]["average"] is None
+    assert rows[1]["total"]["calculable"] is False
+    assert all(row["business_mode"] != "" for row in rows)
+
+    jingdai_only = get_payment_period_structure(
+        2026,
+        months=[4, 5],
+        metric="gm",
+        business_types=["经代"],
+    )
+    assert jingdai_only["average_premium"]["rows"] == []
 
 
 def test_payment_period_query_uses_inclusive_daily_range(monkeypatch):

@@ -20,6 +20,7 @@ class TestConfigMetrics:
         assert "activity_rate" in metrics
         assert "avg_premium" in metrics
         assert "avg_productivity" in metrics
+        assert "avg_policy_premium" in metrics
         assert "yoy" in metrics
         assert "mom" in metrics
         assert "time_progress" in metrics
@@ -112,3 +113,4 @@ class TestOtherEndpointsIncludeDefinitions:
         resp = client.get("/api/payment-period/2026")
         assert resp.status_code == 200
         assert "definitions" in resp.json()["meta"]
+        assert "avg_policy_premium" in resp.json()["meta"]["definitions"]

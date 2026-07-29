@@ -123,6 +123,18 @@ def avg_productivity(premium: Any, avg_active_headcount: Any) -> float | None:
     return round_metric(safe_divide(premium, avg_active_headcount))
 
 
+def avg_policy_premium(premium: Any, policy_count: Any) -> float | None:
+    """件均保费 = 保费净额 / 承保件数净额。
+
+    不可计算规则：承保件数净额为空、小于或等于 0 时返回 None。
+    单位：万元/件。
+    """
+    count = _to_number(policy_count)
+    if count is None or count <= 0:
+        return None
+    return round_metric(safe_divide(premium, count))
+
+
 def conversion_rate(success_count: Any, base_count: Any) -> float | None:
     """转化率 = 成交数 / 触达或线索数。
 

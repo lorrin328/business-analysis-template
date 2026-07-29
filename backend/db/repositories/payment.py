@@ -3,7 +3,30 @@ import json
 import sqlite3
 from db.connection import get_db
 from db.schema import init_db
+from metrics.formulas import avg_policy_premium
 from services.cutoff_policy import build_period_context, date_range_filter_sql
+
+
+PAYMENT_PERIOD_CATEGORY_ORDER = [
+    "趸交",
+    "短期险",
+    "3年交",
+    "5年交",
+    "10年及以上",
+]
+
+
+def _average_premium_payload(premium, count):
+    premium_value = float(premium or 0)
+    count_value = int(count or 0)
+    average_value = avg_policy_premium(premium_value, count_value)
+    return {
+        "premium": round(premium_value, 2),
+        "count": count_value,
+        "average": average_value,
+        "calculable": average_value is not None,
+        "reason": None if average_value is not None else "承保件数净额小于或等于0",
+    }
 
 
 def get_payment_period_structure(
@@ -112,6 +135,65 @@ def get_payment_period_structure(
             premium_rows.append({'name': r['category'], 'value': round(r['premium_total'] or 0, 2)})
             count_rows.append({'name': r['category'], 'value': int(r['count_total'] or 0)})
 
+        # 转型业务件均保费：沿用当前交期分类、筛选条件和承保件数净额口径。
+        # 经代源表没有承保件数/投保单号，不能以记录行数代替件数。
+        c.execute(f'''
+            SELECT channel, org, category,
+                   SUM({premium_field}) AS premium_total,
+                   SUM(count) AS count_total
+            FROM {table}
+            WHERE {where} AND business_type = '转型'
+            GROUP BY channel, org, category
+            ORDER BY
+                CASE channel WHEN 'OTO' THEN 1 WHEN '证保' THEN 2 WHEN '蚁桥' THEN 3 ELSE 9 END,
+                org,
+                CASE category
+                    WHEN '趸交' THEN 1
+                    WHEN '短期险' THEN 2
+                    WHEN '3年交' THEN 3
+                    WHEN '5年交' THEN 4
+                    WHEN '10年及以上' THEN 5
+                    ELSE 9
+                END
+        ''', params)
+
+        grouped_average_rows = {}
+        for r in c.fetchall():
+            key = (r['channel'], r['org'])
+            group = grouped_average_rows.setdefault(key, {
+                "org": r['org'],
+                "business_mode": r['channel'],
+                "premium_total": 0.0,
+                "count_total": 0,
+                "terms": [],
+            })
+            premium_total = float(r['premium_total'] or 0)
+            count_total = int(r['count_total'] or 0)
+            group["premium_total"] += premium_total
+            group["count_total"] += count_total
+            group["terms"].append({
+                "category": r['category'],
+                **_average_premium_payload(premium_total, count_total),
+            })
+
+        category_rank = {
+            category: index for index, category in enumerate(PAYMENT_PERIOD_CATEGORY_ORDER)
+        }
+        average_rows = []
+        for group in grouped_average_rows.values():
+            group["terms"].sort(
+                key=lambda item: (category_rank.get(item["category"], 99), item["category"])
+            )
+            average_rows.append({
+                "org": group["org"],
+                "business_mode": group["business_mode"],
+                "terms": group["terms"],
+                "total": _average_premium_payload(
+                    group["premium_total"],
+                    group["count_total"],
+                ),
+            })
+
         # 获取经代机构列表
         jd_orgs = []
         if business_types is None or '经代' in business_types:
@@ -131,6 +213,15 @@ def get_payment_period_structure(
             'precision': 'day' if daily_available else 'month',
             'premium': premium_rows,
             'count': count_rows,
+            'average_premium': {
+                'scope': '转型',
+                'metric': metric if metric == 'gm' else 'qj',
+                'premium_label': '规模保费' if metric == 'gm' else '期交保费',
+                'unit': '万元/件',
+                'formula': '所选范围保费净额 ÷ 承保件数净额',
+                'categories': PAYMENT_PERIOD_CATEGORY_ORDER,
+                'rows': average_rows,
+            },
             'jingdai_orgs': jd_orgs,
         }
 

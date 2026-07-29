@@ -73,7 +73,7 @@ def payment_period_analysis(
             endDate=endDate,
             definitions={
                 k: METRICS[k]
-                for k in ["achievement_rate", "yoy"]
+                for k in ["achievement_rate", "yoy", "avg_policy_premium"]
                 if k in METRICS
             },
         ),

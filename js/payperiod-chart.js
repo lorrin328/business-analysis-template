@@ -1,6 +1,10 @@
 ﻿// payperiod-chart.js — payment period chart state and rendering
     // ---------- Payment Period Structure ----------
-    const payPeriodData = { premium: [], count: [] };
+    const payPeriodData = {
+      premium: [],
+      count: [],
+      averagePremium: { categories: [], rows: [] }
+    };
     const payPeriodFilters = {
       transform: true,
       jingdai: true,
@@ -74,9 +78,11 @@
     function applyPayPeriodFallback(year) {
       payPeriodData.premium = [];
       payPeriodData.count = [];
+      payPeriodData.averagePremium = { categories: [], rows: [] };
       const chart = payPeriodChart;
       if (chart) chart.setOption(getPayPeriodPieOption('premium'), true);
       renderPayPeriodTable();
+      renderPayPeriodAverageTable();
     }
 
     function fmtPayPeriodAmount(value, digits = 1) {
@@ -150,10 +156,80 @@
       `;
     }
 
+    function renderPayPeriodAverageTable() {
+      const wrapper = document.getElementById('payPeriodAverageWrapper');
+      const scopeNote = document.getElementById('payPeriodAverageScopeNote');
+      if (!wrapper) return;
+
+      const payload = payPeriodData.averagePremium || {};
+      const categories = Array.isArray(payload.categories) ? payload.categories : [];
+      const rows = Array.isArray(payload.rows) ? payload.rows.slice() : [];
+      const premiumLabel = payload.premium_label || (payPeriodFilters.metric === 'gm' ? '规模保费' : '期交保费');
+      const modeOrder = { 'OTO': 1, '证保': 2, '蚁桥': 3 };
+      rows.sort((a, b) => {
+        const modeGap = (modeOrder[a.business_mode] || 9) - (modeOrder[b.business_mode] || 9);
+        if (modeGap !== 0) return modeGap;
+        return String(a.org || '').localeCompare(String(b.org || ''), 'zh-CN');
+      });
+
+      if (scopeNote) {
+        scopeNote.textContent = `转型业务口径：${premiumLabel}净额 ÷ 承保件数净额；单位：万元/件；件数净额小于或等于0时不计算。单元格悬停可查看分子和分母。`;
+      }
+      if (rows.length === 0) {
+        wrapper.innerHTML = '<div class="structure-empty">当前筛选范围暂无可展示的转型业务件均保费</div>';
+        return;
+      }
+
+      function averageCell(cell) {
+        if (!cell || cell.calculable !== true || cell.average === null || cell.average === undefined) {
+          const reason = escapePayPeriodText(cell?.reason || '该交期暂无数据');
+          return `<span class="muted" title="${reason}">--</span>`;
+        }
+        const average = fmtPayPeriodAmount(cell.average, 2);
+        const premium = fmtPayPeriodAmount(cell.premium, 2);
+        const count = fmtPayPeriodAmount(cell.count, 0);
+        const title = escapePayPeriodText(`${premiumLabel}${premium}万元 ÷ 承保件数净额${count}件`);
+        return `<span class="pay-period-average-value" title="${title}" aria-label="${title}">${average}</span>`;
+      }
+
+      const headerCells = categories
+        .map(category => `<th class="num">${escapePayPeriodText(category)}</th>`)
+        .join('');
+      const bodyRows = rows.map(row => {
+        const termMap = new Map((row.terms || []).map(item => [item.category, item]));
+        const termCells = categories
+          .map(category => `<td class="num">${averageCell(termMap.get(category))}</td>`)
+          .join('');
+        return `
+          <tr>
+            <td class="primary-text">${escapePayPeriodText(row.org || '未知')}</td>
+            <td>${escapePayPeriodText(row.business_mode || '未分类')}</td>
+            ${termCells}
+            <td class="num total-cell">${averageCell(row.total)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      wrapper.innerHTML = `
+        <table class="structure-table" id="payPeriodAverageTable">
+          <thead>
+            <tr>
+              <th>机构</th>
+              <th>业务模式</th>
+              ${headerCells}
+              <th class="num">${escapePayPeriodText(premiumLabel)}合计件均</th>
+            </tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      `;
+    }
+
     function renderPayPeriodChart() {
       const type = payPeriodFilters.currentPieType;
       payPeriodChart.setOption(getPayPeriodPieOption(type), true);
       renderPayPeriodTable();
+      renderPayPeriodAverageTable();
     }
 
     function switchPayPeriodPie(btn, type) {
@@ -225,6 +301,7 @@
         const d = unwrapApiResponse(await fetchJson(buildPayPeriodQuery(year)));
         payPeriodData.premium = d.premium || [];
         payPeriodData.count = d.count || [];
+        payPeriodData.averagePremium = d.average_premium || { categories: [], rows: [] };
         if (d.jingdai_orgs && d.jingdai_orgs.length > 0) {
           renderPayPeriodJingdaiOrgs(d.jingdai_orgs);
         }

@@ -7,7 +7,13 @@ sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 from datetime import date
 
-from metrics.formulas import achievement_rate, safe_divide, time_progress, yoy_rate
+from metrics.formulas import (
+    achievement_rate,
+    avg_policy_premium,
+    safe_divide,
+    time_progress,
+    yoy_rate,
+)
 
 
 def test_safe_divide_handles_zero_none_and_nan():
@@ -25,6 +31,13 @@ def test_achievement_rate():
 def test_yoy_rate():
     assert yoy_rate(120, 100) == 0.2
     assert yoy_rate(120, 0) is None
+
+
+def test_avg_policy_premium_uses_net_policy_count():
+    assert avg_policy_premium(30, 3) == 10
+    assert avg_policy_premium(30, 0) is None
+    assert avg_policy_premium(30, -1) is None
+    assert avg_policy_premium(30, None) is None
 
 
 def test_time_progress_elapsed_total_mode():
