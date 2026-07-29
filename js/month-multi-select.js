@@ -39,7 +39,8 @@
           ${[1, 2, 3, 4].map(q => {
             const months = quarterMonths(q, maxMonth);
             const disabled = months.length === 0;
-            return `<button type="button" class="month-preset-btn" data-month-quarter="${q}" ${disabled ? 'disabled' : ''}>Q${q}</button>`;
+            const active = months.length > 0 && months.every(month => selected.includes(month));
+            return `<button type="button" class="month-preset-btn${active ? ' active' : ''}" data-month-quarter="${q}" aria-pressed="${active ? 'true' : 'false'}" ${disabled ? 'disabled' : ''}>Q${q}</button>`;
           }).join('')}
           <button type="button" class="month-preset-btn" data-month-action="all">全部可用月份</button>
         </div>`
@@ -75,6 +76,12 @@
         input.checked = checked;
         input.closest('.month-check-label')?.classList.toggle('active', checked);
       });
+      container.querySelectorAll('button[data-month-quarter]').forEach(button => {
+        const months = quarterMonths(button.dataset.monthQuarter, maxMonth);
+        const active = months.length > 0 && months.every(month => selected.includes(month));
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
       const summary = container.querySelector('.month-selection-summary');
       if (summary) summary.textContent = `已选 ${selected.join('、')} 月，共 ${selected.length} 个月`;
       if (notify && typeof options.onChange === 'function') options.onChange(selected.slice());
@@ -96,7 +103,17 @@
       const quarterButton = event.target.closest('button[data-month-quarter]');
       if (quarterButton && container.contains(quarterButton)) {
         event.preventDefault();
-        sync(quarterMonths(quarterButton.dataset.monthQuarter, maxMonth));
+        const quarterSelection = quarterMonths(quarterButton.dataset.monthQuarter, maxMonth);
+        if (options.allowQuarterMultiSelect === true) {
+          const selectedSet = new Set(selected);
+          const quarterIsSelected = quarterSelection.every(month => selectedSet.has(month));
+          const next = quarterIsSelected
+            ? selected.filter(month => !quarterSelection.includes(month))
+            : selected.concat(quarterSelection);
+          sync(next);
+        } else {
+          sync(quarterSelection);
+        }
         return;
       }
       const actionButton = event.target.closest('button[data-month-action]');

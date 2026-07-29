@@ -7,13 +7,13 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="js/constants.js"></script>
   <script src="js/format-utils.js"></script>
-  <script src="js/month-multi-select.js?v=1.0.116"></script>
+  <script src="js/month-multi-select.js?v=1.0.118"></script>
   <script src="js/api-client.js?v=1.0.116"></script>
   <script src="js/auth-ui.js?v=1.0.116"></script>
   <script src="js/export-excel.js?v=1.0.116"></script>
   <script src="js/dashboard-config.js?v=1.0.116"></script>
   <script src="js/upload.js?v=1.0.116"></script>
-  <script src="js/target-modal.js?v=1.0.116"></script>
+  <script src="js/target-modal.js?v=1.0.118"></script>
   <script src="js/dashboard-actions.js?v=1.0.116"></script>
   <script src="js/kpi-cards.js?v=1.0.116"></script>
   <script src="js/platform-trend.js?v=1.0.116"></script>
@@ -585,6 +585,12 @@
       font-size: 12px;
       white-space: nowrap;
     }
+    .structure-average-time-group { flex-wrap: wrap; }
+    .structure-average-time-group .period-select { min-width: 96px; }
+    .structure-average-months {
+      flex: 1 0 100%;
+      width: 100%;
+    }
     #payPeriodAverageOrgSelect { min-width: 136px; }
     .structure-average-mode-btns { display: flex; flex-wrap: wrap; gap: 6px; }
     .structure-average-mode-btns .chart-btn {
@@ -615,6 +621,17 @@
       color: var(--accent-light);
       font-weight: 700;
       background: rgba(59,130,246,0.06);
+    }
+    #payPeriodAverageTable tfoot td {
+      border-top: 2px solid rgba(96, 165, 250, 0.42);
+      border-bottom: none;
+      background: rgba(30, 64, 175, 0.18);
+      font-weight: 700;
+    }
+    #payPeriodAverageTable tfoot .summary-scope {
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
     }
     #payPeriodAverageTable tr.mode-start:not(:first-child) td {
       border-top: 2px solid rgba(96, 165, 250, 0.28);
@@ -867,6 +884,11 @@
     }
     .month-preset-btn { cursor: pointer; }
     .month-preset-btn:hover { border-color: var(--accent); color: var(--accent-light); }
+    .month-preset-btn.active {
+      border-color: var(--accent);
+      color: var(--accent-light);
+      background: rgba(59, 130, 246, 0.14);
+    }
     .month-check-label {
       display: inline-flex;
       align-items: center;
@@ -1320,7 +1342,7 @@
       <div class="header-left">
         <div class="logo">太平人寿 <span>经营分析看板</span></div>
         <span class="tag">网电多元条线</span>
-        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.117</span>
+        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.118</span>
       </div>
       <div class="header-right">
         <nav class="primary-nav" aria-label="主要页面">
@@ -1660,11 +1682,24 @@
           <div>
             <span class="chart-title">转型业务件均保费</span>
             <div class="structure-average-note" id="payPeriodAverageScopeNote">
-              沿用上方交期结构统计范围，并可在本表继续筛选机构和业务模式。
+              统计期间与上方交期结构同步，可在本表直接切换年度、季度、月度并继续筛选机构和业务模式。
             </div>
           </div>
         </div>
         <div class="structure-average-filterbar" aria-label="件均保费表格筛选">
+          <div class="structure-average-filter-group structure-average-time-group">
+            <label class="structure-average-filter-group" for="payPeriodAverageYearSelect">
+              <span class="structure-average-filter-label">年份</span>
+              <select class="period-select" id="payPeriodAverageYearSelect"></select>
+            </label>
+            <span class="structure-average-filter-label">时间维度</span>
+            <div class="structure-average-mode-btns" id="payPeriodAverageDimBtns" role="group" aria-label="筛选时间维度">
+              <button type="button" class="chart-btn active" data-pay-period-average-dim="year" aria-pressed="true">年度</button>
+              <button type="button" class="chart-btn" data-pay-period-average-dim="quarter" aria-pressed="false">季度</button>
+              <button type="button" class="chart-btn" data-pay-period-average-dim="month" aria-pressed="false">月度</button>
+            </div>
+          </div>
+          <div class="structure-average-months" id="payPeriodAverageMonthMultiSelect" hidden></div>
           <label class="structure-average-filter-group" for="payPeriodAverageOrgSelect">
             <span class="structure-average-filter-label">机构</span>
             <select class="period-select" id="payPeriodAverageOrgSelect">
@@ -1892,7 +1927,7 @@
   <script src="js/product-analysis.js?v=1.0.116"></script>
   <script>
   </script>
-  <script src="js/payperiod-chart.js?v=1.0.116"></script>
+  <script src="js/payperiod-chart.js?v=1.0.118"></script>
   <script>
   </script>
   <script src="js/team-analysis.js?v=1.0.116"></script>

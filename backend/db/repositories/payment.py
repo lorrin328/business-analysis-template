@@ -194,6 +194,58 @@ def get_payment_period_structure(
                 ),
             })
 
+        # 为表内“全部 / 单机构 / 单模式 / 机构×模式”筛选预聚合合计。
+        # 前端只选择与当前筛选完全匹配的后端结果，不对件均值做简单平均。
+        grouped_average_summaries = {}
+        for row in average_rows:
+            summary_keys = [
+                ("all", "all"),
+                (row["org"], "all"),
+                ("all", row["business_mode"]),
+                (row["org"], row["business_mode"]),
+            ]
+            for key in summary_keys:
+                summary = grouped_average_summaries.setdefault(key, {
+                    "org": key[0],
+                    "business_mode": key[1],
+                    "premium_total": 0.0,
+                    "count_total": 0,
+                    "terms": {},
+                })
+                summary["premium_total"] += float(row["total"]["premium"] or 0)
+                summary["count_total"] += int(row["total"]["count"] or 0)
+                for term in row["terms"]:
+                    term_summary = summary["terms"].setdefault(term["category"], {
+                        "premium": 0.0,
+                        "count": 0,
+                    })
+                    term_summary["premium"] += float(term["premium"] or 0)
+                    term_summary["count"] += int(term["count"] or 0)
+
+        average_summaries = []
+        for summary in grouped_average_summaries.values():
+            terms = []
+            for category in PAYMENT_PERIOD_CATEGORY_ORDER:
+                term_summary = summary["terms"].get(category)
+                if term_summary is None:
+                    continue
+                terms.append({
+                    "category": category,
+                    **_average_premium_payload(
+                        term_summary["premium"],
+                        term_summary["count"],
+                    ),
+                })
+            average_summaries.append({
+                "org": summary["org"],
+                "business_mode": summary["business_mode"],
+                "terms": terms,
+                "total": _average_premium_payload(
+                    summary["premium_total"],
+                    summary["count_total"],
+                ),
+            })
+
         # 获取经代机构列表
         jd_orgs = []
         if business_types is None or '经代' in business_types:
@@ -221,6 +273,7 @@ def get_payment_period_structure(
                 'formula': '所选范围保费净额 ÷ 承保件数净额',
                 'categories': PAYMENT_PERIOD_CATEGORY_ORDER,
                 'rows': average_rows,
+                'summaries': average_summaries,
             },
             'jingdai_orgs': jd_orgs,
         }

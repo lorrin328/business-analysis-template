@@ -102,12 +102,12 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/month-multi-select.js?v=1.0.116"></script>' in html
+    assert '<script src="js/month-multi-select.js?v=1.0.118"></script>' in html
     assert '<script src="js/api-client.js?v=1.0.116"></script>' in html
     assert '<script src="js/auth-ui.js?v=1.0.116"></script>' in html
     assert '<script src="js/export-excel.js?v=1.0.116"></script>' in html
     assert '<script src="js/upload.js?v=1.0.116"></script>' in html
-    assert '<script src="js/target-modal.js?v=1.0.116"></script>' in html
+    assert '<script src="js/target-modal.js?v=1.0.118"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.116"></script>' in html
     assert '<script src="js/platform-trend.js?v=1.0.116"></script>' in html
     assert '<script src="js/team-analysis.js?v=1.0.116"></script>' in html
@@ -281,6 +281,7 @@ def test_dashboard_month_multi_select_is_shared_by_all_required_modules():
         "orgMonthMultiSelect",
         "productMonthMultiSelect",
         "payPeriodMonthMultiSelect",
+        "payPeriodAverageMonthMultiSelect",
         "teamMonthMultiSelect",
         "teamEnhancedMonthMultiSelect",
     ]:
@@ -288,6 +289,8 @@ def test_dashboard_month_multi_select_is_shared_by_all_required_modules():
     assert "input[data-month-value]:checked" in control
     assert "if (normalized.length === 0) return false;" in control
     assert "data-month-quarter" in control
+    assert "options.allowQuarterMultiSelect === true" in control
+    assert "selected.concat(quarterSelection)" in control
     assert "全部可用月份" in control
     assert "最新月" in control
     assert "MonthMultiSelect.render" in combined
@@ -888,6 +891,9 @@ def test_structure_modules_are_same_level_with_tables():
     assert 'id="productTopTableWrapper"' in html
     assert 'id="payPeriodTableWrapper"' in html
     assert 'id="payPeriodAverageWrapper"' in html
+    assert 'id="payPeriodAverageYearSelect"' in html
+    assert 'id="payPeriodAverageDimBtns"' in html
+    assert 'id="payPeriodAverageMonthMultiSelect"' in html
     assert 'id="payPeriodAverageOrgSelect"' in html
     assert 'id="payPeriodAverageModeBtns"' in html
     assert 'id="payPeriodAverageResetBtn"' in html
@@ -895,6 +901,9 @@ def test_structure_modules_are_same_level_with_tables():
     assert 'data-pay-period-average-mode="OTO"' in html
     assert 'data-pay-period-average-mode="证保"' in html
     assert 'data-pay-period-average-mode="蚁桥"' in html
+    assert 'data-pay-period-average-dim="year"' in html
+    assert 'data-pay-period-average-dim="quarter"' in html
+    assert 'data-pay-period-average-dim="month"' in html
     assert html.index('<span class="chart-title">业务平台趋势</span>') < html.index("产品与交期结构")
     assert html.index("产品与交期结构") < html.index('<span class="chart-title">产品结构</span>')
     assert html.index("产品与交期结构") < html.index('<span class="chart-title">交期结构</span>')
@@ -909,9 +918,15 @@ def test_structure_modules_are_same_level_with_tables():
     assert "row.org === payPeriodAverageFilters.org" in payperiod
     assert "row.business_mode === payPeriodAverageFilters.businessMode" in payperiod
     assert "button[data-pay-period-average-mode]" in payperiod
+    assert "button[data-pay-period-average-dim]" in payperiod
+    assert "allowQuarterMultiSelect: true" in payperiod
     assert "payPeriodAverageFilters.org = 'all'" in payperiod
     assert "payPeriodAverageFilters.businessMode = 'all'" in payperiod
-    assert "显示 ${rows.length} / ${allRows.length} 条" in payperiod
+    assert "显示 ${rows.length} / ${allRows.length} 条 · 含筛选合计" in payperiod
+    assert "item.org === payPeriodAverageFilters.org" in payperiod
+    assert "item.business_mode === payPeriodAverageFilters.businessMode" in payperiod
+    assert '<tfoot>' in payperiod
+    assert "筛选合计" in payperiod
     assert "转型业务口径" in payperiod
     assert "承保件数净额" in payperiod
     assert "万元/件" in combined
@@ -991,8 +1006,14 @@ def test_pay_period_controls_are_bound_by_payperiod_module():
     assert "yearSelect.addEventListener('change', () => switchPayPeriodYear(yearSelect.value))" in payperiod
     assert "button[data-pay-period-dim]" in payperiod
     assert 'id="payPeriodMonthMultiSelect"' in payperiod_section
+    assert 'id="payPeriodAverageYearSelect"' in payperiod_section
+    assert 'id="payPeriodAverageDimBtns"' in payperiod_section
+    assert 'id="payPeriodAverageMonthMultiSelect"' in payperiod_section
     assert "function renderPayPeriodMonthFilter()" in payperiod
+    assert "function renderPayPeriodTimeControls()" in payperiod
     assert "MonthMultiSelect.render(container" in payperiod
+    assert "averageYearSelect.addEventListener('change', () => switchPayPeriodYear(averageYearSelect.value))" in payperiod
+    assert "button[data-pay-period-average-dim]" in payperiod
     assert "input[data-pay-period-biz]" in payperiod
     assert "input[data-pay-period-channel]" in payperiod
     assert "input[data-pay-period-org]" in payperiod

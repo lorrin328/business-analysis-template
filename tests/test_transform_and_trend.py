@@ -783,6 +783,20 @@ def test_payment_period_average_supports_gm_and_excludes_jingdai(monkeypatch):
     assert rows[1]["total"]["average"] is None
     assert rows[1]["total"]["calculable"] is False
     assert all(row["business_mode"] != "" for row in rows)
+    summaries = {
+        (row["org"], row["business_mode"]): row
+        for row in result["average_premium"]["summaries"]
+    }
+    assert summaries[("all", "all")]["total"] == {
+        "premium": 48.0,
+        "count": 3,
+        "average": 16.0,
+        "calculable": True,
+        "reason": None,
+    }
+    assert summaries[("all", "OTO")]["total"]["average"] == 12.0
+    assert summaries[("上海", "all")]["total"]["average"] == 12.0
+    assert summaries[("北京", "证保")]["total"]["calculable"] is False
 
     jingdai_only = get_payment_period_structure(
         2026,

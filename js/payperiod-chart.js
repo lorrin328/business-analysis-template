@@ -172,6 +172,7 @@
       const payload = payPeriodData.averagePremium || {};
       const categories = Array.isArray(payload.categories) ? payload.categories : [];
       const allRows = Array.isArray(payload.rows) ? payload.rows.slice() : [];
+      const summaries = Array.isArray(payload.summaries) ? payload.summaries : [];
       const premiumLabel = payload.premium_label || (payPeriodFilters.metric === 'gm' ? '规模保费' : '期交保费');
       const modeOrder = { 'OTO': 1, '证保': 2, '蚁桥': 3 };
       const orgOrder = new Map([...ORG_LIST, '其他'].map((org, index) => [org, index]));
@@ -207,7 +208,9 @@
       }
       if (resetBtn) {
         resetBtn.disabled = payPeriodAverageFilters.org === 'all'
-          && payPeriodAverageFilters.businessMode === 'all';
+          && payPeriodAverageFilters.businessMode === 'all'
+          && payPeriodFilters.timeDim === 'year'
+          && String(payPeriodFilters.year) === String(DEFAULT_DASHBOARD_YEAR);
       }
 
       const rows = allRows.filter(row => {
@@ -225,10 +228,14 @@
       });
 
       if (scopeNote) {
-        scopeNote.textContent = `转型业务口径：${premiumLabel}净额 ÷ 承保件数净额；单位：万元/件；件数净额小于或等于0时不计算。本表可继续按机构、业务模式筛选。`;
+        const months = payPeriodFilters.timeDim === 'year' ? [] : _buildPeriodMonths();
+        const periodLabel = payPeriodFilters.timeDim === 'year'
+          ? `${payPeriodFilters.year}年度`
+          : MonthMultiSelect.periodLabel(payPeriodFilters.year, months);
+        scopeNote.textContent = `统计期间：${periodLabel}；转型业务口径：${premiumLabel}净额 ÷ 承保件数净额；单位：万元/件；件数净额小于或等于0时不计算。`;
       }
       if (filterSummary) {
-        filterSummary.textContent = `显示 ${rows.length} / ${allRows.length} 条`;
+        filterSummary.textContent = `显示 ${rows.length} / ${allRows.length} 条 · 含筛选合计`;
       }
       if (allRows.length === 0) {
         wrapper.innerHTML = '<div class="structure-empty">当前筛选范围暂无可展示的转型业务件均保费</div>';
@@ -269,6 +276,28 @@
           </tr>
         `;
       }).join('');
+      const summary = summaries.find(item =>
+        item.org === payPeriodAverageFilters.org
+        && item.business_mode === payPeriodAverageFilters.businessMode
+      );
+      const summaryTermMap = new Map((summary?.terms || []).map(item => [item.category, item]));
+      const summaryTermCells = categories
+        .map(category => `<td class="num">${averageCell(summaryTermMap.get(category))}</td>`)
+        .join('');
+      const summaryScope = [
+        payPeriodAverageFilters.org === 'all' ? '全部机构' : payPeriodAverageFilters.org,
+        payPeriodAverageFilters.businessMode === 'all' ? '全部模式' : payPeriodAverageFilters.businessMode
+      ].join(' / ');
+      const summaryRow = summary ? `
+        <tfoot>
+          <tr class="average-summary-row">
+            <td class="primary-text">筛选合计</td>
+            <td class="summary-scope">${escapePayPeriodText(summaryScope)}</td>
+            ${summaryTermCells}
+            <td class="num total-cell">${averageCell(summary.total)}</td>
+          </tr>
+        </tfoot>
+      ` : '';
 
       wrapper.innerHTML = `
         <table class="structure-table" id="payPeriodAverageTable">
@@ -281,6 +310,7 @@
             </tr>
           </thead>
           <tbody>${bodyRows}</tbody>
+          ${summaryRow}
         </table>
       `;
     }
@@ -315,23 +345,52 @@
     }
 
     function renderPayPeriodMonthFilter() {
-      const container = document.getElementById('payPeriodMonthMultiSelect');
-      if (!container) return;
+      const containers = [
+        document.getElementById('payPeriodMonthMultiSelect'),
+        document.getElementById('payPeriodAverageMonthMultiSelect')
+      ].filter(Boolean);
       if (payPeriodFilters.timeDim === 'year') {
-        container.hidden = true;
+        containers.forEach(container => { container.hidden = true; });
         return;
       }
-      payPeriodFilters.selectedMonths[payPeriodFilters.timeDim] = MonthMultiSelect.render(container, {
-        dimension: payPeriodFilters.timeDim,
-        maxMonth: typeof getLatestMonthForYear === 'function'
-          ? getLatestMonthForYear(String(payPeriodFilters.year))
-          : 12,
-        selectedMonths: _buildPeriodMonths(),
-        onChange: months => {
-          payPeriodFilters.selectedMonths[payPeriodFilters.timeDim] = months;
-          refreshPayPeriodChart();
-        }
+      const dimension = payPeriodFilters.timeDim;
+      const maxMonth = typeof getLatestMonthForYear === 'function'
+        ? getLatestMonthForYear(String(payPeriodFilters.year))
+        : 12;
+      const selectedMonths = _buildPeriodMonths();
+      containers.forEach(container => {
+        payPeriodFilters.selectedMonths[dimension] = MonthMultiSelect.render(container, {
+          dimension,
+          maxMonth,
+          selectedMonths,
+          allowQuarterMultiSelect: true,
+          onChange: months => {
+            payPeriodFilters.selectedMonths[dimension] = months;
+            renderPayPeriodTimeControls();
+            refreshPayPeriodChart();
+          }
+        });
       });
+    }
+
+    function renderPayPeriodTimeControls() {
+      ['payPeriodYearSelect', 'payPeriodAverageYearSelect'].forEach(id => {
+        const select = document.getElementById(id);
+        if (select) select.value = String(payPeriodFilters.year);
+      });
+      [
+        ['payPeriodDimBtns', 'data-pay-period-dim'],
+        ['payPeriodAverageDimBtns', 'data-pay-period-average-dim']
+      ].forEach(([id, attribute]) => {
+        const group = document.getElementById(id);
+        if (!group) return;
+        group.querySelectorAll(`button[${attribute}]`).forEach(button => {
+          const active = button.getAttribute(attribute) === payPeriodFilters.timeDim;
+          button.classList.toggle('active', active);
+          button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+      });
+      renderPayPeriodMonthFilter();
     }
 
     function buildPayPeriodQuery(year) {
@@ -405,18 +464,14 @@
     }
 
     function switchPayPeriodDim(btn, dim) {
-      if (btn?.parentElement) {
-        btn.parentElement.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-      }
       payPeriodFilters.timeDim = dim;
-      renderPayPeriodMonthFilter();
+      renderPayPeriodTimeControls();
       refreshPayPeriodChart();
     }
 
     function switchPayPeriodYear(value) {
       payPeriodFilters.year = value;
-      renderPayPeriodMonthFilter();
+      renderPayPeriodTimeControls();
       refreshPayPeriodChart();
     }
 
@@ -521,6 +576,23 @@
         });
       }
 
+      const averageYearSelect = document.getElementById('payPeriodAverageYearSelect');
+      if (averageYearSelect && averageYearSelect.dataset.boundPayPeriodAverageYear !== 'true') {
+        averageYearSelect.dataset.boundPayPeriodAverageYear = 'true';
+        averageYearSelect.addEventListener('change', () => switchPayPeriodYear(averageYearSelect.value));
+      }
+
+      const averageDimBtns = document.getElementById('payPeriodAverageDimBtns');
+      if (averageDimBtns && averageDimBtns.dataset.boundPayPeriodAverageDims !== 'true') {
+        averageDimBtns.dataset.boundPayPeriodAverageDims = 'true';
+        averageDimBtns.addEventListener('click', event => {
+          const button = event.target.closest('button[data-pay-period-average-dim]');
+          if (!button || !averageDimBtns.contains(button)) return;
+          event.preventDefault();
+          switchPayPeriodDim(button, button.dataset.payPeriodAverageDim);
+        });
+      }
+
       const averageOrgSelect = document.getElementById('payPeriodAverageOrgSelect');
       if (averageOrgSelect && averageOrgSelect.dataset.boundPayPeriodAverageOrg !== 'true') {
         averageOrgSelect.dataset.boundPayPeriodAverageOrg = 'true';
@@ -546,13 +618,21 @@
       if (averageResetBtn && averageResetBtn.dataset.boundPayPeriodAverageReset !== 'true') {
         averageResetBtn.dataset.boundPayPeriodAverageReset = 'true';
         averageResetBtn.addEventListener('click', () => {
+          const timeChanged = payPeriodFilters.timeDim !== 'year'
+            || String(payPeriodFilters.year) !== String(DEFAULT_DASHBOARD_YEAR);
           payPeriodAverageFilters.org = 'all';
           payPeriodAverageFilters.businessMode = 'all';
-          renderPayPeriodAverageTable();
+          payPeriodFilters.year = DEFAULT_DASHBOARD_YEAR;
+          payPeriodFilters.timeDim = 'year';
+          payPeriodFilters.selectedMonths.quarter = [];
+          payPeriodFilters.selectedMonths.month = [];
+          renderPayPeriodTimeControls();
+          if (timeChanged) refreshPayPeriodChart();
+          else renderPayPeriodAverageTable();
         });
       }
     }
 
     bindPayPeriodControls();
-    renderPayPeriodMonthFilter();
+    renderPayPeriodTimeControls();
 
