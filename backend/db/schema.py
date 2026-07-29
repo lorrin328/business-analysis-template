@@ -411,6 +411,36 @@ def init_db():
             imported_by TEXT DEFAULT 'system',
             imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS branch_reference_batches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT NOT NULL,
+            file_hash TEXT NOT NULL,
+            regular_count INTEGER NOT NULL,
+            referral_count INTEGER NOT NULL,
+            imported_by TEXT DEFAULT 'system',
+            imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS branch_reference (
+            reference_id TEXT PRIMARY KEY,
+            batch_id INTEGER NOT NULL,
+            branch_type TEXT NOT NULL,
+            branch_name TEXT NOT NULL UNIQUE,
+            parent_name TEXT DEFAULT '',
+            province TEXT DEFAULT '',
+            city TEXT DEFAULT '',
+            grade TEXT DEFAULT '',
+            project TEXT DEFAULT '',
+            subproject TEXT DEFAULT '',
+            locality TEXT DEFAULT '',
+            include_in_regular_count INTEGER NOT NULL DEFAULT 0,
+            source_row INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(batch_id) REFERENCES branch_reference_batches(id)
+        )''')
+        c.execute('''
+            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+            VALUES ('20260729_branch_reference_domain', 0, 'Adds protected branch reference master data')
+        ''')
         c.execute('''
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
             VALUES ('20260726_variable_expense_domain', 0, 'Adds isolated variable-expense analysis batches')
@@ -470,6 +500,8 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_scheme_batches_hash ON scheme_import_batches(file_hash)',
             'CREATE INDEX IF NOT EXISTS ix_variable_expense_period ON variable_expense_batches(period, imported_at)',
             'CREATE INDEX IF NOT EXISTS ix_variable_expense_hash ON variable_expense_batches(file_hash)',
+            'CREATE INDEX IF NOT EXISTS ix_branch_reference_type ON branch_reference(branch_type, include_in_regular_count)',
+            'CREATE INDEX IF NOT EXISTS ix_branch_reference_project ON branch_reference(project, grade)',
         ]:
             c.execute(sql)
 

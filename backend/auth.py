@@ -44,6 +44,7 @@ MODULE_KEYS = [
     "scheme_upload",
     "variable_expense_view",
     "variable_expense_upload",
+    "branch_analysis",
     "market_analysis",
 ]
 
@@ -79,6 +80,7 @@ ROLE_DEFAULT_PERMISSIONS = {
         "scheme_upload": False,
         "variable_expense_view": False,
         "variable_expense_upload": False,
+        "branch_analysis": False,
         "market_analysis": False,
     },
 }

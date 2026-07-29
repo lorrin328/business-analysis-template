@@ -24,7 +24,8 @@ data.json
 *.import.lock
 output/
 outputs/
-data/reference/
+data/reference/*
+!data/reference/README.md
 _external_materials/
 _cleanup_backup_*/
 bak/

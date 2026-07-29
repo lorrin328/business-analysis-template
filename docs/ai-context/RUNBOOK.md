@@ -1,5 +1,16 @@
 # 运行手册
 
+## 证保网点分析
+
+- 页面：`/branch-analysis`；登录后通过主导航“网点分析”进入。
+- 权限：`branch_analysis`；管理员和高级用户默认开启，普通用户默认关闭。
+- 实际名单保存在项目本地 `data/reference/证保网点参考表.csv` 和生产运行库，不进入公开GitHub。
+- 本地生成：`python scripts/build_branch_reference.py --source "<证保业务报表.xlsx>" --output "data/reference/证保网点参考表.csv"`。
+- 生产导入前先执行SQLite在线备份；再以`www-data`身份运行 `backend/import_branch_reference.py --source <私密CSV>`。
+- 导入门禁：必须为147个常规网点、86个转介绍网点，参考编号和网点名称均唯一；失败时事务回滚。
+- 部署后验证页面和脚本返回200、未登录API返回401、普通用户返回403；管理员API应返回`regularStock=147`、`referralStockExcluded=86`。
+- 数据勾稽：匹配保费与待匹配保费合计应等于证保总期交；广发主网点汇总保费不得在常规匹配额与转介绍贡献中重复相加。
+
 ## 独立变动费用分析
 
 - 页面：`/variable-expense`；登录后通过主看板“管理与工具—变动费用分析”进入。
