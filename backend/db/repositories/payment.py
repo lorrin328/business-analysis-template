@@ -173,7 +173,8 @@ def get_payment_period_structure(
             group["count_total"] += count_total
             group["terms"].append({
                 "category": r['category'],
-                **_average_premium_payload(premium_total, count_total),
+                "premium_total": premium_total,
+                "count_total": count_total,
             })
 
         category_rank = {
@@ -187,7 +188,16 @@ def get_payment_period_structure(
             average_rows.append({
                 "org": group["org"],
                 "business_mode": group["business_mode"],
-                "terms": group["terms"],
+                "terms": [
+                    {
+                        "category": term["category"],
+                        **_average_premium_payload(
+                            term["premium_total"],
+                            term["count_total"],
+                        ),
+                    }
+                    for term in group["terms"]
+                ],
                 "total": _average_premium_payload(
                     group["premium_total"],
                     group["count_total"],
@@ -197,7 +207,7 @@ def get_payment_period_structure(
         # 为表内“全部 / 单机构 / 单模式 / 机构×模式”筛选预聚合合计。
         # 前端只选择与当前筛选完全匹配的后端结果，不对件均值做简单平均。
         grouped_average_summaries = {}
-        for row in average_rows:
+        for row in grouped_average_rows.values():
             summary_keys = [
                 ("all", "all"),
                 (row["org"], "all"),
@@ -212,15 +222,15 @@ def get_payment_period_structure(
                     "count_total": 0,
                     "terms": {},
                 })
-                summary["premium_total"] += float(row["total"]["premium"] or 0)
-                summary["count_total"] += int(row["total"]["count"] or 0)
+                summary["premium_total"] += row["premium_total"]
+                summary["count_total"] += row["count_total"]
                 for term in row["terms"]:
                     term_summary = summary["terms"].setdefault(term["category"], {
                         "premium": 0.0,
                         "count": 0,
                     })
-                    term_summary["premium"] += float(term["premium"] or 0)
-                    term_summary["count"] += int(term["count"] or 0)
+                    term_summary["premium"] += term["premium_total"]
+                    term_summary["count"] += term["count_total"]
 
         average_summaries = []
         for summary in grouped_average_summaries.values():

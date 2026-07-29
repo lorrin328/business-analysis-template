@@ -758,8 +758,8 @@ def test_payment_period_average_supports_gm_and_excludes_jingdai(monkeypatch):
         "INSERT INTO agg_payment_period VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (2026, 4, "转型", "证保", "北京", "短期险", 9, 12, 0),
-            (2026, 4, "转型", "OTO", "上海", "10年及以上", 10, 12, 1),
-            (2026, 5, "转型", "OTO", "上海", "10年及以上", 20, 24, 2),
+            (2026, 4, "转型", "OTO", "上海", "10年及以上", 10, 12.004, 1),
+            (2026, 5, "转型", "OTO", "上海", "10年及以上", 20, 24.005, 2),
             (2026, 5, "经代", "", "支付宝", "5年交", 100, 120, 0),
         ],
     )
@@ -776,9 +776,9 @@ def test_payment_period_average_supports_gm_and_excludes_jingdai(monkeypatch):
     assert result["average_premium"]["metric"] == "gm"
     assert result["average_premium"]["premium_label"] == "规模保费"
     assert rows[0]["business_mode"] == "OTO"
-    assert rows[0]["total"]["premium"] == 36.0
+    assert rows[0]["total"]["premium"] == 36.01
     assert rows[0]["total"]["count"] == 3
-    assert rows[0]["total"]["average"] == 12.0
+    assert rows[0]["total"]["average"] == 12.003
     assert rows[1]["business_mode"] == "证保"
     assert rows[1]["total"]["average"] is None
     assert rows[1]["total"]["calculable"] is False
@@ -788,14 +788,15 @@ def test_payment_period_average_supports_gm_and_excludes_jingdai(monkeypatch):
         for row in result["average_premium"]["summaries"]
     }
     assert summaries[("all", "all")]["total"] == {
-        "premium": 48.0,
+        "premium": 48.01,
         "count": 3,
-        "average": 16.0,
+        "average": 16.003,
         "calculable": True,
         "reason": None,
     }
-    assert summaries[("all", "OTO")]["total"]["average"] == 12.0
-    assert summaries[("上海", "all")]["total"]["average"] == 12.0
+    assert summaries[("all", "OTO")]["total"] == rows[0]["total"]
+    assert summaries[("上海", "all")]["total"] == rows[0]["total"]
+    assert summaries[("上海", "OTO")]["total"] == rows[0]["total"]
     assert summaries[("北京", "证保")]["total"]["calculable"] is False
 
     jingdai_only = get_payment_period_structure(
