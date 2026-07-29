@@ -8,6 +8,9 @@
 - 沿用趸交、短期险、3年交、5年交、10年及以上五档；经代因缺少权威承保件数，本版本不纳入件均分析。
 - 本地验证：全量回归`343 passed, 1 warning`，2026年数据质量审计`issues=0`，预发布检查、Python/JavaScript语法和`git diff --check`通过；真实数据副本核验年度、季度、月度与期交/规模切换均正常。
 - 浏览器验收：件均表位于“产品与交期结构”模块内，年度期交口径返回19行机构×业务模式数据；期交/规模切换及季度/月度切换正常，宽表在卡片内横向滚动，页面无横向溢出、无浏览器错误。
+- GitHub：功能提交`f1fe133 feat: add transition average premium analysis`已推送`codex/payment-period-average-premium`并快进同步至`origin/master`；可信发布包从该提交直接归档，本地与服务器SHA256均为`1d74d81fe7e6ce7d7b06f3a9d4fd729b0c8c7f6e0cf1434c9f1f3f980604ca66`。
+- 生产部署：以`REBUILD_DATABASE=0`部署至`192.168.50.6`并保留生产运行库；部署前在线备份为`/opt/business-analysis-backups/business_data.db.20260729_162456`，元数据记录`integrity_check=ok`、`quick_check=ok`和41张表。
+- 生产验收：应用和页面版本均为`v1.0.115`、最新期间`202607`；期交和规模件均均返回19行机构×业务模式数据，其中18行可计算，五档交期一致；主服务和nginx均为active/enabled，数据库完整性复核为`ok`，部署后warning以上日志为空，源码、数据库、Git、版本及部署路径继续返回404。
 
 ## 2026-07-29 v1.0.114 证保网点分析生产化
 
