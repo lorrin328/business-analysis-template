@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>寿险市场研判</title>
-  <script src="/js/api-client.js?v=1.0.111"></script>
+  <script src="/js/api-client.js?v=1.0.112"></script>
   <style>
     :root {
       color-scheme: dark;
@@ -32,6 +32,8 @@
     .header-actions { display: flex; align-items: center; gap: 8px; }
     .btn, select { min-height: 38px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); cursor: pointer; }
     .btn.primary { background: #2e67c7; border-color: #4784e7; }
+    .btn.run-now { color: #06201f; background: var(--cyan); border-color: var(--cyan); font-weight: 700; }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
     main { max-width: 1500px; margin: 0 auto; padding: 24px; }
     .hero { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(300px, .7fr); gap: 16px; margin-bottom: 16px; }
     .hero-main, .run-card, .signal-card, .module-card, .action-card, .source-card, .empty { background: linear-gradient(145deg, rgba(23,42,66,.96), rgba(13,27,45,.96)); border: 1px solid var(--line); border-radius: 14px; }
@@ -123,7 +125,7 @@
 <body>
   <header class="header">
     <div class="brand"><strong>寿险市场研判</strong><span>每3天滚动更新</span></div>
-    <div class="header-actions"><button class="btn" id="backButton" type="button">返回经营看板</button><button class="btn primary" id="refreshButton" type="button">刷新</button></div>
+    <div class="header-actions"><button class="btn" id="backButton" type="button">返回经营看板</button><button class="btn run-now hidden" id="runNowButton" type="button" title="仅管理员可手动触发一次后台市场研究">立即运行研究</button><button class="btn primary" id="refreshButton" type="button">刷新</button></div>
   </header>
   <main>
     <section class="hero">
@@ -168,6 +170,6 @@
       </details>
     </div>
   </main>
-  <script src="/js/market-analysis.js?v=1.0.111"></script>
+  <script src="/js/market-analysis.js?v=1.0.112"></script>
 </body>
 </html>

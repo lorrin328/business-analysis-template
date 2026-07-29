@@ -81,7 +81,15 @@ fi
 
 install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis.service" /etc/systemd/system/market-analysis.service
 install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis.timer" /etc/systemd/system/market-analysis.timer
+install -o root -g root -m 0755 "$APP_DIR/deploy/market-analysis-trigger.sh" /usr/local/sbin/business-analysis-market-trigger
+install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis-manual.service" /etc/systemd/system/market-analysis-manual.service
+install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis-manual.path" /etc/systemd/system/market-analysis-manual.path
+install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis-trigger.tmpfiles" /etc/tmpfiles.d/business-analysis-market-trigger.conf
+install -d -o root -g root -m 0700 /var/lib/business-analysis-market-trigger
+systemd-tmpfiles --create /etc/tmpfiles.d/business-analysis-market-trigger.conf
+rm -f /run/business-analysis-market-trigger/request
 systemctl daemon-reload
+systemctl enable --now market-analysis-manual.path
 
 has_env_value() {
   tr -d '\r' < "$MARKET_ENV_FILE" | grep -Eq "^${1}=[^[:space:]]+$"

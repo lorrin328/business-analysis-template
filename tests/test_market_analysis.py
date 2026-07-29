@@ -6,12 +6,20 @@ import subprocess
 import pytest
 from fastapi.testclient import TestClient
 
+import api.market_analysis as market_analysis_api
+from auth import get_current_user
 from main import app
 from market_analysis.repository import MarketAnalysisRepository
 from market_analysis.source_verifier import SourceVerificationError, _ensure_public_url, _open_pinned, _published_at_matches, _title_matches, align_module_facts_to_verified_excerpts, verify_report_sources
 from market_analysis.validator import ReportValidationError, validate_report
 import run_market_research
-from run_market_research import clamp_source_excerpts, parse_claude_result, redact
+from run_market_research import (
+    clamp_source_excerpts,
+    parse_claude_result,
+    reconcile_history_metadata,
+    redact,
+    topic_ledger,
+)
 
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -162,6 +170,39 @@ def test_repository_validates_cross_period_topic_links_and_builds_timeline(tmp_p
         repository.publish(broken)
 
 
+def test_worker_reconciles_trusted_history_metadata_before_validation(tmp_path):
+    repository = MarketAnalysisRepository(tmp_path)
+    first = valid_report()
+    repository.publish(first)
+    second = copy.deepcopy(first)
+    second["reportId"] = "market-20260725-120000"
+    second["generatedAt"] = "2026-07-25T12:00:00+08:00"
+    second["period"] = {"start": "2026-07-22", "end": "2026-07-25"}
+    second["changeSignals"]["new"] = []
+    second["changeSignals"]["persistent"] = []
+    for module in second["modules"]:
+        module["history"] = {
+            "state": "persistent",
+            "since": "2026-07-25",
+            "previousReportId": "market-wrong",
+        }
+        second["changeSignals"]["persistent"].append({
+            "topicKey": module["topicKey"],
+            "title": f"{module['section']}持续判断",
+            "summary": "新证据继续支持",
+            "relatedModuleIds": [module["id"]],
+            "previousReportId": "market-wrong",
+            "evidenceIds": module["evidenceIds"],
+        })
+
+    reconcile_history_metadata(second, topic_ledger(repository))
+
+    assert all(module["history"]["since"] == "2026-07-22" for module in second["modules"])
+    assert all(module["history"]["previousReportId"] == first["reportId"] for module in second["modules"])
+    assert all(entry["previousReportId"] == first["reportId"] for entry in second["changeSignals"]["persistent"])
+    repository.publish(second)
+
+
 def test_market_analysis_api_exposes_latest_history_and_status(tmp_path, monkeypatch):
     monkeypatch.setenv("MARKET_ANALYSIS_DATA_DIR", str(tmp_path))
     repository = MarketAnalysisRepository(tmp_path)
@@ -178,6 +219,49 @@ def test_market_analysis_api_exposes_latest_history_and_status(tmp_path, monkeyp
     assert client.get("/api/market-analysis/topics/macro-trend").json()["data"][0]["reportId"] == report["reportId"]
     assert client.get("/api/market-analysis/status").json()["data"]["state"] == "success"
     assert client.get("/api/market-analysis/reports/not-found").status_code == 404
+
+
+def test_admin_can_queue_one_manual_market_run(tmp_path, monkeypatch):
+    trigger_file = tmp_path / "trigger" / "request"
+    trigger_file.parent.mkdir()
+    monkeypatch.setenv("MARKET_ANALYSIS_TRIGGER_FILE", str(trigger_file))
+    monkeypatch.setattr(market_analysis_api, "log_operation", lambda *args, **kwargs: None)
+    client = TestClient(app)
+
+    response = client.post("/api/market-analysis/run")
+    assert response.status_code == 202
+    assert response.json()["data"]["state"] == "queued"
+    assert json.loads(trigger_file.read_text(encoding="utf-8"))["requestedAt"]
+
+    duplicate = client.post("/api/market-analysis/run")
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == "已有手动运行请求正在排队"
+
+
+def test_manual_market_run_requires_installed_trigger(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARKET_ANALYSIS_TRIGGER_FILE", str(tmp_path / "missing" / "request"))
+    monkeypatch.setattr(market_analysis_api, "log_operation", lambda *args, **kwargs: None)
+    response = TestClient(app).post("/api/market-analysis/run")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "手动运行触发器尚未安装"
+
+
+def test_manual_market_run_requires_admin(tmp_path, monkeypatch):
+    trigger_file = tmp_path / "trigger" / "request"
+    trigger_file.parent.mkdir()
+    monkeypatch.setenv("MARKET_ANALYSIS_TRIGGER_FILE", str(trigger_file))
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": 9,
+        "username": "viewer",
+        "role": "normal",
+        "permissions": {"market_analysis": True},
+    }
+    try:
+        response = TestClient(app).post("/api/market-analysis/run")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+    assert response.status_code == 403
+    assert not trigger_file.exists()
 
 
 def test_claude_result_parser_and_secret_redaction():
@@ -263,6 +347,49 @@ def test_worker_runs_bounded_evidence_repair_before_publication(tmp_path, monkey
     assert "validationErrors" in prompts[1]
     assert "Regulation modules must cite" in prompts[1]
     assert "internalBusinessSnapshot" in prompts[1]
+
+
+def test_worker_allows_second_targeted_repair_for_peer_first_party_evidence(tmp_path, monkeypatch):
+    invalid_peer = valid_report()
+    for source_id in ("S3", "S7"):
+        source = next(source for source in invalid_peer["sources"] if source["id"] == source_id)
+        source["sourceType"] = "research"
+        source["sourceLevel"] = "C"
+    repaired_report = valid_report()
+    payloads = [invalid_peer, invalid_peer, repaired_report]
+    prompts = []
+
+    def fake_run(command, **kwargs):
+        prompts.append(kwargs.get("input"))
+        payload = copy.deepcopy(payloads[len(prompts) - 1])
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps({"result": json.dumps(payload, ensure_ascii=False)}),
+            stderr="",
+        )
+
+    def fake_verify(report, **kwargs):
+        verified_at = run_market_research.now_iso()
+        for source in report["sources"]:
+            source["retrievedAt"] = verified_at
+            source["verification"]["verifiedAt"] = verified_at
+        return report
+
+    monkeypatch.setattr(run_market_research, "fetch_internal_snapshot", lambda: {"year": 2026})
+    monkeypatch.setattr(run_market_research.shutil, "which", lambda value: "/usr/local/bin/claude")
+    monkeypatch.setattr(run_market_research.subprocess, "run", fake_run)
+    monkeypatch.setattr(run_market_research, "verify_report_sources", fake_verify)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+    monkeypatch.setenv("MARKET_ANALYSIS_MAX_REPAIR_ATTEMPTS", "2")
+
+    result = run_market_research.run_research(MarketAnalysisRepository(tmp_path))
+
+    assert result["reviewStatus"] == "machine_validated"
+    assert len(prompts) == 3
+    assert "section peers requires A/B-level first-party evidence" in prompts[1]
+    assert "authoritativeTopicLedger" in prompts[1]
+    assert "replace that peer module" in prompts[1]
 
 
 def test_private_repair_checkpoint_is_resumable_and_clearable(tmp_path):
@@ -418,6 +545,9 @@ def test_market_analysis_page_is_modular_and_whitelisted():
     assert "innerHTML" not in script
     assert 'data-permission="market_analysis"' in dashboard
     assert "location = /market-analysis.html" in nginx
+    assert 'id="runNowButton"' in page
+    assert "user?.role === 'admin'" in script
+    assert "api('/api/market-analysis/run', { method: 'POST' })" in script
 
 
 def test_market_timer_runs_every_three_days_and_template_has_no_secret():
@@ -426,6 +556,9 @@ def test_market_timer_runs_every_three_days_and_template_has_no_secret():
     service = open(os.path.join(ROOT, "deploy", "market-analysis.service"), "r", encoding="utf-8").read()
     installer = open(os.path.join(ROOT, "deploy", "install-market-analysis.sh"), "r", encoding="utf-8").read()
     configurator = open(os.path.join(ROOT, "deploy", "configure-market-analysis.sh"), "r", encoding="utf-8").read()
+    trigger = open(os.path.join(ROOT, "deploy", "market-analysis-trigger.sh"), "r", encoding="utf-8").read()
+    trigger_service = open(os.path.join(ROOT, "deploy", "market-analysis-manual.service"), "r", encoding="utf-8").read()
+    trigger_path = open(os.path.join(ROOT, "deploy", "market-analysis-manual.path"), "r", encoding="utf-8").read()
     assert "OnUnitActiveSec=3d" in timer
     assert "Persistent=true" in timer
     assert "ANTHROPIC_AUTH_TOKEN=\n" in env_template
@@ -441,3 +574,10 @@ def test_market_timer_runs_every_three_days_and_template_has_no_secret():
     assert "read -r -s" in configurator
     assert "openssl rand -hex 32" in configurator
     assert configurator.index("/api/health") < configurator.index("systemctl start --no-block market-analysis.service")
+    assert "market-analysis-manual.path" in installer
+    assert "sudoers" not in installer
+    assert "COOLDOWN_SECONDS=300" in trigger
+    assert 'LOCK_FILE="$STATE_DIR/trigger.lock"' in trigger
+    assert "systemctl start --no-block" in trigger
+    assert "NoNewPrivileges=true" in trigger_service
+    assert "PathExists=/run/business-analysis-market-trigger/request" in trigger_path

@@ -6,6 +6,8 @@
 
 Web 服务不直接调用模型。独立 `market-analysis.service` 每次完成多源搜索、历史归并、结构化输出和证据校验，只有通过门禁的 JSON 才会替换 `latest.json`；失败时网页继续显示上一期有效报告。
 
+管理员也可在市场研判页点击“立即运行研究”。页面只提交后台请求，不等待模型运行完成；按钮不会改变三天定时器的正常节奏。
+
 ## 首次安装
 
 在可信发布包根目录执行：
@@ -64,6 +66,24 @@ systemctl list-timers market-analysis.timer --all
 
 独立抓取完成后，程序以实际页面内容校准标题、可核验发布日期和证据摘录；每个模块的“事实”直接采用最匹配的已核验原文锚点，模型的业务解释仅保留在判断、影响、复核条件和行动字段。该处理不会把证据不足的模型转述自动认定为事实。
 
+已发布主题的 `history.since` 和上一报告编号属于仓库权威元数据，生成后由程序按最近一期自动续接。模型仍负责判断持续、强化、反转或失效，程序不替模型改变判断类别。
+
+## 手动运行
+
+- 仅管理员显示并可调用“立即运行研究”。
+- FastAPI 只能在 `/run/business-analysis-market-trigger/request` 创建一次性请求文件。
+- `market-analysis-manual.path` 监听该文件，由 root 运行固定 helper，并且只能启动 `market-analysis.service`。
+- helper 设有5分钟冷却；研究已运行时重复请求不会启动第二个进程。
+- 该链路不使用 sudoers，不允许网页传入服务名、命令或参数。
+
+查看触发链路：
+
+```bash
+systemctl status market-analysis-manual.path --no-pager
+systemctl status market-analysis-manual.service --no-pager
+journalctl -t business-analysis-market-trigger -n 30 --no-pager
+```
+
 ## 日常运维
 
 ```bash
@@ -73,7 +93,7 @@ journalctl -u market-analysis.service --since '7 days ago' --no-pager
 sudo systemctl start market-analysis.service
 ```
 
-失败后优先查看 journal 中的校验错误。6小时内的修复检查点会复用已完成研究，来源元数据类错误不会再次调用模型；服务仅自动重试一次，防止网络或模型故障形成无限循环和重复费用。
+失败后优先查看 journal 中的校验错误。6小时内的修复检查点会复用已完成研究，来源元数据类错误不会再次调用模型；结构或证据不合格时最多进行两轮定向修复，同业事实缺少一手依据时允许换成另一项有真实公司/协会来源支持的近期动作，但不得把媒体来源改标为一手证据。systemd 的进程级重试仍受启动频率限制，防止网络或模型故障形成无限循环。
 
 报告目录：
 

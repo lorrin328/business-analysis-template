@@ -1,0 +1,14 @@
+[Unit]
+Description=Broker a restricted manual market-analysis start request
+After=business-analysis.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/business-analysis-market-trigger
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/business-analysis-market-trigger /var/lib/business-analysis-market-trigger
+RestrictAddressFamilies=AF_UNIX

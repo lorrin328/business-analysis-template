@@ -260,13 +260,13 @@
     renderSources(report);
   }
 
-  async function api(path) {
-    const response = await window.authFetch(path, { cache: 'no-store' });
+  async function api(path, options = {}) {
+    const response = await window.authFetch(path, { cache: 'no-store', ...options });
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       if (response.status === 401) window.location.href = '/';
-      throw new Error(`请求失败（${response.status}）`);
+      throw new Error(payload?.detail || `请求失败（${response.status}）`);
     }
-    const payload = await response.json();
     return payload.data;
   }
 
@@ -277,9 +277,33 @@
       document.getElementById('runDot').className = `dot ${state}`;
       document.getElementById('runState').textContent = ({ success: '最近运行成功', running: '研究正在运行', failed: '最近运行失败', never_run: '尚未运行' })[state] || state;
       document.getElementById('runMessage').textContent = `${status?.message || ''}${status?.updatedAt ? ` · ${formatTime(status.updatedAt)}` : ''}`;
+      const runNowButton = document.getElementById('runNowButton');
+      if (runNowButton && !runNowButton.classList.contains('hidden')) {
+        runNowButton.disabled = state === 'running';
+        runNowButton.textContent = state === 'running' ? '研究运行中' : '立即运行研究';
+      }
     } catch (error) {
       document.getElementById('runState').textContent = '状态读取失败';
       document.getElementById('runMessage').textContent = error.message;
+    }
+  }
+
+  async function runNow() {
+    const button = document.getElementById('runNowButton');
+    if (!window.confirm('将立即启动一次深度市场研究，可能持续10—30分钟并产生模型调用费用。确认运行吗？')) return;
+    button.disabled = true;
+    button.textContent = '正在提交…';
+    try {
+      const result = await api('/api/market-analysis/run', { method: 'POST' });
+      document.getElementById('runDot').className = 'dot running';
+      document.getElementById('runState').textContent = '启动请求已提交';
+      document.getElementById('runMessage').textContent = result?.message || '后台研究任务即将开始';
+      window.setTimeout(() => loadStatus(), 1500);
+    } catch (error) {
+      document.getElementById('runState').textContent = '手动运行提交失败';
+      document.getElementById('runMessage').textContent = error.message;
+      button.disabled = false;
+      button.textContent = '立即运行研究';
     }
   }
 
@@ -323,6 +347,10 @@
       document.getElementById('reportSummary').textContent = '请联系管理员在权限管理中开通“市场研判”。';
       document.getElementById('refreshButton').disabled = true;
       return;
+    }
+    if (user?.role === 'admin') {
+      document.getElementById('runNowButton').classList.remove('hidden');
+      document.getElementById('runNowButton').addEventListener('click', runNow);
     }
     document.getElementById('backButton').addEventListener('click', () => { window.location.href = '/'; });
     document.getElementById('refreshButton').addEventListener('click', refreshAll);
