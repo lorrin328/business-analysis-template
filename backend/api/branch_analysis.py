@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -16,10 +17,17 @@ router = APIRouter(prefix="/api/branch-analysis", tags=["branch-analysis"])
 def overview(
     year: int | None = Query(None, ge=2020, le=2100),
     as_of: date | None = Query(None, alias="asOf"),
+    period_type: Literal["year", "quarter", "month"] = Query("year", alias="periodType"),
+    period_value: int | None = Query(None, alias="periodValue", ge=1, le=12),
     _user=Depends(require_permission("branch_analysis")),
 ):
     try:
-        data = analyze_branch_network(year=year, as_of=as_of)
+        data = analyze_branch_network(
+            year=year,
+            as_of=as_of,
+            period_type=period_type,
+            period_value=period_value,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return success_response(

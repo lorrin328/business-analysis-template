@@ -8,6 +8,7 @@
 - 本地生成：`python scripts/build_branch_reference.py --source "<证保业务报表.xlsx>" --output "data/reference/证保网点参考表.csv"`。
 - 生产导入前先执行SQLite在线备份；再以`www-data`身份运行 `backend/import_branch_reference.py --source <私密CSV>`。
 - 导入门禁：必须为147个常规网点、86个转介绍网点，参考编号和网点名称均唯一；失败时事务回滚。
+- 期间接口：年度累计使用`periodType=year`；季度使用`periodType=quarter&periodValue=1..4`；月度使用`periodType=month&periodValue=1..12`。`asOf`用于限制统计截止，已完成自然期间自动落到期末。
 - 部署后验证页面和脚本返回200、未登录API返回401、普通用户返回403；管理员API应返回`regularStock=147`、`referralStockExcluded=86`。
 - 数据勾稽：匹配保费与待匹配保费合计应等于证保总期交；广发主网点汇总保费不得在常规匹配额与转介绍贡献中重复相加。
 

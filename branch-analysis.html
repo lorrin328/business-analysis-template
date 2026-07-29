@@ -73,7 +73,7 @@
       .filters { flex-wrap:wrap; }
     }
   </style>
-  <script src="/js/api-client.js?v=1.0.116"></script>
+  <script src="/js/api-client.js?v=1.0.117"></script>
 </head>
 <body>
   <header class="topbar">
@@ -89,6 +89,14 @@
       </div>
       <div class="filters">
         <label>年份<input id="yearInput" type="number" min="2020" max="2100" value="2026"></label>
+        <label>统计周期
+          <select id="periodType">
+            <option value="year">年度累计</option>
+            <option value="quarter">季度</option>
+            <option value="month">月度</option>
+          </select>
+        </label>
+        <label class="hidden" id="periodValueLabel"><span id="periodValueCaption">期间</span><select id="periodValue"></select></label>
         <label>统计截止<input id="asOfInput" type="date"></label>
         <button class="button primary" id="refreshBtn">应用</button>
       </div>
@@ -107,6 +115,6 @@
   </main>
 
   <section class="access hidden" id="accessDenied">当前账号没有“证保网点分析”权限，请联系管理员。</section>
-  <script src="/js/branch-analysis.js?v=1.0.116"></script>
+  <script src="/js/branch-analysis.js?v=1.0.117"></script>
 </body>
 </html>

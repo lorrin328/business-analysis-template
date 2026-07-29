@@ -74,6 +74,25 @@ def _seed_branch_data():
         conn.commit()
 
 
+def _seed_first_quarter_data():
+    import db.connection as connection
+
+    with connection.get_db() as conn:
+        conn.executemany(
+            """
+            INSERT INTO performance (
+                "年月", "年月日", "业务模式", "销售机构名称", "人员工号",
+                "投保单号", "证券方营业网点名称", "证券方销售人员工号", "期交保费"
+            ) VALUES (?, ?, '证券', ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("2026-01", "2026-01-15", "广东", "A005", "P-2026-01", "测试证券一号营业部", "S005", 20000),
+                ("2025-01", "2025-01-15", "广东", "A006", "P-2025-01", "测试证券一号营业部", "S006", 10000),
+            ],
+        )
+        conn.commit()
+
+
 def test_branch_overview_separates_regular_and_referral_counts(auth_db):
     _seed_branch_data()
     client = TestClient(app)
@@ -96,6 +115,86 @@ def test_branch_overview_separates_regular_and_referral_counts(auth_db):
     assert data["regularBranches"][0]["status"] == "持续经营"
     assert data["regularBranches"][1]["status"] == "新增/恢复"
     assert len(data["referralBranches"]) == 1
+
+
+def test_branch_period_filters_recalculate_month_quarter_and_year(auth_db):
+    _seed_branch_data()
+    _seed_first_quarter_data()
+    client = TestClient(app)
+    login = _login(client)
+    headers = _headers(login["token"])
+
+    annual = client.get(
+        "/api/branch-analysis/overview?year=2026&asOf=2026-07-28&periodType=year",
+        headers=headers,
+    )
+    assert annual.status_code == 200
+    annual_data = annual.json()["data"]
+    assert annual_data["summary"]["premiumWan"] == 16
+    assert annual_data["summary"]["previousPremiumWan"] == 8
+    assert annual_data["meta"]["periodLabel"] == "2026年度累计"
+    assert annual_data["meta"]["periodStart"] == "2026-01-01"
+    assert annual_data["meta"]["asOf"] == "2026-07-28"
+
+    july = client.get(
+        "/api/branch-analysis/overview?year=2026&asOf=2026-07-28&periodType=month&periodValue=7",
+        headers=headers,
+    )
+    assert july.status_code == 200
+    july_data = july.json()["data"]
+    assert july_data["summary"]["premiumWan"] == 14
+    assert july_data["summary"]["previousPremiumWan"] == 7
+    assert july_data["meta"]["periodLabel"] == "2026年7月"
+    assert july_data["meta"]["periodStart"] == "2026-07-01"
+    assert july_data["meta"]["previousPeriodStart"] == "2025-07-01"
+
+    first_quarter = client.get(
+        "/api/branch-analysis/overview?year=2026&asOf=2026-07-28&periodType=quarter&periodValue=1",
+        headers=headers,
+    )
+    assert first_quarter.status_code == 200
+    quarter_data = first_quarter.json()["data"]
+    assert quarter_data["summary"]["premiumWan"] == 2
+    assert quarter_data["summary"]["previousPremiumWan"] == 1
+    assert quarter_data["meta"]["periodLabel"] == "2026年Q1"
+    assert quarter_data["meta"]["asOf"] == "2026-03-31"
+    assert quarter_data["meta"]["previousAsOf"] == "2025-03-31"
+
+    third_quarter = client.get(
+        "/api/branch-analysis/overview?year=2026&asOf=2026-07-28&periodType=quarter&periodValue=3",
+        headers=headers,
+    )
+    assert third_quarter.status_code == 200
+    assert third_quarter.json()["data"]["summary"]["premiumWan"] == 14
+    assert third_quarter.json()["data"]["meta"]["asOf"] == "2026-07-28"
+
+
+def test_branch_period_filters_reject_missing_invalid_and_future_periods(auth_db):
+    _seed_branch_data()
+    client = TestClient(app)
+    login = _login(client)
+    headers = _headers(login["token"])
+
+    missing = client.get(
+        "/api/branch-analysis/overview?year=2026&asOf=2026-07-28&periodType=quarter",
+        headers=headers,
+    )
+    assert missing.status_code == 422
+    assert "1至4季度" in missing.json()["detail"]
+
+    invalid = client.get(
+        "/api/branch-analysis/overview?year=2026&asOf=2026-07-28&periodType=quarter&periodValue=5",
+        headers=headers,
+    )
+    assert invalid.status_code == 422
+    assert "1至4季度" in invalid.json()["detail"]
+
+    future = client.get(
+        "/api/branch-analysis/overview?year=2026&asOf=2026-07-28&periodType=quarter&periodValue=4",
+        headers=headers,
+    )
+    assert future.status_code == 422
+    assert "尚未到达统计截止日" in future.json()["detail"]
 
 
 def test_reference_import_is_transactional_and_count_guarded(auth_db, tmp_path: Path):
@@ -135,7 +234,13 @@ def test_branch_page_permission_and_static_runtime(auth_db):
     page = client.get("/branch-analysis")
     assert page.status_code == 200
     assert "常规网点147个" in page.text
+    assert 'id="periodType"' in page.text
+    assert 'id="periodValue"' in page.text
     assert "/js/branch-analysis.js" in page.text
+    script = client.get("/js/branch-analysis.js")
+    assert script.status_code == 200
+    assert "query.set('periodType', periodType)" in script.text
+    assert "query.set('periodValue', periodValue)" in script.text
     assert ROLE_DEFAULT_PERMISSIONS["admin"]["branch_analysis"] is True
     assert ROLE_DEFAULT_PERMISSIONS["senior"]["branch_analysis"] is True
     assert ROLE_DEFAULT_PERMISSIONS["normal"]["branch_analysis"] is False

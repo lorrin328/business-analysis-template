@@ -4,6 +4,7 @@ import calendar
 import math
 from collections import defaultdict
 from datetime import date, datetime
+from typing import Literal
 
 from db.connection import get_db
 from branch_analysis.repository import read_reference
@@ -11,6 +12,7 @@ from branch_analysis.repository import read_reference
 
 BUSINESS_MODES = {"证券", "证保"}
 GENERIC_BRANCH_NAMES = {"广发证券股份有限公司", "中信证券股份有限公司"}
+PeriodType = Literal["year", "quarter", "month"]
 
 
 def _text(value) -> str:
@@ -55,6 +57,38 @@ def _ratio(numerator: float, denominator: float) -> float | None:
 def _previous_cutoff(cutoff: date) -> date:
     day = min(cutoff.day, calendar.monthrange(cutoff.year - 1, cutoff.month)[1])
     return date(cutoff.year - 1, cutoff.month, day)
+
+
+def _period_window(
+    year: int,
+    cutoff: date,
+    period_type: PeriodType,
+    period_value: int | None,
+) -> tuple[date, date, str]:
+    if period_type == "year":
+        start = date(year, 1, 1)
+        natural_end = date(year, 12, 31)
+        label = f"{year}年度累计"
+    elif period_type == "quarter":
+        if period_value not in {1, 2, 3, 4}:
+            raise ValueError("季度筛选必须选择1至4季度")
+        start_month = (period_value - 1) * 3 + 1
+        end_month = start_month + 2
+        start = date(year, start_month, 1)
+        natural_end = date(year, end_month, calendar.monthrange(year, end_month)[1])
+        label = f"{year}年Q{period_value}"
+    elif period_type == "month":
+        if period_value is None or not 1 <= period_value <= 12:
+            raise ValueError("月度筛选必须选择1至12月")
+        start = date(year, period_value, 1)
+        natural_end = date(year, period_value, calendar.monthrange(year, period_value)[1])
+        label = f"{year}年{period_value}月"
+    else:
+        raise ValueError("统计周期仅支持年度累计、季度或月度")
+
+    if cutoff < start:
+        raise ValueError(f"{label}尚未到达统计截止日，暂无可统计数据")
+    return start, min(cutoff, natural_end), label
 
 
 def _columns(conn, table: str) -> set[str]:
@@ -160,7 +194,12 @@ def _wan(value: float) -> float:
     return round(value / 10000, 4)
 
 
-def analyze_branch_network(year: int | None = None, as_of: date | None = None) -> dict:
+def analyze_branch_network(
+    year: int | None = None,
+    as_of: date | None = None,
+    period_type: PeriodType = "year",
+    period_value: int | None = None,
+) -> dict:
     with get_db() as conn:
         reference, batch = read_reference(conn)
         if not reference:
@@ -181,9 +220,16 @@ def analyze_branch_network(year: int | None = None, as_of: date | None = None) -
     if cutoff.year != year:
         raise ValueError("统计截止日必须属于所选年份")
 
-    current = _aggregate(performance, date(year, 1, 1), cutoff)
-    previous_cutoff = _previous_cutoff(cutoff)
-    previous = _aggregate(performance, date(year - 1, 1, 1), previous_cutoff)
+    period_start, period_end, period_label = _period_window(
+        year,
+        cutoff,
+        period_type,
+        period_value,
+    )
+    previous_period_start = date(year - 1, period_start.month, period_start.day)
+    previous_cutoff = _previous_cutoff(period_end)
+    current = _aggregate(performance, period_start, period_end)
+    previous = _aggregate(performance, previous_period_start, previous_cutoff)
 
     regular = [row for row in reference if row["include_in_regular_count"] == 1]
     referral = [row for row in reference if row["branch_type"] == "转介绍网点"]
@@ -301,7 +347,12 @@ def analyze_branch_network(year: int | None = None, as_of: date | None = None) -
     return {
         "meta": {
             "year": year,
-            "asOf": cutoff.isoformat(),
+            "periodType": period_type,
+            "periodValue": period_value if period_type != "year" else None,
+            "periodLabel": period_label,
+            "periodStart": period_start.isoformat(),
+            "asOf": period_end.isoformat(),
+            "previousPeriodStart": previous_period_start.isoformat(),
             "previousAsOf": previous_cutoff.isoformat(),
             "performanceCutoff": source_cutoff.isoformat(),
             "referenceBatch": batch,

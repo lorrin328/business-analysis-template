@@ -12,6 +12,31 @@
   const change = value => value == null ? '--' : `${value >= 1 ? '+' : ''}${((Number(value) - 1) * 100).toFixed(1)}%`;
   const changeClass = value => value == null ? '' : value >= 1 ? 'up' : 'down';
 
+  function periodFromCutoff(type) {
+    const cutoff = el('asOfInput').value ? new Date(`${el('asOfInput').value}T00:00:00`) : new Date();
+    return type === 'quarter' ? Math.floor(cutoff.getMonth() / 3) + 1 : cutoff.getMonth() + 1;
+  }
+
+  function rebuildPeriodOptions(preferredValue) {
+    const type = el('periodType').value;
+    const label = el('periodValueLabel');
+    if (type === 'year') {
+      label.classList.add('hidden');
+      el('periodValue').innerHTML = '';
+      return;
+    }
+    const maximum = type === 'quarter' ? 4 : 12;
+    const fallback = periodFromCutoff(type);
+    const selected = Number(preferredValue ?? fallback);
+    el('periodValueCaption').textContent = type === 'quarter' ? '季度' : '月份';
+    el('periodValue').innerHTML = Array.from({ length: maximum }, (_, index) => {
+      const value = index + 1;
+      const text = type === 'quarter' ? `Q${value}` : `${value}月`;
+      return `<option value="${value}" ${value === selected ? 'selected' : ''}>${text}</option>`;
+    }).join('');
+    label.classList.remove('hidden');
+  }
+
   function requireAccess() {
     if (!window.getAuthToken?.() || !user()) {
       window.location.href = '/';
@@ -156,21 +181,36 @@
   async function load() {
     const year = el('yearInput').value;
     const asOf = el('asOfInput').value;
+    const periodType = el('periodType').value;
+    const periodValue = el('periodValue').value;
     const query = new URLSearchParams();
     if (year) query.set('year', year);
     if (asOf) query.set('asOf', asOf);
+    query.set('periodType', periodType);
+    if (periodType !== 'year' && periodValue) query.set('periodValue', periodValue);
     el('sourceLine').textContent = '正在读取生产数据…';
     const payload = await window.fetchJson(`/api/branch-analysis/overview?${query}`);
     state.data = window.unwrapApiResponse(payload);
     el('yearInput').value = state.data.meta.year;
-    el('asOfInput').value = state.data.meta.asOf;
-    el('sourceLine').textContent = `业绩截至 ${state.data.meta.asOf} · 对比截至 ${state.data.meta.previousAsOf} · 参考表批次 ${state.data.meta.referenceBatch?.id || '--'}`;
+    if (!el('asOfInput').value) el('asOfInput').value = state.data.meta.performanceCutoff;
+    el('periodType').value = state.data.meta.periodType;
+    rebuildPeriodOptions(state.data.meta.periodValue);
+    el('sourceLine').textContent = `${state.data.meta.periodLabel} · ${state.data.meta.periodStart} 至 ${state.data.meta.asOf} · 同比 ${state.data.meta.previousPeriodStart} 至 ${state.data.meta.previousAsOf} · 参考表批次 ${state.data.meta.referenceBatch?.id || '--'}`;
     render();
   }
 
   function bind() {
     el('backBtn').addEventListener('click', () => { window.location.href = '/'; });
     el('refreshBtn').addEventListener('click', () => load().catch(showError));
+    el('periodType').addEventListener('change', () => rebuildPeriodOptions());
+    el('asOfInput').addEventListener('change', () => rebuildPeriodOptions(el('periodValue').value));
+    el('yearInput').addEventListener('change', () => {
+      const asOf = el('asOfInput').value;
+      if (asOf && el('yearInput').value) {
+        el('asOfInput').value = `${el('yearInput').value}${asOf.slice(4)}`;
+      }
+      rebuildPeriodOptions(el('periodValue').value);
+    });
     el('tabs').addEventListener('click', event => {
       const button = event.target.closest('[data-tab]');
       if (!button) return;
@@ -192,6 +232,7 @@
   async function init() {
     if (!requireAccess()) return;
     bind();
+    rebuildPeriodOptions();
     try {
       await load();
     } catch (error) {
