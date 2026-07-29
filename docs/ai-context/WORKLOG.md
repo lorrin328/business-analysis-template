@@ -11,6 +11,7 @@
 - 生产部署：以 `REBUILD_DATABASE=0` 部署至 `192.168.50.6`，数据库备份 `/opt/business-analysis-backups/business_data.db.20260729_092407` 的 `integrity_check`、`quick_check` 均为 `ok`，表数 `38`；健康检查、页面和应用版本均为 `v1.0.112`，主服务和 nginx 为 active。
 - 手动运行链路验收：`market-analysis-manual.path` 为 enabled/active，触发器文件归 root、状态目录为 root `0700`，未增加 sudoers；未登录 POST 返回401。通过与按钮相同的请求文件链路启动真实研究，未发生并发重启。
 - 真实研究验收：09:27:23 启动，09:56:02 成功发布 `market-20260729-095557`，共15组查询、20项来源、13个模块（宏观3、监管4、同业3、条线3），10个非新增主题完成历史续接；同业层包含通过门禁的一手证据，服务 `ExecMainStatus=0`、`NRestarts=0`，无校验错误。
+- 最终运行状态：`business-analysis`、nginx、`market-analysis-manual.path`、`market-analysis.timer` 均为 active，研究 oneshot 为成功后的 inactive，请求文件已清理；部署及研究期间三个相关服务 warning 以上 journal 为空。真实手动任务完成后，timer 下一次运行重排至 `2026-08-01 09:47:21 CST`，继续保持约三天间隔。
 
 ## 2026-07-28 v1.0.111 星钻联盟页面精简
 
