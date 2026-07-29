@@ -7,7 +7,10 @@
 - 同比映射至上年相同期间和相同相对截止日；保费、件数、活动网点、明细状态、等级项目、转介绍贡献及匹配质量均由后台按所选期间重算。
 - 页面展示本期和同期起止日期；切换完整历史期间后不覆盖用户保留的生产截止日，返回当前期间时不会被历史期间末日误截断。
 - 本地验证：全量回归`345 passed, 1 warning`，2026年数据质量审计`issues=0`，预发布检查、Python/JavaScript语法和`git diff --check`通过；网点专项覆盖年度、季度、月度、完整期间、当前期间、缺失/非法期间及未来期间校验。
-- 待发布验证：完成GitHub同步和Ubuntu生产验收后补记。
+- GitHub：功能提交`bb83092 feat: add branch period filters`已推送`codex/branch-period-filters-v1.0.117`并快进同步至`origin/master`；Actions运行`30438520471`成功。
+- 可信发布包从`bb83092`直接归档，本地与服务器SHA256均为`a1f13cf6443fcb239caa59ea1dfa1d20537378cd3f3db0e0513da201acc5446f`。
+- 生产部署：以`REBUILD_DATABASE=0`部署至`192.168.50.6`，部署前在线备份为`/opt/business-analysis-backups/business_data.db.20260729_171147`，生产网点参考表继续保持147个常规网点和86个转介绍网点。
+- 生产验收：应用和页面版本均为`v1.0.117`；年度、Q2、Q3、6月和7月均按各自起止日期返回结果，未来Q4返回校验错误；数据库`integrity_check`、`quick_check`均为`ok`，主服务和nginx均为active/enabled，部署后warning以上日志为空，敏感路径继续返回404。
 
 ## 2026-07-29 v1.0.116 件均保费表内筛选
 
