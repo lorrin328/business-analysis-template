@@ -7,6 +7,10 @@
 - 修复 2026-07-28 运行暴露的历史续接失败：非新增主题的 `history.since` 与上一报告编号改由程序按已发布主题台账自动续接，并同步变化信号。
 - 修复同业一手证据不足后的恢复能力：初始生成失败后允许最多两轮定向修复，明确要求查找公司、官方微信或协会可公开核验页面；若原同业事实无一手依据，可替换为另一项有真实一手来源支持的近期动作，证据门槛保持不变。
 - 新增管理员/非管理员/触发器缺失/重复请求、历史元数据续接及第二轮同业证据修复回归测试；市场模块专项 `24 passed, 1 warning`，带真实本地运行库的项目全量回归 `332 passed, 1 warning`，Python/JS/Bash 语法和 `git diff --check` 通过。
+- GitHub：提交 `350c16e feat: add safe manual market research run` 已推送 `codex/market-manual-run` 和 `origin/master`；`Build Docker image` 运行 `30413843989` 成功；可信发布包 SHA256 为 `e6f494616162011ab5dea7aafc7a7290dcdac8851dce6a63e7d0a7763503153e`。
+- 生产部署：以 `REBUILD_DATABASE=0` 部署至 `192.168.50.6`，数据库备份 `/opt/business-analysis-backups/business_data.db.20260729_092407` 的 `integrity_check`、`quick_check` 均为 `ok`，表数 `38`；健康检查、页面和应用版本均为 `v1.0.112`，主服务和 nginx 为 active。
+- 手动运行链路验收：`market-analysis-manual.path` 为 enabled/active，触发器文件归 root、状态目录为 root `0700`，未增加 sudoers；未登录 POST 返回401。通过与按钮相同的请求文件链路启动真实研究，未发生并发重启。
+- 真实研究验收：09:27:23 启动，09:56:02 成功发布 `market-20260729-095557`，共15组查询、20项来源、13个模块（宏观3、监管4、同业3、条线3），10个非新增主题完成历史续接；同业层包含通过门禁的一手证据，服务 `ExecMainStatus=0`、`NRestarts=0`，无校验错误。
 
 ## 2026-07-28 v1.0.111 星钻联盟页面精简
 
