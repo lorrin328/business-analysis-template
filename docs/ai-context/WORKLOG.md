@@ -7,7 +7,9 @@
 - 上方统计范围或保费口径变化后，可选机构、可用模式和当前结果自动更新；失效的表内条件自动回到全部，避免空筛选残留。
 - 增加业务模式标签、模式组间分隔和移动端换行适配，不改变件均保费公式、交期分类、后端接口或生产数据。
 - 本地验证：全量回归`343 passed, 1 warning`，Python/JavaScript语法和`git diff --check`通过；真实数据浏览器验收从19条全部结果筛为4条证保结果，再与广东机构组合为1条，重置后恢复19条，页面无横向溢出和浏览器错误。
-- 本轮未获GitHub同步或Ubuntu部署授权，完成本地验证后保持为待发布版本。
+- GitHub：功能提交 `417a7e1 feat: add average premium table filters` 已推送 `codex/payment-average-filters` 并快进同步至 `origin/master`；可信发布包从该提交直接归档，本地与服务器 SHA256 均为 `fdf99763e169eb930777bf3cc0848321337721a07e81155a27d5379e019bab36`。
+- 生产部署：以 `REBUILD_DATABASE=0` 部署至 `192.168.50.6`，保留生产运行库；部署前在线备份为 `/opt/business-analysis-backups/business_data.db.20260729_165635`，元数据记录 `integrity_check=ok`、`quick_check=ok` 和 41 张表。
+- 生产验收：应用与页面版本均为 `v1.0.116`，期交和规模两种口径各返回 19 行转型业务数据，覆盖 OTO、证保、蚁桥和 12 个机构；机构筛选、业务模式筛选及重置控件静态资源均已生效。主服务和 nginx 均为 active/enabled，数据库完整性为 `ok`、最新日为 `2026-07-29`、缺表为空；应用目录保持 `755 root:root`，数据库为 `640 www-data:www-data`，源码、数据库、Git、版本、部署路径及 webhook 均返回 404，未登录业务接口返回 401。
 
 ## 2026-07-29 v1.0.115 转型业务件均保费
 
