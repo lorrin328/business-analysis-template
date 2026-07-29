@@ -103,6 +103,49 @@ def test_honor_calculator_tolerates_missing_entry_date_columns(tmp_path, monkeyp
     assert summary["is_new_star"] == 0
 
 
+def test_honor_calculator_restores_new_star_when_entry_columns_return(tmp_path, monkeypatch):
+    db_path = tmp_path / "honor_calc_restored_entry_columns.db"
+    _setup_source_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    staff_rows = [
+        (2026, month, "上海", "OTO", "1001", "张三", "客户经理", "", 2026, 1, 1, "G1", "D1")
+        for month in (1, 2, 3)
+    ]
+    policy_rows = [
+        (
+            f"2026-{month:02d}-01",
+            "上海",
+            "OTO",
+            "1001",
+            f"P{month}",
+            f"2026-{month:02d}-05 00:00:00",
+            f"2026-{month:02d}-10 00:00:00",
+            "",
+            "一年期以上",
+            10,
+            20000,
+            20000,
+            20000,
+            "A",
+            "产品A",
+        )
+        for month in (1, 2, 3)
+    ]
+    conn.executemany("INSERT INTO hr_data VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", staff_rows)
+    conn.executemany("INSERT INTO performance VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", policy_rows)
+    conn.commit()
+    conn.close()
+    _patch_db(monkeypatch, db_path)
+
+    from honor.calculator import calculate_personal_mvp
+
+    result = calculate_personal_mvp(batch_id=1, year=2026, month=3)
+    summary = next(row for row in result["person_summary"] if row["staff_code"] == "00001001")
+
+    assert summary["diamond_balance"] == 3
+    assert summary["is_new_star"] == 1
+
+
 def test_honor_calculator_excludes_yiqiao_and_calculates_oto_zhengbao(tmp_path, monkeypatch):
     db_path = tmp_path / "honor_calc.db"
     _setup_source_tables(db_path)

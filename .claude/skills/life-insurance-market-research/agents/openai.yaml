@@ -1,7 +1,7 @@
 interface:
   display_name: "寿险市场深度研究"
   short_description: "以多源事实证据形成四层寿险市场滚动研判报告与行动提示"
-  default_prompt: "Use $life-insurance-market-research to produce a source-backed rolling life-insurance market analysis."
+  default_prompt: "使用 $life-insurance-market-research 形成有正文证据、历史变化和行动提示的中国寿险市场滚动研判。"
 
 policy:
   allow_implicit_invocation: true

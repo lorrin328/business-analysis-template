@@ -22,6 +22,9 @@ data.json
 *.db
 *.lock
 *.import.lock
+output/
+outputs/
+data/reference/
 _external_materials/
 _cleanup_backup_*/
 bak/
