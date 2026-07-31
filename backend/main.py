@@ -25,7 +25,6 @@ from api.export import router as export_router
 from api.auth_routes import admin_router, router as auth_router
 from api.honor import router as honor_router
 from api.scheme import router as scheme_router
-from api.variable_expense import router as variable_expense_router
 from api.branch_analysis import router as branch_analysis_router
 from api.ai import router as ai_router
 from api.market_analysis import router as market_analysis_router
@@ -141,7 +140,7 @@ if _cors_origins:
 # 初始化数据库
 init_db()
 
-for router in [auth_router, admin_router, kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, export_router, honor_router, scheme_router, variable_expense_router, branch_analysis_router, market_analysis_router, ai_router, legacy_router]:
+for router in [auth_router, admin_router, kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, export_router, honor_router, scheme_router, branch_analysis_router, market_analysis_router, ai_router, legacy_router]:
     app.include_router(router)
 
 
@@ -356,11 +355,6 @@ if os.path.exists(os.path.join(static_dir, '经营分析模板.html')):
     @app.get("/scheme-calculator.html")
     def scheme_calculator_page():
         return FileResponse(os.path.join(static_dir, "scheme-calculator.html"))
-
-    @app.get("/variable-expense")
-    @app.get("/variable-expense.html")
-    def variable_expense_page():
-        return FileResponse(os.path.join(static_dir, "variable-expense.html"))
 
     @app.get("/branch-analysis")
     @app.get("/branch-analysis.html")

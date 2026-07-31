@@ -24,8 +24,6 @@
     honor_upload: '星钻上传',
     scheme_calculation: '方案计算',
     scheme_upload: '方案上传',
-    variable_expense_view: '变动费用分析',
-    variable_expense_upload: '变动费用月报导入',
     branch_analysis: '证保网点分析',
     market_analysis: '市场研判'
   };
