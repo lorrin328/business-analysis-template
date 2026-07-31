@@ -21,19 +21,6 @@
 - 部署后验证页面和脚本返回200、未登录API返回401、普通用户返回403；管理员API应返回`regularStock=147`、`referralStockExcluded=86`。
 - 数据勾稽：匹配保费与待匹配保费合计应等于证保总期交；广发主网点汇总保费不得在常规匹配额与转介绍贡献中重复相加。
 
-## 独立变动费用分析
-
-- 页面：`/variable-expense`；登录后通过主看板“管理与工具—变动费用分析”进入。
-- 查看权限：`variable_expense_view`；导入权限：`variable_expense_upload`。
-- 导入前确认月报为正式版本，并已在 Excel 中完成计算和保存；不得上传预测表、报告截图或尚未刷新的公式底稿。
-- 上传时选择 `YYYY-MM` 期间并提交 `.xlsx`。文件名识别期间、必要工作表、关键缓存值、首年续年合计和机构费用构成必须全部通过强校验。
-- 导入成功后依次检查“数据校验”“模式与机构”“费用构成”。项目源表未勾稽时，不使用项目执行率做经营结论。
-- 重复上传相同 SHA256 文件不会新建批次。错误文件不会替换最近成功批次。
-- 独立性核验：`variable_expense_batches` 可增加记录；`data_imports`、业绩原始表和 `agg_*` 表不应因费用月报上传发生变化。
-- 发布时须同步 FastAPI 与 nginx 白名单路由；生产已从 `v1.0.113` 起提供该模块。
-- 部署后至少验证 `/variable-expense`、`/variable-expense.html`、`/js/variable-expense.js` 返回 200，未登录访问 `/api/variable-expense/latest` 和 `/api/variable-expense/upload` 返回 401。
-- 首次部署后 `variable_expense_batches` 应存在且为空；只有通过页面上传并完成强校验后才会产生成功批次。
-
 ## 市场研判服务
 
 - 安装与完整运维流程见 `docs/MARKET_ANALYSIS.md`。

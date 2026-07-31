@@ -42,8 +42,6 @@ MODULE_KEYS = [
     "honor_upload",
     "scheme_calculation",
     "scheme_upload",
-    "variable_expense_view",
-    "variable_expense_upload",
     "branch_analysis",
     "market_analysis",
 ]
@@ -52,7 +50,6 @@ ROLE_DEFAULT_PERMISSIONS = {
     ROLE_ADMIN: {key: True for key in MODULE_KEYS},
     ROLE_SENIOR: {
         key: key not in {"permission_admin", "personnel_management", "honor_admin", "honor_upload", "scheme_upload"}
-        and key != "variable_expense_upload"
         for key in MODULE_KEYS
     },
     ROLE_NORMAL: {
@@ -78,8 +75,6 @@ ROLE_DEFAULT_PERMISSIONS = {
         "honor_upload": False,
         "scheme_calculation": True,
         "scheme_upload": False,
-        "variable_expense_view": False,
-        "variable_expense_upload": False,
         "branch_analysis": False,
         "market_analysis": False,
     },

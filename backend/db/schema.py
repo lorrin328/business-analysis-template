@@ -396,21 +396,6 @@ def init_db():
             imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
 
-        c.execute('''CREATE TABLE IF NOT EXISTS variable_expense_batches (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            period TEXT NOT NULL,
-            rule_version TEXT NOT NULL,
-            file_name TEXT NOT NULL,
-            file_hash TEXT NOT NULL,
-            file_size INTEGER NOT NULL DEFAULT 0,
-            summary_json TEXT NOT NULL DEFAULT '{}',
-            detail_json TEXT NOT NULL DEFAULT '{}',
-            quality_json TEXT NOT NULL DEFAULT '{}',
-            status TEXT NOT NULL DEFAULT 'success',
-            error_message TEXT,
-            imported_by TEXT DEFAULT 'system',
-            imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
         c.execute('''CREATE TABLE IF NOT EXISTS branch_reference_batches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             file_name TEXT NOT NULL,
@@ -441,11 +426,6 @@ def init_db():
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
             VALUES ('20260729_branch_reference_domain', 0, 'Adds protected branch reference master data')
         ''')
-        c.execute('''
-            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
-            VALUES ('20260726_variable_expense_domain', 0, 'Adds isolated variable-expense analysis batches')
-        ''')
-
         c.execute('''
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
             VALUES ('20260527_honor_domain', 0, 'Adds honor alliance tables and field audit foundation')
@@ -498,8 +478,6 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_honor_exceptions_batch ON honor_exceptions(batch_id, severity)',
             'CREATE INDEX IF NOT EXISTS ix_scheme_batches_scheme ON scheme_import_batches(scheme_id, imported_at)',
             'CREATE INDEX IF NOT EXISTS ix_scheme_batches_hash ON scheme_import_batches(file_hash)',
-            'CREATE INDEX IF NOT EXISTS ix_variable_expense_period ON variable_expense_batches(period, imported_at)',
-            'CREATE INDEX IF NOT EXISTS ix_variable_expense_hash ON variable_expense_batches(file_hash)',
             'CREATE INDEX IF NOT EXISTS ix_branch_reference_type ON branch_reference(branch_type, include_in_regular_count)',
             'CREATE INDEX IF NOT EXISTS ix_branch_reference_project ON branch_reference(project, grade)',
         ]:

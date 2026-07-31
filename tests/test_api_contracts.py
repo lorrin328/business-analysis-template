@@ -106,3 +106,12 @@ def test_personnel_management_route_is_registered():
     from main import app
 
     assert any(getattr(route, "path", None) == "/personnel-management.html" for route in app.routes)
+
+
+def test_variable_expense_routes_are_not_registered():
+    from main import app
+
+    route_paths = {getattr(route, "path", None) for route in app.routes}
+    assert "/variable-expense" not in route_paths
+    assert "/variable-expense.html" not in route_paths
+    assert not any(path and path.startswith("/api/variable-expense") for path in route_paths)

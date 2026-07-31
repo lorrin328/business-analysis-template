@@ -359,7 +359,7 @@ def test_dashboard_toolbar_actions_are_bound_by_runtime_module():
     assert 'data-dashboard-action="open-permission-admin"' in header
     assert 'data-dashboard-action="open-operation-logs"' in header
     assert 'data-dashboard-action="navigate" data-dashboard-href="/personnel-management.html"' in header
-    assert 'data-dashboard-action="navigate" data-dashboard-href="/variable-expense.html"' in header
+    assert 'data-dashboard-href="/variable-expense.html"' not in header
     assert 'data-dashboard-action="navigate" data-dashboard-href="/branch-analysis"' in header
     assert 'data-dashboard-action="navigate" data-dashboard-href="/honor"' in header
     assert 'data-dashboard-action="navigate" data-dashboard-href="/scheme-calculator.html"' in header
@@ -408,8 +408,8 @@ def test_account_auth_replaces_admin_token_prompt():
     assert 'data-permission="permission_admin"' in html
     assert 'data-permission="personnel_management"' in html
     assert 'data-dashboard-action="navigate" data-dashboard-href="/personnel-management.html"' in html
-    assert 'data-permission="variable_expense_view"' in html
-    assert 'data-dashboard-action="navigate" data-dashboard-href="/variable-expense.html"' in html
+    assert 'data-permission="variable_expense_view"' not in html
+    assert 'data-dashboard-href="/variable-expense.html"' not in html
     assert 'data-permission="branch_analysis"' in html
     assert 'data-dashboard-action="navigate" data-dashboard-href="/branch-analysis"' in html
     assert 'data-permission="honor_view"' in html
@@ -1308,10 +1308,9 @@ def test_dashboard_navigation_and_kpis_are_responsive_and_keyboard_accessible():
     assert 'class="chart-btn header-recalculate"' in header
     assert header.index('id="recalcBtn"') < header.index('<details class="header-menu">')
     assert 'data-dashboard-action="recalculate"' not in tools
-    assert 'data-permission="variable_expense_view"' in tools
-    assert 'data-dashboard-href="/variable-expense.html"' in tools
+    assert 'data-permission="variable_expense_view"' not in tools
+    assert 'data-dashboard-href="/variable-expense.html"' not in tools
     primary_nav = header.split('<nav class="primary-nav"', 1)[1].split('</nav>', 1)[0]
-    assert 'data-dashboard-href="/variable-expense.html"' not in primary_nav
     assert 'data-permission="branch_analysis"' in primary_nav
     assert 'data-dashboard-href="/branch-analysis"' in primary_nav
     assert 'class="kpi-card target-dependent"' in html
