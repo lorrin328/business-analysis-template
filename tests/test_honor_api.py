@@ -165,6 +165,70 @@ def test_honor_latest_batch_can_match_source_cutoff(auth_db):
     assert latest_batch(2026, 5, source_cutoff=None)["id"] == cutoff_batch
 
 
+def test_honor_periods_lists_available_months_and_recommends_latest_cutoff(auth_db):
+    from honor.repository import create_batch, replace_calculation_results
+
+    client = TestClient(app)
+    token = _login(client)["token"]
+
+    def calculated_batch(month, cutoff=None):
+        batch_id = create_batch(
+            year=2026,
+            month=month,
+            rule_version="2026-v1",
+            source_cutoff=cutoff,
+            created_by="pytest",
+        )
+        replace_calculation_results(
+            batch_id,
+            {
+                "org_summary": [],
+                "person_summary": [
+                    {
+                        "batch_id": batch_id,
+                        "year": 2026,
+                        "latest_month": month,
+                        "org": "上海",
+                        "business_line": "OTO",
+                        "staff_code": f"{month}001",
+                        "staff_name": "测试人员",
+                        "membership_level": "未入会",
+                    }
+                ],
+                "person_month": [],
+                "quarter_rewards": [],
+                "exceptions": [],
+                "source_staff_month": [],
+                "source_policy": [],
+            },
+            0,
+        )
+        return batch_id
+
+    april_batch = calculated_batch(4)
+    calculated_batch(4, "2026-04-20")
+    calculated_batch(7, "2026-07-20")
+    latest_july_batch = calculated_batch(7, "2026-07-27")
+    create_batch(year=2026, month=8, rule_version="2026-v1", created_by="pytest")
+
+    resp = client.get("/api/honor/periods?year=2026", headers=_headers(token))
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["years"] == [2026]
+    assert [item["month"] for item in data["periods"]] == [7, 4]
+    assert data["periods"][0]["recommendedBatchId"] == latest_july_batch
+    assert data["periods"][0]["sourceCutoff"] == "2026-07-27"
+    assert [item["sourceCutoff"] for item in data["periods"][0]["versions"]] == [
+        "2026-07-27",
+        "2026-07-20",
+    ]
+    assert data["periods"][1]["recommendedBatchId"] == april_batch
+    assert [item["sourceCutoff"] for item in data["periods"][1]["versions"]] == [
+        None,
+        "2026-04-20",
+    ]
+
+
 def test_honor_dashboard_returns_tracking_sections(auth_db):
     from honor.repository import create_batch, replace_calculation_results
 

@@ -9,7 +9,7 @@ from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
 from honor.config import DATA_SOURCE_MODE, RULE_VERSION
 from honor.exporter import build_honor_export_workbook
-from honor.repository import fetch_dashboard, fetch_summary, fetch_table, latest_batch
+from honor.repository import fetch_dashboard, fetch_summary, fetch_table, latest_batch, list_available_periods
 from honor.service import recalculate_honor, run_field_audit
 from services.audit_log import log_operation
 from services.response import batch_meta, success_response
@@ -47,6 +47,55 @@ def _batch_or_404(
     if not batch:
         raise HTTPException(status_code=404, detail="暂无星钻批次，请先执行字段审计或重算")
     return batch
+
+
+@router.get("/periods")
+def periods(
+    year: int | None = Query(None),
+    _user=Depends(require_permission("honor_view")),
+):
+    batches = list_available_periods(year)
+    grouped: dict[tuple[int, int], dict] = {}
+    seen_versions: dict[tuple[int, int], set[str]] = {}
+    for batch in batches:
+        batch_year = int(batch.get("year") or 0)
+        batch_month = int(batch.get("month") or 0)
+        if not batch_year or not batch_month:
+            continue
+        key = (batch_year, batch_month)
+        item = grouped.setdefault(
+            key,
+            {
+                "year": batch_year,
+                "month": batch_month,
+                "recommendedBatchId": None,
+                "sourceCutoff": None,
+                "versions": [],
+            },
+        )
+        cutoff = str(batch.get("source_cutoff") or "")
+        version_key = cutoff or "final"
+        if version_key in seen_versions.setdefault(key, set()):
+            continue
+        seen_versions[key].add(version_key)
+        version = {
+            "batchId": int(batch["id"]),
+            "sourceCutoff": cutoff or None,
+            "createdAt": batch.get("created_at"),
+            "ruleVersion": batch.get("rule_version"),
+        }
+        item["versions"].append(version)
+        if item["recommendedBatchId"] is None:
+            item["recommendedBatchId"] = version["batchId"]
+            item["sourceCutoff"] = version["sourceCutoff"]
+
+    items = [grouped[key] for key in sorted(grouped, reverse=True)]
+    return success_response(
+        {
+            "years": sorted({item["year"] for item in items}, reverse=True),
+            "periods": items,
+        }
+    )
 
 
 @router.get("/field-audit")

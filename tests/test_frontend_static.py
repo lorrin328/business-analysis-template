@@ -102,12 +102,12 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/month-multi-select.js?v=1.0.118"></script>' in html
+    assert '<script src="js/month-multi-select.js?v=1.0.119"></script>' in html
     assert '<script src="js/api-client.js?v=1.0.116"></script>' in html
     assert '<script src="js/auth-ui.js?v=1.0.116"></script>' in html
     assert '<script src="js/export-excel.js?v=1.0.116"></script>' in html
     assert '<script src="js/upload.js?v=1.0.116"></script>' in html
-    assert '<script src="js/target-modal.js?v=1.0.118"></script>' in html
+    assert '<script src="js/target-modal.js?v=1.0.119"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.116"></script>' in html
     assert '<script src="js/platform-trend.js?v=1.0.116"></script>' in html
     assert '<script src="js/team-analysis.js?v=1.0.116"></script>' in html
@@ -508,7 +508,7 @@ def test_honor_page_is_separate_runtime():
     assert "????" not in html
     assert "<title>星钻联盟</title>" in honor_html
     assert "星钻联盟荣誉体系" not in honor_html
-    assert '<script src="/js/honor.js?v=1.0.111"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.119"></script>' in honor_html
     assert honor_html.count('role="tab"') == 4
     assert 'data-tab="tracking">总览</button>' in honor_html
     assert 'data-tab="analysis">机构与项目</button>' in honor_html
@@ -535,7 +535,12 @@ def test_honor_page_is_separate_runtime():
     assert "star_manpower_count: '团队会员人数'" in honor_js
     assert "qualified_months: '累计获钻次数'" in honor_js
     assert "tracking_policy_count: '当月件数'" in honor_js
-    assert 'id="honorMonth" type="number" min="1" max="12" value="6"' in honor_html
+    assert 'id="honorMonth"' in honor_html
+    assert 'id="honorBatch"' in honor_html
+    assert 'type="number" min="1" max="12"' not in honor_html
+    assert "/api/honor/periods" in honor_js
+    assert "本月未达标" in honor_js
+    assert "premiumGapTotal" in honor_js
     assert "avg_diamond: '人均钻石'" in honor_js
     assert "return Number.isFinite(n) ? `${(n * 100).toFixed(1)}%`" in honor_js
 
@@ -1350,7 +1355,7 @@ def test_honor_metrics_and_scheme_page_expose_decision_hierarchy_and_boundary():
     assert "['累计钻石'," in honor_js
     assert "['本月新入会'," in honor_js
     assert "['本月晋级'," in honor_js
-    assert "['待跟进人员'," in honor_js
+    assert "['本月未达标'," in honor_js
     assert '<title>方案底稿复核</title>' in scheme_page
     assert '非最终发放结果' in scheme_page
     assert '底稿导入、规则测算和结果复核' in scheme_page

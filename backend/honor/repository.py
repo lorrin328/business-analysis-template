@@ -77,6 +77,32 @@ def latest_batch(
         return dict(row) if row else None
 
 
+def list_available_periods(year: int | None = None) -> list[dict[str, Any]]:
+    """List calculated honor batches that can be opened from the dashboard."""
+    params: list[Any] = []
+    where = ["b.status = 'success'", "COALESCE(s.row_count, 0) > 0"]
+    if year is not None:
+        where.append("b.year = ?")
+        params.append(year)
+    sql = f"""
+        SELECT
+            b.id, b.year, b.month, b.source_cutoff, b.rule_version,
+            b.created_at, b.created_by
+        FROM honor_import_batches b
+        LEFT JOIN (
+            SELECT batch_id, COUNT(*) AS row_count
+            FROM honor_person_summary
+            GROUP BY batch_id
+        ) s ON s.batch_id = b.id
+        WHERE {" AND ".join(where)}
+        ORDER BY b.year DESC, b.month DESC,
+                 CASE WHEN b.source_cutoff IS NULL OR b.source_cutoff = '' THEN 0 ELSE 1 END,
+                 b.source_cutoff DESC, b.id DESC
+    """
+    with get_db() as conn:
+        return [dict(row) for row in conn.execute(sql, params).fetchall()]
+
+
 def save_field_audit(batch_id: int, audit: dict[str, Any]) -> None:
     rows = []
     for table in audit.get("rawTables", {}).values():

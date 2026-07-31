@@ -131,6 +131,9 @@ def test_honor_dashboard_builder_derives_tracking_sections():
     assert payload["managerHistory"][0]["team_qj_premium"] == 30000
     assert payload["warnings"][0]["warning_type"] == "等级下降"
     assert payload["trend"][-1]["month"] == 5
+    assert payload["qualificationProgress"]["trackedCount"] == 1
+    assert payload["qualificationProgress"]["qualifiedCount"] == 1
+    assert payload["qualificationProgress"]["unqualifiedCount"] == 0
 
 
 def test_honor_tracking_policy_count_excludes_one_year_medical_policy():
@@ -193,3 +196,76 @@ def test_honor_tracking_policy_count_excludes_one_year_medical_policy():
     top = payload["tracking"]["topContributors"][0]
     assert top["longterm_policy_count"] == 2
     assert top["tracking_policy_count"] == 1
+
+
+def test_honor_dashboard_explains_personal_monthly_gap_without_management_rows():
+    payload = build_honor_dashboard_payload(
+        summary={"batch": {"year": 2026, "month": 7, "source_cutoff": "2026-07-20"}, "overview": {}},
+        org_rows=[],
+        person_summary=[],
+        person_month=[
+            {
+                "month": 7,
+                "org": "福建",
+                "business_line": "OTO",
+                "staff_code": "1001",
+                "staff_name": "张三",
+                "role_type": "个人",
+                "is_employed_end_month": 1,
+                "membership_level": "未入会",
+                "standard_premium": 12500,
+                "longterm_policy_count": 0,
+                "monthly_qualified": 0,
+            },
+            {
+                "month": 7,
+                "org": "四川",
+                "business_line": "证保",
+                "staff_code": "1002",
+                "staff_name": "李四",
+                "role_type": "个人",
+                "is_employed_end_month": 1,
+                "membership_level": "初级会员",
+                "standard_premium": 35000,
+                "longterm_policy_count": 1,
+                "monthly_qualified": 1,
+            },
+            {
+                "month": 7,
+                "org": "福建",
+                "business_line": "OTO",
+                "staff_code": "2001",
+                "staff_name": "王主管",
+                "role_type": "主管",
+                "is_employed_end_month": 1,
+                "membership_level": "未入会",
+                "standard_premium": 0,
+                "longterm_policy_count": 0,
+                "monthly_qualified": 0,
+            },
+        ],
+        source_staff=[],
+        source_policy=[],
+        exceptions=[],
+    )
+
+    progress = payload["qualificationProgress"]
+    assert progress["trackedCount"] == 2
+    assert progress["qualifiedCount"] == 1
+    assert progress["unqualifiedCount"] == 1
+    assert progress["premiumGapTotal"] == 7500
+    assert progress["missingLongtermCount"] == 1
+    assert progress["rows"] == [
+        {
+            "org": "福建",
+            "business_line": "OTO",
+            "staff_code": "1001",
+            "staff_name": "张三",
+            "membership_level": "未入会",
+            "standard_premium": 12500.0,
+            "premium_threshold": 20000.0,
+            "premium_gap": 7500.0,
+            "longterm_policy_count": 0,
+            "longterm_gap": 1,
+        }
+    ]

@@ -49,6 +49,7 @@ def build_honor_dashboard_payload(
     specialist_history = _specialist_history(person_month, qj_index)
     manager_history = _manager_history(source_staff, person_month, qj_index)
     tracking = _build_tracking(summary, person_summary, person_month, org_rows, source_policy)
+    qualification_progress = _build_qualification_progress(person_month, current_month)
 
     return {
         "batch": summary.get("batch"),
@@ -62,11 +63,102 @@ def build_honor_dashboard_payload(
         "managers": _rank_rows(manager_rows, "member_rate", "total_diamond"),
         "specialistHistory": specialist_history[:3000],
         "managerHistory": manager_history[:3000],
+        "qualificationProgress": qualification_progress,
         "warnings": warnings,
         "persons": person_summary[:1000],
         "levels": levels,
         "trend": trend,
         "exceptions": exceptions,
+    }
+
+
+def _build_qualification_progress(
+    months: list[dict[str, Any]],
+    current_month: int,
+) -> dict[str, Any]:
+    """Explain the current personal monthly qualification gap without mixing in data warnings."""
+    rows: list[dict[str, Any]] = []
+    grouped: dict[str, dict[str, Any]] = {}
+    tracked_count = 0
+    qualified_count = 0
+    premium_gap_total = 0.0
+    missing_longterm_count = 0
+
+    for row in months:
+        business_line = str(row.get("business_line") or "")
+        rule = MONTHLY_RULES.get(business_line)
+        if (
+            int(row.get("month") or 0) != int(current_month or 0)
+            or str(row.get("role_type") or "") != "个人"
+            or int(row.get("is_employed_end_month") or 0) <= 0
+            or not rule
+        ):
+            continue
+
+        tracked_count += 1
+        premium = float(row.get("standard_premium") or 0)
+        longterm_count = int(row.get("longterm_policy_count") or 0)
+        premium_threshold = float(rule["premium_threshold"])
+        longterm_threshold = int(rule["longterm_count_threshold"])
+        premium_gap = max(0.0, premium_threshold - premium)
+        longterm_gap = max(0, longterm_threshold - longterm_count)
+        qualified = int(row.get("monthly_qualified") or 0) > 0
+        if qualified:
+            qualified_count += 1
+        else:
+            premium_gap_total += premium_gap
+            missing_longterm_count += 1 if longterm_gap > 0 else 0
+            rows.append(
+                {
+                    "org": row.get("org"),
+                    "business_line": business_line,
+                    "staff_code": row.get("staff_code"),
+                    "staff_name": row.get("staff_name"),
+                    "membership_level": row.get("membership_level"),
+                    "standard_premium": round(premium, 2),
+                    "premium_threshold": premium_threshold,
+                    "premium_gap": round(premium_gap, 2),
+                    "longterm_policy_count": longterm_count,
+                    "longterm_gap": longterm_gap,
+                }
+            )
+
+        item = grouped.setdefault(
+            business_line,
+            {
+                "business_line": business_line,
+                "premium_threshold": premium_threshold,
+                "tracked_count": 0,
+                "qualified_count": 0,
+                "unqualified_count": 0,
+                "premium_gap_total": 0.0,
+                "missing_longterm_count": 0,
+            },
+        )
+        item["tracked_count"] += 1
+        item["qualified_count"] += 1 if qualified else 0
+        item["unqualified_count"] += 0 if qualified else 1
+        item["premium_gap_total"] += premium_gap if not qualified else 0
+        item["missing_longterm_count"] += 1 if not qualified and longterm_gap > 0 else 0
+
+    for item in grouped.values():
+        item["premium_gap_total"] = round(float(item["premium_gap_total"]), 2)
+    rows.sort(
+        key=lambda item: (
+            float(item.get("premium_gap") or 0),
+            -int(item.get("longterm_gap") or 0),
+            str(item.get("org") or ""),
+            str(item.get("staff_name") or ""),
+        )
+    )
+    return {
+        "trackedCount": tracked_count,
+        "qualifiedCount": qualified_count,
+        "unqualifiedCount": tracked_count - qualified_count,
+        "premiumGapTotal": round(premium_gap_total, 2),
+        "missingLongtermCount": missing_longterm_count,
+        "byBusinessLine": [grouped[key] for key in sorted(grouped)],
+        "rows": rows,
     }
 
 

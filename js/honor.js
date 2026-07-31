@@ -1,8 +1,10 @@
 (function () {
   let currentBatchId = null;
+  let dashboardRequestSeq = 0;
   const state = {
     dashboard: null,
     audit: null,
+    periods: [],
     filters: {
       tracking: { keyword: '', org: 'all', businessLine: 'all', roleType: 'all' },
       orgs: { keyword: '', businessLine: 'all' },
@@ -74,6 +76,9 @@
     previous_level: '上月等级',
     current_level: '本月等级',
     standard_premium_gap: '标保差额(万)',
+    premium_threshold: '达标标保(万)',
+    premium_gap: '还差标保(万)',
+    longterm_gap: '还缺长险件',
     suggested_action: '建议动作',
     level: '会员等级',
     count: '人数',
@@ -92,6 +97,7 @@
     'team_standard_premium', 'team_tracked_headcount', 'star_manpower_count',
     'specialist_member_count', 'manager_member_count', 'team_diamond_balance',
     'manager_diamond_balance', 'longterm_policy_count', 'standard_premium_gap',
+    'premium_threshold', 'premium_gap', 'longterm_gap',
     'count', 'gain_count', 'deduct_count', 'qualified_count',
     'total_members', 'oto_members', 'zhengbao_members', 'personal_members',
     'supervisor_members', 'manager_members', 'management_members',
@@ -157,7 +163,7 @@
     if (key === 'is_new_star') return Number(value) ? '是' : '否';
     if (PERCENT_COLUMNS.has(key)) return percentText(value);
     if (key === 'avg_diamond') return numberText(value, 1);
-    if (['standard_premium', 'qj_premium', 'team_qj_premium', 'team_standard_premium', 'standard_premium_gap'].includes(key)) return value === '' ? '-' : numberText(Number(value || 0) / 10000, 2);
+    if (['standard_premium', 'qj_premium', 'team_qj_premium', 'team_standard_premium', 'standard_premium_gap', 'premium_threshold', 'premium_gap'].includes(key)) return value === '' ? '-' : numberText(Number(value || 0) / 10000, 2);
     if (NUMBER_COLUMNS.has(key)) return numberText(value, 0);
     return value ?? '-';
   }
@@ -177,12 +183,16 @@
     const overview = data.overview || {};
     const tracking = data.tracking || {};
     const trackingOverview = tracking.overview || {};
+    const progress = data.qualificationProgress || {};
+    const gapNote = progress.unqualifiedCount === undefined
+      ? '读取当月达标情况'
+      : `标保还差 ${numberText(Number(progress.premiumGapTotal || 0) / 10000, 2)}万；${numberText(progress.missingLongtermCount)}人还缺长险件`;
     const cards = [
       ['会员总数', numberText(trackingOverview.total_members ?? overview.member_count), `会员率 ${percentText(overview.member_rate)}`, 'result'],
       ['累计钻石', numberText(overview.total_diamond), '当前统计期', 'result'],
       ['本月新入会', numberText(trackingOverview.new_member_count), '首次达到会员标准', 'result'],
       ['本月晋级', numberText(trackingOverview.promotion_count), '会员等级提升', 'result'],
-      ['待跟进人员', numberText((data.warnings || []).length), '本月等级下降', 'attention'],
+      ['本月未达标', numberText(progress.unqualifiedCount), gapNote, 'attention'],
     ];
     document.getElementById('honorCards').innerHTML = cards.map(([label, value, note, tone]) => `
       <article class="metric-card" data-tone="${tone}">
@@ -257,6 +267,7 @@
     const orgMembers = tracking.orgMembers || [];
     const newMembers = tracking.newMembers || [];
     const promotions = tracking.promotions || [];
+    const progress = data.qualificationProgress || {};
     const sourceNote = tracking.sourceCutoff ? `数据截至 ${tracking.sourceCutoff}` : '月底数据';
     document.getElementById('tracking').innerHTML = `
       <div class="panel-head">
@@ -267,6 +278,17 @@
         <div class="structure-item"><span>证保会员</span><strong>${numberText(overview.zhengbao_members)}</strong></div>
         <div class="structure-item"><span>个人会员</span><strong>${numberText(overview.personal_members)}</strong></div>
         <div class="structure-item"><span>管理职会员</span><strong>${numberText(overview.management_members)}</strong></div>
+      </section>
+      <section class="panel-block detail-section">
+        <h2>当月个人达标进度</h2>
+        <p class="panel-note">${tracking.sourceCutoff ? '以下为过程值，会随新单、入账和回销状态变化。' : '以下为本月完整结果。'}主管、经理按团队规则计算，不并入个人差额。</p>
+        <div class="structure-strip">
+          <div class="structure-item"><span>个人追踪</span><strong>${numberText(progress.trackedCount)}</strong></div>
+          <div class="structure-item"><span>已达标</span><strong>${numberText(progress.qualifiedCount)}</strong></div>
+          <div class="structure-item"><span>未达标</span><strong>${numberText(progress.unqualifiedCount)}</strong></div>
+          <div class="structure-item"><span>标保合计还差</span><strong>${numberText(Number(progress.premiumGapTotal || 0) / 10000, 2)}万</strong></div>
+          <div class="structure-item"><span>还缺长险件</span><strong>${numberText(progress.missingLongtermCount)}人</strong></div>
+        </div>
       </section>
       <div class="dashboard-grid">
         <section class="panel-block">
@@ -604,10 +626,11 @@
     const tracking = state.dashboard?.tracking || {};
     const roster = tracking.memberRoster || [];
     const warnings = state.dashboard?.warnings || [];
+    const gapRows = state.dashboard?.qualificationProgress?.rows || [];
     const specialistHistory = state.dashboard?.specialistHistory || [];
     const managerHistory = state.dashboard?.managerHistory || [];
     const f = state.filters.persons;
-    const allRows = [...roster, ...warnings, ...specialistHistory, ...managerHistory];
+    const allRows = [...roster, ...gapRows, ...warnings, ...specialistHistory, ...managerHistory];
     const filteredRoster = roster.filter(row => (
       matchesKeyword(row, f.keyword, ['staff_code', 'staff_name', 'org'])
       && (f.org === 'all' || row.org === f.org)
@@ -620,6 +643,12 @@
       && (f.org === 'all' || row.org === f.org)
       && (f.businessLine === 'all' || row.business_line === f.businessLine)
       && (f.roleType === 'all' || row.role_type === f.roleType)
+    ));
+    const filteredGapRows = gapRows.filter(row => (
+      matchesKeyword(row, f.keyword, ['staff_code', 'staff_name', 'org'])
+      && (f.org === 'all' || row.org === f.org)
+      && (f.businessLine === 'all' || row.business_line === f.businessLine)
+      && (f.roleType === 'all' || f.roleType === '个人')
     ));
     const filteredSpecialists = specialistHistory.filter(row => (
       matchesKeyword(row, f.keyword, ['staff_code', 'staff_name', 'org'])
@@ -634,7 +663,7 @@
     ));
     document.getElementById('people').innerHTML = `
       <div class="panel-head">
-        <div><h2>人员追踪</h2><p>统一查询会员、待跟进人员和历史表现。</p></div>
+        <div><h2>人员追踪</h2><p>先看当月未达标及具体差额，再查看等级变化、数据待核对项和历史表现。</p></div>
       </div>
       <div class="filter-bar">
         ${searchControl('peopleKeyword', '人员', f.keyword, '姓名/代码/机构')}
@@ -645,7 +674,11 @@
       </div>
       <div class="section-stack">
         <details open>
-          <summary>待跟进人员（${numberText(filteredWarnings.length)}）</summary>
+          <summary>本月未达标（${numberText(filteredGapRows.length)}）</summary>
+          <div id="peopleGapTable"></div>
+        </details>
+        <details>
+          <summary>等级变化与数据待核对（${numberText(filteredWarnings.length)}）</summary>
           <div id="peopleWarningTable"></div>
         </details>
         <details>
@@ -661,7 +694,8 @@
           <div id="peopleManagerTable"></div>
         </details>
       </div>`;
-    renderTable('peopleWarningTable', filteredWarnings, ['warning_type', 'org', 'business_line', 'staff_name', 'role_type', 'previous_level', 'current_level', 'standard_premium_gap', 'suggested_action'], '当前筛选范围内没有待跟进人员');
+    renderTable('peopleGapTable', filteredGapRows, ['org', 'business_line', 'staff_code', 'staff_name', 'membership_level', 'standard_premium', 'premium_threshold', 'premium_gap', 'longterm_policy_count', 'longterm_gap'], '当前筛选范围内没有未达标人员');
+    renderTable('peopleWarningTable', filteredWarnings, ['warning_type', 'org', 'business_line', 'staff_name', 'role_type', 'previous_level', 'current_level', 'standard_premium_gap', 'suggested_action'], '当前筛选范围内没有等级变化或数据待核对项');
     renderTable('peopleRosterTable', filteredRoster, ['rank', 'staff_code', 'staff_name', 'org', 'business_line', 'role_type', 'membership_level', 'diamond_balance', 'tracking_policy_count', 'qualified_months']);
     renderTable('peopleSpecialistTable', filteredSpecialists, ['org', 'business_line', 'staff_code', 'staff_name', 'month', 'standard_premium', 'longterm_policy_count', 'diamond_delta', 'diamond_balance', 'membership_level']);
     renderTable('peopleManagerTable', filteredManagers, ['org', 'business_line', 'role_type', 'manager_code', 'manager_name', 'month', 'team_tracked_headcount', 'star_manpower_count', 'team_diamond_balance', 'manager_diamond_balance', 'monthly_gain_count', 'monthly_deduct_count']);
@@ -714,28 +748,99 @@
     }
   }
 
+  function cutoffLabel(year, month, cutoff) {
+    if (!cutoff) return '完整月结果';
+    const parts = String(cutoff).split('-').map(Number);
+    if (parts[0] === Number(year) && parts[1] === Number(month)) {
+      return `截至${parts[1]}月${parts[2]}日（过程）`;
+    }
+    return `后续状态更新至${parts[1]}月${parts[2]}日`;
+  }
+
+  function renderPeriodNote(batch) {
+    const target = document.getElementById('honorPeriodNote');
+    if (!target || !batch) return;
+    if (!batch.source_cutoff) {
+      target.textContent = `${batch.year}年${batch.month}月完整月结果。`;
+      return;
+    }
+    const parts = String(batch.source_cutoff).split('-').map(Number);
+    if (parts[0] === Number(batch.year) && parts[1] === Number(batch.month)) {
+      target.textContent = `${batch.month}月尚未形成完整月结果，本页为截至${parts[1]}月${parts[2]}日的过程数据；差额会随新单、入账和回销状态变化。`;
+      return;
+    }
+    target.textContent = `${batch.year}年${batch.month}月结果，回销等后续状态更新至${parts[1]}月${parts[2]}日。`;
+  }
+
+  function renderBatchOptions(preferredBatchId = null) {
+    const year = Number(document.getElementById('honorYear').value);
+    const month = Number(document.getElementById('honorMonth').value);
+    const period = state.periods.find(item => Number(item.year) === year && Number(item.month) === month);
+    const batchSelect = document.getElementById('honorBatch');
+    const versions = period?.versions || [];
+    batchSelect.innerHTML = versions.length
+      ? versions.map(version => `<option value="${escapeHtml(version.batchId)}">${escapeHtml(cutoffLabel(year, month, version.sourceCutoff))}</option>`).join('')
+      : '<option value="">暂无结果</option>';
+    const selected = versions.some(item => Number(item.batchId) === Number(preferredBatchId))
+      ? Number(preferredBatchId)
+      : Number(period?.recommendedBatchId || versions[0]?.batchId || 0);
+    if (selected) batchSelect.value = String(selected);
+    return selected;
+  }
+
+  function renderMonthOptions(preferredMonth = null) {
+    const year = Number(document.getElementById('honorYear').value);
+    const monthSelect = document.getElementById('honorMonth');
+    const months = state.periods
+      .filter(item => Number(item.year) === year)
+      .map(item => Number(item.month))
+      .sort((a, b) => a - b);
+    monthSelect.innerHTML = months.length
+      ? months.map(month => `<option value="${month}">${month}月</option>`).join('')
+      : '<option value="">暂无结果</option>';
+    const selected = months.includes(Number(preferredMonth)) ? Number(preferredMonth) : months[months.length - 1];
+    if (selected) monthSelect.value = String(selected);
+    return selected;
+  }
+
+  async function loadAvailablePeriods(preferredBatchId = null) {
+    const payload = await api('/api/honor/periods');
+    state.periods = payload.periods || [];
+    const yearSelect = document.getElementById('honorYear');
+    const currentYear = Number(yearSelect.value);
+    const years = payload.years || [];
+    yearSelect.innerHTML = years.length
+      ? years.map(year => `<option value="${escapeHtml(year)}">${escapeHtml(year)}年</option>`).join('')
+      : '<option value="">暂无结果</option>';
+    const preferredPeriod = preferredBatchId
+      ? state.periods.find(item => (item.versions || []).some(version => Number(version.batchId) === Number(preferredBatchId)))
+      : null;
+    const selectedYear = preferredPeriod?.year || (years.includes(currentYear) ? currentYear : years[0]);
+    if (selectedYear) yearSelect.value = String(selectedYear);
+    const selectedMonth = renderMonthOptions(preferredPeriod?.month);
+    const selectedBatchId = renderBatchOptions(preferredBatchId);
+    if (!selectedMonth || !selectedBatchId) {
+      setStatus('暂无可查看的星钻测算结果', 'warn');
+      return;
+    }
+    await loadDashboard(selectedBatchId);
+  }
+
   async function loadDashboard(batchId) {
-    const asOf = document.getElementById('honorAsOf')?.value || '';
-    const query = batchId
-      ? `batchId=${encodeURIComponent(batchId)}`
-      : `year=${document.getElementById('honorYear').value}&month=${document.getElementById('honorMonth').value}${asOf ? `&asOf=${encodeURIComponent(asOf)}` : ''}`;
+    const requestSeq = ++dashboardRequestSeq;
+    const query = `batchId=${encodeURIComponent(batchId)}`;
     const data = await api(`/api/honor/dashboard?${query}`);
+    if (requestSeq !== dashboardRequestSeq) return;
     state.dashboard = data;
     currentBatchId = data.batch?.id || batchId || currentBatchId;
     if (data.batch?.year) document.getElementById('honorYear').value = data.batch.year;
     if (data.batch?.month) document.getElementById('honorMonth').value = data.batch.month;
-    if (data.batch?.source_cutoff) document.getElementById('honorAsOf').value = data.batch.source_cutoff;
+    document.getElementById('honorAsOf').value = data.batch?.source_cutoff || '';
+    document.getElementById('honorBatch').value = String(currentBatchId);
     renderAll();
-    const cutoff = data.batch?.source_cutoff ? `，截至 ${data.batch.source_cutoff}` : '，月底数据';
-    setStatus(`数据更新至 ${data.batch?.year || '-'}年${data.batch?.month || '-'}月${cutoff}`, 'ok');
-  }
-
-  async function loadLatestOrAudit() {
-    try {
-      await loadDashboard(null);
-    } catch (_) {
-      await runAudit();
-    }
+    renderPeriodNote(data.batch);
+    const cutoff = data.batch?.source_cutoff ? `，截至 ${data.batch.source_cutoff}` : '，完整月结果';
+    setStatus(`${data.batch?.year || '-'}年${data.batch?.month || '-'}月${cutoff}`, 'ok');
   }
 
   async function runAudit() {
@@ -756,7 +861,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ year, month, asOf, scope: 'all', force: true }),
     });
-    await loadDashboard(result.batchId);
+    await loadAvailablePeriods(result.batchId);
     setStatus(`测算完成：${result.personCount}人，${result.exceptionCount}条待核对记录`, 'ok');
   }
 
@@ -799,6 +904,19 @@
     document.getElementById('auditBtn')?.addEventListener('click', () => runAudit().catch(err => setStatus(err.message, 'bad')));
     document.getElementById('recalcBtn')?.addEventListener('click', () => recalculate().catch(err => setStatus(err.message, 'bad')));
     document.getElementById('exportBtn')?.addEventListener('click', exportExcel);
+    document.getElementById('honorYear')?.addEventListener('change', () => {
+      renderMonthOptions();
+      const batchId = renderBatchOptions();
+      if (batchId) loadDashboard(batchId).catch(err => setStatus(err.message, 'bad'));
+    });
+    document.getElementById('honorMonth')?.addEventListener('change', () => {
+      const batchId = renderBatchOptions();
+      if (batchId) loadDashboard(batchId).catch(err => setStatus(err.message, 'bad'));
+    });
+    document.getElementById('honorBatch')?.addEventListener('change', event => {
+      const batchId = Number(event.target.value || 0);
+      if (batchId) loadDashboard(batchId).catch(err => setStatus(err.message, 'bad'));
+    });
   }
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -806,6 +924,6 @@
     bindTabs();
     bindActions();
     renderMetricCards({});
-    loadLatestOrAudit().catch(err => setStatus(err.message, 'bad'));
+    loadAvailablePeriods().catch(err => setStatus(err.message, 'bad'));
   });
 })();
