@@ -9,6 +9,11 @@
 - 将 `excel/` 加入忽略规则，4份客户CSV及其他临时表格原地保留，不进入Git状态、GitHub或生产发布包。
 - 验证：下线、权限、前端和AI只读接口针对性回归 `87 passed`；使用本地SQLite在线备份测试快照完成全量 `343 passed, 1 warning`，数据质量审计 `status=ok, issue_count=0`，数据库 `integrity_check=ok`、`quick_check=ok`。
 - `scripts/preflight.ps1` 的必需文件和nginx上传门禁通过，但其隔离环境创建因Windows下载解压文件锁失败；未重复覆盖环境，改由既有项目虚拟环境完成同一全量测试和数据质量审计。
+- GitHub：功能提交 `cc248a0becbcc4cbd09d06bcc94f5cc5805ecc34` 经 PR #2 合并到 `master`，合并提交为 `40b8769755db80abbf6c7031463f72562991cd11`；本次发布差异不含客户CSV、MariaDB评估文件、证保Demo草稿和前端优化建议。
+- 可信发布包由合并提交直接归档，本地与Ubuntu端 SHA256 均为 `58f00ceef211503a4aaf5aa133de916ef2a246f2b6ee6df048a6d432e73ba872`；归档中不存在 `excel/`、变动费用页面、脚本和API实现。
+- 生产部署：以 `REBUILD_DATABASE=0` 部署至 `192.168.50.6`，保留生产运行库；部署前在线备份为 `/opt/business-analysis-backups/business_data.db.20260731_144725`，元数据记录 `integrity_check=ok`、`quick_check=ok`、41张表和 SHA256 `d6248898d8f80b08c641f9df31cf86f6fa3d4eccb719e4c9ba912478aa263062`。
+- 生产验收：应用和页面版本均为 `v1.0.122`，健康检查 `ok`、最新期间 `202607`；变动费用页面、HTML和JS均返回404，服务端变动费用API路由数为0，主页面不再包含入口；正式证保网点分析和荣誉页面继续返回200。
+- 数据与安全验收：数据库 `integrity_check`、`quick_check` 均为 `ok`，41张表保持不变，既有 `variable_expense_batches` 空表保留但不再提供访问路由；主服务和nginx均为active，nginx配置检查通过，部署后warning以上日志为空，Git、后端源码和部署配置等敏感路径继续返回404。
 
 ## 2026-07-31 v1.0.121 队伍产能分析默认折叠与缓存修复
 
