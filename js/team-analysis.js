@@ -350,40 +350,6 @@
         { className: 'num', render: row => `${fmtTeamNumber(row.qjPremium, 1)}万` },
         { className: 'num', render: row => `${fmtTeamNumber(row.premiumShare, 1)}%` }
       ], '暂无产能段结构数据');
-      const percentileRows = renderRows(data.percentiles || [], [
-        { render: row => `<span class="primary-text">${escapeTeamText(row.label)}</span>` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.sampleCount)}人` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.zeroRate, 1)}%` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p25, 2)}万` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p25Count)}人` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p50, 2)}万` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p50Count)}人` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p75, 2)}万` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p75Count)}人` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.avg, 2)}万` }
-      ], '暂无分位数数据');
-      const orgRows = renderRows(data.orgPercentiles || [], [
-        { render: row => `<span class="primary-text">${escapeTeamText(row.label)}</span>` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.sampleCount)}人` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.zeroRate, 1)}%` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p25, 2)}万` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p25Count)}人` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p50, 2)}万` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p50Count)}人` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p75, 2)}万` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p75Count)}人` }
-      ], '暂无机构分位数数据');
-      const trendRows = renderRows((data.trend || []).slice(-6), [
-        { render: row => `${row.month}月` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.sampleCount)}人` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.zeroRate, 1)}%` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p25, 2)}万` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p25Count)}人` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p50, 2)}万` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p50Count)}人` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p75, 2)}万` },
-        { className: 'num', render: row => `${fmtTeamNumber(row.p75Count)}人` }
-      ], '暂无趋势数据');
       const standardManpower = data.standardManpower || {};
       const standardSummaryRows = renderStandardManpowerRows([
         ...(standardManpower.summary || []),
@@ -438,16 +404,6 @@
             <div class="team-insight-value">${fmtTeamNumber(summary.zeroRate, 1)}%</div>
             <div class="team-insight-note">产能≤0人员 / 样本人数</div>
           </div>
-          <div class="team-insight-card">
-            <div class="team-insight-label">P50 中位数</div>
-            <div class="team-insight-value">${fmtTeamNumber(summary.p50, 2)}万</div>
-            <div class="team-insight-note">≥P50：${fmtTeamNumber(summary.p50Count)}人</div>
-          </div>
-          <div class="team-insight-card">
-            <div class="team-insight-label">P75 骨干门槛</div>
-            <div class="team-insight-value">${fmtTeamNumber(summary.p75, 2)}万</div>
-            <div class="team-insight-note">≥P75：${fmtTeamNumber(summary.p75Count)}人</div>
-          </div>
         </div>
         <div class="team-insight-layout">
           <div class="structure-table-wrapper" style="margin-top:0;">
@@ -479,63 +435,6 @@
               <tbody>${bandRows}</tbody>
             </table>
           </div>
-        </div>
-        <div class="team-insight-layout" style="margin-top:10px;">
-          <div class="structure-table-wrapper" style="margin-top:0;">
-            <table class="structure-table" id="teamPercentileTable">
-              <thead>
-                <tr>
-                  <th>维度</th>
-                  <th class="num">样本</th>
-                  <th class="num">零/负产能占比</th>
-                  <th class="num">P25</th>
-                  <th class="num">≥P25人数</th>
-                  <th class="num">P50</th>
-                  <th class="num">≥P50人数</th>
-                  <th class="num">P75</th>
-                  <th class="num">≥P75人数</th>
-                  <th class="num">平均</th>
-                </tr>
-              </thead>
-              <tbody>${percentileRows}</tbody>
-            </table>
-          </div>
-          <div class="structure-table-wrapper" style="margin-top:0;">
-            <table class="structure-table" id="teamProductivityTrendTable">
-              <thead>
-                <tr>
-                  <th>月份</th>
-                  <th class="num">样本</th>
-                  <th class="num">零/负产能占比</th>
-                  <th class="num">P25</th>
-                  <th class="num">≥P25人数</th>
-                  <th class="num">P50</th>
-                  <th class="num">≥P50人数</th>
-                  <th class="num">P75</th>
-                  <th class="num">≥P75人数</th>
-                </tr>
-              </thead>
-              <tbody>${trendRows}</tbody>
-            </table>
-          </div>
-        </div>
-        <div class="structure-table-wrapper" style="margin-top:10px;">
-          <table class="structure-table" id="teamOrgPercentileTable">
-            <thead>
-              <tr>
-                <th>机构</th>
-                <th class="num">样本</th>
-                <th class="num">零/负产能占比</th>
-                <th class="num">P25</th>
-                <th class="num">≥P25人数</th>
-                <th class="num">P50</th>
-                <th class="num">≥P50人数</th>
-                <th class="num">P75</th>
-                <th class="num">≥P75人数</th>
-              </tr>
-            </thead>
-            <tbody>${orgRows}</tbody>
-          </table>
         </div>
         <div class="structure-block-title">累计期交保费60万元及以上人力分档</div>
         <div class="structure-table-wrapper" style="margin-top:10px;">
@@ -637,7 +536,7 @@
           标准人力口径：OTO 为月末在职且当月折算保费/标准保费≥2万元；证保为月末在职且当月折算保费/标准保费≥3万元。2026年产品4281按10年及以上交期处理，标准保费按期交保费全额计入。标准人力贡献按对应人员期交保费统计；多月按所选月份人月汇总。
         </div>
         <div class="team-insight-note" style="margin-top:12px;">
-          口径：单月仅纳入当月月末在职人员；多月纳入所选月份内任一月末在职过的人员，同一人员只计 1 人，人员属性取最后一个所选月；P 值人数为达到该分位阈值及以上的人数。当前筛选机构数：${selectedOrgCount}。
+          口径：单月仅纳入当月月末在职人员；多月纳入所选月份内任一月末在职过的人员，同一人员只计 1 人，人员属性取最后一个所选月。当前筛选机构数：${selectedOrgCount}。
         </div>
       `;
       renderTeamEnhancedMonthFilter();

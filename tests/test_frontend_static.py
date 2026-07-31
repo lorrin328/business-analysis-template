@@ -102,12 +102,12 @@ def test_frontend_centralizes_read_api_fetches():
     # Shared runtime modules are loaded in HTML head
     assert '<script src="js/constants.js"></script>' in html
     assert '<script src="js/format-utils.js"></script>' in html
-    assert '<script src="js/month-multi-select.js?v=1.0.119"></script>' in html
+    assert '<script src="js/month-multi-select.js?v=1.0.120"></script>' in html
     assert '<script src="js/api-client.js?v=1.0.116"></script>' in html
     assert '<script src="js/auth-ui.js?v=1.0.116"></script>' in html
     assert '<script src="js/export-excel.js?v=1.0.116"></script>' in html
     assert '<script src="js/upload.js?v=1.0.116"></script>' in html
-    assert '<script src="js/target-modal.js?v=1.0.119"></script>' in html
+    assert '<script src="js/target-modal.js?v=1.0.120"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.116"></script>' in html
     assert '<script src="js/platform-trend.js?v=1.0.116"></script>' in html
     assert '<script src="js/team-analysis.js?v=1.0.116"></script>' in html
@@ -508,7 +508,7 @@ def test_honor_page_is_separate_runtime():
     assert "????" not in html
     assert "<title>星钻联盟</title>" in honor_html
     assert "星钻联盟荣誉体系" not in honor_html
-    assert '<script src="/js/honor.js?v=1.0.119"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.120"></script>' in honor_html
     assert honor_html.count('role="tab"') == 4
     assert 'data-tab="tracking">总览</button>' in honor_html
     assert 'data-tab="analysis">机构与项目</button>' in honor_html
@@ -1088,9 +1088,9 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert "function renderTeamEnhancedPanel()" in team
     assert "teamTenureStructureTable" in team
     assert "teamProductivityBandTable" in team
-    assert "teamPercentileTable" in team
-    assert "teamProductivityTrendTable" in team
-    assert "teamOrgPercentileTable" in team
+    assert "teamPercentileTable" not in team
+    assert "teamProductivityTrendTable" not in team
+    assert "teamOrgPercentileTable" not in team
     assert "teamStandardManpowerSummaryTable" in team
     assert "teamStandardManpowerTrendTable" in team
     assert "teamStandardManpowerOrgTable" in team
@@ -1145,12 +1145,10 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert "Object.keys(selectedTeamEnhancedBusinessLines).map(line" in team
     assert "periodType" in team
     assert "selectedTeamMonths" in team
-    assert "≥P25人数" in team
-    assert "≥P50人数" in team
-    assert "≥P75人数" in team
     assert "零/负产能占比" in team
-    assert "P50 中位数" in team
-    assert "P75 骨干门槛" in team
+    assert "P25" not in team
+    assert "P50" not in team
+    assert "P75" not in team
     assert "月末在职样本" in team
     assert "诊断矩阵" not in team
     assert "接入人级底座" not in team
@@ -1158,7 +1156,7 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert "需完善人员月度明细统计" not in team
     assert "需完善人员产能分布统计" not in team
     assert "单月仅纳入当月月末在职人员" in team
-    assert "P 值人数为达到该分位阈值及以上的人数" in team
+    assert ".team-insight-grid { display: grid; grid-template-columns: repeat(3, 1fr);" in html
     assert "#teamEnhancedPanel .team-insight-grid { grid-template-columns: repeat(2, minmax(0, 1fr));" in html
     assert "#teamEnhancedPanel .team-insight-grid {\n        grid-template-columns: 1fr;" in html
     assert "#teamEnhancedPanel .structure-table {\n        min-width: 680px;" in html
