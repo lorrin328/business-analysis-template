@@ -110,7 +110,7 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/target-modal.js?v=1.0.120"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.116"></script>' in html
     assert '<script src="js/platform-trend.js?v=1.0.116"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.116"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.121"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -508,7 +508,7 @@ def test_honor_page_is_separate_runtime():
     assert "????" not in html
     assert "<title>星钻联盟</title>" in honor_html
     assert "星钻联盟荣誉体系" not in honor_html
-    assert '<script src="/js/honor.js?v=1.0.120"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.121"></script>' in honor_html
     assert honor_html.count('role="tab"') == 4
     assert 'data-tab="tracking">总览</button>' in honor_html
     assert 'data-tab="analysis">机构与项目</button>' in honor_html
@@ -1075,6 +1075,13 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
 
     assert 'id="teamChart"' in html
     assert 'id="teamEnhancedPanel"' in html
+    assert '<details class="chart-card collapsible-chart-card" data-permission="team_enhanced">' in html
+    assert '<summary class="chart-header">' in html
+    assert '<details class="chart-card collapsible-chart-card" data-permission="team_enhanced" open>' not in html
+    assert ".collapsible-chart-card > summary::after {" in html
+    assert "content: '展开';" in html
+    assert ".collapsible-chart-card[open] > summary::after {" in html
+    assert "content: '收起';" in html
     assert "队伍结构与产能分析（试运行）" not in html
     assert "队伍结构与产能分析" in html
     assert 'data-permission="team_enhanced"' in html
