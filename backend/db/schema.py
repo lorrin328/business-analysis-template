@@ -431,6 +431,116 @@ def init_db():
             VALUES ('20260527_honor_domain', 0, 'Adds honor alliance tables and field audit foundation')
         ''')
 
+        c.execute('''CREATE TABLE IF NOT EXISTS history_import_batches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_directory TEXT NOT NULL,
+            source_cutoff TEXT,
+            performance_rows INTEGER NOT NULL DEFAULT 0,
+            customer_source_rows INTEGER NOT NULL DEFAULT 0,
+            customer_policy_rows INTEGER NOT NULL DEFAULT 0,
+            source_text_issue_rows INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'running',
+            reconciliation_json TEXT NOT NULL DEFAULT '{}',
+            error_message TEXT,
+            imported_by TEXT NOT NULL DEFAULT 'system',
+            imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS history_import_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL,
+            source_kind TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            file_hash TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            row_count INTEGER NOT NULL DEFAULT 0,
+            min_period TEXT,
+            max_period TEXT,
+            text_issue_count INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(batch_id, file_name),
+            FOREIGN KEY(batch_id) REFERENCES history_import_batches(id)
+        )''')
+        _migrate(c, "ALTER TABLE history_import_batches ADD COLUMN source_text_issue_rows INTEGER NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE history_import_files ADD COLUMN text_issue_count INTEGER NOT NULL DEFAULT 0")
+        c.execute('''CREATE TABLE IF NOT EXISTS history_reconciliation (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL,
+            period TEXT NOT NULL,
+            business_line TEXT NOT NULL,
+            existing_rows INTEGER NOT NULL DEFAULT 0,
+            source_rows INTEGER NOT NULL DEFAULT 0,
+            existing_qj_premium REAL NOT NULL DEFAULT 0,
+            source_qj_premium REAL NOT NULL DEFAULT 0,
+            existing_policy_count INTEGER NOT NULL DEFAULT 0,
+            source_policy_count INTEGER NOT NULL DEFAULT 0,
+            matched_policy_count INTEGER NOT NULL DEFAULT 0,
+            decision TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(batch_id, period, business_line),
+            FOREIGN KEY(batch_id) REFERENCES history_import_batches(id)
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS customer_policy_snapshot (
+            policy_no TEXT PRIMARY KEY,
+            customer_id TEXT NOT NULL,
+            application_time TEXT,
+            import_time TEXT,
+            callback_time TEXT,
+            underwriting_time TEXT NOT NULL,
+            first_account_time TEXT,
+            latest_account_time TEXT,
+            hesitation_surrender_time TEXT,
+            policy_status TEXT NOT NULL,
+            termination_reason TEXT,
+            status_group TEXT NOT NULL,
+            raw_row_count INTEGER NOT NULL DEFAULT 1,
+            batch_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(batch_id) REFERENCES history_import_batches(id)
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS customer_master (
+            customer_id TEXT PRIMARY KEY,
+            first_underwriting_time TEXT NOT NULL,
+            first_policy_no TEXT NOT NULL,
+            total_policy_count INTEGER NOT NULL DEFAULT 0,
+            active_policy_count INTEGER NOT NULL DEFAULT 0,
+            suspended_policy_count INTEGER NOT NULL DEFAULT 0,
+            terminated_policy_count INTEGER NOT NULL DEFAULT 0,
+            batch_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(batch_id) REFERENCES history_import_batches(id)
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS customer_policy_month_fact (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            transaction_date TEXT,
+            business_line TEXT NOT NULL,
+            org TEXT NOT NULL DEFAULT '',
+            policy_no TEXT NOT NULL,
+            customer_id TEXT,
+            underwriting_time TEXT,
+            first_customer_underwriting_time TEXT,
+            is_longterm INTEGER NOT NULL DEFAULT 0,
+            qj_premium REAL NOT NULL DEFAULT 0,
+            gm_premium REAL NOT NULL DEFAULT 0,
+            zs_premium REAL NOT NULL DEFAULT 0,
+            value_premium REAL NOT NULL DEFAULT 0,
+            accepted_count REAL NOT NULL DEFAULT 0,
+            policy_status TEXT,
+            termination_reason TEXT,
+            status_group TEXT NOT NULL DEFAULT 'unmatched',
+            customer_match INTEGER NOT NULL DEFAULT 0,
+            batch_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(year, month, business_line, org, policy_no),
+            FOREIGN KEY(batch_id) REFERENCES history_import_batches(id)
+        )''')
+        c.execute('''
+            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+            VALUES ('20260801_customer_history_domain', 0, 'Adds full history import audit and customer policy analysis facts')
+        ''')
+
         c.execute('''CREATE TABLE IF NOT EXISTS performance (
             "年月" TEXT, "业务模式" TEXT, "销售机构名称" TEXT, "产品类型" TEXT,
             "期交保费" REAL DEFAULT 0, "年化规保" REAL DEFAULT 0,
@@ -460,6 +570,16 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_user_permissions_user ON user_module_permissions(user_id)',
             'CREATE INDEX IF NOT EXISTS ix_raw_performance_ym_line ON performance("年月", "业务模式")',
             'CREATE INDEX IF NOT EXISTS ix_raw_jingdai_time_org ON jingdai("时间", "经代机构")',
+            'CREATE INDEX IF NOT EXISTS ix_history_files_batch ON history_import_files(batch_id, source_kind)',
+            'CREATE INDEX IF NOT EXISTS ix_history_reconciliation_batch ON history_reconciliation(batch_id, period, business_line)',
+            'CREATE INDEX IF NOT EXISTS ix_customer_policy_customer ON customer_policy_snapshot(customer_id, underwriting_time)',
+            'CREATE INDEX IF NOT EXISTS ix_customer_policy_status ON customer_policy_snapshot(status_group, underwriting_time)',
+            'CREATE INDEX IF NOT EXISTS ix_customer_master_first_date ON customer_master(first_underwriting_time)',
+            'CREATE INDEX IF NOT EXISTS ix_customer_fact_period_line ON customer_policy_month_fact(year, month, business_line)',
+            'CREATE INDEX IF NOT EXISTS ix_customer_fact_org_period ON customer_policy_month_fact(org, year, month, business_line)',
+            'CREATE INDEX IF NOT EXISTS ix_customer_fact_customer ON customer_policy_month_fact(customer_id, year, month)',
+            'CREATE INDEX IF NOT EXISTS ix_customer_fact_policy ON customer_policy_month_fact(policy_no)',
+            'CREATE INDEX IF NOT EXISTS ix_customer_fact_status ON customer_policy_month_fact(status_group, year, month)',
         ]:
             c.execute(sql)
 
