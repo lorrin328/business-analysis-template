@@ -43,6 +43,7 @@ MODULE_KEYS = [
     "scheme_calculation",
     "scheme_upload",
     "branch_analysis",
+    "customer_analysis",
     "market_analysis",
 ]
 
@@ -76,6 +77,7 @@ ROLE_DEFAULT_PERMISSIONS = {
         "scheme_calculation": True,
         "scheme_upload": False,
         "branch_analysis": False,
+        "customer_analysis": False,
         "market_analysis": False,
     },
 }

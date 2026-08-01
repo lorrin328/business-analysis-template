@@ -28,7 +28,13 @@ from etl import (
     aggregate_transform_longterm,
     aggregate_value,
 )
-from services.raw_table_reader import read_raw_table_dataframe
+from services.raw_table_reader import (
+    compact_period_expr,
+    pick_existing_column,
+    quote_identifier,
+    raw_table_columns,
+    read_raw_table_dataframe,
+)
 
 
 RAW_TABLES = ("performance", "jingdai", "hr_data", "value_data")
@@ -53,6 +59,50 @@ def _read_raw_table(conn, table: str) -> pd.DataFrame | None:
     if not _table_exists(conn, table):
         return None
     return read_raw_table_dataframe(conn, table).drop_duplicates()
+
+
+PERIOD_COLUMNS = {
+    "performance": ["年月", "年月日", "入账时间", "承保时间"],
+    "jingdai": ["时间", "年月", "年月日", "承保日期"],
+    "hr_data": ["统计日期", "年月", "统计月"],
+    "value_data": ["年月", "时间"],
+}
+
+
+def _period_column(conn, table: str) -> str | None:
+    return pick_existing_column(conn, table, PERIOD_COLUMNS.get(table, []))
+
+
+def _raw_years(conn, table: str) -> list[int]:
+    column = _period_column(conn, table)
+    if not column:
+        return []
+    expression = compact_period_expr(column)
+    rows = conn.execute(
+        f"""SELECT DISTINCT CAST(substr({expression},1,4) AS INTEGER)
+            FROM {quote_identifier(table)}
+            WHERE CAST(substr({expression},1,4) AS INTEGER) BETWEEN 1900 AND 2100
+            ORDER BY 1"""
+    ).fetchall()
+    return [int(row[0]) for row in rows]
+
+
+def _read_raw_table_year(conn, table: str, year: int) -> pd.DataFrame | None:
+    if not _table_exists(conn, table):
+        return None
+    columns = raw_table_columns(conn, table)
+    period_column = _period_column(conn, table)
+    if not columns or not period_column:
+        return None
+    select_list = ", ".join(quote_identifier(column) for column in columns)
+    expression = compact_period_expr(period_column)
+    frame = pd.read_sql_query(
+        f"""SELECT {select_list} FROM {quote_identifier(table)}
+            WHERE CAST(substr({expression},1,4) AS INTEGER)=?""",
+        conn,
+        params=(year,),
+    )
+    return frame.drop_duplicates()
 
 
 def _merge_active_headcount(hr_rows: list[dict], active_rows: list[dict]) -> None:
@@ -136,32 +186,38 @@ def build_aggregate_rows_from_raw(raw_tables: dict[str, pd.DataFrame]) -> dict[s
 
 
 def rebuild_aggregates_from_raw_tables() -> RebuildResult:
-    """Rebuild aggregate tables from raw detail tables already stored in SQLite."""
+    """Rebuild aggregates one year at a time so multi-million-row history stays bounded."""
     init_db()
     with get_db() as conn:
-        raw_tables = {
-            table: df
+        stored_counts = {
+            table: conn.execute(f"SELECT COUNT(*) FROM {quote_identifier(table)}").fetchone()[0]
             for table in RAW_TABLES
-            if (df := _read_raw_table(conn, table)) is not None
+            if _table_exists(conn, table)
         }
-        raw_counts = {table: len(df) for table, df in raw_tables.items()}
-        if not any(raw_counts.values()):
+        if not any(stored_counts.values()):
             raise RuntimeError("SQLite raw tables are empty; upload Excel or run rebuild_from_excels.py first")
-
-        table_rows = build_aggregate_rows_from_raw(raw_tables)
-        years = _years_from_rows(table_rows)
+        raw_counts = {table: 0 for table in stored_counts}
+        years = sorted({year for table in RAW_TABLES for year in _raw_years(conn, table)})
         if not years:
             raise RuntimeError("raw tables did not produce any aggregate rows")
 
         conn.execute("BEGIN IMMEDIATE")
         try:
+            table_counts = {table: 0 for table in AGG_TABLES}
             for year in years:
+                raw_tables = {
+                    table: frame
+                    for table in RAW_TABLES
+                    if (frame := _read_raw_table_year(conn, table, year)) is not None
+                }
+                for table, frame in raw_tables.items():
+                    raw_counts[table] += len(frame)
+                table_rows = build_aggregate_rows_from_raw(raw_tables)
                 for table in AGG_TABLES:
                     clear_table_year_data(conn, table, year)
-            table_counts = {}
-            for table, rows in table_rows.items():
-                replace_rows(conn, table, rows)
-                table_counts[table] = len(rows)
+                    rows = table_rows.get(table, [])
+                    replace_rows(conn, table, rows)
+                    table_counts[table] += len(rows)
             conn.commit()
         except Exception:
             conn.rollback()

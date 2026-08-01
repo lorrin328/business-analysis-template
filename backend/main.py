@@ -26,6 +26,7 @@ from api.auth_routes import admin_router, router as auth_router
 from api.honor import router as honor_router
 from api.scheme import router as scheme_router
 from api.branch_analysis import router as branch_analysis_router
+from api.customer_analysis import router as customer_analysis_router
 from api.ai import router as ai_router
 from api.market_analysis import router as market_analysis_router
 from auth import get_current_user, require_permission
@@ -140,7 +141,7 @@ if _cors_origins:
 # 初始化数据库
 init_db()
 
-for router in [auth_router, admin_router, kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, export_router, honor_router, scheme_router, branch_analysis_router, market_analysis_router, ai_router, legacy_router]:
+for router in [auth_router, admin_router, kpi_router, trend_router, org_router, team_router, product_router, targets_router, payment_period_router, config_router, product_config_router, diagnostics_router, export_router, honor_router, scheme_router, branch_analysis_router, customer_analysis_router, market_analysis_router, ai_router, legacy_router]:
     app.include_router(router)
 
 
@@ -360,6 +361,11 @@ if os.path.exists(os.path.join(static_dir, '经营分析模板.html')):
     @app.get("/branch-analysis.html")
     def branch_analysis_page():
         return FileResponse(os.path.join(static_dir, "branch-analysis.html"))
+
+    @app.get("/customer-analysis")
+    @app.get("/customer-analysis.html")
+    def customer_analysis_page():
+        return FileResponse(os.path.join(static_dir, "customer-analysis.html"))
 
     @app.get("/personnel-management")
     @app.get("/personnel-management.html")

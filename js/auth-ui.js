@@ -25,6 +25,7 @@
     scheme_calculation: '方案计算',
     scheme_upload: '方案上传',
     branch_analysis: '证保网点分析',
+    customer_analysis: '客户分析',
     market_analysis: '市场研判'
   };
   const ROLE_LABELS = { admin: '管理员组', senior: '高级用户组', normal: '普通用户组' };

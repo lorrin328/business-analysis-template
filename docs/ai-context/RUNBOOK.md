@@ -1,5 +1,49 @@
 # 运行手册
 
+## 全量历史业绩与客户分析
+
+- 页面：`/customer-analysis`；权限：`customer_analysis`。管理员和高级用户默认开启，普通用户默认关闭。
+- API：`GET /api/customer-analysis/overview`；支持 `year`、`periodType=year|quarter|month`、`periodValue`、`businessLine=OTO|证保|蚁桥`、`org` 和 `policyScope=all|longterm`。
+- 页面中的保单状态取客户清单数据截止日快照；不得将“当前有效率”表述为13个月或25个月继续率。
+- “持单与间隔”统计所选期间业绩客户的全部已知保单；首次复购间隔固定为第一张到第二张保单的承保日期间隔。
+
+首次全量导入必须在生产运行库的SQLite Online Backup副本上执行，禁止直接对运行中的 `business_data.db` 导入：
+
+```bash
+sudo -u www-data /opt/business-analysis/backend/venv/bin/python /opt/business-analysis/backend/import_full_history.py \
+  --database /var/lib/business-analysis/business_data.next.db \
+  --source-dir /var/lib/business-analysis-import/full-history \
+  --imported-by release
+
+sudo -u www-data /opt/business-analysis/backend/venv/bin/python /opt/business-analysis/backend/audit_customer_analysis.py \
+  --database /var/lib/business-analysis/business_data.next.db --full-integrity
+```
+
+当前2026-07-31批次门禁：
+
+- 12份业绩文件、5份客户文件；
+- `performance=5175228`；
+- 客户源记录 `3539935`，保单快照 `3100006`；
+- 业绩月份2007-07至2026-07，共229个月；
+- `source_text_issue_rows=1710`，仅来自早期 `人员工号` 源文本替换字符；
+- `PRAGMA integrity_check` 和 `PRAGMA quick_check` 均为 `ok`；
+- 2026年度客户分析的保单关联率应为99%以上，未关联保单必须保留为“未关联”，不得删除后抬高匹配率。
+
+候选库完成后，先停止服务，核对候选库所有者和权限，以同目录临时文件原子替换 `/var/lib/business-analysis/business_data.db`，再启动服务。回滚使用部署前在线备份，不得复制运行中的WAL主文件。
+
+部署后至少验证：
+
+```text
+GET /api/health                                  -> 200, v1.0.123, latest_period=202607
+GET /customer-analysis                           -> 200
+GET /js/customer-analysis.js                     -> 200
+GET /api/customer-analysis/overview              -> 未登录401
+GET /api/customer-analysis/overview?year=2026    -> 管理员200
+```
+
+还需复核客户页六项首屏指标、五个页签、年度/季度/月度、业务、机构和长险筛选；“持单与间隔”应同时出现持单数、有效持单数、首次复购间隔和口径说明，并确认后台warning以上日志为空。
+
+
 ## 星钻月份与过程版本
 
 - 页面：`/honor`；普通用户具备 `honor_view` 后可查看。

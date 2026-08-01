@@ -25,6 +25,7 @@ data.json
 excel/
 output/
 outputs/
+.tmp/
 data/reference/*
 !data/reference/README.md
 _external_materials/

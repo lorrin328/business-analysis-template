@@ -7,7 +7,7 @@ import pandas as pd
 
 from db import get_db, get_kpi_data, init_db
 from db.schema import AGG_TABLES
-from services.aggregate_rebuilder import RAW_TABLES, _read_raw_table, build_aggregate_rows_from_raw
+from services.aggregate_rebuilder import RAW_TABLES, _read_raw_table_year, build_aggregate_rows_from_raw
 
 
 @dataclass
@@ -185,19 +185,12 @@ def run_data_quality_audit(year: int) -> dict:
         raw_tables = {
             table: df
             for table in RAW_TABLES
-            if (df := _read_raw_table(conn, table)) is not None
+            if (df := _read_raw_table_year(conn, table, year)) is not None
         }
         expected_rows = build_aggregate_rows_from_raw(raw_tables) if raw_tables else {table: [] for table in AGG_TABLES}
-        years = sorted({
-            int(row["year"])
-            for rows in expected_rows.values()
-            for row in rows
-            if row.get("year")
-        })
-        audit_years = [year] if year in years else years[-1:]
         issues = []
         issues.extend(_raw_duplicate_issues(raw_tables))
-        issues.extend(_compare_aggregates(conn, expected_rows, audit_years))
+        issues.extend(_compare_aggregates(conn, expected_rows, [year]))
     issues.extend(_kpi_invariant_issues(year))
     status = "fail" if any(i.severity == "error" for i in issues) else ("warn" if issues else "ok")
     return {
