@@ -7,7 +7,13 @@ from typing import Any
 from db.connection import get_db
 from db.schema import init_db
 from metrics.business_rules import standard_premium_for_manpower
-from services.raw_table_reader import quote_identifier, raw_table_columns, read_raw_table_rows
+from services.raw_table_reader import (
+    append_indexed_year_filter,
+    append_period_filter,
+    pick_existing_column,
+    quote_identifier,
+    raw_table_columns,
+)
 from services.team_analysis_utils import (
     HIGH_PRODUCTIVITY_BANDS,
     PRODUCTIVITY_BANDS,
@@ -76,10 +82,67 @@ def _period_months(
 
 
 def _load_performance(conn, year: int, business_lines: set[str] | None, orgs: set[str] | None):
+    aggregate_columns = _available_columns(conn, "agg_staff_month_performance")
+    if aggregate_columns:
+        params: list[Any] = [year]
+        where = ["year = ?"]
+        if business_lines:
+            placeholders = ",".join(["?"] * len(business_lines))
+            where.append(f"channel IN ({placeholders})")
+            params.extend(sorted(business_lines))
+        if orgs:
+            placeholders = ",".join(["?"] * len(orgs))
+            where.append(f"org IN ({placeholders})")
+            params.extend(sorted(orgs))
+        aggregate_rows = conn.execute(
+            f'''SELECT year, month, staff_id,
+                       SUM(qj_premium) AS qj_premium,
+                       SUM(standard_premium) AS standard_premium,
+                       SUM(policy_count) AS policy_count
+                FROM agg_staff_month_performance
+                WHERE {' AND '.join(where)}
+                GROUP BY year, month, staff_id''',
+            params,
+        ).fetchall()
+        if aggregate_rows:
+            return {
+                (int(row["year"]), int(row["month"]), str(row["staff_id"])): {
+                    "qj_premium": float(row["qj_premium"] or 0),
+                    "standard_premium": float(row["standard_premium"] or 0),
+                    "policy_count": int(row["policy_count"] or 0),
+                }
+                for row in aggregate_rows
+            }
+
     columns = _available_columns(conn, "performance")
     if not columns:
         return {}
-    rows = read_raw_table_rows(conn, "performance")
+    needed_candidates = (
+        "年", "年月", "年月日", "入账时间", "承保时间",
+        "人员工号", "人员代码", "工号",
+        "业务模式", "业务模式名称",
+        "销售机构名称", "机构", "机构名称",
+        "期交保费", "折算保费", "标准保费", "标保",
+        "产品代码", "投保单号", "保单号",
+    )
+    selected_columns = [column for column in needed_candidates if column in columns]
+    select_list = ", ".join(quote_identifier(column) for column in selected_columns)
+    params: list[Any] = []
+    if "年月" in columns:
+        period_where = append_indexed_year_filter("年月", year, params)
+    else:
+        period_column = pick_existing_column(
+            conn,
+            "performance",
+            ["年月日", "入账时间", "承保时间", "年"],
+        )
+        if not period_column:
+            return {}
+        period_where = append_period_filter(period_column, year, None, params)
+    rows = conn.execute(
+        f"SELECT {select_list} FROM performance WHERE 1=1 {period_where}",
+        params,
+    ).fetchall()
     grouped: dict[tuple[int, int, str], dict[str, Any]] = defaultdict(
         lambda: {"qj_premium": 0.0, "standard_premium": 0.0, "policy_numbers": set()}
     )

@@ -27,6 +27,8 @@
     let teamEnhancedData = null;
     let teamEnhancedLoading = false;
     let teamEnhancedRequestSerial = 0;
+    let teamEnhancedRequestKey = '';
+    let teamEnhancedRequestPromise = null;
     let selectedTeamEnhancedPeriodType = 'month';
     const selectedTeamEnhancedBusinessLines = { OTO: true, '证保': true, '蚁桥': true };
 
@@ -261,10 +263,27 @@
     }
 
     async function refreshTeamEnhancedPanel() {
+      const details = document.getElementById('teamEnhancedDetails');
+      if (details && !details.open) return;
+      const requestKey = buildTeamEnhancedParams().toString();
+      if (teamEnhancedLoading && teamEnhancedRequestPromise && requestKey === teamEnhancedRequestKey) {
+        return teamEnhancedRequestPromise;
+      }
       const requestSerial = ++teamEnhancedRequestSerial;
       teamEnhancedData = null;
-      const shouldRender = await fetchTeamEnhancedData(requestSerial);
-      if (shouldRender) renderTeamEnhancedPanel();
+      teamEnhancedRequestKey = requestKey;
+      teamEnhancedRequestPromise = (async () => {
+        const shouldRender = await fetchTeamEnhancedData(requestSerial);
+        if (shouldRender) renderTeamEnhancedPanel();
+      })();
+      try {
+        await teamEnhancedRequestPromise;
+      } finally {
+        if (requestSerial === teamEnhancedRequestSerial) {
+          teamEnhancedRequestPromise = null;
+          teamEnhancedRequestKey = '';
+        }
+      }
     }
 
     function renderRows(rows, columns, emptyText) {
@@ -664,7 +683,12 @@
 
     teamChart.setOption(getTeamOption());
     bindTeamEnhancedControls();
-    refreshTeamEnhancedPanel();
+    const teamEnhancedDetails = document.getElementById('teamEnhancedDetails');
+    if (teamEnhancedDetails) {
+      teamEnhancedDetails.addEventListener('toggle', () => {
+        if (teamEnhancedDetails.open && !teamEnhancedData) refreshTeamEnhancedPanel();
+      });
+    }
 
     async function switchTeamYear(value) {
       selectedTeamYear = value;

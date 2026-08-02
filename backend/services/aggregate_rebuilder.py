@@ -10,6 +10,7 @@ from db.schema import AGG_TABLES
 from etl import (
     aggregate_active_headcount,
     aggregate_daily_performance,
+    aggregate_jingdai_product_daily,
     aggregate_hr,
     aggregate_jingdai,
     aggregate_jingdai_daily,
@@ -25,10 +26,13 @@ from etl import (
     aggregate_payment_period_daily,
     aggregate_performance,
     aggregate_product_structure,
+    aggregate_staff_month_performance,
+    aggregate_transform_product_daily,
     aggregate_transform_longterm,
     aggregate_value,
 )
 from services.raw_table_reader import (
+    append_indexed_year_filter,
     compact_period_expr,
     pick_existing_column,
     quote_identifier,
@@ -96,11 +100,17 @@ def _read_raw_table_year(conn, table: str, year: int) -> pd.DataFrame | None:
         return None
     select_list = ", ".join(quote_identifier(column) for column in columns)
     expression = compact_period_expr(period_column)
+    params: list = []
+    coarse_where = ""
+    if (table, period_column) in {("performance", "年月"), ("jingdai", "时间")}:
+        coarse_where = append_indexed_year_filter(period_column, year, params)
+    params.append(year)
     frame = pd.read_sql_query(
         f"""SELECT {select_list} FROM {quote_identifier(table)}
-            WHERE CAST(substr({expression},1,4) AS INTEGER)=?""",
+            WHERE 1=1 {coarse_where}
+              AND CAST(substr({expression},1,4) AS INTEGER)=?""",
         conn,
-        params=(year,),
+        params=params,
     )
     return frame.drop_duplicates()
 
@@ -153,6 +163,8 @@ def build_aggregate_rows_from_raw(raw_tables: dict[str, pd.DataFrame]) -> dict[s
         table_rows["agg_daily_performance"] = aggregate_daily_performance(perf)
         table_rows["agg_org_daily_performance"] = aggregate_org_daily_performance(perf)
         table_rows["agg_product_structure"] = aggregate_product_structure(perf)
+        table_rows["agg_staff_month_performance"] = aggregate_staff_month_performance(perf)
+        table_rows["agg_product_daily"].extend(aggregate_transform_product_daily(perf))
         table_rows["agg_org_performance"] = aggregate_org_performance(perf)
         table_rows["agg_payment_period"].extend(aggregate_payment_period(perf))
         table_rows["agg_payment_period_daily"].extend(aggregate_payment_period_daily(perf))
@@ -169,6 +181,7 @@ def build_aggregate_rows_from_raw(raw_tables: dict[str, pd.DataFrame]) -> dict[s
         table_rows["agg_payment_period"].extend(aggregate_jingdai_payment_period(jingdai))
         table_rows["agg_payment_period_daily"].extend(aggregate_jingdai_payment_period_daily(jingdai))
         table_rows["agg_longterm_qj"].extend(aggregate_jingdai_longterm(jingdai))
+        table_rows["agg_product_daily"].extend(aggregate_jingdai_product_daily(jingdai))
 
     if hr is not None and not hr.empty:
         table_rows["agg_hr_data"] = aggregate_hr(hr)
@@ -218,6 +231,10 @@ def rebuild_aggregates_from_raw_tables() -> RebuildResult:
                     rows = table_rows.get(table, [])
                     replace_rows(conn, table, rows)
                     table_counts[table] += len(rows)
+            conn.commit()
+            # Refresh planner statistics after a bulk rebuild so the first
+            # dashboard request does not pay for stale index choices.
+            conn.execute("PRAGMA optimize")
             conn.commit()
         except Exception:
             conn.rollback()

@@ -467,7 +467,10 @@
           apiData.kpi = cached.kpi;
         }
         if (updateProduct) {
-          await fetchProductData(yearLabel);
+          apiData.product = cached.product || null;
+          if (!updateProductDataFromApi()) {
+            await fetchProductData(yearLabel);
+          }
         }
         // 同时加载上一年数据到 platformMock，用于季度/月度同比趋势线
         const prevYearNum = yearNum - 1;

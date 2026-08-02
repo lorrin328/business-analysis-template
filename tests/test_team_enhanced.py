@@ -1,10 +1,46 @@
 import os
+import sqlite3
 import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 BACKEND = os.path.join(ROOT, "backend")
 if BACKEND not in sys.path:
     sys.path.insert(0, BACKEND)
+
+
+def test_team_enhanced_performance_query_is_bounded_to_requested_year(tmp_path):
+    from db.repositories.team_enhanced import _load_performance
+
+    db_path = tmp_path / "team_year_filter.db"
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        '''CREATE TABLE performance (
+            "年月" TEXT, "年月日" TEXT, "人员工号" TEXT, "业务模式" TEXT,
+            "销售机构名称" TEXT, "期交保费" REAL, "折算保费" REAL,
+            "产品代码" TEXT, "投保单号" TEXT, "无关大字段" TEXT
+        )'''
+    )
+    conn.execute('CREATE INDEX ix_perf_year ON performance("年月", "业务模式")')
+    conn.executemany(
+        'INSERT INTO performance VALUES (?,?,?,?,?,?,?,?,?,?)',
+        [
+            ("2025-12", "2025-12-31", "001", "OTO", "上海", 90000, 90000, "A", "P0", "old"),
+            ("2026-01", "2026-01-02", "001", "OTO", "上海", 10000, 10000, "A", "P1", "current"),
+            ("2027-01", "2027-01-02", "001", "OTO", "上海", 80000, 80000, "A", "P2", "future"),
+        ],
+    )
+
+    plan = conn.execute(
+        'EXPLAIN QUERY PLAN SELECT "年月" FROM performance WHERE "年月" >= ? AND "年月" < ?',
+        ("2026", "2027"),
+    ).fetchall()
+    result = _load_performance(conn, 2026, None, None)
+
+    assert any("SEARCH performance USING" in row[3] for row in plan)
+    assert result[(2026, 1, "1")]["qj_premium"] == 1.0
+    assert result[(2026, 1, "1")]["policy_count"] == 1
+    conn.close()
 
 
 def test_team_enhanced_keeps_zero_productivity_staff(tmp_path, monkeypatch):
