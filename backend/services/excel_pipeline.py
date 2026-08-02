@@ -10,6 +10,7 @@ from db import clear_table_year_data, replace_rows, replace_rows_incremental
 from etl import (
     aggregate_active_headcount,
     aggregate_daily_performance,
+    aggregate_jingdai_product_daily,
     aggregate_hr,
     aggregate_jingdai,
     aggregate_jingdai_daily,
@@ -25,6 +26,8 @@ from etl import (
     aggregate_payment_period_daily,
     aggregate_performance,
     aggregate_product_structure,
+    aggregate_staff_month_performance,
+    aggregate_transform_product_daily,
     aggregate_transform_longterm,
     aggregate_value,
     parse_hr_excel,
@@ -42,6 +45,8 @@ AGGREGATE_TABLE_ORDER = [
     "agg_daily_performance",
     "agg_org_daily_performance",
     "agg_product_structure",
+    "agg_staff_month_performance",
+    "agg_product_daily",
     "agg_jingdai",
     "agg_jingdai_daily",
     "agg_hr_data",
@@ -183,6 +188,8 @@ def _parse_performance(source: ExcelSource, result: ExcelPipelineResult) -> None
     _merge_rows(rows, "agg_daily_performance", daily_rows)
     _merge_rows(rows, "agg_org_daily_performance", aggregate_org_daily_performance(frame))
     _merge_rows(rows, "agg_product_structure", aggregate_product_structure(frame))
+    _merge_rows(rows, "agg_staff_month_performance", aggregate_staff_month_performance(frame))
+    _merge_rows(rows, "agg_product_daily", aggregate_transform_product_daily(frame))
     _merge_rows(rows, "_active_headcount", aggregate_active_headcount(frame))
     _merge_rows(rows, "_org_active_headcount", aggregate_org_active_headcount(frame))
     _merge_rows(rows, "agg_org_performance", org_perf_rows)
@@ -214,6 +221,7 @@ def _parse_jingdai(source: ExcelSource, result: ExcelPipelineResult) -> None:
     _merge_rows(rows, "agg_payment_period", jd_pay_period_rows)
     _merge_rows(rows, "agg_payment_period_daily", jd_pay_period_daily_rows)
     _merge_rows(rows, "agg_longterm_qj", jd_longterm_rows)
+    _merge_rows(rows, "agg_product_daily", aggregate_jingdai_product_daily(frame))
     result.source_summaries.append(
         f"jingdai: {source.filename} -> {len(jd_rows)} monthly, "
         f"{len(jd_daily_rows)} daily, {len(jd_pay_period_rows)} pay period rows, "

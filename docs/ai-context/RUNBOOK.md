@@ -1,5 +1,14 @@
 # 运行手册
 
+## 全量历史库主看板性能
+
+- 队伍增强应查询`agg_staff_month_performance`，产品结构应查询`agg_product_daily`；生产两表为空时虽然可回退原始明细，但应视为聚合未完成并立即排查。
+- 查看规模：`SELECT COUNT(*) FROM agg_staff_month_performance;`、`SELECT COUNT(*) FROM agg_product_daily;`。当前全量基线分别约36.8万行、5.64万行。
+- 全量聚合重建在5GB副本上约需6分钟、峰值内存约1.6GB。生产执行前先形成在线备份并停止主服务释放内存，完成后再启动服务。
+- 代码部署保留生产库使用`REBUILD_DATABASE=0 sudo bash deploy/deploy.sh`；部署脚本会从运行库原始表按年度重建聚合，不会使用服务器根目录旧Excel覆盖数据。
+- 重建后确认`PRAGMA integrity_check`、`PRAGMA quick_check`均为`ok`，并用`EXPLAIN QUERY PLAN`确认队伍查询命中`ix_staff_perf_year_month`、产品查询命中`ix_product_daily_filter`。
+- 页面验收至少覆盖：主页面首次打开、产品年度/季度/月度切换、队伍模块保持折叠时不请求增强接口、展开后单次加载、客户分析页面正常打开。
+
 ## 全量历史业绩与客户分析
 
 - 页面：`/customer-analysis`；权限：`customer_analysis`。管理员和高级用户默认开启，普通用户默认关闭。

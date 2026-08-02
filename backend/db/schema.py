@@ -19,6 +19,8 @@ AGG_TABLES = [
     'agg_payment_period',
     'agg_payment_period_daily',
     'agg_longterm_qj',
+    'agg_staff_month_performance',
+    'agg_product_daily',
 ]
 
 
@@ -72,6 +74,28 @@ def init_db():
             dimension TEXT NOT NULL, label TEXT NOT NULL, premium REAL NOT NULL DEFAULT 0,
             count INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(year, dimension, label))''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS agg_staff_month_performance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL, month INTEGER NOT NULL,
+            channel TEXT NOT NULL, org TEXT NOT NULL DEFAULT '', staff_id TEXT NOT NULL,
+            qj_premium REAL NOT NULL DEFAULT 0,
+            standard_premium REAL NOT NULL DEFAULT 0,
+            policy_count INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(year, month, channel, org, staff_id))''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS agg_product_daily (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL, month INTEGER NOT NULL, day INTEGER NOT NULL DEFAULT 1,
+            business_type TEXT NOT NULL, channel TEXT NOT NULL DEFAULT '', org TEXT NOT NULL DEFAULT '',
+            product_category TEXT NOT NULL DEFAULT '未分类',
+            product_name TEXT NOT NULL DEFAULT '未分类',
+            qj_premium REAL NOT NULL DEFAULT 0,
+            gm_premium REAL NOT NULL DEFAULT 0,
+            count INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(year, month, day, business_type, channel, org, product_category, product_name))''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS agg_org_performance (
             id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
@@ -540,6 +564,10 @@ def init_db():
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
             VALUES ('20260801_customer_history_domain', 0, 'Adds full history import audit and customer policy analysis facts')
         ''')
+        c.execute('''
+            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+            VALUES ('20260802_dashboard_query_aggregates', 1, 'Adds bounded staff-month and product-day dashboard aggregates')
+        ''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS performance (
             "年月" TEXT, "业务模式" TEXT, "销售机构名称" TEXT, "产品类型" TEXT,
@@ -559,6 +587,10 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_org_perf_year_month_org_channel ON agg_org_performance(year, month, org, channel)',
             'CREATE INDEX IF NOT EXISTS ix_org_value_year_month_org_channel ON agg_org_value(year, month, org, channel)',
             'CREATE INDEX IF NOT EXISTS ix_product_year_dimension ON agg_product_structure(year, dimension)',
+            'CREATE INDEX IF NOT EXISTS ix_staff_perf_year_month ON agg_staff_month_performance(year, month, channel, org)',
+            'CREATE INDEX IF NOT EXISTS ix_staff_perf_staff ON agg_staff_month_performance(year, staff_id, month)',
+            'CREATE INDEX IF NOT EXISTS ix_product_daily_filter ON agg_product_daily(year, month, day, business_type, channel, org)',
+            'CREATE INDEX IF NOT EXISTS ix_product_daily_name ON agg_product_daily(year, business_type, channel, product_name)',
             'CREATE INDEX IF NOT EXISTS ix_target_values_year_period ON target_values(year, period_type, period_value)',
             'CREATE INDEX IF NOT EXISTS ix_target_values_line_org_metric ON target_values(business_line, org, metric_code)',
             'CREATE INDEX IF NOT EXISTS ix_pay_period_year_month_type ON agg_payment_period(year, month, business_type)',

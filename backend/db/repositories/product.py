@@ -7,6 +7,7 @@ from db.schema import init_db
 from services.cutoff_policy import build_period_context
 from services.raw_table_reader import (
     append_date_range_filter,
+    append_indexed_year_filter,
     append_period_filter,
     pick_existing_column,
     quote_identifier,
@@ -33,6 +34,102 @@ def _existing_numeric_expr(
         logger.warning("%s missing expected numeric columns: %s", table, candidates)
         return default
     return f'COALESCE({quote_identifier(col)}, {default})'
+
+
+def _query_product_daily_aggregate(
+    conn: sqlite3.Connection,
+    year: int,
+    transform_lines: list[str],
+    jingdai_orgs: list[str],
+    include_transform: bool,
+    include_jingdai: bool,
+    *,
+    orgs: list[str] | None,
+    months: list[int] | None,
+    metric_type: str,
+    start_cutoff: tuple[int, int] | None,
+    end_cutoff: tuple[int, int] | None,
+) -> tuple[list[dict], list[dict]] | None:
+    table = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='agg_product_daily'"
+    ).fetchone()
+    if not table or not conn.execute(
+        "SELECT 1 FROM agg_product_daily WHERE year=? LIMIT 1", (year,)
+    ).fetchone():
+        return None
+
+    params: list = [year]
+    where = ["year = ?"]
+    if months:
+        placeholders = ",".join(["?"] * len(months))
+        where.append(f"month IN ({placeholders})")
+        params.extend(months)
+    if start_cutoff:
+        where.append("(month > ? OR (month = ? AND day >= ?))")
+        params.extend([start_cutoff[0], start_cutoff[0], start_cutoff[1]])
+    if end_cutoff:
+        where.append("(month < ? OR (month = ? AND day <= ?))")
+        params.extend([end_cutoff[0], end_cutoff[0], end_cutoff[1]])
+
+    source_clauses: list[str] = []
+    source_params: list = []
+    if include_transform and transform_lines:
+        transform_where = ["business_type='转型'"]
+        placeholders = ",".join(["?"] * len(transform_lines))
+        transform_where.append(f"channel IN ({placeholders})")
+        source_params.extend(transform_lines)
+        if orgs:
+            placeholders = ",".join(["?"] * len(orgs))
+            transform_where.append(f"org IN ({placeholders})")
+            source_params.extend(orgs)
+        source_clauses.append("(" + " AND ".join(transform_where) + ")")
+    if include_jingdai:
+        jingdai_where = ["business_type='经代'"]
+        if jingdai_orgs:
+            placeholders = ",".join(["?"] * len(jingdai_orgs))
+            jingdai_where.append(f"org IN ({placeholders})")
+            source_params.extend(jingdai_orgs)
+        source_clauses.append("(" + " AND ".join(jingdai_where) + ")")
+    if not source_clauses:
+        return [], []
+    where.append("(" + " OR ".join(source_clauses) + ")")
+    params.extend(source_params)
+
+    premium_column = "gm_premium" if metric_type == "gm" else "qj_premium"
+    where_sql = " AND ".join(where)
+    structure_rows = [
+        dict(row)
+        for row in conn.execute(
+            f'''SELECT business_type AS source, product_category AS label,
+                       SUM({premium_column}) AS premium, SUM(count) AS count
+                FROM agg_product_daily WHERE {where_sql}
+                GROUP BY business_type, product_category''',
+            params,
+        ).fetchall()
+    ]
+    top_rows = [
+        dict(row)
+        for row in conn.execute(
+            f'''SELECT CASE WHEN business_type='经代' THEN '经代' ELSE channel END AS business_line,
+                       product_name, SUM(qj_premium) AS premium
+                FROM agg_product_daily WHERE {where_sql}
+                GROUP BY business_line, product_name''',
+            params,
+        ).fetchall()
+    ]
+
+    mixed_sources = include_transform and include_jingdai
+    structure = []
+    for row in structure_rows:
+        label = row.get("label") or "未分类"
+        if mixed_sources:
+            label = f"{row.get('source')}-{label}"
+        structure.append({
+            "label": label,
+            "premium": float(row.get("premium") or 0),
+            "count": int(row.get("count") or 0),
+        })
+    return sorted(structure, key=lambda row: abs(row["premium"]), reverse=True)[:20], _format_top_products(top_rows)
 
 
 def _max_daily_cutoff(conn: sqlite3.Connection, table: str, year: int, months: list[int] | None, channels: list[str] | None = None):
@@ -127,7 +224,10 @@ def _query_product_structure_raw(
                 conn, year, months, sorted(normalized_transform_lines), include_transform, include_jingdai
             )
             cutoff = min(common_cutoff, end_cutoff) if common_cutoff and end_cutoff else common_cutoff or end_cutoff
-            extra_where = append_period_filter(transform_time_col, year, months, t_params)
+            extra_where = ""
+            if pick_existing_column(conn, 'performance', ['年月']):
+                extra_where += append_indexed_year_filter('年月', year, t_params)
+            extra_where += append_period_filter(transform_time_col, year, months, t_params)
             extra_where += append_date_range_filter(transform_time_col, start_cutoff, cutoff, t_params)
             if orgs:
                 o_placeholders = ','.join(['?'] * len(orgs))
@@ -243,7 +343,10 @@ def _query_top_products_by_business_line(
                 'performance',
                 ['年月日', '入账时间', '日期', '出单日期', '投保日期', '承保日期', '年月'],
             ) or '年月'
-            extra_where = append_period_filter(transform_time_col, year, months, t_params)
+            extra_where = ""
+            if pick_existing_column(conn, 'performance', ['年月']):
+                extra_where += append_indexed_year_filter('年月', year, t_params)
+            extra_where += append_period_filter(transform_time_col, year, months, t_params)
             extra_where += append_date_range_filter(transform_time_col, start_cutoff, cutoff, t_params)
             if orgs:
                 o_placeholders = ','.join(['?'] * len(orgs))
@@ -305,6 +408,10 @@ def _query_top_products_by_business_line(
         except sqlite3.OperationalError as e:
             logger.warning("经代业务最高占比产品查询失败: %s", e)
 
+    return _format_top_products(rows)
+
+
+def _format_top_products(rows: list[dict]) -> list[dict]:
     by_line: dict[str, dict] = {}
     for row in rows:
         line = row.get('business_line') or '未分类'
@@ -341,6 +448,19 @@ def _query_top_products_by_business_line(
 
 def get_jingdai_orgs(year: int | None = None) -> list[str]:
     with get_db() as conn:
+        aggregate_table = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='agg_product_daily'"
+        ).fetchone()
+        if aggregate_table:
+            aggregate_params = [year] if year else []
+            aggregate_where = "AND year=?" if year else ""
+            aggregate_rows = conn.execute(
+                f'''SELECT DISTINCT org FROM agg_product_daily
+                    WHERE business_type='经代' {aggregate_where} AND TRIM(org)<>'' ORDER BY org''',
+                aggregate_params,
+            ).fetchall()
+            if aggregate_rows:
+                return [row["org"] for row in aggregate_rows]
         params: list = []
         where = ''
         if year:
@@ -391,12 +511,34 @@ def get_product_structure(
             transform_list = ['OTO', '证保', '蚁桥']
 
         if dimension == 'product_mix':
-            rows = _query_product_structure_raw(
-                conn, year, transform_list, jingdai_org_list,
-                include_transform, include_jingdai,
-                orgs=org_list, months=month_list, metric_type=metric_type,
-                start_cutoff=start_cutoff, end_cutoff=end_cutoff,
+            aggregate_result = _query_product_daily_aggregate(
+                conn,
+                year,
+                transform_list,
+                jingdai_org_list,
+                include_transform,
+                include_jingdai,
+                orgs=org_list,
+                months=month_list,
+                metric_type=metric_type,
+                start_cutoff=start_cutoff,
+                end_cutoff=end_cutoff,
             )
+            if aggregate_result is None:
+                rows = _query_product_structure_raw(
+                    conn, year, transform_list, jingdai_org_list,
+                    include_transform, include_jingdai,
+                    orgs=org_list, months=month_list, metric_type=metric_type,
+                    start_cutoff=start_cutoff, end_cutoff=end_cutoff,
+                )
+                top_products = _query_top_products_by_business_line(
+                    conn, year, transform_list, jingdai_org_list,
+                    include_transform, include_jingdai,
+                    orgs=org_list, months=month_list,
+                    start_cutoff=start_cutoff, end_cutoff=end_cutoff,
+                )
+            else:
+                rows, top_products = aggregate_result
             return {
                 'year': year,
                 'as_of': as_of_context,
@@ -404,12 +546,7 @@ def get_product_structure(
                 'dimension': dimension,
                 'premium': [{'name': r['label'], 'value': round(r['premium'], 2)} for r in rows if round(r['premium'], 2) != 0],
                 'count': [{'name': r['label'], 'value': int(r['count'])} for r in rows if int(r['count']) != 0],
-                'topProducts': _query_top_products_by_business_line(
-                    conn, year, transform_list, jingdai_org_list,
-                    include_transform, include_jingdai,
-                    orgs=org_list, months=month_list,
-                    start_cutoff=start_cutoff, end_cutoff=end_cutoff,
-                ),
+                'topProducts': top_products,
                 'jingdaiOrgs': get_jingdai_orgs(year),
             }
 

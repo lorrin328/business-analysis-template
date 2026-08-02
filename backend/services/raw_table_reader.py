@@ -49,6 +49,19 @@ def append_period_filter(column: str, year: int, months: list[int] | None, param
     return clause
 
 
+def append_indexed_year_filter(column: str, year: int, params: list) -> str:
+    """Add a coarse text range that can use an index on an ISO-like period column.
+
+    The imported period values all start with the four-digit year, while their
+    separators may vary.  Keeping this predicate separate from the defensive
+    normalization expressions lets SQLite narrow a multi-million-row raw table
+    before evaluating the exact month/day filters.
+    """
+    params.extend([f"{int(year):04d}-01", f"{int(year) + 1:04d}-01"])
+    quoted = quote_identifier(column)
+    return f" AND {quoted} >= ? AND {quoted} < ?"
+
+
 def append_cutoff_filter(column: str, cutoff: tuple[int, int] | None, params: list) -> str:
     if not cutoff:
         return ""

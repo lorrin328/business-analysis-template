@@ -13,3 +13,8 @@ from etl.aggregates.payment import (
     aggregate_jingdai_payment_period_daily,
 )
 from etl.aggregates.longterm import aggregate_transform_longterm, aggregate_jingdai_longterm
+from etl.aggregates.dashboard import (
+    aggregate_jingdai_product_daily,
+    aggregate_staff_month_performance,
+    aggregate_transform_product_daily,
+)

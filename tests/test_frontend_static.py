@@ -110,7 +110,7 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/target-modal.js?v=1.0.120"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.116"></script>' in html
     assert '<script src="js/platform-trend.js?v=1.0.116"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.121"></script>' in html
+    assert '<script src="js/team-analysis.js?v=1.0.124"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -1075,7 +1075,7 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
 
     assert 'id="teamChart"' in html
     assert 'id="teamEnhancedPanel"' in html
-    assert '<details class="chart-card collapsible-chart-card" data-permission="team_enhanced">' in html
+    assert '<details id="teamEnhancedDetails" class="chart-card collapsible-chart-card" data-permission="team_enhanced">' in html
     assert '<summary class="chart-header">' in html
     assert '<details class="chart-card collapsible-chart-card" data-permission="team_enhanced" open>' not in html
     assert ".collapsible-chart-card > summary::after {" in html
@@ -1089,6 +1089,9 @@ def test_team_enhanced_panel_is_added_without_replacing_team_trend():
     assert "/api/team-enhanced-analysis" in team
     assert "window.fetchJson(`/api/team-enhanced-analysis?" in team
     assert "let teamEnhancedRequestSerial = 0;" in team
+    assert "if (details && !details.open) return;" in team
+    assert "teamEnhancedDetails.addEventListener('toggle'" in team
+    assert "展开后加载队伍结构与产能分析" in html
     assert "const requestSerial = ++teamEnhancedRequestSerial;" in team
     assert "if (requestSerial !== teamEnhancedRequestSerial) return false;" in team
     assert "if (teamEnhancedLoading) return;" not in team
@@ -1210,7 +1213,8 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
 
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
-    assert '<script src="js/platform-trend-main.js?v=1.0.116"></script>' in html
+    assert '<script src="js/platform-trend-main.js?v=1.0.124"></script>' in html
+    assert '<script src="js/data-integration.js?v=1.0.124"></script>' in html
     assert "Object.keys(platformMock).forEach(year => delete platformMock[year])" in platform_main
     assert "function refreshPlatformChart()" in platform_main
     assert "function switchYear(value)" in platform_main
