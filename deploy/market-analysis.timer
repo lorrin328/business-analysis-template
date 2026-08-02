@@ -1,12 +1,12 @@
 [Unit]
-Description=Run life-insurance market research every three days
+Description=Check due life-insurance market research at 01:00 every day
 
 [Timer]
-OnBootSec=20min
-OnUnitActiveSec=3d
-RandomizedDelaySec=20min
+OnCalendar=*-*-* 01:00:00
+AccuracySec=1min
+RandomizedDelaySec=0
 Persistent=true
-Unit=market-analysis.service
+Unit=market-analysis-scheduled.service
 
 [Install]
 WantedBy=timers.target

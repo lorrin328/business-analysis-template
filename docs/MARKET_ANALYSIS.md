@@ -6,7 +6,7 @@
 
 Web 服务不直接调用模型。独立 `market-analysis.service` 每次完成多源搜索、历史归并、结构化输出和证据校验，只有通过门禁的 JSON 才会替换 `latest.json`；失败时网页继续显示上一期有效报告。
 
-管理员也可在市场研判页点击“立即运行研究”。页面只提交后台请求，不等待模型运行完成；手动任务完成后，下一次自动运行会按约三天的间隔重新计算，避免短期内重复研究。
+管理员也可在市场研判页点击“立即运行研究”。页面只提交后台请求，不等待模型运行完成。定时器每天北京时间凌晨1点检查一次；只有距上次成功报告已满3个自然日才启动研究。手动任务成功后，以该报告日期重新计算后续三个自然日周期。
 
 ## 首次安装
 
@@ -60,7 +60,7 @@ systemctl list-timers market-analysis.timer --all
 3. 宏观和监管有 A 级官方原文，同业有公司/协会一手来源；每条来源均有可在 HTML、正文文本、PDF 或内部快照中逐字定位的 50 字内证据锚点；
 4. `/api/market-analysis/latest` 登录后可读，普通用户未授权时返回403；
 5. `/market-analysis.html` 可切换历史期次，桌面和手机无横向溢出；
-6. timer 显示下一次约三天后运行，失败时 `latest.json` 不被覆盖。
+6. timer 的下一次检查时间为次日凌晨1点；只有满3个自然日才启动完整研究，失败时 `latest.json` 不被覆盖并在次日凌晨1点重试。
 
 发布门禁还会阻止：页面标题不符、最终 URL 不一致、非公开地址、敏感查询参数、非标准端口、正文不可提取、事实与证据片段不匹配、事实数字未出现在证据、历史主题跳过最新一期或篡改 `history.since`。
 
@@ -96,6 +96,8 @@ systemctl status market-analysis.service --no-pager
 journalctl -u market-analysis.service --since '7 days ago' --no-pager
 sudo systemctl start market-analysis.service
 ```
+
+`market-analysis.timer` 每天凌晨1点唤醒 `market-analysis-scheduled.service`。调度器只读取最近成功报告的北京时间日期：日期间隔不足3天时正常退出，不调用模型；满3天时启动固定的 `market-analysis.service`。服务器凌晨1点关机时，`Persistent=true` 会在恢复开机后补做到期检查。
 
 失败后优先查看 journal 中的校验错误。6小时内的修复检查点会复用已完成研究，来源元数据和变化信号映射类错误会先由程序确定性修复，不再次调用模型；结构或证据不合格时最多进行两轮定向修复，同业事实缺少一手依据时允许换成另一项有真实公司/协会来源支持的近期动作，但不得把媒体来源改标为一手证据。systemd 的进程级重试仍受启动频率限制，防止网络或模型故障形成无限循环。
 

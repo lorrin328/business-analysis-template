@@ -729,17 +729,29 @@ def test_market_analysis_page_is_modular_and_whitelisted():
     assert "api('/api/market-analysis/run', { method: 'POST' })" in script
 
 
-def test_market_timer_runs_every_three_days_and_template_has_no_secret():
+def test_market_timer_runs_at_1am_when_three_calendar_days_are_due_and_template_has_no_secret():
     timer = open(os.path.join(ROOT, "deploy", "market-analysis.timer"), "r", encoding="utf-8").read()
     env_template = open(os.path.join(ROOT, "deploy", "market-analysis.env.example"), "r", encoding="utf-8").read()
     service = open(os.path.join(ROOT, "deploy", "market-analysis.service"), "r", encoding="utf-8").read()
+    scheduled_service = open(os.path.join(ROOT, "deploy", "market-analysis-scheduled.service"), "r", encoding="utf-8").read()
+    scheduler = open(os.path.join(ROOT, "deploy", "market-analysis-schedule.sh"), "r", encoding="utf-8").read()
     installer = open(os.path.join(ROOT, "deploy", "install-market-analysis.sh"), "r", encoding="utf-8").read()
     configurator = open(os.path.join(ROOT, "deploy", "configure-market-analysis.sh"), "r", encoding="utf-8").read()
     trigger = open(os.path.join(ROOT, "deploy", "market-analysis-trigger.sh"), "r", encoding="utf-8").read()
     trigger_service = open(os.path.join(ROOT, "deploy", "market-analysis-manual.service"), "r", encoding="utf-8").read()
     trigger_path = open(os.path.join(ROOT, "deploy", "market-analysis-manual.path"), "r", encoding="utf-8").read()
-    assert "OnUnitActiveSec=3d" in timer
+    assert "OnCalendar=*-*-* 01:00:00" in timer
+    assert "AccuracySec=1min" in timer
+    assert "RandomizedDelaySec=0" in timer
+    assert "Unit=market-analysis-scheduled.service" in timer
     assert "Persistent=true" in timer
+    assert "ExecStart=/usr/local/sbin/business-analysis-market-schedule" in scheduled_service
+    assert "NoNewPrivileges=true" in scheduled_service
+    assert "ReadOnlyPaths=/var/lib/business-analysis-market" in scheduled_service
+    assert 'timedelta(days=3)' in scheduler
+    assert 'ZoneInfo("Asia/Shanghai")' in scheduler
+    assert 'SYSTEMCTL_BIN="${MARKET_ANALYSIS_SYSTEMCTL:-/usr/bin/systemctl}"' in scheduler
+    assert '"$SYSTEMCTL_BIN" start --no-block "$SERVICE_NAME"' in scheduler
     assert "ANTHROPIC_AUTH_TOKEN=\n" in env_template
     assert "AI_READONLY_TOKEN=\n" in env_template
     assert "NoNewPrivileges=true" in service
@@ -754,6 +766,8 @@ def test_market_timer_runs_every_three_days_and_template_has_no_secret():
     assert "openssl rand -hex 32" in configurator
     assert configurator.index("/api/health") < configurator.index("systemctl start --no-block market-analysis.service")
     assert "market-analysis-manual.path" in installer
+    assert "market-analysis-scheduled.service" in installer
+    assert "business-analysis-market-schedule" in installer
     assert "sudoers" not in installer
     assert "COOLDOWN_SECONDS=300" in trigger
     assert 'LOCK_FILE="$STATE_DIR/trigger.lock"' in trigger

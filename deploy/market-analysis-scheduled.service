@@ -1,0 +1,20 @@
+[Unit]
+Description=Start due life-insurance market research at 01:00
+After=network-online.target business-analysis.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/business-analysis-market-schedule
+RuntimeDirectory=business-analysis-market-schedule
+RuntimeDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadOnlyPaths=/var/lib/business-analysis-market

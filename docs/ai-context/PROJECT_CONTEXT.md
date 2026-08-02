@@ -21,7 +21,7 @@
 - 首次初始化管理员必须通过 `DEFAULT_ADMIN_PASSWORD` 环境变量提供密码。
 - 生产环境默认关闭公开自助注册；如需临时开放，必须显式设置 `AUTH_ALLOW_PUBLIC_REGISTRATION=1`。
 - 默认镜像发布目标为 `ghcr.io/lorrin328/business-analysis-template`。
-- 市场研判由独立 `market-ai` 账号调用 Claude Code + DeepSeek V4 Pro，每三天生成一次结构化报告；FastAPI 只读取已通过证据校验的 JSON，不在请求线程中启动模型。
+- 市场研判由独立 `market-ai` 账号调用 Claude Code + DeepSeek V4 Pro；每天北京时间凌晨1点检查，距上次成功报告满3个自然日时生成结构化报告。FastAPI只读取已通过证据校验的JSON，不在请求线程中启动模型。
 - 市场研判生产数据目录为 `/var/lib/business-analysis-market`，受保护配置为 `/etc/business-analysis-market/market-analysis.env`，不得进入代码树。
 - 全量历史和客户源通过命令行写入生产在线备份候选库，完成对账、聚合和完整性校验后原子切换；Web导入链不承接数百万行首次装载。
 - 客户分析页面为 `/customer-analysis`，当前覆盖OTO、证保、蚁桥；除新老客、持单和状态外，提供按首现月、首现后12个月、首现当年度观察的新客经营页签，支持业务、机构、长险和产品筛选。客户状态为源清单截止日快照，不等同于13个月或25个月继续率。

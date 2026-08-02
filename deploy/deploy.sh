@@ -208,7 +208,7 @@ for runtime_env in "$APP_DIR/deploy/.admin_env" "$APP_DIR/deploy/.ai_env" "$APP_
   fi
 done
 
-# Claude Code 已安装时同步市场研判的隔离账号、目录、服务和三天定时器；
+# Claude Code 已安装时同步市场研判的隔离账号、目录、服务和凌晨1点定时器；
 # 未安装时不影响经营看板主服务，首次安装使用 deploy/install-market-analysis.sh。
 if command -v claude >/dev/null 2>&1 || [ -x /usr/local/bin/claude ]; then
   bash "$APP_DIR/deploy/install-market-analysis.sh" --skip-cli-install || \

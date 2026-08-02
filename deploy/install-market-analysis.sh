@@ -80,6 +80,8 @@ else
 fi
 
 install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis.service" /etc/systemd/system/market-analysis.service
+install -o root -g root -m 0755 "$APP_DIR/deploy/market-analysis-schedule.sh" /usr/local/sbin/business-analysis-market-schedule
+install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis-scheduled.service" /etc/systemd/system/market-analysis-scheduled.service
 install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis.timer" /etc/systemd/system/market-analysis.timer
 install -o root -g root -m 0755 "$APP_DIR/deploy/market-analysis-trigger.sh" /usr/local/sbin/business-analysis-market-trigger
 install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis-manual.service" /etc/systemd/system/market-analysis-manual.service
@@ -97,7 +99,7 @@ has_env_value() {
 
 if has_env_value ANTHROPIC_AUTH_TOKEN && has_env_value AI_READONLY_TOKEN; then
   systemctl enable --now market-analysis.timer
-  echo "市场研判定时器已启用。"
+  echo "市场研判定时器已启用：每天凌晨1点检查，到期后每3个自然日运行一次。"
 else
   systemctl disable --now market-analysis.timer 2>/dev/null || true
   echo "市场研判服务已安装，但因凭据尚未安全配置，定时器未启用。"

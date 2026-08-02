@@ -97,4 +97,4 @@ systemctl reset-failed market-analysis.service
 systemctl start --no-block market-analysis.service
 systemctl enable --now market-analysis.timer
 
-echo "凭据已在服务器本机安全写入；主应用已重启，三天定时器已启用，首次研究已开始。"
+echo "凭据已在服务器本机安全写入；主应用已重启，凌晨1点定时器已启用，首次研究已开始。"
