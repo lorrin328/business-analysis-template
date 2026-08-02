@@ -1,5 +1,32 @@
 # 数据字典
 
+## 2026-08-02 客户清单增量导入
+
+### 表：`customer_import_batches`
+
+| 字段 | 说明 |
+|---|---|
+| `manifest_hash` | 文件名、文件SHA256、大小和解析器版本形成的预检批次校验值；确认导入时必须一致。 |
+| `file_count` / `source_rows` | 本批文件数、非空源记录数。 |
+| `normalized_policy_rows` | 按投保单号归并后的保单数。 |
+| `inserted_policies` / `updated_policies` | 新增保单快照数、使用较新快照更新的保单数。 |
+| `unchanged_policies` | 导入时间和关键状态与数据库一致的保单数。 |
+| `skipped_older_policies` | 导入时间早于数据库现值、因而保留数据库现值的保单数。 |
+| `conflict_policies` | 客户归属或同快照关键状态冲突数；大于0时不得正式写入。 |
+| `linked_performance_policies` | 写入后能关联`customer_policy_month_fact`既有业绩事实的受影响保单数。 |
+| `source_cutoff` | 本批客户清单最大的有效`导入时间`。 |
+| `status` | `running`、`success`或`failed`。 |
+
+### 表：`customer_import_files`
+
+只保存批次、文件名、SHA256、大小和行数，不保存上传原文件或客户、保单明细。
+
+### 客户清单字段
+
+必需字段为`投保单号`、`投保人id`、`导入时间`、`承保时间`、`保单状态名称`；可选字段为`投保时间`、`回销时间`、`入账时间`、`犹豫期退保时间`、`保单终止原因`。客户清单导入不写入期交、规模、折算或价值保费。
+
+完整指标定义、筛选边界和状态归类见`docs/客户分析指标口径核对报告_v1.0.127.md`。
+
 ## 2026-08-02 新客经营与观察窗口
 
 | 数据项 | 规则 |

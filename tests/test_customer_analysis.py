@@ -1,7 +1,9 @@
 import csv
+import io
 from pathlib import Path
 
 import pytest
+from openpyxl import Workbook
 
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
@@ -370,4 +372,217 @@ def test_customer_page_uses_direct_business_language(auth_db):
     assert "首次复购间隔" in script.text
     assert "再次承保客户" in script.text
     assert "新客购买产品" in script.text
+    assert "数据导入" in page.text
+    assert "后台流式处理" in script.text
+    assert "不设置固定文件大小、文件数和行数上限" in script.text
     assert "AI建议" not in page.text + script.text
+
+
+def _customer_csv_bytes(rows: list[dict]) -> bytes:
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=CUSTOMER_COLUMNS)
+    writer.writeheader()
+    writer.writerows(rows)
+    return ("\ufeff" + stream.getvalue()).encode("utf-8")
+
+
+def _customer_xlsx_bytes(rows: list[dict]) -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "客户清单"
+    sheet.append(CUSTOMER_COLUMNS)
+    for row in rows:
+        sheet.append([row.get(column, "") for column in CUSTOMER_COLUMNS])
+    output = io.BytesIO()
+    workbook.save(output)
+    workbook.close()
+    return output.getvalue()
+
+
+def _seed_customer_incremental_import():
+    import db.connection as connection
+
+    with connection.get_db() as conn:
+        batch_id = conn.execute(
+            """INSERT INTO history_import_batches
+               (source_directory, source_cutoff, performance_rows, customer_source_rows,
+                customer_policy_rows, status, imported_by, completed_at)
+               VALUES ('fixture', '2026-07-01 12:00:00', 2, 1, 1, 'success', 'pytest', CURRENT_TIMESTAMP)"""
+        ).lastrowid
+        conn.execute(
+            """INSERT INTO customer_policy_snapshot
+               (policy_no, customer_id, import_time, underwriting_time, policy_status,
+                termination_reason, status_group, raw_row_count, batch_id)
+               VALUES ('P-OLD', 'C-OLD', '2026-07-01 12:00:00', '2025-01-10 10:00:00',
+                       '有效', '', 'active', 1, ?)""", (batch_id,),
+        )
+        conn.execute(
+            """INSERT INTO customer_master
+               (customer_id, first_underwriting_time, first_policy_no, total_policy_count,
+                active_policy_count, suspended_policy_count, terminated_policy_count, batch_id)
+               VALUES ('C-OLD', '2025-01-10 10:00:00', 'P-OLD', 1, 1, 0, 0, ?)""", (batch_id,),
+        )
+        conn.executemany(
+            """INSERT INTO customer_policy_month_fact
+               (year, month, transaction_date, business_line, org, policy_no, customer_id,
+                underwriting_time, first_customer_underwriting_time, is_longterm, qj_premium,
+                gm_premium, zs_premium, value_premium, accepted_count, policy_status,
+                termination_reason, status_group, customer_match, batch_id)
+               VALUES (2026, 7, '2026-07-10', 'OTO', '上海', ?, ?, ?, ?, 1, ?, 0, 0, 0, 1, ?, ?, ?, ?, ?)""",
+            [
+                ("P-OLD", "C-OLD", "2025-01-10 10:00:00", "2025-01-10 10:00:00", 10000, "有效", "", "active", 1, batch_id),
+                ("P-NEW", None, None, None, 20000, None, None, "unmatched", 0, batch_id),
+            ],
+        )
+        conn.commit()
+
+
+def _upload_customer_job(client: TestClient, headers: dict, name: str, content: bytes) -> dict:
+    session_response = client.post(
+        "/api/customer-analysis/import/uploads", headers=headers,
+        json={"files": [{"name": name, "size": len(content)}]},
+    )
+    assert session_response.status_code == 200
+    session = session_response.json()["data"]
+    offset = 0
+    chunk_size = session["chunkBytes"]
+    while offset < len(content):
+        chunk = content[offset:offset + chunk_size]
+        response = client.post(
+            f"/api/customer-analysis/import/uploads/{session['uploadId']}/files/0/chunks",
+            params={"offset": offset}, headers={**headers, "Content-Type": "application/octet-stream"},
+            content=chunk,
+        )
+        assert response.status_code == 200
+        offset += len(chunk)
+    process = client.post(
+        f"/api/customer-analysis/import/uploads/{session['uploadId']}/process", headers=headers,
+    )
+    assert process.status_code == 202
+    status = client.get(
+        f"/api/customer-analysis/import/uploads/{session['uploadId']}", headers=headers,
+    )
+    assert status.status_code == 200
+    return status.json()["data"]
+
+
+def test_customer_csv_preview_commit_refreshes_customer_domains(auth_db):
+    import db.connection as connection
+
+    _seed_customer_incremental_import()
+    client = TestClient(app)
+    token = _login(client)["token"]
+    headers = _headers(token)
+    rows = [
+        {
+            "投保单号": "P-OLD", "投保人id": "C-OLD", "投保时间": "2025-01-09 09:00:00",
+            "导入时间": "2026-08-01 09:00:00", "回销时间": "2025-01-09 10:00:00",
+            "承保时间": "2025-01-10 10:00:00", "入账时间": "2025-01-10 10:01:00",
+            "犹豫期退保时间": "", "保单状态名称": "终止", "保单终止原因": "退保终止",
+        },
+        {
+            "投保单号": "P-NEW", "投保人id": "C-NEW", "投保时间": "2026-07-09 09:00:00",
+            "导入时间": "2026-08-01 09:00:00", "回销时间": "2026-07-09 10:00:00",
+            "承保时间": "2026-07-10 10:00:00", "入账时间": "2026-07-10 10:01:00",
+            "犹豫期退保时间": "", "保单状态名称": "有效", "保单终止原因": "",
+        },
+    ]
+    content = _customer_csv_bytes(rows)
+    preview = _upload_customer_job(client, headers, "客户清单_增量.csv", content)
+    assert preview["canImport"] is True
+    assert preview["sourceRows"] == 2
+    assert preview["insertPolicies"] == 1
+    assert preview["updatePolicies"] == 1
+    assert "policy_no" not in str(preview)
+    commit = client.post(
+        f"/api/customer-analysis/import/uploads/{preview['uploadId']}/commit", headers=headers,
+    )
+    assert commit.status_code == 202
+    result = client.get(
+        f"/api/customer-analysis/import/uploads/{preview['uploadId']}", headers=headers,
+    ).json()["data"]
+    assert result["status"] == "success"
+    assert result["linkedPerformancePolicies"] == 2
+    with connection.get_db() as conn:
+        old = conn.execute("SELECT status_group, customer_import_batch_id FROM customer_policy_snapshot WHERE policy_no='P-OLD'").fetchone()
+        assert old["status_group"] == "surrender"
+        assert old["customer_import_batch_id"] == result["batchId"]
+        new_fact = conn.execute("SELECT customer_id, customer_match, status_group FROM customer_policy_month_fact WHERE policy_no='P-NEW'").fetchone()
+        assert dict(new_fact) == {"customer_id": "C-NEW", "customer_match": 1, "status_group": "active"}
+        assert conn.execute("SELECT COUNT(*) FROM customer_master WHERE customer_id='C-NEW'").fetchone()[0] == 1
+        audit_text = " ".join(row[0] for row in conn.execute("SELECT detail FROM operation_logs").fetchall())
+        assert "C-NEW" not in audit_text and "P-NEW" not in audit_text
+        staging = Path(connection.DB_PATH).resolve().parent / "customer-import-staging" / preview["uploadId"]
+        assert not staging.exists()
+    overview = client.get("/api/customer-analysis/overview?year=2026", headers=headers).json()["data"]
+    assert overview["meta"]["sourceCutoff"].startswith("2026-08-01")
+    batches = client.get("/api/customer-analysis/import/batches", headers=headers).json()["data"]["batches"]
+    assert batches[0]["batchId"] == result["batchId"]
+
+
+def test_customer_import_blocks_identity_conflict_and_template_is_downloadable(auth_db):
+    _seed_customer_incremental_import()
+    client = TestClient(app)
+    headers = _headers(_login(client)["token"])
+    conflict = [{
+        "投保单号": "P-OLD", "投保人id": "C-DIFFERENT", "投保时间": "2025-01-09",
+        "导入时间": "2026-08-01", "回销时间": "", "承保时间": "2025-01-10",
+        "入账时间": "", "犹豫期退保时间": "", "保单状态名称": "有效", "保单终止原因": "",
+    }]
+    preview = _upload_customer_job(client, headers, "conflict.csv", _customer_csv_bytes(conflict))
+    assert preview["canImport"] is False
+    assert preview["conflictPolicies"] == 1
+    commit = client.post(
+        f"/api/customer-analysis/import/uploads/{preview['uploadId']}/commit", headers=headers,
+    )
+    assert commit.status_code == 422
+    csv_template = client.get("/api/customer-analysis/import/template?format=csv", headers=headers)
+    assert csv_template.status_code == 200
+    assert csv_template.content.startswith(b"\xef\xbb\xbf")
+    xlsx_template = client.get("/api/customer-analysis/import/template?format=xlsx", headers=headers)
+    assert xlsx_template.status_code == 200
+    assert xlsx_template.content.startswith(b"PK")
+
+
+def test_customer_xlsx_is_streamed_and_prepared_in_background(auth_db):
+    _seed_customer_incremental_import()
+    client = TestClient(app)
+    headers = _headers(_login(client)["token"])
+    row = _customer_row("P-XLSX", 2026)
+    preview = _upload_customer_job(client, headers, "customer.xlsx", _customer_xlsx_bytes([row]))
+    assert preview["status"] == "ready"
+    assert preview["insertPolicies"] == 1
+    assert preview["sourceRows"] == 1
+
+
+def test_customer_import_requires_upload_permission(auth_db):
+    client = TestClient(app)
+    admin = _login(client)
+    registered = client.post("/api/auth/register", json={"username": "customer_reader", "password": "normal-pass-123"})
+    user_id = registered.json()["data"]["user"]["id"]
+    update = client.patch(
+        f"/api/admin/users/{user_id}", headers=_headers(admin["token"]),
+        json={"username": "customer_reader", "role": "normal", "permissions": {"customer_analysis": True}},
+    )
+    assert update.status_code == 200
+    reader = _login(client, "customer_reader", "normal-pass-123")
+    row = _customer_row("P-1", 2026)
+    content = _customer_csv_bytes([row])
+    response = client.post(
+        "/api/customer-analysis/import/uploads", headers=_headers(reader["token"]),
+        json={"files": [{"name": "customer.csv", "size": len(content)}]},
+    )
+    assert response.status_code == 403
+
+
+def test_customer_upload_session_has_no_fixed_file_count_or_total_size_limit(auth_db):
+    client = TestClient(app)
+    headers = _headers(_login(client)["token"])
+    declared_size = 6 * 1024 * 1024
+    files = [{"name": f"customer_{index:02d}.csv", "size": declared_size} for index in range(25)]
+    response = client.post("/api/customer-analysis/import/uploads", headers=headers, json={"files": files})
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert len(data["files"]) == 25
+    assert data["totalBytes"] == declared_size * 25  # 150MB，超过旧50MB门槛
+    assert data["chunkBytes"] == 8 * 1024 * 1024

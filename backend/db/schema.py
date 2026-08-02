@@ -522,6 +522,45 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(batch_id) REFERENCES history_import_batches(id)
         )''')
+        _migrate(c, "ALTER TABLE customer_policy_snapshot ADD COLUMN customer_import_batch_id INTEGER")
+        c.execute('''CREATE TABLE IF NOT EXISTS customer_import_batches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            imported_by TEXT NOT NULL DEFAULT 'system',
+            manifest_hash TEXT NOT NULL,
+            file_count INTEGER NOT NULL DEFAULT 0,
+            source_rows INTEGER NOT NULL DEFAULT 0,
+            normalized_policy_rows INTEGER NOT NULL DEFAULT 0,
+            inserted_policies INTEGER NOT NULL DEFAULT 0,
+            updated_policies INTEGER NOT NULL DEFAULT 0,
+            unchanged_policies INTEGER NOT NULL DEFAULT 0,
+            skipped_older_policies INTEGER NOT NULL DEFAULT 0,
+            conflict_policies INTEGER NOT NULL DEFAULT 0,
+            linked_performance_policies INTEGER NOT NULL DEFAULT 0,
+            source_cutoff TEXT,
+            status TEXT NOT NULL DEFAULT 'running',
+            error_message TEXT,
+            imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP
+        )''')
+        _migrate(c, "ALTER TABLE customer_import_batches ADD COLUMN upload_id TEXT")
+        _migrate(c, "ALTER TABLE customer_import_batches ADD COLUMN total_bytes INTEGER NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE customer_import_batches ADD COLUMN received_bytes INTEGER NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE customer_import_batches ADD COLUMN processed_rows INTEGER NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE customer_import_batches ADD COLUMN invalid_rows INTEGER NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE customer_import_batches ADD COLUMN duplicate_rows INTEGER NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE customer_import_batches ADD COLUMN updated_at TIMESTAMP")
+        c.execute('''CREATE TABLE IF NOT EXISTS customer_import_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL,
+            file_name TEXT NOT NULL,
+            file_hash TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            row_count INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(batch_id) REFERENCES customer_import_batches(id)
+        )''')
+        _migrate(c, "ALTER TABLE customer_import_files ADD COLUMN file_index INTEGER NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE customer_import_files ADD COLUMN received_bytes INTEGER NOT NULL DEFAULT 0")
         c.execute('''CREATE TABLE IF NOT EXISTS customer_master (
             customer_id TEXT PRIMARY KEY,
             first_underwriting_time TEXT NOT NULL,
@@ -568,6 +607,10 @@ def init_db():
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
             VALUES ('20260802_dashboard_query_aggregates', 1, 'Adds bounded staff-month and product-day dashboard aggregates')
         ''')
+        c.execute('''
+            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+            VALUES ('20260802_customer_incremental_import', 0, 'Adds governed customer snapshot CSV/XLSX import audit')
+        ''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS performance (
             "年月" TEXT, "业务模式" TEXT, "销售机构名称" TEXT, "产品类型" TEXT,
@@ -612,6 +655,9 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_customer_fact_customer ON customer_policy_month_fact(customer_id, year, month)',
             'CREATE INDEX IF NOT EXISTS ix_customer_fact_policy ON customer_policy_month_fact(policy_no)',
             'CREATE INDEX IF NOT EXISTS ix_customer_fact_status ON customer_policy_month_fact(status_group, year, month)',
+            'CREATE INDEX IF NOT EXISTS ix_customer_import_batches_status ON customer_import_batches(status, id)',
+            'CREATE UNIQUE INDEX IF NOT EXISTS ux_customer_import_batches_upload ON customer_import_batches(upload_id)',
+            'CREATE INDEX IF NOT EXISTS ix_customer_import_files_batch ON customer_import_files(batch_id)',
         ]:
             c.execute(sql)
 

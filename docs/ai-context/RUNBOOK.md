@@ -1,5 +1,18 @@
 # 运行手册
 
+## 客户清单网页增量导入
+
+- 页面：`/customer-analysis` → `数据导入`；查看需要`customer_analysis`，预检和确认导入还需要`upload`。
+- 支持CSV/XLSX；推荐CSV使用UTF-8 BOM。模板通过`GET /api/customer-analysis/import/template?format=csv|xlsx`下载。
+- 创建任务：`POST /api/customer-analysis/import/uploads`；浏览器向`POST /api/customer-analysis/import/uploads/{uploadId}/files/{fileIndex}/chunks?offset=`顺序上传8MB分片。
+- 文件完整后调用`POST /api/customer-analysis/import/uploads/{uploadId}/process`启动后台预检；用`GET /api/customer-analysis/import/uploads/{uploadId}`轮询`processing → ready|blocked|failed`。
+- 预检为`ready`后调用`POST /api/customer-analysis/import/uploads/{uploadId}/commit`；继续轮询`importing → success|failed`，不需要重新上传文件。
+- 批次：`GET /api/customer-analysis/import/batches`。批次只展示汇总，不提供客户或保单明细下载。
+- 应用不设置固定文件大小、文件数和行数上限。实际可处理规模受`/var/lib/business-analysis`可用磁盘、临时解析库体积和后台处理时间约束；上传前应确保至少预留“源文件合计大小+归并临时库+SQLite增长+备份”的空间。
+- 导入完成后核验：批次`status=success`、新增/更新/旧快照跳过数量、`linked_performance_policies`、客户页面数据截止日、保单匹配率、`PRAGMA quick_check`。
+- 回滚：部署前使用SQLite Online Backup。客户增量业务回滚不得只删除批次记录；应从完整备份恢复，或使用经核验的更晚客户快照更正。
+- 预检`ready`任务最多保留24小时；成功、阻断、失败或过期后清理受保护临时目录。全量历史库重建完成后，早于该全量批次的网页客户导入只保留审计，不再决定页面数据截止日。
+
 ## 全量历史库主看板性能
 
 - 队伍增强应查询`agg_staff_month_performance`，产品结构应查询`agg_product_daily`；生产两表为空时虽然可回退原始明细，但应视为聚合未完成并立即排查。
