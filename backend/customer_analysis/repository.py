@@ -9,6 +9,7 @@ from db.connection import get_db
 
 
 PeriodType = Literal["year", "quarter", "month"]
+ObservationWindow = Literal["first_month", "twelve_months", "calendar_year"]
 STATUS_LABELS = {
     "active": "有效",
     "suspended": "停效",
@@ -105,6 +106,330 @@ def _latest_batch(conn):
                   source_text_issue_rows, imported_at, completed_at
            FROM history_import_batches WHERE status='success' ORDER BY id DESC LIMIT 1"""
     ).fetchone()
+
+
+def _available_years(conn) -> list[int]:
+    return [
+        int(row[0]) for row in conn.execute(
+            "SELECT DISTINCT year FROM customer_policy_month_fact ORDER BY year"
+        ).fetchall()
+    ]
+
+
+def _analysis_period(conn, batch, year: int | None, period_type: PeriodType, period_value: int | None):
+    available_years = _available_years(conn)
+    if not available_years:
+        raise ValueError("客户分析事实表为空")
+    year = year or max(available_years)
+    if year not in available_years:
+        raise ValueError(f"当前客户分析没有{year}年业绩")
+    source_cutoff = datetime.fromisoformat(str(batch["source_cutoff"])[:19]).date()
+    cutoff = min(source_cutoff, date(year, 12, 31)) if year == source_cutoff.year else date(year, 12, 31)
+    start, end, period_label = _window(year, cutoff, period_type, period_value)
+    return available_years, year, source_cutoff, start, end, period_label
+
+
+def _raw_product_profile_sql(conn) -> str:
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(performance)").fetchall()}
+    if "投保单号" not in columns:
+        return """product_profile AS (
+            SELECT policy_no, '产品待确认' product_name, '产品类型待确认' product_type
+            FROM policy_keys
+        )"""
+    name_parts = [
+        f'MAX(NULLIF(TRIM(p."{column}"),\'\'))'
+        for column in ("产品名称", "产品类型", "产品代码") if column in columns
+    ]
+    type_parts = [
+        f'MAX(NULLIF(TRIM(p."{column}"),\'\'))'
+        for column in ("产品类型", "产品名称") if column in columns
+    ]
+    product_name = ", ".join(name_parts + ["'产品待确认'"])
+    product_type = ", ".join(type_parts + ["'产品类型待确认'"])
+    return f"""product_profile AS (
+        SELECT k.policy_no, COALESCE({product_name}) product_name,
+               COALESCE({product_type}) product_type
+        FROM policy_keys k
+        LEFT JOIN performance p ON p."投保单号"=k.policy_no
+        GROUP BY k.policy_no
+    )"""
+
+
+def get_new_customer_cohort_analysis(
+    *, year: int | None = None, period_type: PeriodType = "year", period_value: int | None = None,
+    observation_window: ObservationWindow = "twelve_months", business_line: str | None = None,
+    org: str | None = None, policy_scope: str = "all", product: str | None = None,
+) -> dict:
+    """Track system-new customers through a clearly bounded observation window."""
+    window_end_sql = {
+        "first_month": "date(first_date,'start of month','+1 month','-1 day')",
+        "twelve_months": "date(first_date,'+12 months','-1 day')",
+        "calendar_year": "date(substr(first_date,1,4)||'-12-31')",
+    }.get(observation_window)
+    if not window_end_sql:
+        raise ValueError("观察窗口仅支持首现月、首现后12个月或首现当年度")
+    if policy_scope not in {"all", "longterm"}:
+        raise ValueError("保单范围仅支持全部或长险")
+
+    with get_db() as conn:
+        batch = _latest_batch(conn)
+        if not batch:
+            raise ValueError("尚未导入全量客户与历史业绩数据")
+        available_years, year, source_cutoff, start, end, period_label = _analysis_period(
+            conn, batch, year, period_type, period_value
+        )
+        named = {
+            "period_start": start.isoformat(), "period_end": end.isoformat(),
+            "source_cutoff": source_cutoff.isoformat(),
+        }
+        conn.execute("DROP TABLE IF EXISTS temp.new_customer_cohort")
+        conn.execute(
+            f"""CREATE TEMP TABLE new_customer_cohort AS
+                WITH base AS (
+                    SELECT customer_id, first_policy_no,
+                           date(substr(first_underwriting_time,1,10)) first_date
+                    FROM customer_master
+                    WHERE date(substr(first_underwriting_time,1,10))
+                          BETWEEN date(:period_start) AND date(:period_end)
+                ), bounded AS (
+                    SELECT *, {window_end_sql} natural_end FROM base
+                )
+                SELECT *,
+                       CASE WHEN natural_end<=date(:source_cutoff) THEN natural_end
+                            ELSE date(:source_cutoff) END observed_end,
+                       CASE WHEN natural_end<=date(:source_cutoff) THEN 1 ELSE 0 END window_complete
+                FROM bounded""",
+            named,
+        )
+        conn.execute("CREATE INDEX temp.ix_new_customer_cohort_customer ON new_customer_cohort(customer_id)")
+
+        product_profile_sql = _raw_product_profile_sql(conn)
+        conn.execute("DROP TABLE IF EXISTS temp.new_customer_policy_base")
+        conn.execute(
+            f"""CREATE TEMP TABLE new_customer_policy_base AS
+                WITH policy_contribution AS (
+                    SELECT f.customer_id, f.policy_no,
+                           MIN(date(substr(f.underwriting_time,1,10))) policy_date,
+                           f.business_line, f.org, MAX(f.is_longterm) is_longterm,
+                           SUM(f.qj_premium) qj_premium
+                    FROM customer_policy_month_fact f
+                    JOIN new_customer_cohort c ON c.customer_id=f.customer_id
+                    WHERE f.customer_match=1
+                      AND date(substr(f.underwriting_time,1,10)) BETWEEN c.first_date AND c.observed_end
+                    GROUP BY f.customer_id, f.policy_no, f.business_line, f.org
+                ), policy_keys AS (
+                    SELECT DISTINCT policy_no FROM policy_contribution
+                ), {product_profile_sql}
+                SELECT p.customer_id, p.policy_no, p.policy_date, p.business_line, p.org,
+                       p.is_longterm, p.qj_premium, pr.product_name, pr.product_type,
+                       c.first_policy_no, c.first_date, c.natural_end, c.observed_end,
+                       c.window_complete,
+                       CASE WHEN p.policy_no=c.first_policy_no THEN 0 ELSE 1 END is_repeat,
+                       ((CAST(strftime('%Y',p.policy_date) AS INTEGER)-CAST(strftime('%Y',c.first_date) AS INTEGER))*12
+                        + CAST(strftime('%m',p.policy_date) AS INTEGER)-CAST(strftime('%m',c.first_date) AS INTEGER)) month_index
+                FROM policy_contribution p
+                JOIN product_profile pr ON pr.policy_no=p.policy_no
+                JOIN new_customer_cohort c ON c.customer_id=p.customer_id"""
+        )
+        conn.execute("CREATE INDEX temp.ix_new_customer_policy_dims ON new_customer_policy_base(business_line, org, product_name)")
+        conn.execute("CREATE INDEX temp.ix_new_customer_policy_customer ON new_customer_policy_base(customer_id, is_repeat)")
+
+        dimension_clauses = ["1=1"]
+        dimension_params: list = []
+        if business_line:
+            dimension_clauses.append("business_line=?")
+            dimension_params.append(business_line)
+        if org:
+            dimension_clauses.append("org=?")
+            dimension_params.append(org)
+        if policy_scope == "longterm":
+            dimension_clauses.append("is_longterm=1")
+        dimension_where = " AND ".join(dimension_clauses)
+        conn.execute("DROP TABLE IF EXISTS temp.new_customer_policy_dimension")
+        conn.execute(
+            f"CREATE TEMP TABLE new_customer_policy_dimension AS SELECT * FROM new_customer_policy_base WHERE {dimension_where}",
+            dimension_params,
+        )
+        available_products = [
+            str(row[0]) for row in conn.execute(
+                """SELECT product_name FROM new_customer_policy_dimension
+                   GROUP BY product_name ORDER BY SUM(qj_premium) DESC, product_name"""
+            ).fetchall()
+        ]
+        conn.execute("DROP TABLE IF EXISTS temp.new_customer_policy_selected")
+        if product:
+            conn.execute(
+                "CREATE TEMP TABLE new_customer_policy_selected AS SELECT * FROM new_customer_policy_dimension WHERE product_name=?",
+                (product,),
+            )
+        else:
+            conn.execute("CREATE TEMP TABLE new_customer_policy_selected AS SELECT * FROM new_customer_policy_dimension")
+        conn.execute("CREATE INDEX temp.ix_new_customer_selected_customer ON new_customer_policy_selected(customer_id, is_repeat)")
+
+        system_new_customers = int(conn.execute("SELECT COUNT(*) FROM new_customer_cohort").fetchone()[0])
+        summary_row = conn.execute(
+            """SELECT COUNT(DISTINCT customer_id) tracked_customers,
+                      COUNT(DISTINCT CASE WHEN is_repeat=0 THEN customer_id END) first_policy_tracked_customers,
+                      COUNT(DISTINCT CASE WHEN is_repeat=1 THEN customer_id END) repeat_customers,
+                      COUNT(DISTINCT policy_no) tracked_policies,
+                      COUNT(DISTINCT CASE WHEN is_repeat=1 THEN policy_no END) repeat_policies,
+                      SUM(CASE WHEN is_repeat=0 THEN qj_premium ELSE 0 END) first_qj,
+                      SUM(CASE WHEN is_repeat=1 THEN qj_premium ELSE 0 END) repeat_qj,
+                      SUM(qj_premium) total_qj
+               FROM new_customer_policy_selected"""
+        ).fetchone()
+        tracked_customers = int(summary_row["tracked_customers"] or 0)
+        repeat_customers = int(summary_row["repeat_customers"] or 0)
+        repeat_policies = int(summary_row["repeat_policies"] or 0)
+        maturity_row = conn.execute(
+            """SELECT COUNT(*) tracked_customers,
+                      SUM(c.window_complete) completed_customers
+               FROM new_customer_cohort c
+               JOIN (SELECT DISTINCT customer_id FROM new_customer_policy_selected) s
+                 ON s.customer_id=c.customer_id"""
+        ).fetchone()
+        completed_customers = int(maturity_row["completed_customers"] or 0)
+
+        product_rows = conn.execute(
+            """SELECT product_name, MAX(product_type) product_type,
+                      COUNT(DISTINCT customer_id) customers,
+                      COUNT(DISTINCT policy_no) policies, SUM(qj_premium) qj_premium,
+                      COUNT(DISTINCT CASE WHEN is_repeat=0 THEN customer_id END) first_customers,
+                      COUNT(DISTINCT CASE WHEN is_repeat=0 THEN policy_no END) first_policies,
+                      SUM(CASE WHEN is_repeat=0 THEN qj_premium ELSE 0 END) first_qj,
+                      COUNT(DISTINCT CASE WHEN is_repeat=1 THEN customer_id END) repeat_customers,
+                      COUNT(DISTINCT CASE WHEN is_repeat=1 THEN policy_no END) repeat_policies,
+                      SUM(CASE WHEN is_repeat=1 THEN qj_premium ELSE 0 END) repeat_qj
+               FROM new_customer_policy_selected
+               GROUP BY product_name ORDER BY qj_premium DESC, product_name"""
+        ).fetchall()
+        products = []
+        for row in product_rows:
+            total_qj = float(row["qj_premium"] or 0)
+            repeat_qj = float(row["repeat_qj"] or 0)
+            products.append({
+                "product": row["product_name"], "productType": row["product_type"],
+                "customers": int(row["customers"] or 0), "policies": int(row["policies"] or 0),
+                "qjPremiumWan": _wan(total_qj), "firstCustomers": int(row["first_customers"] or 0),
+                "firstPolicies": int(row["first_policies"] or 0), "firstQjPremiumWan": _wan(row["first_qj"]),
+                "repeatCustomers": int(row["repeat_customers"] or 0),
+                "repeatPolicies": int(row["repeat_policies"] or 0),
+                "repeatQjPremiumWan": _wan(repeat_qj), "repeatPremiumShare": _ratio(repeat_qj, total_qj),
+            })
+
+        line_rows = conn.execute(
+            """SELECT business_line, COUNT(DISTINCT customer_id) customers,
+                      COUNT(DISTINCT policy_no) policies, SUM(qj_premium) qj_premium,
+                      COUNT(DISTINCT CASE WHEN is_repeat=1 THEN customer_id END) repeat_customers,
+                      COUNT(DISTINCT CASE WHEN is_repeat=1 THEN policy_no END) repeat_policies,
+                      SUM(CASE WHEN is_repeat=1 THEN qj_premium ELSE 0 END) repeat_qj
+               FROM new_customer_policy_selected GROUP BY business_line
+               ORDER BY CASE business_line WHEN 'OTO' THEN 1 WHEN '证保' THEN 2 ELSE 3 END"""
+        ).fetchall()
+        lines = []
+        for row in line_rows:
+            customers = int(row["customers"] or 0)
+            total_qj = float(row["qj_premium"] or 0)
+            repeat_qj = float(row["repeat_qj"] or 0)
+            lines.append({
+                "businessLine": row["business_line"], "customers": customers,
+                "policies": int(row["policies"] or 0), "qjPremiumWan": _wan(total_qj),
+                "repeatCustomers": int(row["repeat_customers"] or 0),
+                "repeatCustomerRate": _ratio(row["repeat_customers"] or 0, customers),
+                "repeatPolicies": int(row["repeat_policies"] or 0),
+                "repeatQjPremiumWan": _wan(repeat_qj), "repeatPremiumShare": _ratio(repeat_qj, total_qj),
+            })
+
+        timeline_rows = conn.execute(
+            """SELECT month_index, COUNT(DISTINCT customer_id) customers,
+                      COUNT(DISTINCT policy_no) policies, SUM(qj_premium) qj_premium,
+                      COUNT(DISTINCT CASE WHEN is_repeat=1 THEN customer_id END) repeat_customers,
+                      COUNT(DISTINCT CASE WHEN is_repeat=1 THEN policy_no END) repeat_policies,
+                      SUM(CASE WHEN is_repeat=1 THEN qj_premium ELSE 0 END) repeat_qj
+               FROM new_customer_policy_selected GROUP BY month_index ORDER BY month_index"""
+        ).fetchall()
+        timeline_map = {int(row["month_index"]): row for row in timeline_rows}
+        month_count = 1 if observation_window == "first_month" else 12
+        timeline = []
+        for index in range(month_count):
+            row = timeline_map.get(index)
+            timeline.append({
+                "monthIndex": index, "label": "首现月" if index == 0 else f"第{index + 1}个月",
+                "customers": int(row["customers"] or 0) if row else 0,
+                "policies": int(row["policies"] or 0) if row else 0,
+                "qjPremiumWan": _wan(row["qj_premium"]) if row else 0.0,
+                "repeatCustomers": int(row["repeat_customers"] or 0) if row else 0,
+                "repeatPolicies": int(row["repeat_policies"] or 0) if row else 0,
+                "repeatQjPremiumWan": _wan(row["repeat_qj"]) if row else 0.0,
+            })
+
+        cohort_month_rows = conn.execute(
+            """SELECT substr(c.first_date,1,7) first_month,
+                      COUNT(DISTINCT c.customer_id) system_new_customers,
+                      COUNT(DISTINCT s.customer_id) tracked_customers,
+                      COUNT(DISTINCT CASE WHEN s.is_repeat=1 THEN s.customer_id END) repeat_customers,
+                      SUM(s.qj_premium) qj_premium,
+                      SUM(CASE WHEN s.is_repeat=1 THEN s.qj_premium ELSE 0 END) repeat_qj
+               FROM new_customer_cohort c
+               LEFT JOIN new_customer_policy_selected s ON s.customer_id=c.customer_id
+               GROUP BY substr(c.first_date,1,7) ORDER BY first_month"""
+        ).fetchall()
+        cohort_months = []
+        for row in cohort_month_rows:
+            tracked = int(row["tracked_customers"] or 0)
+            cohort_months.append({
+                "firstAppearanceMonth": row["first_month"],
+                "systemNewCustomers": int(row["system_new_customers"] or 0),
+                "trackedCustomers": tracked, "repeatCustomers": int(row["repeat_customers"] or 0),
+                "repeatCustomerRate": _ratio(row["repeat_customers"] or 0, tracked),
+                "qjPremiumWan": _wan(row["qj_premium"]), "repeatQjPremiumWan": _wan(row["repeat_qj"]),
+            })
+        organizations = [
+            row[0] for row in conn.execute(
+                "SELECT DISTINCT org FROM customer_policy_month_fact WHERE TRIM(org)<>'' ORDER BY org"
+            ).fetchall()
+        ]
+
+    first_qj = float(summary_row["first_qj"] or 0)
+    repeat_qj = float(summary_row["repeat_qj"] or 0)
+    total_qj = float(summary_row["total_qj"] or 0)
+    definitions = {
+        "newCustomer": "客户在当前客户清单覆盖的系统历史中，最早承保日期落在所选首现期间。",
+        "firstAppearanceMonth": "客户最早承保日期所在的自然月。",
+        "firstMonthWindow": "自客户首次承保日起，观察至该自然月最后一天。",
+        "twelveMonthWindow": "自客户首次承保日起（含当日）观察12个月；满12个月当日不计入。",
+        "calendarYearWindow": "自客户首次承保日起，观察至该自然年度12月31日。",
+        "repeatUnderwriting": "同一客户除系统首张保单外的其他保单；同日多单也按首张1单、再次承保其余单统计。",
+        "contributionScope": "产品、保费和再次承保仅统计已关联客户清单的OTO、证保、蚁桥业绩保单。",
+        "dimensionFilter": "业务、机构、长险和产品筛选作用于观察窗口内的业绩保单；新客身份仍按系统最早承保日期判断。",
+        "windowCompleteness": "只有数据截止日达到客户观察窗口自然结束日，才计为完整观察客户。",
+    }
+    return {
+        "meta": {
+            "year": year, "periodType": period_type, "periodValue": period_value,
+            "periodLabel": period_label, "periodStart": start.isoformat(), "periodEnd": end.isoformat(),
+            "sourceCutoff": str(batch["source_cutoff"]), "batchId": int(batch["id"]),
+            "observationWindow": observation_window, "businessLine": business_line or "全部",
+            "org": org or "全部", "policyScope": policy_scope, "product": product or "全部",
+            "availableYears": available_years, "organizations": organizations,
+            "availableProducts": available_products,
+        },
+        "summary": {
+            "systemNewCustomers": system_new_customers, "trackedNewCustomers": tracked_customers,
+            "trackingRate": _ratio(tracked_customers, system_new_customers),
+            "firstPolicyTrackedCustomers": int(summary_row["first_policy_tracked_customers"] or 0),
+            "repeatCustomers": repeat_customers, "repeatCustomerRate": _ratio(repeat_customers, tracked_customers),
+            "trackedPolicies": int(summary_row["tracked_policies"] or 0), "repeatPolicies": repeat_policies,
+            "averageRepeatPolicies": _ratio(repeat_policies, tracked_customers),
+            "firstQjPremiumWan": _wan(first_qj), "repeatQjPremiumWan": _wan(repeat_qj),
+            "qjPremiumWan": _wan(total_qj), "repeatPremiumShare": _ratio(repeat_qj, total_qj),
+            "completedObservationCustomers": completed_customers,
+            "incompleteObservationCustomers": tracked_customers - completed_customers,
+            "observationCompletenessRate": _ratio(completed_customers, tracked_customers),
+        },
+        "products": products, "lines": lines, "timeline": timeline, "cohortMonths": cohort_months,
+        "quality": {"definitions": definitions},
+    }
 
 
 def get_customer_analysis(
@@ -392,8 +717,9 @@ def get_customer_analysis(
             "customerPolicyRows": int(batch["customer_policy_rows"]),
             "sourceTextIssueRows": int(batch["source_text_issue_rows"]),
             "definitions": {
-                "newCustomer": "在本次客户清单覆盖范围内，所选期间首次承保的客户。",
-                "existingCustomer": "在本次客户清单覆盖范围内，所选期间开始前已有承保记录、且期间内产生业绩的客户。",
+                "newCustomer": "客户在当前客户清单覆盖的系统历史中，最早承保日期落在所选期间，且期间内产生OTO、证保或蚁桥业绩。",
+                "existingCustomer": "客户在所选期间开始前已有系统承保记录，且期间内产生OTO、证保或蚁桥业绩。",
+                "systemCoverage": "新老客身份以本次客户清单可追溯的2007年以来历史为准；在接入公司统一客户主数据前，不表述为公司全量客户口径。",
                 "policyStatus": "客户清单数据截止日的当前保单状态，不等同于13个月或25个月继续率。",
                 "surrender": "仅统计终止原因为“退保终止”的保单；契撤、到期、满期和理赔均单列。",
                 "holdingScope": "所选期间产生业绩且已关联客户清单的客户，其在客户清单中的全部已知保单。",
