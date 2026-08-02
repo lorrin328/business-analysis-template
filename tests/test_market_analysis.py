@@ -16,6 +16,7 @@ import run_market_research
 from run_market_research import (
     clamp_source_excerpts,
     parse_claude_result,
+    reconcile_change_signals,
     reconcile_history_metadata,
     redact,
     topic_ledger,
@@ -201,6 +202,67 @@ def test_worker_reconciles_trusted_history_metadata_before_validation(tmp_path):
     assert all(module["history"]["previousReportId"] == first["reportId"] for module in second["modules"])
     assert all(entry["previousReportId"] == first["reportId"] for entry in second["changeSignals"]["persistent"])
     repository.publish(second)
+
+
+def test_change_signals_are_rebuilt_from_module_history_states():
+    report = valid_report()
+    report["changeSignals"]["expired"] = [
+        {
+            "topicKey": "macro-trend", "title": "错误失效", "summary": "不应保留",
+            "relatedModuleIds": ["M1"], "previousReportId": "market-old", "evidenceIds": ["S1"],
+        },
+        {
+            "topicKey": "peers-trend", "title": "重复失效", "summary": "不应保留",
+            "relatedModuleIds": ["M3"], "previousReportId": "market-old", "evidenceIds": ["S3"],
+        },
+    ]
+    report["changeSignals"]["new"] = report["changeSignals"]["new"][:2]
+
+    reconcile_change_signals(report)
+
+    assert report["changeSignals"]["expired"] == []
+    classified = [
+        module_id
+        for state in run_market_research.CHANGE_KEYS
+        for entry in report["changeSignals"][state]
+        for module_id in entry["relatedModuleIds"]
+    ]
+    assert classified == ["M1", "M2", "M3", "M4"]
+    assert validate_report(report) is report
+
+
+def test_change_signal_reconciliation_preserves_a_current_expired_module():
+    report = valid_report()
+    module = report["modules"][2]
+    module["history"] = {
+        "state": "expired",
+        "since": "2026-07-19",
+        "previousReportId": "market-20260719-120000",
+    }
+    report["changeSignals"]["expired"] = [{
+        "topicKey": module["topicKey"],
+        "title": "同业信号已失效",
+        "summary": "当前一手证据表明原判断不再成立",
+        "relatedModuleIds": [module["id"]],
+        "previousReportId": module["history"]["previousReportId"],
+        "evidenceIds": module["evidenceIds"],
+    }]
+
+    reconcile_change_signals(report)
+
+    expired = report["changeSignals"]["expired"]
+    assert len(expired) == 1
+    assert expired[0]["relatedModuleIds"] == ["M3"]
+    assert expired[0]["previousReportId"] == "market-20260719-120000"
+    assert expired[0]["evidenceIds"] == ["S3"]
+    assert validate_report(report) is report
+
+
+def test_research_prompt_requires_a_current_module_for_expired_signals():
+    prompt = run_market_research.build_prompt({"year": 2026}, [], [])
+    repair_prompt = run_market_research.build_repair_prompt(valid_report(), [], {"year": 2026}, [])
+    assert "Never emit an expired signal without a current module" in prompt
+    assert "Never add an expired signal unless that current module" in repair_prompt
 
 
 def test_market_analysis_api_exposes_latest_history_and_status(tmp_path, monkeypatch):
@@ -427,6 +489,50 @@ def test_metadata_only_checkpoint_skips_another_model_call(tmp_path, monkeypatch
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
     result = run_market_research.run_research(repository)
     assert result["reviewStatus"] == "machine_validated"
+    assert repository.repair_checkpoint() is None
+
+
+def test_change_signal_checkpoint_is_reconciled_without_another_model_call(tmp_path, monkeypatch):
+    repository = MarketAnalysisRepository(tmp_path)
+    report = valid_report()
+    report["changeSignals"]["new"] = report["changeSignals"]["new"][:2]
+    report["changeSignals"]["expired"] = [
+        {
+            "topicKey": "macro-trend", "title": "错误失效", "summary": "状态冲突",
+            "relatedModuleIds": ["M1"], "previousReportId": "market-old", "evidenceIds": ["S1"],
+        },
+        {
+            "topicKey": "macro-trend", "title": "重复失效", "summary": "重复映射",
+            "relatedModuleIds": ["M1"], "previousReportId": "market-old", "evidenceIds": ["S1"],
+        },
+    ]
+    repository.write_repair_checkpoint(
+        stage="repair",
+        report=report,
+        errors=[
+            "changeSignals.expired[0] does not match related module history.state",
+            "module M3 must appear in exactly one change signal",
+        ],
+    )
+
+    def fake_verify(candidate, **kwargs):
+        verified_at = run_market_research.now_iso()
+        for source in candidate["sources"]:
+            source["retrievedAt"] = verified_at
+            source["verification"]["verifiedAt"] = verified_at
+        return candidate
+
+    monkeypatch.setattr(run_market_research, "fetch_internal_snapshot", lambda: {"year": 2026})
+    monkeypatch.setattr(run_market_research.shutil, "which", lambda value: "/usr/local/bin/claude")
+    monkeypatch.setattr(run_market_research.subprocess, "run", lambda *args, **kwargs: pytest.fail("model should not run"))
+    monkeypatch.setattr(run_market_research, "verify_report_sources", fake_verify)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+
+    result = run_market_research.run_research(repository)
+
+    assert result["reviewStatus"] == "machine_validated"
+    assert result["changeSignals"]["expired"] == []
+    assert len(result["changeSignals"]["new"]) == 4
     assert repository.repair_checkpoint() is None
 
 

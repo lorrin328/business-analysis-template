@@ -82,7 +82,7 @@ GET /api/customer-analysis/overview?year=2026    -> 管理员200
 - 手工触发：管理员可在市场研判页点击“立即运行研究”；服务器仍可执行 `sudo systemctl start market-analysis.service`。网页触发链由 `market-analysis-manual.path` 监听固定请求文件，root helper 只允许启动固定研究服务，并设5分钟冷却，不使用 sudoers。
 - 查看结果：`sudo systemctl status market-analysis.service --no-pager`、`sudo journalctl -u market-analysis.service -n 100 --no-pager`；触发器状态使用 `systemctl status market-analysis-manual.path --no-pager`。
 - 失败处置：先查看 `status.json` 和 journal；不要删除 `latest.json`，模型失败时网页应继续展示上一期有效报告。
-- 失败恢复：服务保留6小时修复检查点；来源标题、日期、摘录等确定性错误会复用已有报告，不重新执行整轮模型研究。历史主题起始日期和上一报告编号由程序从最近已发布主题自动续接；结构或证据错误最多执行两轮定向修复，同业一手证据不足时改搜可核验的公司/协会页面，证据门槛不降低。
+- 失败恢复：服务保留6小时修复检查点；来源标题、日期、摘录及变化信号映射等确定性错误会复用已有报告，不重新执行整轮模型研究。历史主题起始日期和上一报告编号由程序从最近已发布主题自动续接；变化信号按当前模块状态重建，每个模块必须恰好出现一次。结构或证据错误最多执行两轮定向修复，同业一手证据不足时改搜可核验的公司/协会页面，证据门槛不降低。
 - 证据边界：独立抓取负责确定真实标题、发布日期、内容哈希和50字内原文锚点；发布前模块“事实”会收敛为最接近的已核验原文，判断、影响和行动属于模型推演，页面不得把二者混为同一事实层。
 - 凭据轮换：同时更新 DeepSeek Key 和主应用/研究服务的 AI 只读 Token；验证旧值失效后再启用 timer。
 

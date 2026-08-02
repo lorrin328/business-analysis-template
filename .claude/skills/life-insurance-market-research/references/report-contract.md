@@ -27,6 +27,8 @@
 
 每个模块必须且只能被一条 `changeSignals` 记录引用。变化记录必须含相同 `topicKey`、当前 `relatedModuleIds`、非空 `evidenceIds`；除 `new` 外还必须引用该主题最新一期真实存在且更早的 `previousReportId`，并沿用该主题最初的 `history.since`。
 
+`expired` 不是已消失历史主题的自由清单。只有本期仍保留一个相同 `topicKey` 的当前模块、将该模块的 `history.state` 标为 `expired`，并用本期证据说明原判断为何失效时，才能生成对应的失效信号；否则不得输出该 `expired` 信号。程序会以当前模块状态为唯一依据重建五类变化信号，历史遗留、重复或跨状态的信号会被丢弃。
+
 ## 数量与长度
 
 - 每层 1—4 个模块，总计 4—16 个；
