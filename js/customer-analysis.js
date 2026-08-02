@@ -1,5 +1,5 @@
 (function () {
-  const state = { data: null, tab: 'overview', charts: [] };
+  const state = { data: null, cohortData: null, tab: 'overview', charts: [] };
   const el = id => document.getElementById(id);
   const user = () => window.getCurrentUser?.() || null;
   const can = key => user()?.role === 'admin' || user()?.permissions?.[key] === true;
@@ -12,6 +12,7 @@
   const chartText = '#465668';
   const chartMuted = '#7b8794';
   const colors = { new: '#2f80ed', existing: '#8b5cf6', active: '#138a63', surrender: '#c33b32' };
+  const windowLabels = { first_month: '首现月', twelve_months: '首现后12个月', calendar_year: '首现当年度' };
 
   function requireAccess() {
     if (!window.getAuthToken?.() || !user()) { window.location.href = '/'; return false; }
@@ -61,6 +62,19 @@
   }
 
   function renderKpis() {
+    if (state.tab === 'cohort' && state.cohortData) {
+      const s = state.cohortData.summary;
+      const cards = [
+        ['系统新客', integer(s.systemNewCustomers), `筛选范围可追踪 ${integer(s.trackedNewCustomers)}人`],
+        ['再次承保客户', integer(s.repeatCustomers), `占可追踪新客 ${rate(s.repeatCustomerRate)}`],
+        ['再次承保保单', integer(s.repeatPolicies), `每位可追踪新客 ${number(s.averageRepeatPolicies, 2)}份`],
+        ['观察期交', `${number(s.qjPremiumWan)}万`, `首次${number(s.firstQjPremiumWan)}万 · 再次${number(s.repeatQjPremiumWan)}万`],
+        ['再次承保期交占比', rate(s.repeatPremiumShare), `再次承保贡献 ${number(s.repeatQjPremiumWan)}万`],
+        ['完整观察客户', integer(s.completedObservationCustomers), `完整率 ${rate(s.observationCompletenessRate)} · 未满窗口${integer(s.incompleteObservationCustomers)}人`]
+      ];
+      el('kpiGrid').innerHTML = cards.map(([label, value, meta]) => `<article class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div><div class="kpi-meta">${meta}</div></article>`).join('');
+      return;
+    }
     const s = state.data.summary;
     const cards = [
       ['期间客户', integer(s.customers), `新客${integer(s.newCustomers)} · 老客${integer(s.existingCustomers)}`],
@@ -108,6 +122,36 @@
       panel('月度客户与业绩', '月度口径用于观察获客与老客经营变化。', '<div class="chart" id="customerTrend"></div>');
   }
 
+  function renderCohort() {
+    const data = state.cohortData;
+    if (!data) return '<div class="panel empty">正在读取新客经营数据…</div>';
+    const s = data.summary;
+    const meta = data.meta;
+    const windowLabel = windowLabels[meta.observationWindow] || meta.observationWindow;
+    const completeness = s.incompleteObservationCustomers
+      ? `${integer(s.incompleteObservationCustomers)}名新客尚未走完整个观察窗口，复购率和贡献会随数据更新继续变化。`
+      : '本次筛选的新客均已走完整个观察窗口。';
+    const conclusion = `<div class="conclusions">
+      <div class="conclusion"><b>新客范围</b><p>${esc(meta.periodLabel)}系统首次出现${integer(s.systemNewCustomers)}人；当前业务、机构、保单和产品筛选下，可追踪${integer(s.trackedNewCustomers)}人。</p></div>
+      <div class="conclusion"><b>再次承保</b><p>${integer(s.repeatCustomers)}人再次承保${integer(s.repeatPolicies)}份，客户再次承保率${rate(s.repeatCustomerRate)}。</p></div>
+      <div class="conclusion"><b>观察完整性</b><p>${esc(windowLabel)}完整观察率${rate(s.observationCompletenessRate)}。${esc(completeness)}</p></div>
+    </div>`;
+    const lineRows = data.lines.map(item => [
+      esc(item.businessLine), integer(item.customers), integer(item.repeatCustomers), rate(item.repeatCustomerRate),
+      integer(item.policies), integer(item.repeatPolicies), number(item.qjPremiumWan),
+      number(item.repeatQjPremiumWan), rate(item.repeatPremiumShare)
+    ]);
+    const productRows = data.products.map(item => [
+      esc(item.product), esc(item.productType), integer(item.customers), integer(item.policies), number(item.qjPremiumWan),
+      integer(item.firstPolicies), number(item.firstQjPremiumWan), integer(item.repeatCustomers),
+      integer(item.repeatPolicies), number(item.repeatQjPremiumWan), rate(item.repeatPremiumShare)
+    ]);
+    return panel('新客经营结论', `首现期间决定新客范围；${windowLabel}决定后续购买观察范围。`, conclusion) +
+      `<div class="grid-2">${panel('再次承保节奏', 'M0为首现月；再次承保保单和期交均不含系统首张保单。', '<div class="chart" id="cohortRepeatChart"></div>')}${panel('首现月份表现', '比较各首现月份的新客规模、可追踪人数和再次承保人数。', '<div class="chart" id="cohortMonthChart"></div>')}</div>` +
+      `<div class="grid-2">${panel('产品贡献', '展示观察窗口内期交贡献前十产品，并区分再次承保贡献。', '<div class="chart" id="cohortProductChart"></div>')}${panel('分业务表现', '客户跨业务购买时，各业务客户数不可直接相加。', table(['业务','新客','再次承保客户','再次承保率','保单','再次承保保单','期交(万)','再次承保期交(万)','再次承保期交占比'], lineRows, [1,2,3,4,5,6,7,8]))}</div>` +
+      panel('新客购买产品', '产品、保费和再次承保均限定为OTO、证保、蚁桥可追踪业绩；按观察期交从高到低排列。', table(['产品','产品类型','新客','保单','期交(万)','首张保单','首张期交(万)','再次承保客户','再次承保保单','再次承保期交(万)','再次承保期交占比'], productRows, [2,3,4,5,6,7,8,9,10]));
+  }
+
   function renderHolding() {
     const h = state.data.holdings;
     const s = h.summary;
@@ -146,7 +190,7 @@
 
   function renderQuality() {
     const q = state.data.quality;
-    const definitions = Object.entries(q.definitions).map(([key, value]) => `<div><b>${esc({ newCustomer:'新客', existingCustomer:'老客', policyStatus:'保单状态', surrender:'退保', holdingScope:'持单范围', firstRepeatInterval:'首次复购间隔' }[key] || key)}</b><br><span class="meta">${esc(value)}</span></div>`).join('');
+    const definitions = Object.entries(q.definitions).map(([key, value]) => `<div><b>${esc({ newCustomer:'新客', existingCustomer:'老客', systemCoverage:'系统覆盖范围', policyStatus:'保单状态', surrender:'退保', holdingScope:'持单范围', firstRepeatInterval:'首次复购间隔' }[key] || key)}</b><br><span class="meta">${esc(value)}</span></div>`).join('');
     const stats = `<div class="quality-grid">
       <div class="quality-item">历史业绩明细<strong>${integer(q.performanceRows)}</strong></div>
       <div class="quality-item">客户源记录<strong>${integer(q.customerSourceRows)}</strong></div>
@@ -158,6 +202,45 @@
   }
 
   function drawCharts() {
+    if (state.tab === 'cohort' && state.cohortData) {
+      const data = state.cohortData;
+      const timeline = data.timeline;
+      const tooltip = { trigger:'axis', backgroundColor:'#fff', borderColor:'#dfe5eb', textStyle:{ color:chartText } };
+      initChart('cohortRepeatChart', {
+        tooltip, legend:{ data:['再次承保保单','再次承保期交'],textStyle:{ color:chartMuted } },
+        grid:{ left:60,right:65,top:50,bottom:45 },
+        xAxis:{ type:'category',data:timeline.map(x => x.monthIndex === 0 ? 'M0' : `M${x.monthIndex}`),...axisBase() },
+        yAxis:[{ type:'value',name:'保单',...axisBase() },{ type:'value',name:'万元',...axisBase() }],
+        series:[
+          { name:'再次承保保单',type:'bar',data:timeline.map(x => x.repeatPolicies),itemStyle:{ color:colors.new } },
+          { name:'再次承保期交',type:'line',yAxisIndex:1,smooth:true,data:timeline.map(x => x.repeatQjPremiumWan),itemStyle:{ color:colors.existing } }
+        ]
+      });
+      const cohortMonths = data.cohortMonths;
+      initChart('cohortMonthChart', {
+        tooltip, legend:{ data:['可追踪新客','再次承保客户'],textStyle:{ color:chartMuted } },
+        grid:{ left:60,right:20,top:50,bottom:45 },
+        xAxis:{ type:'category',data:cohortMonths.map(x => x.firstAppearanceMonth.slice(5) + '月'),...axisBase() },
+        yAxis:{ type:'value',name:'人',...axisBase() },
+        series:[
+          { name:'可追踪新客',type:'bar',data:cohortMonths.map(x => x.trackedCustomers),itemStyle:{ color:'#89b8ef' } },
+          { name:'再次承保客户',type:'bar',data:cohortMonths.map(x => x.repeatCustomers),itemStyle:{ color:colors.existing } }
+        ]
+      });
+      const products = data.products.slice(0, 10).reverse();
+      initChart('cohortProductChart', {
+        tooltip:{ trigger:'axis',axisPointer:{ type:'shadow' } },
+        legend:{ data:['首张期交','再次承保期交'],textStyle:{ color:chartMuted } },
+        grid:{ left:165,right:30,top:45,bottom:25 },
+        xAxis:{ type:'value',name:'万元',...axisBase() },
+        yAxis:{ type:'category',data:products.map(x => x.product),axisLabel:{ color:chartMuted,width:145,overflow:'truncate' },axisLine:{ lineStyle:{ color:'#c8d1da' } } },
+        series:[
+          { name:'首张期交',type:'bar',stack:'premium',data:products.map(x => x.firstQjPremiumWan),itemStyle:{ color:'#89b8ef' } },
+          { name:'再次承保期交',type:'bar',stack:'premium',data:products.map(x => x.repeatQjPremiumWan),itemStyle:{ color:colors.existing } }
+        ]
+      });
+      return;
+    }
     const monthly = state.data.monthly;
     const labels = monthly.map(item => item.period.slice(5) + '月');
     const tooltip = { trigger:'axis', backgroundColor:'#fff', borderColor:'#dfe5eb', textStyle:{ color:chartText } };
@@ -185,7 +268,7 @@
   function render() {
     clearCharts();
     renderKpis();
-    const renderer = { overview: renderOverview, customer: renderCustomer, holding: renderHolding, policy: renderPolicy, quality: renderQuality }[state.tab];
+    const renderer = { overview: renderOverview, customer: renderCustomer, cohort: renderCohort, holding: renderHolding, policy: renderPolicy, quality: renderQuality }[state.tab];
     el('content').innerHTML = renderer();
     drawCharts();
   }
@@ -198,18 +281,51 @@
     rebuildPeriodOptions(meta.periodValue);
   }
 
-  async function load() {
+  function analysisQuery() {
     const query = new URLSearchParams({ year: el('yearInput').value, periodType: el('periodType').value, policyScope: el('policyScope').value });
     if (el('periodType').value !== 'year') query.set('periodValue', el('periodValue').value);
     if (el('businessLine').value) query.set('businessLine', el('businessLine').value);
     if (el('orgInput').value) query.set('org', el('orgInput').value);
+    return query;
+  }
+
+  function setOverviewContext() {
+    const meta = state.data.meta;
+    el('sourceLine').textContent = `${meta.periodLabel} · ${meta.periodStart} 至 ${meta.periodEnd} · 客户状态截止 ${String(meta.sourceCutoff).slice(0, 10)} · 导入批次 ${meta.batchId}`;
+    el('scopeNotice').textContent = `新客为系统最早承保日期落在所选期间的客户；老客为期间开始前已有承保记录的客户。保单状态截至${String(meta.sourceCutoff).slice(0, 10)}，不作为13个月或25个月继续率。`;
+  }
+
+  function syncCohortOptions(meta) {
+    const selected = meta.product === '全部' ? '' : meta.product;
+    const options = meta.availableProducts.slice();
+    if (selected && !options.includes(selected)) options.unshift(selected);
+    el('productInput').innerHTML = '<option value="">全部产品</option>' + options.map(value => `<option value="${esc(value)}" ${value === selected ? 'selected' : ''}>${esc(value)}</option>`).join('');
+    el('observationWindow').value = meta.observationWindow;
+  }
+
+  async function loadOverview() {
+    const query = analysisQuery();
     el('sourceLine').textContent = '正在读取生产数据…';
     const payload = await window.fetchJson(`/api/customer-analysis/overview?${query}`);
     state.data = window.unwrapApiResponse(payload);
     syncOptions(state.data.meta);
-    const meta = state.data.meta;
-    el('sourceLine').textContent = `${meta.periodLabel} · ${meta.periodStart} 至 ${meta.periodEnd} · 客户状态截止 ${String(meta.sourceCutoff).slice(0, 10)} · 导入批次 ${meta.batchId}`;
-    el('scopeNotice').textContent = `新客与老客按${meta.periodStart}划分；保单状态为${String(meta.sourceCutoff).slice(0, 10)}客户清单快照，不作为13个月或25个月继续率。`;
+    setOverviewContext();
+    render();
+  }
+
+  async function loadCohort() {
+    const query = analysisQuery();
+    query.set('observationWindow', el('observationWindow').value);
+    if (el('productInput').value) query.set('product', el('productInput').value);
+    state.cohortData = null;
+    el('sourceLine').textContent = '正在读取新客经营数据…';
+    render();
+    const payload = await window.fetchJson(`/api/customer-analysis/new-customer-cohort?${query}`);
+    state.cohortData = window.unwrapApiResponse(payload);
+    syncCohortOptions(state.cohortData.meta);
+    const meta = state.cohortData.meta;
+    el('sourceLine').textContent = `${meta.periodLabel}新客 · ${windowLabels[meta.observationWindow]} · 数据截止 ${String(meta.sourceCutoff).slice(0, 10)} · 导入批次 ${meta.batchId}`;
+    el('scopeNotice').textContent = '新客身份按系统最早承保日期确定；产品、保费和再次承保只统计OTO、证保、蚁桥可追踪业绩。业务、机构、长险和产品筛选作用于观察窗口内的业绩保单。';
     render();
   }
 
@@ -221,14 +337,20 @@
 
   function bind() {
     el('backBtn').addEventListener('click', () => { window.location.href = '/'; });
-    el('refreshBtn').addEventListener('click', () => load().catch(showError));
+    el('refreshBtn').addEventListener('click', () => (state.tab === 'cohort' ? loadCohort() : loadOverview()).catch(showError));
     el('periodType').addEventListener('change', () => rebuildPeriodOptions());
     el('tabs').addEventListener('click', event => {
       const button = event.target.closest('[data-tab]');
       if (!button) return;
       state.tab = button.dataset.tab;
       document.querySelectorAll('.tab').forEach(item => { const selected = item === button; item.classList.toggle('active', selected); item.setAttribute('aria-selected', String(selected)); });
-      render();
+      document.querySelectorAll('.cohort-only').forEach(item => item.classList.toggle('hidden', state.tab !== 'cohort'));
+      if (state.tab === 'cohort') {
+        loadCohort().catch(showError);
+      } else {
+        setOverviewContext();
+        render();
+      }
     });
     window.addEventListener('resize', () => state.charts.forEach(chart => chart.resize()));
   }
@@ -237,7 +359,7 @@
     if (!requireAccess()) return;
     bind();
     rebuildPeriodOptions();
-    try { await load(); } catch (error) { showError(error); }
+    try { await loadOverview(); } catch (error) { showError(error); }
   }
   init();
 })();

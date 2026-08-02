@@ -125,9 +125,164 @@ def test_customer_analysis_month_segment_and_permission(auth_db):
     normal = registered.json()["data"]
     assert normal["user"]["permissions"]["customer_analysis"] is False
     assert client.get("/api/customer-analysis/overview", headers=_headers(normal["token"])).status_code == 403
+    assert client.get("/api/customer-analysis/new-customer-cohort", headers=_headers(normal["token"])).status_code == 403
     assert ROLE_DEFAULT_PERMISSIONS["admin"]["customer_analysis"] is True
     assert ROLE_DEFAULT_PERMISSIONS["senior"]["customer_analysis"] is True
     assert ROLE_DEFAULT_PERMISSIONS["normal"]["customer_analysis"] is False
+
+
+def _seed_new_customer_cohort():
+    import db.connection as connection
+
+    policies = [
+        ("P-C1-1", "C1", "2026-01-10", "OTO", "上海", 10000, "产品A"),
+        ("P-C1-2", "C1", "2026-01-20", "OTO", "上海", 20000, "产品B"),
+        ("P-C1-3", "C1", "2026-03-10", "证保", "北京", 30000, "产品C"),
+        ("P-C1-4", "C1", "2027-01-09", "蚁桥", "上海", 40000, "产品B"),
+        ("P-C1-5", "C1", "2027-01-10", "OTO", "上海", 50000, "产品D"),
+        ("P-C2-1", "C2", "2026-02-01", "OTO", "上海", 60000, "产品A"),
+        ("P-C3-1", "C3", "2026-12-15", "证保", "北京", 70000, "产品A"),
+        ("P-C3-2", "C3", "2026-12-20", "证保", "北京", 80000, "产品B"),
+        ("P-C3-3", "C3", "2027-01-15", "证保", "北京", 90000, "产品C"),
+    ]
+    with connection.get_db() as conn:
+        batch_id = conn.execute(
+            """INSERT INTO history_import_batches
+               (source_directory, source_cutoff, performance_rows, customer_source_rows,
+                customer_policy_rows, source_text_issue_rows, status, completed_at)
+               VALUES ('cohort-fixture', '2027-06-30 23:59:59', 9, 9, 9, 0, 'success', CURRENT_TIMESTAMP)"""
+        ).lastrowid
+        conn.executemany(
+            """INSERT INTO customer_master
+               (customer_id, first_underwriting_time, first_policy_no, total_policy_count,
+                active_policy_count, suspended_policy_count, terminated_policy_count, batch_id)
+               VALUES (?, ?, ?, ?, ?, 0, 0, ?)""",
+            [
+                ("C1", "2026-01-10", "P-C1-1", 5, 5, batch_id),
+                ("C2", "2026-02-01", "P-C2-1", 1, 1, batch_id),
+                ("C3", "2026-12-15", "P-C3-1", 3, 3, batch_id),
+            ],
+        )
+        conn.executemany(
+            """INSERT INTO customer_policy_snapshot
+               (policy_no, customer_id, underwriting_time, policy_status, termination_reason,
+                status_group, raw_row_count, batch_id)
+               VALUES (?, ?, ?, '有效', '', 'active', 1, ?)""",
+            [(policy_no, customer_id, underwriting_date, batch_id)
+             for policy_no, customer_id, underwriting_date, *_ in policies],
+        )
+        conn.executemany(
+            """INSERT INTO customer_policy_month_fact
+               (year, month, transaction_date, business_line, org, policy_no, customer_id,
+                underwriting_time, first_customer_underwriting_time, is_longterm, qj_premium,
+                gm_premium, zs_premium, value_premium, accepted_count, policy_status,
+                termination_reason, status_group, customer_match, batch_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 0, 0, 1, '有效', '', 'active', 1, ?)""",
+            [
+                (int(underwriting_date[:4]), int(underwriting_date[5:7]), underwriting_date,
+                 business_line, org, policy_no, customer_id, underwriting_date,
+                 next(item[1] for item in [("C1", "2026-01-10"), ("C2", "2026-02-01"), ("C3", "2026-12-15")] if item[0] == customer_id),
+                 qj, batch_id)
+                for policy_no, customer_id, underwriting_date, business_line, org, qj, _product in policies
+            ],
+        )
+        conn.execute('ALTER TABLE performance ADD COLUMN "投保单号" TEXT')
+        conn.execute('ALTER TABLE performance ADD COLUMN "产品名称" TEXT')
+        conn.execute('ALTER TABLE performance ADD COLUMN "产品代码" TEXT')
+        conn.executemany(
+            """INSERT INTO performance
+               ("年月", "业务模式", "销售机构名称", "期交保费", "投保单号", "产品名称", "产品代码")
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            [
+                (underwriting_date[:7], business_line, org, qj, policy_no, product, f"CODE-{index}")
+                for index, (policy_no, _customer_id, underwriting_date, business_line, org, qj, product)
+                in enumerate(policies, 1)
+            ],
+        )
+        conn.execute('CREATE INDEX ix_test_performance_policy ON performance("投保单号")')
+        conn.commit()
+
+
+def test_new_customer_cohort_windows_repeat_and_product_metrics(auth_db):
+    _seed_new_customer_cohort()
+    client = TestClient(app)
+    login = _login(client)
+    headers = _headers(login["token"])
+
+    response = client.get(
+        "/api/customer-analysis/new-customer-cohort",
+        params={"year": 2026, "observationWindow": "twelve_months"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    summary = data["summary"]
+    assert summary["systemNewCustomers"] == 3
+    assert summary["trackedNewCustomers"] == 3
+    assert summary["repeatCustomers"] == 2
+    assert summary["repeatCustomerRate"] == pytest.approx(2 / 3)
+    assert summary["trackedPolicies"] == 8
+    assert summary["repeatPolicies"] == 5
+    assert summary["averageRepeatPolicies"] == pytest.approx(5 / 3)
+    assert summary["firstQjPremiumWan"] == 14
+    assert summary["repeatQjPremiumWan"] == 26
+    assert summary["qjPremiumWan"] == 40
+    assert summary["repeatPremiumShare"] == pytest.approx(26 / 40)
+    assert summary["completedObservationCustomers"] == 2
+    assert summary["incompleteObservationCustomers"] == 1
+    assert summary["observationCompletenessRate"] == pytest.approx(2 / 3)
+    assert len(data["timeline"]) == 12
+    assert "满12个月当日不计入" in data["quality"]["definitions"]["twelveMonthWindow"]
+    product_b = next(item for item in data["products"] if item["product"] == "产品B")
+    assert product_b["repeatCustomers"] == 2
+    assert product_b["repeatPolicies"] == 3
+    assert product_b["repeatQjPremiumWan"] == 14
+
+    first_month = client.get(
+        "/api/customer-analysis/new-customer-cohort",
+        params={"year": 2026, "observationWindow": "first_month"}, headers=headers,
+    ).json()["data"]
+    assert first_month["summary"]["trackedPolicies"] == 5
+    assert first_month["summary"]["repeatPolicies"] == 2
+    assert first_month["summary"]["repeatQjPremiumWan"] == 10
+    assert len(first_month["timeline"]) == 1
+
+    calendar_year = client.get(
+        "/api/customer-analysis/new-customer-cohort",
+        params={"year": 2026, "observationWindow": "calendar_year"}, headers=headers,
+    ).json()["data"]
+    assert calendar_year["summary"]["trackedPolicies"] == 6
+    assert calendar_year["summary"]["repeatPolicies"] == 3
+    assert calendar_year["summary"]["repeatQjPremiumWan"] == 13
+
+
+def test_new_customer_cohort_dimension_filters(auth_db):
+    _seed_new_customer_cohort()
+    client = TestClient(app)
+    token = _login(client)["token"]
+    response = client.get(
+        "/api/customer-analysis/new-customer-cohort",
+        params={"year": 2026, "observationWindow": "twelve_months", "product": "产品B"},
+        headers=_headers(token),
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["summary"]["trackedNewCustomers"] == 2
+    assert data["summary"]["repeatCustomers"] == 2
+    assert data["summary"]["repeatCustomerRate"] == 1
+    assert data["summary"]["repeatPolicies"] == 3
+    assert data["summary"]["repeatQjPremiumWan"] == 14
+    assert "产品A" in data["meta"]["availableProducts"]
+
+    oto = client.get(
+        "/api/customer-analysis/new-customer-cohort",
+        params={"year": 2026, "observationWindow": "twelve_months", "businessLine": "OTO", "org": "上海"},
+        headers=_headers(token),
+    ).json()["data"]
+    assert oto["summary"]["trackedNewCustomers"] == 2
+    assert oto["summary"]["repeatCustomers"] == 1
+    assert oto["summary"]["repeatPolicies"] == 1
+    assert {item["businessLine"] for item in oto["lines"]} == {"OTO"}
 
 
 def _performance_row(year: int, policy_no: str, staff_code: str):
@@ -202,7 +357,7 @@ def test_customer_page_uses_direct_business_language(auth_db):
     client = TestClient(app)
     page = client.get("/customer-analysis")
     assert page.status_code == 200
-    assert "新客、老客与保单状态" in page.text
+    assert "获客、复购与保单状态" in page.text
     assert "不作为13个月或25个月继续率" in page.text
     assert "/js/customer-analysis.js" in page.text
     script = client.get("/js/customer-analysis.js")
@@ -210,5 +365,9 @@ def test_customer_page_uses_direct_business_language(auth_db):
     assert "新客贡献" in script.text
     assert "退保终止" in script.text
     assert "持单与间隔" in page.text
+    assert "新客经营" in page.text
+    assert "首现后12个月" in page.text
     assert "首次复购间隔" in script.text
+    assert "再次承保客户" in script.text
+    assert "新客购买产品" in script.text
     assert "AI建议" not in page.text + script.text

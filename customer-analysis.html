@@ -72,11 +72,11 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
-  <script src="/js/api-client.js?v=1.0.123"></script>
+  <script src="/js/api-client.js?v=1.0.125"></script>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><strong>客户分析</strong><span>新客、老客与保单状态</span></div>
+    <div class="brand"><strong>客户分析</strong><span>获客、复购与保单状态</span></div>
     <div class="top-actions"><span class="user" id="currentUser"></span><button class="button" id="backBtn">返回经营看板</button></div>
   </header>
 
@@ -93,6 +93,8 @@
         <label>业务<select id="businessLine"><option value="">OTO+证保+蚁桥</option><option>OTO</option><option>证保</option><option>蚁桥</option></select></label>
         <label>机构<select id="orgInput"><option value="">全部机构</option></select></label>
         <label>保单范围<select id="policyScope"><option value="all">全部保单</option><option value="longterm">长险保单</option></select></label>
+        <label class="cohort-only hidden">观察窗口<select id="observationWindow"><option value="first_month">首现月</option><option value="twelve_months" selected>首现后12个月</option><option value="calendar_year">首现当年度</option></select></label>
+        <label class="cohort-only hidden">产品<select id="productInput"><option value="">全部产品</option></select></label>
         <button class="button primary" id="refreshBtn">应用</button>
       </div>
     </section>
@@ -102,6 +104,7 @@
     <nav class="tabs" id="tabs" role="tablist" aria-label="客户分析页签">
       <button class="tab active" data-tab="overview" role="tab" aria-selected="true">经营概览</button>
       <button class="tab" data-tab="customer" role="tab" aria-selected="false">新老客户</button>
+      <button class="tab" data-tab="cohort" role="tab" aria-selected="false">新客经营</button>
       <button class="tab" data-tab="holding" role="tab" aria-selected="false">持单与间隔</button>
       <button class="tab" data-tab="policy" role="tab" aria-selected="false">保单状态</button>
       <button class="tab" data-tab="quality" role="tab" aria-selected="false">口径与质量</button>
@@ -109,6 +112,6 @@
     <section id="content"></section>
   </main>
   <section class="access hidden" id="accessDenied">当前账号没有“客户分析”权限，请联系管理员。</section>
-  <script src="/js/customer-analysis.js?v=1.0.123"></script>
+  <script src="/js/customer-analysis.js?v=1.0.125"></script>
 </body>
 </html>
