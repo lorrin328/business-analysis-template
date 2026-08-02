@@ -1,5 +1,5 @@
 (function () {
-  const state = { data: null, cohortData: null, tab: 'overview', charts: [] };
+  const state = { data: null, cohortData: null, tab: 'overview', charts: [], importFiles: [], importPreview: null, importBatches: [], importMessage: '' };
   const el = id => document.getElementById(id);
   const user = () => window.getCurrentUser?.() || null;
   const can = key => user()?.role === 'admin' || user()?.permissions?.[key] === true;
@@ -201,6 +201,53 @@
       panel('统计口径', '缺少客户关联的业绩单独保留，不归入新客或老客。', `<div class="definition">${definitions}</div>`);
   }
 
+  function renderImportSummary(result) {
+    if (!result) return '<div class="import-result">选择文件后上传。浏览器会自动分片，后台流式解析；预检通过前不会写入客户分析正式表。</div>';
+    const ready = result.canImport === true;
+    const pending = ['uploading','processing','importing'].includes(result.status);
+    const messages = [...(result.errors || []), ...(result.warnings || [])];
+    return `<div class="import-result ${ready ? 'ready' : 'blocked'}">
+      <b>${ready ? '预检通过，可以导入' : pending ? '后台任务正在处理' : result.status === 'success' ? '导入完成' : '预检未通过，未写入数据库'}</b>
+      <div class="quality-grid" style="margin-top:12px">
+        <div class="quality-item">源记录<strong>${integer(result.sourceRows)}</strong></div>
+        <div class="quality-item">归并后保单<strong>${integer(result.normalizedPolicies)}</strong></div>
+        <div class="quality-item">新增保单<strong>${integer(result.insertPolicies)}</strong></div>
+        <div class="quality-item">更新保单<strong>${integer(result.updatePolicies)}</strong></div>
+        <div class="quality-item">保持不变<strong>${integer(result.unchangedPolicies)}</strong></div>
+        <div class="quality-item">旧快照跳过<strong>${integer(result.skippedOlderPolicies)}</strong></div>
+        <div class="quality-item">冲突保单<strong>${integer(result.conflictPolicies)}</strong></div>
+        <div class="quality-item">无效记录<strong>${integer(result.invalidRows)}</strong></div>
+      </div>
+      ${result.error ? `<ul class="message-list"><li>${esc(result.error)}</li></ul>` : ''}
+      ${messages.length ? `<ul class="message-list">${messages.map(item => `<li>${esc(item)}</li>`).join('')}</ul>` : ''}
+      ${result.status === 'success' ? `<p><b>批次${integer(result.batchId)}已完成：</b>其中${integer(result.linkedPerformancePolicies)}份保单已与业绩事实关联。</p>` : ''}
+    </div>`;
+  }
+
+  function renderImport() {
+    const allowed = can('upload');
+    const batchRows = state.importBatches.map(item => [
+      integer(item.batchId), esc(item.importedAt || '--'), esc(item.importedBy), esc(item.status),
+      integer(item.sourceRows), integer(item.insertedPolicies), integer(item.updatedPolicies),
+      integer(item.skippedOlderPolicies), integer(item.linkedPerformancePolicies), esc(item.sourceCutoff || '--')
+    ]);
+    const form = `<div class="import-box">
+      <div><b>导入对象：客户清单</b><div class="meta">用于更新保单与客户归属、承保时间和当前保单状态。业绩金额仍通过经营看板原有业绩导入口导入。</div></div>
+      <input class="file-input" id="customerImportFiles" type="file" accept=".xlsx,.csv" multiple ${allowed ? '' : 'disabled'}>
+      <div class="import-actions">
+        <button class="button" data-import-action="template" data-format="xlsx">下载Excel模板</button>
+        <button class="button" data-import-action="template" data-format="csv">下载CSV模板</button>
+        <button class="button primary" data-import-action="preview" ${allowed ? '' : 'disabled'}>上传并后台预检</button>
+        <button class="button" data-import-action="commit" ${(allowed && state.importPreview?.canImport && state.importFiles.length) ? '' : 'disabled'}>确认导入</button>
+      </div>
+      ${allowed ? '' : '<div class="notice">当前账号可查看客户分析，但没有“数据上传”权限；模板仍可下载。</div>'}
+      ${state.importMessage ? `<div class="meta">${esc(state.importMessage)}</div>` : ''}
+      ${renderImportSummary(state.importPreview)}
+    </div>`;
+    return panel('客户清单导入', '支持.xlsx和.csv；CSV可使用UTF-8 BOM、UTF-8或GBK。文件分片上传，后台流式处理，不设置固定文件大小、文件数和行数上限。', form) +
+      panel('最近导入批次', '批次只保留汇总数量、操作者、截止时间和文件校验信息，不保存客户与保单明细。', batchRows.length ? table(['批次','导入时间','操作人','状态','源记录','新增','更新','旧快照跳过','关联业绩','数据截止'], batchRows, [0,4,5,6,7,8]) : '<div class="empty">尚无客户清单网页导入批次。</div>');
+  }
+
   function drawCharts() {
     if (state.tab === 'cohort' && state.cohortData) {
       const data = state.cohortData;
@@ -268,7 +315,7 @@
   function render() {
     clearCharts();
     renderKpis();
-    const renderer = { overview: renderOverview, customer: renderCustomer, cohort: renderCohort, holding: renderHolding, policy: renderPolicy, quality: renderQuality }[state.tab];
+    const renderer = { overview: renderOverview, customer: renderCustomer, cohort: renderCohort, holding: renderHolding, policy: renderPolicy, quality: renderQuality, import: renderImport }[state.tab];
     el('content').innerHTML = renderer();
     drawCharts();
   }
@@ -329,6 +376,96 @@
     render();
   }
 
+  async function loadImportBatches() {
+    const payload = await window.fetchJson('/api/customer-analysis/import/batches?limit=10');
+    state.importBatches = window.unwrapApiResponse(payload).batches || [];
+  }
+
+  async function importRequest(path, options = {}) {
+    const response = await window.authFetch(window.apiUrl(path), { method: 'POST', ...options });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || payload.message || `请求失败（${response.status}）`);
+    return window.unwrapApiResponse(payload);
+  }
+
+  const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+  async function waitImportJob(uploadId, terminalStatuses) {
+    while (true) {
+      const payload = await window.fetchJson(`/api/customer-analysis/import/uploads/${uploadId}`);
+      const job = window.unwrapApiResponse(payload);
+      state.importPreview = job;
+      state.importMessage = job.status === 'processing'
+        ? `后台正在预检，已处理${integer(job.processedRows)}行…`
+        : job.status === 'importing' ? '后台正在写入并刷新客户画像…' : state.importMessage;
+      render();
+      if (terminalStatuses.includes(job.status)) return job;
+      await delay(1200);
+    }
+  }
+
+  async function previewImport() {
+    const input = el('customerImportFiles');
+    state.importFiles = Array.from(input?.files || []);
+    if (!state.importFiles.length) throw new Error('请先选择Excel或CSV客户清单。');
+    state.importMessage = '正在创建后台上传任务…';
+    state.importPreview = null;
+    render();
+    const session = await importRequest('/api/customer-analysis/import/uploads', {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: state.importFiles.map(file => ({ name: file.name, size: file.size })) })
+    });
+    state.importPreview = session;
+    const chunkSize = Number(session.chunkBytes || 8 * 1024 * 1024);
+    let uploadedBytes = 0;
+    for (let fileIndex = 0; fileIndex < state.importFiles.length; fileIndex += 1) {
+      const file = state.importFiles[fileIndex];
+      let offset = 0;
+      while (offset < file.size) {
+        const end = Math.min(offset + chunkSize, file.size);
+        await importRequest(`/api/customer-analysis/import/uploads/${session.uploadId}/files/${fileIndex}/chunks?offset=${offset}`, {
+          headers: { 'Content-Type': 'application/octet-stream' }, body: file.slice(offset, end)
+        });
+        uploadedBytes += end - offset;
+        offset = end;
+        state.importMessage = `正在分片上传：${(uploadedBytes / session.totalBytes * 100).toFixed(1)}%`;
+        render();
+      }
+    }
+    await importRequest(`/api/customer-analysis/import/uploads/${session.uploadId}/process`);
+    state.importMessage = '文件已完整上传，后台正在流式预检…';
+    const job = await waitImportJob(session.uploadId, ['ready','blocked','failed','expired']);
+    state.importMessage = job.status === 'ready' ? '预检完成，请核对数量后确认导入。' : '预检发现阻断问题，请修正文件后重新上传。';
+    render();
+  }
+
+  async function commitImport() {
+    if (!state.importPreview?.canImport || !state.importFiles.length) throw new Error('请先完成可通过的预检。');
+    if (!window.confirm(`确认写入${integer(state.importPreview.normalizedPolicies)}份客户保单快照？`)) return;
+    state.importMessage = '正在写入并刷新客户画像…';
+    render();
+    const uploadId = state.importPreview.uploadId;
+    await importRequest(`/api/customer-analysis/import/uploads/${uploadId}/commit`);
+    state.importMessage = '任务已提交，后台正在写入并刷新客户画像…';
+    const job = await waitImportJob(uploadId, ['success','failed','ready']);
+    state.importPreview = job;
+    state.importMessage = job.status === 'success' ? '导入完成。客户分析已使用最新客户快照。' : (job.error || '导入未完成。');
+    await loadImportBatches();
+    render();
+  }
+
+  async function downloadTemplate(format) {
+    const response = await window.authFetch(window.apiUrl(`/api/customer-analysis/import/template?format=${format}`));
+    if (!response.ok) throw new Error('模板下载失败。');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `客户清单导入模板.${format}`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   function showError(error) {
     clearCharts();
     el('sourceLine').textContent = '读取失败';
@@ -345,12 +482,25 @@
       state.tab = button.dataset.tab;
       document.querySelectorAll('.tab').forEach(item => { const selected = item === button; item.classList.toggle('active', selected); item.setAttribute('aria-selected', String(selected)); });
       document.querySelectorAll('.cohort-only').forEach(item => item.classList.toggle('hidden', state.tab !== 'cohort'));
+      document.querySelector('.filters').classList.toggle('hidden', state.tab === 'import');
+      el('kpiGrid').classList.toggle('hidden', state.tab === 'import');
       if (state.tab === 'cohort') {
         loadCohort().catch(showError);
+      } else if (state.tab === 'import') {
+        el('sourceLine').textContent = '客户清单增量导入';
+        el('scopeNotice').textContent = '此入口只导入客户与保单状态清单，不导入业绩金额；正式写入前必须先通过预检。';
+        loadImportBatches().then(render).catch(showError);
       } else {
         setOverviewContext();
         render();
       }
+    });
+    el('content').addEventListener('click', event => {
+      const button = event.target.closest('[data-import-action]');
+      if (!button) return;
+      const action = button.dataset.importAction;
+      const task = action === 'preview' ? previewImport() : action === 'commit' ? commitImport() : downloadTemplate(button.dataset.format);
+      task.catch(error => { state.importMessage = error.message; render(); });
     });
     window.addEventListener('resize', () => state.charts.forEach(chart => chart.resize()));
   }

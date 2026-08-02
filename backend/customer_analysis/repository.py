@@ -102,9 +102,21 @@ def _monthly_segment_sql(alias: str) -> str:
 
 def _latest_batch(conn):
     return conn.execute(
-        """SELECT id, source_cutoff, performance_rows, customer_source_rows, customer_policy_rows,
-                  source_text_issue_rows, imported_at, completed_at
-           FROM history_import_batches WHERE status='success' ORDER BY id DESC LIMIT 1"""
+        """SELECT h.id,
+                  CASE
+                    WHEN ci.source_cutoff IS NOT NULL AND (h.source_cutoff IS NULL OR ci.source_cutoff>h.source_cutoff)
+                    THEN ci.source_cutoff ELSE h.source_cutoff END source_cutoff,
+                  h.performance_rows, h.customer_source_rows,
+                  (SELECT COUNT(*) FROM customer_policy_snapshot) customer_policy_rows,
+                  h.source_text_issue_rows, h.imported_at,
+                  COALESCE(ci.completed_at, h.completed_at) completed_at,
+                  ci.id customer_import_batch_id
+           FROM history_import_batches h
+           LEFT JOIN customer_import_batches ci
+             ON ci.id=(SELECT id FROM customer_import_batches
+                       WHERE status='success' AND completed_at>=COALESCE(h.completed_at,h.imported_at)
+                       ORDER BY source_cutoff DESC, id DESC LIMIT 1)
+           WHERE h.status='success' ORDER BY h.id DESC LIMIT 1"""
     ).fetchone()
 
 

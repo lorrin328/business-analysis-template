@@ -1,6 +1,6 @@
 [project]
 name = "business-analysis-template"
-version = "1.0.125"
+version = "1.0.127"
 requires-python = ">=3.10"
 dependencies = []
 
