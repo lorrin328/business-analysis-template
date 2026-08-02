@@ -16,7 +16,9 @@ import run_market_research
 from run_market_research import (
     clamp_source_excerpts,
     parse_claude_result,
+    prune_redundant_failed_sources,
     reconcile_change_signals,
+    reconcile_derived_metadata,
     reconcile_history_metadata,
     redact,
     topic_ledger,
@@ -258,6 +260,69 @@ def test_change_signal_reconciliation_preserves_a_current_expired_module():
     assert validate_report(report) is report
 
 
+def test_derived_coverage_counts_and_module_title_are_normalized():
+    report = valid_report()
+    report["coverage"].update({"sourceCount": 99, "officialSourceCount": 99, "wechatSourceCount": 99})
+    report["modules"][0]["title"] = "标题" * 25
+    report["modules"][0]["impact"] = "影响" * 100
+    report["executiveSummary"]["headline"] = "摘要" * 40
+    report["actions"][0]["title"] = "行动" * 25
+    report["sources"][0]["excerpt"] = "用于测试的短事实摘要" * 8
+
+    reconcile_derived_metadata(report)
+    reconcile_change_signals(report)
+
+    assert report["coverage"]["sourceCount"] == 8
+    assert report["coverage"]["officialSourceCount"] == 3
+    assert report["coverage"]["wechatSourceCount"] == 0
+    assert len(report["modules"][0]["title"]) == 40
+    assert len(report["modules"][0]["impact"]) == 180
+    assert len(report["executiveSummary"]["headline"]) == 60
+    assert len(report["actions"][0]["title"]) == 40
+    assert len(report["sources"][0]["excerpt"]) == 50
+    assert validate_report(report) is report
+
+
+def test_redundant_failed_source_is_pruned_without_weakening_peer_evidence():
+    report = valid_report()
+    extra = copy.deepcopy(report["sources"][-1])
+    extra["id"] = "S9"
+    extra["url"] = "https://example.org/research-backup"
+    extra["verification"]["finalUrl"] = extra["url"]
+    report["sources"].append(extra)
+    report["modules"][2]["evidenceIds"] = ["S3", "S8"]
+    reconcile_derived_metadata(report)
+    reconcile_change_signals(report)
+
+    removed = prune_redundant_failed_sources(
+        report, "source S8 failed independent verification: source returned HTTP 404"
+    )
+
+    assert removed == ["S8"]
+    assert len(report["sources"]) == 8
+    assert report["modules"][2]["evidenceIds"] == ["S3"]
+    assert report["changeSignals"]["new"][2]["evidenceIds"] == ["S3"]
+    assert report["coverage"]["sourceCount"] == 8
+    assert validate_report(report) is report
+
+
+def test_failed_source_is_not_pruned_when_it_is_the_only_module_evidence():
+    report = valid_report()
+    extra = copy.deepcopy(report["sources"][-1])
+    extra["id"] = "S9"
+    extra["url"] = "https://example.org/research-backup"
+    extra["verification"]["finalUrl"] = extra["url"]
+    report["sources"].append(extra)
+    reconcile_derived_metadata(report)
+
+    removed = prune_redundant_failed_sources(
+        report, "source S4 failed independent verification: unavailable"
+    )
+
+    assert removed == []
+    assert any(source["id"] == "S4" for source in report["sources"])
+
+
 def test_research_prompt_requires_a_current_module_for_expired_signals():
     prompt = run_market_research.build_prompt({"year": 2026}, [], [])
     repair_prompt = run_market_research.build_repair_prompt(valid_report(), [], {"year": 2026}, [])
@@ -496,6 +561,8 @@ def test_change_signal_checkpoint_is_reconciled_without_another_model_call(tmp_p
     repository = MarketAnalysisRepository(tmp_path)
     report = valid_report()
     report["changeSignals"]["new"] = report["changeSignals"]["new"][:2]
+    report["coverage"].update({"sourceCount": 99, "officialSourceCount": 99})
+    report["modules"][2]["title"] = "同业标题" * 12
     report["changeSignals"]["expired"] = [
         {
             "topicKey": "macro-trend", "title": "错误失效", "summary": "状态冲突",
@@ -512,6 +579,9 @@ def test_change_signal_checkpoint_is_reconciled_without_another_model_call(tmp_p
         errors=[
             "changeSignals.expired[0] does not match related module history.state",
             "module M3 must appear in exactly one change signal",
+            "coverage.sourceCount must equal the number of sources",
+            "coverage.officialSourceCount does not match sources",
+            "module M3.title exceeds 40 characters",
         ],
     )
 
@@ -533,6 +603,9 @@ def test_change_signal_checkpoint_is_reconciled_without_another_model_call(tmp_p
     assert result["reviewStatus"] == "machine_validated"
     assert result["changeSignals"]["expired"] == []
     assert len(result["changeSignals"]["new"]) == 4
+    assert result["coverage"]["sourceCount"] == 8
+    assert result["coverage"]["officialSourceCount"] == 3
+    assert len(result["modules"][2]["title"]) == 40
     assert repository.repair_checkpoint() is None
 
 

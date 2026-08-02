@@ -490,6 +490,168 @@ def reconcile_change_signals(report: dict) -> None:
     report["changeSignals"] = rebuilt
 
 
+def reconcile_derived_metadata(report: dict) -> None:
+    """Normalize counts and display labels that are fully derived from the report."""
+    sources = report.get("sources")
+    if isinstance(sources, list):
+        coverage = report.get("coverage")
+        if not isinstance(coverage, dict):
+            coverage = {}
+            report["coverage"] = coverage
+        coverage["sourceCount"] = len(sources)
+        coverage["officialSourceCount"] = sum(
+            1 for source in sources
+            if isinstance(source, dict) and str(source.get("sourceType") or "").strip() == "official"
+        )
+        coverage["wechatSourceCount"] = sum(
+            1 for source in sources
+            if isinstance(source, dict) and str(source.get("sourceType") or "").strip() == "official_wechat"
+        )
+
+    report_title = str(report.get("title") or "").strip()
+    if report_title:
+        report["title"] = report_title[:60]
+
+    module_limits = {
+        "title": 40,
+        "question": 80,
+        "fact": 180,
+        "judgment": 180,
+        "impact": 180,
+        "watchCondition": 180,
+    }
+    for module in report.get("modules") or []:
+        if not isinstance(module, dict):
+            continue
+        for field, maximum in module_limits.items():
+            value = str(module.get(field) or "").strip()
+            if value:
+                module[field] = value[:maximum]
+
+    executive = report.get("executiveSummary")
+    if isinstance(executive, dict):
+        for field, maximum in (("headline", 60), ("summary", 240)):
+            value = str(executive.get(field) or "").strip()
+            if value:
+                executive[field] = value[:maximum]
+
+    action_limits = {"title": 40, "action": 180, "owner": 60, "cadence": 80, "trigger": 120}
+    for action in report.get("actions") or []:
+        if not isinstance(action, dict):
+            continue
+        for field, maximum in action_limits.items():
+            value = str(action.get(field) or "").strip()
+            if value:
+                action[field] = value[:maximum]
+
+    clamp_source_excerpts(report)
+
+
+def is_deterministic_checkpoint_error(error: str) -> bool:
+    value = str(error or "")
+    markers = (
+        ".excerpt exceeds 50 characters",
+        "evidence excerpt was not found",
+        "publishedAt was not found",
+        "page title does not match",
+        "source connection peer did not match the pinned public address",
+        "changeSignals.",
+        "must appear in exactly one change signal",
+        "coverage.sourceCount must equal the number of sources",
+        "coverage.officialSourceCount does not match sources",
+        "coverage.wechatSourceCount does not match sources",
+    )
+    return any(marker in value for marker in markers) or (
+        value.startswith("module ") and ".title exceeds 40 characters" in value
+    )
+
+
+def failed_source_ids(error: object) -> set[str]:
+    return set(re.findall(r"\bsource\s+(S\d+)\b", str(error or ""), flags=re.I))
+
+
+def prune_redundant_failed_sources(report: dict, error: object) -> list[str]:
+    """Drop unreachable sources only when every dependent claim keeps adequate evidence."""
+    failed_ids = failed_source_ids(error)
+    sources = report.get("sources")
+    if not failed_ids or not isinstance(sources, list):
+        return []
+
+    removed: list[str] = []
+    for source_id in sorted(failed_ids):
+        if not any(
+            isinstance(source, dict) and str(source.get("id") or "").strip() == source_id
+            for source in sources
+        ):
+            continue
+        source_by_id = {
+            str(source.get("id") or "").strip(): source
+            for source in sources
+            if isinstance(source, dict) and str(source.get("id") or "").strip() != source_id
+        }
+        if len(source_by_id) < 8:
+            continue
+
+        dependents = [report.get("executiveSummary") or {}]
+        dependents.extend(report.get("modules") or [])
+        dependents.extend(report.get("actions") or [])
+        safe = True
+        for item in dependents:
+            if not isinstance(item, dict) or source_id not in (item.get("evidenceIds") or []):
+                continue
+            remaining = [
+                str(value).strip() for value in (item.get("evidenceIds") or [])
+                if str(value).strip() and str(value).strip() != source_id
+            ]
+            if not remaining:
+                safe = False
+                break
+            section = str(item.get("section") or "").strip()
+            remaining_sources = [source_by_id.get(value, {}) for value in remaining]
+            if section in {"macro", "regulation"} and not any(
+                str(source.get("sourceType") or "").strip() == "official"
+                and str(source.get("sourceLevel") or "").strip() == "A"
+                for source in remaining_sources
+            ):
+                safe = False
+                break
+            if section == "peers" and not any(
+                str(source.get("sourceType") or "").strip()
+                in {"official", "company", "official_wechat", "association"}
+                and str(source.get("sourceLevel") or "").strip() in {"A", "B"}
+                for source in remaining_sources
+            ):
+                safe = False
+                break
+        if not safe:
+            continue
+
+        for item in dependents:
+            if isinstance(item, dict) and source_id in (item.get("evidenceIds") or []):
+                item["evidenceIds"] = [
+                    value for value in (item.get("evidenceIds") or [])
+                    if str(value).strip() != source_id
+                ]
+        sources[:] = [
+            source for source in sources
+            if not isinstance(source, dict) or str(source.get("id") or "").strip() != source_id
+        ]
+        removed.append(source_id)
+
+    if removed:
+        note = "独立验证不可达且存在充分替代证据的来源已剔除：" + "、".join(removed)
+        limitations = report.setdefault("limitations", [])
+        if isinstance(limitations, list) and note not in limitations:
+            limitations.append(note)
+        coverage = report.get("coverage") or {}
+        coverage_limitations = coverage.get("limitations")
+        if isinstance(coverage_limitations, list) and note not in coverage_limitations:
+            coverage_limitations.append(note)
+        reconcile_derived_metadata(report)
+        reconcile_change_signals(report)
+    return removed
+
+
 def validate_draft(report: dict, repository: MarketAnalysisRepository) -> None:
     """Return structural and cross-period errors together for one targeted repair."""
     errors: list[str] = []
@@ -533,20 +695,17 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
         if checkpoint:
             report = checkpoint["report"]
             report, generated_at = stamp_report_metadata(report, repository, model=model)
+            reconcile_derived_metadata(report)
             reconcile_history_metadata(report, ledger)
             reconcile_change_signals(report)
             checkpoint_errors = [str(error) for error in (checkpoint.get("errors") or [])]
-            deterministic_markers = (
-                ".excerpt exceeds 50 characters",
-                "evidence excerpt was not found",
-                "publishedAt was not found",
-                "page title does not match",
-                "source connection peer did not match the pinned public address",
-                "changeSignals.",
-                "must appear in exactly one change signal",
-            )
+            pruned_checkpoint_sources = set(prune_redundant_failed_sources(
+                report, "; ".join(checkpoint_errors)
+            ))
             deterministic_only = checkpoint_errors and all(
-                any(marker in error for marker in deterministic_markers) for error in checkpoint_errors
+                is_deterministic_checkpoint_error(error)
+                or (failed_source_ids(error) and failed_source_ids(error) <= pruned_checkpoint_sources)
+                for error in checkpoint_errors
             )
             if checkpoint.get("stage") == "repair" and not deterministic_only:
                 report = invoke_claude(
@@ -570,6 +729,7 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
             )
             report, generated_at = stamp_report_metadata(report, repository, model=model)
         while True:
+            reconcile_derived_metadata(report)
             reconcile_history_metadata(report, ledger)
             reconcile_change_signals(report)
             try:
@@ -592,11 +752,20 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
         repository.write_repair_checkpoint(stage="verify", report=report)
         snapshot_text = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         snapshot_hash = hashlib.sha256(snapshot_text.encode("utf-8")).hexdigest()
-        try:
-            verify_report_sources(report, internal_content_hash=snapshot_hash, internal_content_text=snapshot_text)
-        except SourceVerificationError as source_error:
+        for _verification_attempt in range(3):
+            try:
+                verify_report_sources(report, internal_content_hash=snapshot_hash, internal_content_text=snapshot_text)
+                break
+            except SourceVerificationError as source_error:
+                removed = prune_redundant_failed_sources(report, source_error)
+                if not removed:
+                    repository.write_repair_checkpoint(stage="repair", report=report, errors=[str(source_error)])
+                    raise
+                validate_draft(report, repository)
+        else:
+            source_error = SourceVerificationError("source verification did not converge after safe pruning")
             repository.write_repair_checkpoint(stage="repair", report=report, errors=[str(source_error)])
-            raise
+            raise source_error
         align_module_facts_to_verified_excerpts(report)
         report["generatedAt"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
         try:
