@@ -26,8 +26,8 @@
 
 - 队伍增强应查询`agg_staff_month_performance`，产品结构应查询`agg_product_daily`；生产两表为空时虽然可回退原始明细，但应视为聚合未完成并立即排查。
 - 查看规模：`SELECT COUNT(*) FROM agg_staff_month_performance;`、`SELECT COUNT(*) FROM agg_product_daily;`。当前全量基线分别约36.8万行、5.64万行。
-- 全量聚合重建在5GB副本上约需6分钟、峰值内存约1.6GB。生产执行前先形成在线备份并停止主服务释放内存，完成后再启动服务。
-- 代码部署保留生产库使用`REBUILD_DATABASE=0 sudo bash deploy/deploy.sh`；部署脚本会从运行库原始表按年度重建聚合，不会使用服务器根目录旧Excel覆盖数据。
+- 全量聚合重建在5GB副本上约需6至12分钟、峰值内存约1.6GB至2.7GB，只在新增迁移标记需要重建或显式设置`REBUILD_AGGREGATES=1`时执行。
+- 代码部署保留生产库使用`REBUILD_DATABASE=0 sudo bash deploy/deploy.sh`；在线备份、依赖检查和候选venv准备均在主服务停机前完成。requirements未变化且现有venv通过`pip check`时直接复用；无新增强制聚合迁移时保留现有聚合。
 - 重建后确认`PRAGMA integrity_check`、`PRAGMA quick_check`均为`ok`，并用`EXPLAIN QUERY PLAN`确认队伍查询命中`ix_staff_perf_year_month`、产品查询命中`ix_product_daily_filter`。
 - 页面验收至少覆盖：主页面首次打开、产品年度/季度/月度切换、队伍模块保持折叠时不请求增强接口、展开后单次加载、客户分析页面正常打开。
 
@@ -188,12 +188,18 @@ curl http://127.0.0.1:45679/api/health
 sudo bash deploy/deploy.sh
 ```
 
-已有生产数据库时，部署脚本默认不再使用 `/opt/business-analysis/` 根目录中的 Excel 全量重建数据库，避免旧 Excel 覆盖 Web 页面导入后的最新数据。脚本会用 SQLite Online Backup API 备份当前库，校验完整性并生成 SHA256 元数据，再基于 SQLite 原始明细表重建聚合；重建失败时部署中止。
+已有生产数据库时，部署脚本默认不再使用 `/opt/business-analysis/` 根目录中的 Excel 全量重建数据库，避免旧 Excel 覆盖 Web 页面导入后的最新数据。脚本先在服务在线期间用 SQLite Online Backup API 备份当前库，校验完整性并生成 SHA256 元数据；`init_db()`后比较部署前后的强制迁移清单，只有新增`requires_aggregate_rebuild=1`迁移时才自动重建聚合。安全标记优先于人工跳过设置，重建失败时部署中止并恢复主服务。
 
 如确需用服务器根目录 Excel 全量重建数据库，必须显式执行：
 
 ```bash
 REBUILD_DATABASE=1 sudo bash deploy/deploy.sh
+```
+
+仅需按现有SQLite原始明细强制重建聚合时：
+
+```bash
+REBUILD_DATABASE=0 REBUILD_AGGREGATES=1 sudo bash deploy/deploy.sh
 ```
 
 服务：

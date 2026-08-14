@@ -24,11 +24,19 @@ REBUILD_DATABASE=1 sudo bash deploy/deploy.sh
 
 从已经通过测试并提交的 Git commit 生成归档，上传到服务器临时目录后，在归档根目录执行 `sudo bash deploy/deploy.sh`。不要直接以 `/opt/business-analysis` 中的运行副本作为发布源，也不要把应用目录重新授权给 `www-data`。
 
-部署脚本负责代码同步、依赖安装、数据库迁移与一致性备份、聚合重建、root 只读权限、systemd 和 nginx 更新。仅代码更新且保留现有数据库时使用：
+部署脚本负责代码同步、数据库迁移与一致性备份、root只读权限、systemd和nginx更新。在线备份和候选依赖环境在主服务停机前完成；依赖未变化时复用现有venv。仅代码更新且保留现有数据库时使用：
 
 ```bash
 REBUILD_DATABASE=0 sudo bash deploy/deploy.sh
 ```
+
+已有生产库且本次没有新增 `requires_aggregate_rebuild=1` 的迁移时，默认跳过全量聚合重建；如需按现有SQLite原始明细强制重算，使用：
+
+```bash
+REBUILD_DATABASE=0 REBUILD_AGGREGATES=1 sudo bash deploy/deploy.sh
+```
+
+任何会改变既有聚合结果的数据结构或聚合逻辑变更，都必须新增唯一的 `schema_migrations` 版本并标记 `requires_aggregate_rebuild=1`，不能依赖部署人员自行判断。
 
 ## 关键配置注意项
 

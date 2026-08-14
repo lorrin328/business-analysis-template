@@ -583,6 +583,14 @@ sudo bash deploy/deploy.sh
 REBUILD_DATABASE=1 sudo bash deploy/deploy.sh
 ```
 
+纯代码升级继续使用 `REBUILD_DATABASE=0`。部署脚本会在主服务在线期间完成SQLite一致性备份和候选依赖环境准备；requirements未变化且现有venv自检通过时直接复用。`init_db()` 后仅当发现本次新增且标记 `requires_aggregate_rebuild=1` 的迁移时自动重建聚合，否则保留现有聚合，避免约十分钟级维护窗口。如需主动按SQLite原始明细重算：
+
+```bash
+REBUILD_DATABASE=0 REBUILD_AGGREGATES=1 sudo bash deploy/deploy.sh
+```
+
+新聚合表、聚合字段或会改变历史聚合结果的逻辑变更，必须同步新增唯一迁移版本并设置 `requires_aggregate_rebuild=1`；该安全标记优先于 `REBUILD_AGGREGATES=0`。
+
 首次部署且数据库中尚无管理员账号时，需在部署环境文件中配置管理员初始密码：
 
 ```bash

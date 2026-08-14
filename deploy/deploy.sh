@@ -14,14 +14,28 @@ export BUSINESS_ANALYSIS_DB="$DB_PATH"
 export BUSINESS_ANALYSIS_LOG_DIR="$LOG_DIR"
 # auto: 首次部署且存在足够 Excel 时才全量重建；已有生产库默认保护页面上传数据。
 REBUILD_DATABASE="${REBUILD_DATABASE:-auto}"
+# auto: 只有本次新增迁移明确标记需要聚合重建时才执行；1 可强制重建。
+REBUILD_AGGREGATES="${REBUILD_AGGREGATES:-auto}"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "请使用 sudo 运行 deploy/deploy.sh"
   exit 1
 fi
 
-apt-get update
-apt-get install -y python3 python3-venv python3-pip nginx rsync
+REQUIRED_PACKAGES=(python3 python3-venv python3-pip nginx rsync)
+MISSING_PACKAGES=()
+for package in "${REQUIRED_PACKAGES[@]}"; do
+  if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q 'install ok installed'; then
+    MISSING_PACKAGES+=("$package")
+  fi
+done
+if [ "${#MISSING_PACKAGES[@]}" -gt 0 ]; then
+  echo "安装缺失的系统依赖: ${MISSING_PACKAGES[*]}"
+  apt-get update
+  apt-get install -y "${MISSING_PACKAGES[@]}"
+else
+  echo "系统依赖已满足，跳过 apt 更新。"
+fi
 
 PYTHON_VERSION_OK=$(python3 - <<'PY'
 import sys
@@ -44,18 +58,39 @@ rm -f /etc/sudoers.d/webhook-deploy
 SERVICE_WAS_ACTIVE=0
 if systemctl is-active --quiet "$SERVICE_NAME"; then
   SERVICE_WAS_ACTIVE=1
-  systemctl stop "$SERVICE_NAME"
 fi
 
+SERVICE_STOPPED=0
+STAGED_VENV=""
+PREVIOUS_VENV=""
+VENV_SWAPPED=0
+MIGRATION_SNAPSHOT=""
+
 restore_service_on_error() {
-  local exit_code=$?
+  local exit_code="${1:-$?}"
   echo "ERROR: 部署中止，尝试恢复原服务" >&2
-  if [ "$SERVICE_WAS_ACTIVE" = "1" ]; then
+  if [ "$VENV_SWAPPED" = "1" ] && [ -d "$PREVIOUS_VENV" ]; then
+    rm -rf "$APP_DIR/backend/venv.failed"
+    mv "$APP_DIR/backend/venv" "$APP_DIR/backend/venv.failed" 2>/dev/null || true
+    mv "$PREVIOUS_VENV" "$APP_DIR/backend/venv" 2>/dev/null || true
+    rm -rf "$APP_DIR/backend/venv.failed"
+  fi
+  if [ "$SERVICE_WAS_ACTIVE" = "1" ] && [ "$SERVICE_STOPPED" = "1" ]; then
     systemctl start "$SERVICE_NAME" 2>/dev/null || true
   fi
   exit "$exit_code"
 }
 trap restore_service_on_error ERR
+
+cleanup_deploy_temps() {
+  if [ -n "$STAGED_VENV" ] && [ -d "$STAGED_VENV" ]; then
+    rm -rf "$STAGED_VENV"
+  fi
+  if [ -n "$MIGRATION_SNAPSHOT" ] && [ -f "$MIGRATION_SNAPSHOT" ]; then
+    rm -f "$MIGRATION_SNAPSHOT"
+  fi
+}
+trap cleanup_deploy_temps EXIT
 
 # 首次切换到专用运行数据目录时，使用 SQLite Online Backup API 迁移旧运行库。
 if [ ! -f "$DB_PATH" ] && [ -f "$LEGACY_DB_PATH" ]; then
@@ -80,11 +115,41 @@ if [ -f "$DB_PATH" ]; then
   echo "已备份数据库: $BACKUP_FILE"
 fi
 
+# 在服务仍在线时记录迁移基线；init_db后只对本次新增且明确要求的迁移重建聚合。
+MIGRATION_SNAPSHOT="$(mktemp)"
+python3 "$SRC_DIR/deploy/deployment_plan.py" snapshot \
+  --database "$DB_PATH" > "$MIGRATION_SNAPSHOT"
+
+# requirements未变化且现有环境自检通过时复用venv；否则先在线构建候选环境，
+# 避免下载依赖占用主服务停机窗口。
+REUSE_EXISTING_VENV=0
+if [ -x "$APP_DIR/backend/venv/bin/python" ] \
+  && [ -f "$APP_DIR/backend/requirements.txt" ] \
+  && cmp -s "$SRC_DIR/backend/requirements.txt" "$APP_DIR/backend/requirements.txt" \
+  && "$APP_DIR/backend/venv/bin/python" -m pip check >/dev/null 2>&1; then
+  REUSE_EXISTING_VENV=1
+  echo "Python依赖未变化且环境自检通过，复用现有venv。"
+else
+  STAGED_VENV="$APP_DIR/backend/venv.next.$$"
+  rm -rf "$STAGED_VENV"
+  python3 -m venv "$STAGED_VENV"
+  "$STAGED_VENV/bin/pip" install --upgrade pip
+  "$STAGED_VENV/bin/pip" install -r "$SRC_DIR/backend/requirements.txt"
+  "$STAGED_VENV/bin/python" -m pip check
+  echo "候选Python环境已在线准备完成。"
+fi
+
+# 备份、依赖检查和候选环境准备均已完成，从这里才进入短维护窗口。
+if [ "$SERVICE_WAS_ACTIVE" = "1" ]; then
+  systemctl stop "$SERVICE_NAME"
+  SERVICE_STOPPED=1
+fi
+
 rsync -a --delete \
   --exclude='.git' \
   --exclude='node_modules' \
   --exclude='backend/__pycache__' \
-  --exclude='backend/venv' \
+  --exclude='backend/venv*' \
   --exclude='backend/logs/*.log' \
   --exclude='deploy/.admin_env' \
   --exclude='deploy/.ai_env' \
@@ -93,10 +158,16 @@ rsync -a --delete \
   --exclude='*.db' \
   "$SRC_DIR/" "$APP_DIR/"
 
-rm -rf "$APP_DIR/backend/venv"
-python3 -m venv "$APP_DIR/backend/venv"
-"$APP_DIR/backend/venv/bin/pip" install --upgrade pip
-"$APP_DIR/backend/venv/bin/pip" install -r "$APP_DIR/backend/requirements.txt"
+if [ "$REUSE_EXISTING_VENV" = "0" ]; then
+  PREVIOUS_VENV="$APP_DIR/backend/venv.previous.$$"
+  rm -rf "$PREVIOUS_VENV"
+  if [ -d "$APP_DIR/backend/venv" ]; then
+    mv "$APP_DIR/backend/venv" "$PREVIOUS_VENV"
+  fi
+  mv "$STAGED_VENV" "$APP_DIR/backend/venv"
+  STAGED_VENV=""
+  VENV_SWAPPED=1
+fi
 
 cd "$APP_DIR/backend"
 "$APP_DIR/backend/venv/bin/python" -c "from db import init_db; init_db()"
@@ -131,52 +202,51 @@ print(f'已导入 {data[\"year\"]} 年目标配置')
   fi
 fi
 
-# 数据重建策略：
-# - 默认 auto：已有生产库时不再使用服务器目录里的 Excel 全量重建，避免旧 Excel 覆盖 Web 上传数据；
-# - 首次部署无数据库且存在足够 Excel 时自动重建；
-# - 如确需从 Excel 强制重建，执行：REBUILD_DATABASE=1 sudo bash deploy/deploy.sh。
+# 数据刷新策略：
+# - 默认auto：已有生产库不使用旧Excel，且只有本次新增迁移明确要求时才重建聚合；
+# - REBUILD_DATABASE=1：以完整Excel源全量重建；
+# - REBUILD_AGGREGATES=1：保留现有库但强制从原始表重建聚合；
+# - 即使设置REBUILD_AGGREGATES=0，新出现的强制迁移仍会优先触发重建。
 EXCEL_COUNT=$(find "$APP_DIR" -maxdepth 1 -name "*.xlsx" 2>/dev/null | wc -l)
-REBUILD_MODE="$(printf '%s' "$REBUILD_DATABASE" | tr '[:upper:]' '[:lower:]')"
-SHOULD_REBUILD_FROM_EXCEL=0
-case "$REBUILD_MODE" in
-  1|true|yes|excel|force)
-    SHOULD_REBUILD_FROM_EXCEL=1
-    ;;
-  0|false|no|skip|raw|none)
-    SHOULD_REBUILD_FROM_EXCEL=0
-    ;;
-  auto|"")
-    if [ "$DB_EXISTED_BEFORE" = "0" ] && [ "$EXCEL_COUNT" -ge 3 ]; then
-      SHOULD_REBUILD_FROM_EXCEL=1
-    fi
-    ;;
-  *)
-    echo "ERROR: REBUILD_DATABASE must be auto, 1, or 0. Current: $REBUILD_DATABASE" >&2
-    exit 1
-    ;;
-esac
+PLAN_TEXT="$("$APP_DIR/backend/venv/bin/python" "$APP_DIR/deploy/deployment_plan.py" plan \
+  --database "$DB_PATH" \
+  --snapshot "$MIGRATION_SNAPSHOT" \
+  --database-existed "$DB_EXISTED_BEFORE" \
+  --excel-count "$EXCEL_COUNT" \
+  --rebuild-database "$REBUILD_DATABASE" \
+  --rebuild-aggregates "$REBUILD_AGGREGATES" \
+  --format lines)"
+mapfile -t PLAN_LINES <<< "$PLAN_TEXT"
+if [ "${#PLAN_LINES[@]}" -lt 4 ]; then
+  echo "ERROR: 无法生成完整的数据刷新计划。" >&2
+  false
+fi
+SHOULD_REBUILD_FROM_EXCEL="${PLAN_LINES[0]}"
+SHOULD_REBUILD_AGGREGATES="${PLAN_LINES[1]}"
+NEW_REQUIRED_MIGRATIONS="${PLAN_LINES[2]}"
+DEPLOY_PLAN_REASON="${PLAN_LINES[3]}"
+echo "数据刷新计划: $DEPLOY_PLAN_REASON"
+if [ "$NEW_REQUIRED_MIGRATIONS" != "-" ]; then
+  echo "新增的强制聚合迁移: $NEW_REQUIRED_MIGRATIONS"
+fi
 
 if [ "$SHOULD_REBUILD_FROM_EXCEL" = "1" ]; then
-  if [ "$EXCEL_COUNT" -lt 3 ]; then
-    echo "ERROR: REBUILD_DATABASE=$REBUILD_DATABASE 但 Excel 文件不足（需 ≥3），无法全量重建数据库。"
-    exit 1
-  fi
   echo "检测到 $EXCEL_COUNT 个 Excel 文件，正在重建数据库..."
   "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_from_excels.py" || {
     echo "ERROR: 数据库重建失败，部署已中止。请检查 Excel 文件名、字段和重建日志。"
-    exit 1
+    restore_service_on_error 1
   }
-else
+elif [ "$SHOULD_REBUILD_AGGREGATES" = "1" ]; then
   if [ "$DB_EXISTED_BEFORE" = "1" ]; then
     echo "检测到已有生产数据库，默认不从 Excel 全量重建；如需强制重建请设置 REBUILD_DATABASE=1"
-  else
-    echo "⚠ 未检测到已有生产数据库，且 Excel 文件不足（需 ≥3），跳过 Excel 全量重建"
   fi
-  echo "  尝试从 SQLite 原始明细表重建聚合..."
+  echo "正在从SQLite原始明细表重建聚合..."
   "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_aggregates_from_raw_tables.py" || {
     echo "ERROR: SQLite 原始表重建失败，部署已中止，避免以空聚合或旧聚合继续上线。" >&2
-    exit 1
+    restore_service_on_error 1
   }
+else
+  echo "保留现有生产库及聚合结果，跳过耗时的全量聚合重建。"
 fi
 
 echo "Account auth enabled; ADMIN_TOKEN is no longer required."
@@ -208,19 +278,46 @@ for runtime_env in "$APP_DIR/deploy/.admin_env" "$APP_DIR/deploy/.ai_env" "$APP_
   fi
 done
 
-# Claude Code 已安装时同步市场研判的隔离账号、目录、服务和凌晨1点定时器；
-# 未安装时不影响经营看板主服务，首次安装使用 deploy/install-market-analysis.sh。
+systemctl daemon-reload
+systemctl enable "$SERVICE_NAME"
+systemctl restart "$SERVICE_NAME"
+nginx -t && systemctl reload nginx
+
+HEALTH_OK=0
+for _attempt in $(seq 1 30); do
+  if "$APP_DIR/backend/venv/bin/python" - <<'PY'
+from urllib.request import urlopen
+
+with urlopen("http://127.0.0.1:45679/api/health", timeout=2) as response:
+    if response.status != 200:
+        raise SystemExit(1)
+PY
+  then
+    HEALTH_OK=1
+    break
+  fi
+  sleep 1
+done
+if [ "$HEALTH_OK" != "1" ]; then
+  echo "ERROR: 主服务启动后30秒内未通过健康检查。" >&2
+  false
+fi
+echo "主服务健康检查通过。"
+SERVICE_STOPPED=0
+
+if [ "$VENV_SWAPPED" = "1" ] && [ -d "$PREVIOUS_VENV" ]; then
+  rm -rf "$PREVIOUS_VENV"
+  VENV_SWAPPED=0
+fi
+
+# 主服务恢复后再同步独立的市场研判单元，避免该附属步骤延长看板停机窗口。
 if command -v claude >/dev/null 2>&1 || [ -x /usr/local/bin/claude ]; then
   bash "$APP_DIR/deploy/install-market-analysis.sh" --skip-cli-install || \
-    echo "⚠ 市场研判服务同步失败，经营看板继续部署；请单独检查 install-market-analysis.sh"
+    echo "⚠ 市场研判服务同步失败，经营看板继续运行；请单独检查 install-market-analysis.sh"
 else
   echo "⚠ 尚未安装 Claude Code CLI；市场研判页面可用，但定时研究尚未启用"
 fi
 
-systemctl daemon-reload
-systemctl enable "$SERVICE_NAME"
-systemctl restart "$SERVICE_NAME"
-nginx -t && systemctl restart nginx
 trap - ERR
 APP_VERSION=$(grep -oP 'v\d+\.\d+\.\d+' "$APP_DIR/经营分析模板.html" | head -1 || true)
 
