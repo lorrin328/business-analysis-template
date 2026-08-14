@@ -34,6 +34,18 @@
     return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false });
   }
 
+  function shortModelName(value) {
+    const name = String(value || '').toLowerCase();
+    if (name.includes('flash')) return 'Flash';
+    if (name.includes('pro')) return 'Pro';
+    return value || '—';
+  }
+
+  function modelPlanLabel(plan) {
+    if (!plan?.primary) return '';
+    return `模型组合 ${shortModelName(plan.primary)}主研 / ${shortModelName(plan.repair)}修复 / ${shortModelName(plan.escalation)}升级`;
+  }
+
   function sourceMap(report) {
     return Object.fromEntries((report.sources || []).map(source => [source.id, source]));
   }
@@ -67,13 +79,16 @@
     const meta = document.getElementById('reportMeta');
     clear(meta);
     const coverage = report.coverage || {};
-    [
+    const metaItems = [
       `研究期 ${report.period?.start || '—'} 至 ${report.period?.end || '—'}`,
       `生成 ${formatTime(report.generatedAt)}`,
       `${(report.modules || []).length} 个研判模块`,
       `${(report.sources || []).length} 项证据`,
       `${coverage.officialSourceCount || 0} 项官方来源`
-    ].forEach(text => meta.appendChild(node('span', 'pill', text)));
+    ];
+    const reportModelPlan = modelPlanLabel(report.model);
+    if (reportModelPlan) metaItems.push(reportModelPlan);
+    metaItems.forEach(text => meta.appendChild(node('span', 'pill', text)));
     document.getElementById('coverageNote').textContent = `检索 ${coverage.queryCount || 0} 组主题；微信公众号来源 ${coverage.wechatSourceCount || 0} 项。`;
   }
 
@@ -276,7 +291,8 @@
       const state = status?.state || 'never_run';
       document.getElementById('runDot').className = `dot ${state}`;
       document.getElementById('runState').textContent = ({ success: '最近运行成功', running: '研究正在运行', failed: '最近运行失败', never_run: '尚未运行' })[state] || state;
-      document.getElementById('runMessage').textContent = `${status?.message || ''}${status?.updatedAt ? ` · ${formatTime(status.updatedAt)}` : ''}`;
+      const planText = modelPlanLabel(status?.modelPlan);
+      document.getElementById('runMessage').textContent = `${status?.message || ''}${status?.updatedAt ? ` · ${formatTime(status.updatedAt)}` : ''}${planText ? ` · ${planText}` : ''}`;
       const runNowButton = document.getElementById('runNowButton');
       if (runNowButton && !runNowButton.classList.contains('hidden')) {
         runNowButton.disabled = state === 'running';

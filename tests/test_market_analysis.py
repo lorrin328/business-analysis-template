@@ -21,6 +21,8 @@ from run_market_research import (
     reconcile_derived_metadata,
     reconcile_history_metadata,
     redact,
+    repair_model_for_attempt,
+    resolve_model_plan,
     topic_ledger,
 )
 
@@ -163,6 +165,7 @@ def test_repository_validates_cross_period_topic_links_and_builds_timeline(tmp_p
     repository.publish(second)
     timeline = repository.topic_timeline("macro-trend")
     assert [item["reportId"] for item in timeline] == [first["reportId"], second["reportId"]]
+    assert run_market_research.history_context(repository)[0]["actions"]
 
     broken = copy.deepcopy(second)
     broken["reportId"] = "market-20260728-120000"
@@ -400,6 +403,33 @@ def test_claude_result_parser_and_secret_redaction():
     assert "sk-example-secret-value" not in redact("token=sk-example-secret-value")
 
 
+def test_model_plan_uses_pro_for_primary_flash_for_first_repair_and_pro_for_escalation(monkeypatch):
+    for key in (
+        "MARKET_ANALYSIS_MODEL", "MARKET_ANALYSIS_PRIMARY_MODEL",
+        "MARKET_ANALYSIS_REPAIR_MODEL", "MARKET_ANALYSIS_ESCALATION_MODEL",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    plan = resolve_model_plan()
+    assert plan["primary"] == "deepseek-v4-pro[1m]"
+    assert plan["repair"] == "deepseek-v4-flash"
+    assert plan["escalation"] == "deepseek-v4-pro[1m]"
+    assert repair_model_for_attempt(plan, 0) == ("deepseek-v4-flash", "repair_flash")
+    assert repair_model_for_attempt(plan, 1) == ("deepseek-v4-pro[1m]", "repair_escalation")
+
+
+def test_dry_run_reports_model_plan_without_overwriting_runtime_status(tmp_path, monkeypatch):
+    repository = MarketAnalysisRepository(tmp_path)
+    previous_status = {"state": "success", "message": "keep", "updatedAt": "2026-08-14T01:00:00+08:00"}
+    repository.write_status(previous_status)
+    monkeypatch.setattr(run_market_research, "fetch_internal_snapshot", lambda: {"year": 2026})
+
+    result = run_market_research.run_research(repository, dry_run=True)
+
+    assert result["modelPlan"]["primary"] == "deepseek-v4-pro[1m]"
+    assert result["modelPlan"]["repair"] == "deepseek-v4-flash"
+    assert repository.status() == previous_status
+
+
 def test_long_source_excerpt_is_clamped_to_best_fact_window():
     report = valid_report()
     report["modules"][3]["fact"] = "内部快照显示2026年期交保费123.45万元"
@@ -449,9 +479,11 @@ def test_worker_runs_bounded_evidence_repair_before_publication(tmp_path, monkey
     invalid_report["modules"][2]["evidenceIds"] = ["S8"]
     repaired_report = valid_report()
     prompts = []
+    models = []
 
     def fake_run(command, **kwargs):
         prompts.append(kwargs.get("input"))
+        models.append(command[command.index("--model") + 1])
         payload = invalid_report if len(prompts) == 1 else repaired_report
         return subprocess.CompletedProcess(command, 0, stdout=json.dumps({"result": json.dumps(payload, ensure_ascii=False)}), stderr="")
 
@@ -471,6 +503,7 @@ def test_worker_runs_bounded_evidence_repair_before_publication(tmp_path, monkey
     result = run_market_research.run_research(MarketAnalysisRepository(tmp_path))
     assert result["reviewStatus"] == "machine_validated"
     assert len(prompts) == 2
+    assert models == ["deepseek-v4-pro[1m]", "deepseek-v4-flash"]
     assert "validationErrors" in prompts[1]
     assert "Regulation modules must cite" in prompts[1]
     assert "internalBusinessSnapshot" in prompts[1]
@@ -485,9 +518,11 @@ def test_worker_allows_second_targeted_repair_for_peer_first_party_evidence(tmp_
     repaired_report = valid_report()
     payloads = [invalid_peer, invalid_peer, repaired_report]
     prompts = []
+    models = []
 
     def fake_run(command, **kwargs):
         prompts.append(kwargs.get("input"))
+        models.append(command[command.index("--model") + 1])
         payload = copy.deepcopy(payloads[len(prompts) - 1])
         return subprocess.CompletedProcess(
             command,
@@ -514,9 +549,58 @@ def test_worker_allows_second_targeted_repair_for_peer_first_party_evidence(tmp_
 
     assert result["reviewStatus"] == "machine_validated"
     assert len(prompts) == 3
+    assert models == ["deepseek-v4-pro[1m]", "deepseek-v4-flash", "deepseek-v4-pro[1m]"]
     assert "section peers requires A/B-level first-party evidence" in prompts[1]
     assert "authoritativeTopicLedger" in prompts[1]
     assert "replace that peer module" in prompts[1]
+
+
+def test_worker_repairs_unprunable_source_in_same_run_with_flash(tmp_path, monkeypatch):
+    draft = valid_report()
+    repaired = valid_report()
+    prompts = []
+    models = []
+    verification_calls = 0
+
+    def fake_run(command, **kwargs):
+        prompts.append(kwargs.get("input"))
+        models.append(command[command.index("--model") + 1])
+        payload = draft if len(prompts) == 1 else repaired
+        envelope = {
+            "type": "result", "subtype": "success", "num_turns": 2,
+            "duration_api_ms": 1000, "total_cost_usd": 0.1,
+            "usage": {"input_tokens": 100, "output_tokens": 50, "server_tool_use": {}},
+            "result": json.dumps(payload, ensure_ascii=False),
+        }
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(envelope, ensure_ascii=False), stderr="")
+
+    def fake_verify(report, **kwargs):
+        nonlocal verification_calls
+        verification_calls += 1
+        if verification_calls == 1:
+            raise SourceVerificationError("source S3 failed independent verification: source returned HTTP 404")
+        verified_at = run_market_research.now_iso()
+        for source in report["sources"]:
+            source["retrievedAt"] = verified_at
+            source["verification"]["verifiedAt"] = verified_at
+        return report
+
+    monkeypatch.setattr(run_market_research, "fetch_internal_snapshot", lambda: {"year": 2026})
+    monkeypatch.setattr(run_market_research.shutil, "which", lambda value: "/usr/local/bin/claude")
+    monkeypatch.setattr(run_market_research.subprocess, "run", fake_run)
+    monkeypatch.setattr(run_market_research, "verify_report_sources", fake_verify)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+
+    repository = MarketAnalysisRepository(tmp_path)
+    result = run_market_research.run_research(repository)
+
+    assert result["reviewStatus"] == "machine_validated"
+    assert verification_calls == 2
+    assert models == ["deepseek-v4-pro[1m]", "deepseek-v4-flash"]
+    assert "source S3 failed independent verification" in prompts[1]
+    status = repository.status()
+    assert [call["role"] for call in status["modelCalls"]] == ["primary", "repair_flash"]
+    assert status["modelPlan"]["strategy"] == "pro_primary_flash_first_repair_pro_escalation"
 
 
 def test_private_repair_checkpoint_is_resumable_and_clearable(tmp_path):
@@ -719,6 +803,8 @@ def test_market_analysis_page_is_modular_and_whitelisted():
     assert "证据与来源" in page
     assert "CHANGE_LABELS" in script
     assert "跨期轨迹" in script
+    assert "modelPlanLabel" in script
+    assert "模型组合" in script
     assert "executiveEvidence" in page
     assert "entries.slice(0, 3)" in script
     assert "innerHTML" not in script
@@ -754,11 +840,19 @@ def test_market_timer_runs_at_1am_when_three_calendar_days_are_due_and_template_
     assert '"$SYSTEMCTL_BIN" start --no-block "$SERVICE_NAME"' in scheduler
     assert "ANTHROPIC_AUTH_TOKEN=\n" in env_template
     assert "AI_READONLY_TOKEN=\n" in env_template
+    assert "ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash" in env_template
+    assert "CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash" in env_template
+    assert "MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-v4-pro[1m]" in env_template
+    assert "MARKET_ANALYSIS_REPAIR_MODEL=deepseek-v4-flash" in env_template
+    assert "MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-v4-pro[1m]" in env_template
     assert "NoNewPrivileges=true" in service
     assert "ProtectSystem=strict" in service
     assert "Restart=on-failure" in service
     assert "StartLimitBurst=2" in service
     assert "tr -d '\\r'" in installer
+    assert "ensure_env_value ANTHROPIC_DEFAULT_HAIKU_MODEL 'deepseek-v4-flash'" in installer
+    assert "ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL 'deepseek-v4-flash'" in installer
+    assert "ensure_env_value MARKET_ANALYSIS_ESCALATION_MODEL 'deepseek-v4-pro[1m]'" in installer
     assert "apt-get install -y curl ca-certificates nodejs npm" not in installer
     assert "@anthropic-ai/claude-code@latest" in installer
     assert "set +x" in configurator

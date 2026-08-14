@@ -10,6 +10,18 @@ MARKET_LOG_DIR="${MARKET_ANALYSIS_LOG_DIR:-/var/log/business-analysis-market}"
 MARKET_CONFIG_DIR="${MARKET_ANALYSIS_CONFIG_DIR:-/etc/business-analysis-market}"
 MARKET_ENV_FILE="$MARKET_CONFIG_DIR/market-analysis.env"
 INSTALL_CLAUDE=1
+TEMP_FILES=()
+
+cleanup_temp_files() {
+  local path
+  for path in "${TEMP_FILES[@]:-}"; do
+    if [ -n "$path" ] && [ -f "$path" ]; then
+      : > "$path" 2>/dev/null || true
+      rm -f -- "$path"
+    fi
+  done
+}
+trap cleanup_temp_files EXIT HUP INT TERM
 
 if [ "${1:-}" = "--skip-cli-install" ]; then
   INSTALL_CLAUDE=0
@@ -48,7 +60,7 @@ if ! command -v claude >/dev/null 2>&1; then
     exit 1
   fi
   INSTALLER="$(mktemp)"
-  trap 'rm -f "$INSTALLER"' EXIT
+  TEMP_FILES+=("$INSTALLER")
   if curl --proto '=https' --tlsv1.2 -fsSL https://claude.ai/install.sh -o "$INSTALLER"; then
     bash "$INSTALLER" stable
   else
@@ -78,6 +90,45 @@ else
   chown root:"$MARKET_GROUP" "$MARKET_ENV_FILE"
   chmod 0640 "$MARKET_ENV_FILE"
 fi
+
+ensure_env_value() {
+  local key="$1"
+  local value="$2"
+  local temp line found=0
+  temp="$(mktemp)"
+  TEMP_FILES+=("$temp")
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in
+      "$key="*)
+        printf '%s=%s\n' "$key" "$value" >> "$temp"
+        found=1
+        ;;
+      *) printf '%s\n' "$line" >> "$temp" ;;
+    esac
+  done < "$MARKET_ENV_FILE"
+  if [ "$found" -eq 0 ]; then
+    printf '%s=%s\n' "$key" "$value" >> "$temp"
+  fi
+  install -o root -g "$MARKET_GROUP" -m 0640 "$temp" "$MARKET_ENV_FILE"
+  : > "$temp"
+  rm -f -- "$temp"
+}
+
+ensure_env_value ANTHROPIC_MODEL 'deepseek-v4-pro[1m]'
+ensure_env_value ANTHROPIC_DEFAULT_OPUS_MODEL 'deepseek-v4-pro[1m]'
+ensure_env_value ANTHROPIC_DEFAULT_SONNET_MODEL 'deepseek-v4-pro[1m]'
+ensure_env_value ANTHROPIC_DEFAULT_HAIKU_MODEL 'deepseek-v4-flash'
+ensure_env_value CLAUDE_CODE_SUBAGENT_MODEL 'deepseek-v4-flash'
+ensure_env_value MARKET_ANALYSIS_MODEL 'deepseek-v4-pro[1m]'
+ensure_env_value MARKET_ANALYSIS_PRIMARY_MODEL 'deepseek-v4-pro[1m]'
+ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL 'deepseek-v4-flash'
+ensure_env_value MARKET_ANALYSIS_ESCALATION_MODEL 'deepseek-v4-pro[1m]'
+ensure_env_value MARKET_ANALYSIS_REPAIR_MAX_TURNS '40'
+ensure_env_value MARKET_ANALYSIS_REPAIR_MAX_BUDGET_USD '3'
+ensure_env_value MARKET_ANALYSIS_ESCALATION_MAX_TURNS '45'
+ensure_env_value MARKET_ANALYSIS_ESCALATION_MAX_BUDGET_USD '6'
+ensure_env_value MARKET_ANALYSIS_MAX_REPAIR_ATTEMPTS '2'
 
 install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis.service" /etc/systemd/system/market-analysis.service
 install -o root -g root -m 0755 "$APP_DIR/deploy/market-analysis-schedule.sh" /usr/local/sbin/business-analysis-market-schedule

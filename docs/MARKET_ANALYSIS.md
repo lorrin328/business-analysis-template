@@ -2,7 +2,7 @@
 
 ## 结论
 
-生产运行采用 Claude Code CLI 直接连接 DeepSeek 官方 Anthropic 兼容端点，固定模型为 `deepseek-v4-pro[1m]`。当前只有单一生产模型，服务器不依赖 CC Switch；模型配置由 `/etc/business-analysis-market/market-analysis.env` 管理，减少桌面工具、配置同步和 headless 兼容故障。
+生产运行采用 Claude Code CLI 直接连接 DeepSeek 官方 Anthropic 兼容端点，使用“Pro主研、Flash首修、Pro升级”的质量优先组合。服务器不依赖 CC Switch；模型配置由 `/etc/business-analysis-market/market-analysis.env` 管理，减少桌面工具、配置同步和headless兼容故障。
 
 Web 服务不直接调用模型。独立 `market-analysis.service` 每次完成多源搜索、历史归并、结构化输出和证据校验，只有通过门禁的 JSON 才会替换 `latest.json`；失败时网页继续显示上一期有效报告。
 
@@ -38,9 +38,20 @@ sudo bash deploy/install-market-analysis.sh
 ```text
 ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 ANTHROPIC_MODEL=deepseek-v4-pro[1m]
+ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4-pro[1m]
+ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-pro[1m]
+ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash
+CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash
 MARKET_ANALYSIS_MODEL=deepseek-v4-pro[1m]
+MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-v4-pro[1m]
+MARKET_ANALYSIS_REPAIR_MODEL=deepseek-v4-flash
+MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-v4-pro[1m]
+MARKET_ANALYSIS_REPAIR_MAX_BUDGET_USD=3
+MARKET_ANALYSIS_ESCALATION_MAX_BUDGET_USD=6
 CLAUDE_CODE_EFFORT_LEVEL=max
 ```
+
+首次深度研究和最终跨期综合由Pro完成；Claude Code的Haiku/轻量子任务和第一次定向修复使用Flash。Flash修复后仍不合格时只允许再用Pro升级修复一次，仍失败则不发布。CLI的`total_cost_usd`仅作为调用相对观察值，实际扣费以DeepSeek控制台为准。
 
 ## 首次验证与启用
 
@@ -99,7 +110,7 @@ sudo systemctl start market-analysis.service
 
 `market-analysis.timer` 每天凌晨1点唤醒 `market-analysis-scheduled.service`。调度器只读取最近成功报告的北京时间日期：日期间隔不足3天时正常退出，不调用模型；满3天时启动固定的 `market-analysis.service`。服务器凌晨1点关机时，`Persistent=true` 会在恢复开机后补做到期检查。
 
-失败后优先查看 journal 中的校验错误。6小时内的修复检查点会复用已完成研究，来源元数据和变化信号映射类错误会先由程序确定性修复，不再次调用模型；结构或证据不合格时最多进行两轮定向修复，同业事实缺少一手依据时允许换成另一项有真实公司/协会来源支持的近期动作，但不得把媒体来源改标为一手证据。systemd 的进程级重试仍受启动频率限制，防止网络或模型故障形成无限循环。
+失败后优先查看journal中的校验错误。6小时内的修复检查点会复用已完成研究，来源元数据和变化信号映射类错误会先由程序确定性修复，不再次调用模型；结构或证据不合格时先用Flash定向修复，仍失败再升级Pro一次。同一进程遇到无法安全剔除的坏源时直接进入该修复链，不再先等待systemd重启。同业事实缺少一手依据时允许换成另一项有真实公司/协会来源支持的近期动作，但不得把媒体来源改标为一手证据。
 
 TLS 验证不得使用 `-k`、关闭证书校验或把任意站点加入例外。若一手网站漏发中间证书，只能从叶子证书 AIA 指向的CA官方地址取得对应中间证书，核验主体、`CA:TRUE`和SHA256后加入系统信任链，并再次用研究服务自己的验证器确认标题、日期和摘录全部匹配。
 

@@ -97,6 +97,8 @@ GET /api/customer-analysis/overview?year=2026    -> 管理员200
 - 查看定时判断：`systemctl list-timers market-analysis.timer --all`、`sudo journalctl -u market-analysis-scheduled.service -n 30 --no-pager`。timer显示的是下一次凌晨1点“到期检查”，不等同于每晚都执行完整研究；失败报告不会更新成功日期，因此次日凌晨1点自动重试。
 - 失败处置：先查看 `status.json` 和 journal；不要删除 `latest.json`，模型失败时网页应继续展示上一期有效报告。
 - 失败恢复：服务保留6小时修复检查点；来源计数、字段长度、来源标题/日期/摘录及变化信号映射等确定性错误会复用已有报告，不重新执行整轮模型研究。历史主题起始日期和上一报告编号由程序从最近已发布主题自动续接；变化信号按当前模块状态重建，每个模块必须恰好出现一次。冗余坏源只有在每个引用项仍满足证据等级且总来源不少于8项时才会剔除；结构或证据错误最多执行两轮定向修复，同业一手证据不足时改搜可核验的公司/协会页面，证据门槛不降低。
+- 模型路由：主研`MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-v4-pro[1m]`；第一次修复`MARKET_ANALYSIS_REPAIR_MODEL=deepseek-v4-flash`；第二次升级`MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-v4-pro[1m]`。`ANTHROPIC_DEFAULT_HAIKU_MODEL`和`CLAUDE_CODE_SUBAGENT_MODEL`均使用Flash。修改后先做Flash最小JSON调用，再用dry-run核对`modelPlan`，不得输出受保护环境文件全文。
+- 调用审计：`status.json.modelCalls`记录本次调用角色、模型、耗时、轮次、token、WebSearch/WebFetch次数和CLI估算成本。CLI估算值不等于DeepSeek实际账单，只用于同一链路的相对比较；不得将提示词、密钥和网页正文写入状态。
 - 证据边界：独立抓取负责确定真实标题、发布日期、内容哈希和50字内原文锚点；发布前模块“事实”会收敛为最接近的已核验原文，判断、影响和行动属于模型推演，页面不得把二者混为同一事实层。
 - 凭据轮换：同时更新 DeepSeek Key 和主应用/研究服务的 AI 只读 Token；验证旧值失效后再启用 timer。
 - TLS链修复：禁止使用`-k`或关闭验证。2026-08-02为中国人寿站点安装的中间证书为`DigiCert Secure Site OV G2 TLS CN RSA4096 SHA256 2022 CA1`，DER SHA256=`7cd6cdd25eee2512aaf1419afd44c146c43aa1093d5a60d4ed39efbdda815ad4`，来源为叶子证书AIA指向的DigiCert官方地址。若证书更新或失效，必须重新读取AIA并核验，不机械复用旧文件。

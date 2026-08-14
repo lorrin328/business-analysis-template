@@ -175,6 +175,9 @@
 | `modules` | 原子研究卡片；`section` 仅为 `macro`、`regulation`、`peers`、`business_line`，每项包含 `fact`、`judgment`、`impact`、`watchCondition`、`confidence`、`evidenceIds`。 |
 | `changeSignals` | `persistent`、`strengthened`、`reversed`、`new`、`expired` 五类滚动历史判断。 |
 | `sources` | 证据台账；A=政府/监管/统计原文，B=协会/公司官网或官方微信，C=权威研究/媒体，D=转载或线索；D 不得单独支撑判断。 |
+| `model` | 报告生成模型元数据；`name/primary`为Pro主研，`repair`为Flash首修，`escalation`为Pro升级，`strategy`标识固定路由。不得写入密钥或提示词。 |
+| `status.modelPlan` | 当前运行的主研、首修、升级模型及策略名称。 |
+| `status.modelCalls[]` | 单次模型调用审计：`role`、`model`、`status`、`elapsedMs`、轮次、token、WebSearch/WebFetch次数和`cliEstimatedCostUsd`；CLI估算费用不等于DeepSeek实际账单。 |
 | 发布门禁 | 四层均至少1个模块；至少8项去重来源与8组查询主题；宏观、监管含 A 级证据；同业含 A/B 级一手证据；所有引用必须可解析。 |
 | 内部数据 | 使用 `internal://dashboard-snapshot/<year>` 标识聚合经营快照，不保存客户级、保单级和个人级明细。 |
 | 权限 | API 统一使用 `market_analysis`；管理员和高级用户默认可读，普通用户默认关闭。 |
