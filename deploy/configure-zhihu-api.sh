@@ -90,4 +90,12 @@ PY
   exit 1
 fi
 
+runuser -u "$MARKET_USER" -- bash -lc "
+  set -a
+  source '$MARKET_ENV_FILE'
+  set +a
+  cd '$APP_DIR/backend'
+  ./venv/bin/python run_market_research.py --zhihu-scout-only
+"
+
 echo "知乎API已写入受保护配置；下一次来源侦察将自动启用，不会立即发布报告。"

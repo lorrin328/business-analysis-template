@@ -123,6 +123,12 @@ systemctl list-timers market-analysis.timer --all
 sudo -u market-ai -g market-analysis bash -lc 'set -a; source /etc/business-analysis-market/market-analysis.env; set +a; cd /opt/business-analysis/backend; ./venv/bin/python run_market_research.py --source-scout-only'
 ```
 
+只验证知乎官方API与公开原文复核，不调用DeepSeek、不发布报告也不修改运行状态：
+
+```bash
+sudo -u market-ai -g market-analysis bash -lc 'set -a; source /etc/business-analysis-market/market-analysis.env; set +a; cd /opt/business-analysis/backend; ./venv/bin/python run_market_research.py --zhihu-scout-only'
+```
+
 查看触发链路：
 
 ```bash

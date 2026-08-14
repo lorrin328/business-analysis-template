@@ -204,3 +204,43 @@ def test_source_scout_merges_zhihu_api_and_flash_candidates(monkeypatch):
     assert summary["zhihu"]["candidateCount"] == 1
     assert summary["zhihu"]["verifiedCount"] == 1
     assert summary["flashStatus"] == "success"
+
+
+def test_zhihu_scout_only_verifies_public_pages_without_publishing(tmp_path, monkeypatch):
+    from market_analysis.repository import MarketAnalysisRepository
+
+    repository = MarketAnalysisRepository(tmp_path)
+    repository.write_status({"state": "success", "message": "keep"})
+    before = repository.status()
+    candidate = {
+        "section": "peers",
+        "queryTheme": "寿险渠道",
+        "claim": "寿险机构正在讨论新的渠道协同模式。",
+        "title": "寿险渠道协同观察",
+        "publisher": "知乎作者",
+        "url": "https://zhuanlan.zhihu.com/p/123456",
+        "sourceType": "media",
+        "sourceLevel": "C",
+        "publishedAt": None,
+        "excerpt": "寿险机构正在讨论新的渠道协同模式。",
+        "discoveryChannel": "zhihu_official_api",
+    }
+    monkeypatch.setattr(run_market_research, "topic_ledger", lambda _repository: [])
+    monkeypatch.setattr(
+        run_market_research,
+        "scout_zhihu_sources",
+        lambda _ledger: ([candidate], {
+            "enabled": True,
+            "status": "success",
+            "queryCount": 1,
+            "candidateCount": 1,
+            "failureCount": 0,
+            "failures": [],
+        }),
+    )
+    monkeypatch.setattr(run_market_research, "verify_source_candidates", lambda rows: (rows, []))
+    result = run_market_research.run_zhihu_scout_only(repository)
+    assert result["published"] is False
+    assert result["zhihu"]["verifiedCount"] == 1
+    assert result["zhihu"]["rejectedCount"] == 0
+    assert repository.status() == before

@@ -1347,6 +1347,23 @@ def run_source_scout_only(repository: MarketAnalysisRepository) -> dict:
     }
 
 
+def run_zhihu_scout_only(repository: MarketAnalysisRepository) -> dict:
+    """Exercise the official Zhihu API and public-page verification without model calls or publication."""
+    candidates, summary = scout_zhihu_sources(topic_ledger(repository))
+    if not summary.get("enabled"):
+        raise RuntimeError("Zhihu official API is not configured")
+    verified, rejected = verify_source_candidates(candidates)
+    categories: dict[str, int] = {}
+    for item in rejected:
+        category = str(item.get("category") or "verification_failed")
+        categories[category] = categories.get(category, 0) + 1
+    summary = dict(summary)
+    summary["verifiedCount"] = len(verified)
+    summary["rejectedCount"] = len(rejected)
+    summary["rejectedByCategory"] = categories
+    return {"zhihu": summary, "published": False}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the rolling life-insurance market research worker")
     modes = parser.add_mutually_exclusive_group()
@@ -1356,16 +1373,26 @@ def main() -> int:
         action="store_true",
         help="Run source discovery and verification without publishing or changing status",
     )
+    modes.add_argument(
+        "--zhihu-scout-only",
+        action="store_true",
+        help="Run only the official Zhihu API discovery and public-page verification",
+    )
     args = parser.parse_args()
     repository = MarketAnalysisRepository()
     try:
-        result = run_source_scout_only(repository) if args.source_scout_only else run_research(repository, dry_run=args.dry_run)
+        if args.source_scout_only:
+            result = run_source_scout_only(repository)
+        elif args.zhihu_scout_only:
+            result = run_zhihu_scout_only(repository)
+        else:
+            result = run_research(repository, dry_run=args.dry_run)
     except Exception as exc:
         print(f"market research failed: {redact(exc)}", file=sys.stderr)
         return 1
     if args.dry_run:
         print(json.dumps({key: value for key, value in result.items() if key != "prompt"}, ensure_ascii=False))
-    elif args.source_scout_only:
+    elif args.source_scout_only or args.zhihu_scout_only:
         print(json.dumps(result, ensure_ascii=False))
     else:
         print(json.dumps({"reportId": result.get("reportId"), "status": "published"}, ensure_ascii=False))
