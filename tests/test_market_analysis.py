@@ -12,7 +12,7 @@ from auth import get_current_user
 from main import app
 from market_analysis.repository import MarketAnalysisRepository
 from market_analysis.quality import assess_report_quality, maturity_draft_errors
-from market_analysis.source_verifier import SourceVerificationError, _ensure_public_url, _open_pinned, _published_at_matches, _title_matches, align_module_facts_to_verified_excerpts, verify_report_sources
+from market_analysis.source_verifier import SourceVerificationError, _ensure_public_url, _open_pinned, _published_at_matches, _title_matches, _verify_external_source, align_module_facts_to_verified_excerpts, verify_report_sources, verify_source_candidates
 from market_analysis.validator import ReportValidationError, validate_report
 import run_market_research
 from run_market_research import (
@@ -501,6 +501,7 @@ def test_model_plan_uses_pro_for_primary_flash_for_first_repair_and_pro_for_esca
         monkeypatch.delenv(key, raising=False)
     plan = resolve_model_plan()
     assert plan["primary"] == "deepseek-v4-pro[1m]"
+    assert plan["scout"] == "deepseek-v4-flash"
     assert plan["repair"] == "deepseek-v4-flash"
     assert plan["escalation"] == "deepseek-v4-pro[1m]"
     assert repair_model_for_attempt(plan, 0) == ("deepseek-v4-flash", "repair_flash")
@@ -518,6 +519,93 @@ def test_dry_run_reports_model_plan_without_overwriting_runtime_status(tmp_path,
     assert result["modelPlan"]["primary"] == "deepseek-v4-pro[1m]"
     assert result["modelPlan"]["repair"] == "deepseek-v4-flash"
     assert repository.status() == previous_status
+
+
+def test_flash_source_scout_feeds_only_verified_evidence_to_primary(tmp_path, monkeypatch):
+    repository = MarketAnalysisRepository(tmp_path)
+    prompts = []
+    model_report = valid_report()
+    verified = [{
+        "id": "P1", "title": "已核验的一手来源", "publisher": "测试保险公司",
+        "url": "https://example.com/verified", "sourceType": "company", "sourceLevel": "B",
+        "publishedAt": None, "retrievedAt": "2026-08-14T12:00:00+08:00",
+        "excerpt": "已核验正文事实", "contentHash": "b" * 64,
+        "verification": {"status": "verified", "excerptMatched": True},
+    }]
+    summary = {
+        "enabled": True, "completed": True, "queryCount": 14, "candidateCount": 20, "verifiedCount": 12,
+        "wechatCandidateCount": 4, "verifiedWechatCount": 1, "rejectedCount": 8,
+        "rejectedByCategory": {"unreachable": 8}, "limitations": [], "wechatGaps": [],
+    }
+
+    def fake_scout(_bin, _history, _ledger, *, model_plan, telemetry, timeout_seconds):
+        telemetry.append({"role": "source_scout", "model": model_plan["scout"], "status": "success"})
+        return copy.deepcopy(verified), copy.deepcopy(summary)
+
+    def fake_invoke(_resolved_bin, prompt, *, model, role, telemetry, **_kwargs):
+        prompts.append(prompt)
+        telemetry.append({"role": role, "model": model, "status": "success"})
+        return copy.deepcopy(model_report)
+
+    monkeypatch.setattr(run_market_research, "fetch_internal_snapshot", lambda: {"year": 2026})
+    monkeypatch.setattr(run_market_research.shutil, "which", lambda value: "/usr/local/bin/claude")
+    monkeypatch.setattr(run_market_research, "run_source_scout", fake_scout)
+    monkeypatch.setattr(run_market_research, "invoke_claude", fake_invoke)
+    monkeypatch.setattr(run_market_research, "verify_report_sources", lambda report, **_kwargs: report)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+    monkeypatch.setenv("MARKET_ANALYSIS_SOURCE_SCOUT_ENABLED", "1")
+
+    result = run_market_research.run_research(repository)
+
+    assert "已核验的一手来源" in prompts[0]
+    assert [call["role"] for call in repository.status()["modelCalls"]] == ["source_scout", "primary"]
+    assert repository.status()["sourceScout"]["verifiedWechatCount"] == 1
+    assert result["coverage"]["queryCount"] >= 14
+    assert any("公众号候选4项，通过1项" in item for item in result["limitations"])
+
+
+def test_source_scout_only_never_publishes_or_changes_runtime_status(tmp_path, monkeypatch):
+    repository = MarketAnalysisRepository(tmp_path)
+    previous_status = {"state": "success", "message": "keep", "updatedAt": "2026-08-14T01:00:00+08:00"}
+    repository.write_status(previous_status)
+    monkeypatch.setattr(run_market_research.shutil, "which", lambda value: "/usr/local/bin/claude")
+    monkeypatch.setattr(
+        run_market_research,
+        "run_source_scout",
+        lambda *_args, **_kwargs: ([], {"enabled": True, "verifiedCount": 0}),
+    )
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+
+    result = run_market_research.run_source_scout_only(repository)
+
+    assert result["published"] is False
+    assert result["verifiedEvidenceCount"] == 0
+    assert repository.latest() is None
+    assert repository.status() == previous_status
+
+
+def test_source_scout_failure_degrades_to_pro_research_instead_of_blocking_publication(tmp_path, monkeypatch):
+    repository = MarketAnalysisRepository(tmp_path)
+    model_report = valid_report()
+
+    def fake_invoke(_resolved_bin, _prompt, *, model, role, telemetry, **_kwargs):
+        telemetry.append({"role": role, "model": model, "status": "success"})
+        return copy.deepcopy(model_report)
+
+    monkeypatch.setattr(run_market_research, "fetch_internal_snapshot", lambda: {"year": 2026})
+    monkeypatch.setattr(run_market_research.shutil, "which", lambda value: "/usr/local/bin/claude")
+    monkeypatch.setattr(run_market_research, "run_source_scout", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("scout unavailable")))
+    monkeypatch.setattr(run_market_research, "invoke_claude", fake_invoke)
+    monkeypatch.setattr(run_market_research, "verify_report_sources", lambda report, **_kwargs: report)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+    monkeypatch.setenv("MARKET_ANALYSIS_SOURCE_SCOUT_ENABLED", "1")
+
+    result = run_market_research.run_research(repository)
+
+    assert result["reviewStatus"] == "machine_validated"
+    assert repository.status()["state"] == "success"
+    assert repository.status()["sourceScout"]["status"] == "degraded"
+    assert repository.status()["modelCalls"][0]["role"] == "primary"
 
 
 def test_long_source_excerpt_is_clamped_to_best_fact_window():
@@ -714,7 +802,7 @@ def test_worker_repairs_unprunable_source_in_same_run_with_flash(tmp_path, monke
     assert "source S3 failed independent verification" in prompts[1]
     status = repository.status()
     assert [call["role"] for call in status["modelCalls"]] == ["primary", "repair_flash"]
-    assert status["modelPlan"]["strategy"] == "pro_primary_flash_first_repair_pro_escalation"
+    assert status["modelPlan"]["strategy"] == "flash_scout_pro_primary_flash_repair_pro_escalation"
 
 
 def test_private_repair_checkpoint_is_resumable_and_clearable(tmp_path):
@@ -893,6 +981,51 @@ def test_source_verifier_canonicalizes_metadata_but_keeps_fact_gate(monkeypatch)
     assert source["verification"]["excerptMatched"] is True
 
 
+def test_official_wechat_source_requires_matching_public_account_identity(monkeypatch):
+    source = {
+        "id": "P1", "title": "寿险高质量发展观察", "publisher": "测试保险公司",
+        "url": "https://mp.weixin.qq.com/s/example", "sourceType": "official_wechat", "sourceLevel": "B",
+        "publishedAt": None, "retrievedAt": "", "excerpt": "寿险业务坚持高质量发展", "contentHash": "",
+    }
+    body = "寿险业务坚持高质量发展，并持续提升客户服务质效。"
+
+    monkeypatch.setattr("market_analysis.source_verifier._fetch_external", lambda _url: {
+        "status": "verified", "httpStatus": 200, "finalUrl": source["url"],
+        "pageTitle": source["title"], "contentType": "text/html",
+        "verifiedAt": "2026-08-14T12:00:00+08:00", "contentHash": "b" * 64,
+        "bytesRead": len(body.encode("utf-8")), "truncated": False, "isWechat": True,
+        "publisherIdentity": "测试保险公司", "_body": body,
+    })
+
+    verified = _verify_external_source(source, "寿险业务坚持高质量发展")
+
+    assert verified["verification"]["publisherMatched"] is True
+    assert verified["verification"]["titleMatched"] is True
+    assert verified["verification"]["excerptMatched"] is True
+
+
+def test_wechat_candidate_with_mismatched_account_is_rejected_before_primary(monkeypatch):
+    candidate = {
+        "id": "P1", "queryTheme": "同业动作", "section": "peers", "claim": "寿险业务坚持高质量发展",
+        "title": "寿险高质量发展观察", "publisher": "声明的保险公司",
+        "url": "https://mp.weixin.qq.com/s/example", "sourceType": "official_wechat", "sourceLevel": "B",
+        "publishedAt": None, "retrievedAt": "", "excerpt": "寿险业务坚持高质量发展", "contentHash": "",
+    }
+    body = "寿险业务坚持高质量发展，并持续提升客户服务质效。"
+    monkeypatch.setattr("market_analysis.source_verifier._fetch_external", lambda _url: {
+        "status": "verified", "httpStatus": 200, "finalUrl": candidate["url"],
+        "pageTitle": candidate["title"], "contentType": "text/html",
+        "verifiedAt": "2026-08-14T12:00:00+08:00", "contentHash": "b" * 64,
+        "bytesRead": len(body.encode("utf-8")), "truncated": False, "isWechat": True,
+        "publisherIdentity": "另一家保险公司", "_body": body,
+    })
+
+    verified, rejected = verify_source_candidates([candidate])
+
+    assert verified == []
+    assert rejected[0]["category"] == "publisher_unverified"
+
+
 def test_module_facts_are_aligned_to_the_closest_verified_excerpt():
     report = valid_report()
     report["modules"][0]["fact"] = "官方数据显示2026年保费增长12.3%，趋势进一步增强。"
@@ -919,6 +1052,8 @@ def test_market_analysis_page_is_modular_and_whitelisted():
     assert "CHANGE_LABELS" in script
     assert "跨期轨迹" in script
     assert "modelPlanLabel" in script
+    assert "sourceScoutLabel" in script
+    assert "来源侦察" in script
     assert "模型组合" in script
     assert "renderQuality" in script
     assert "专业成熟度" in script

@@ -2,7 +2,7 @@
 
 ## 结论
 
-生产运行采用 Claude Code CLI 直接连接 DeepSeek 官方 Anthropic 兼容端点，使用“Pro主研、Flash首修、Pro升级”的质量优先组合。服务器不依赖 CC Switch；模型配置由 `/etc/business-analysis-market/market-analysis.env` 管理，减少桌面工具、配置同步和headless兼容故障。
+生产运行采用 Claude Code CLI 直接连接 DeepSeek 官方 Anthropic 兼容端点，使用“Flash来源侦察、Pro主研、Flash首修、Pro升级”的质量优先组合。Flash先以低成本覆盖更多检索主题，程序并发淘汰不可达、正文不符和公众号主体不明的候选，Pro只接收通过核验的证据包并补齐缺口。服务器不依赖 CC Switch；模型配置由 `/etc/business-analysis-market/market-analysis.env` 管理，减少桌面工具、配置同步和headless兼容故障。
 
 Web 服务不直接调用模型。独立 `market-analysis.service` 每次完成多源搜索、历史归并、结构化输出和证据校验，只有通过门禁的 JSON 才会替换 `latest.json`；失败时网页继续显示上一期有效报告。
 
@@ -46,13 +46,18 @@ MARKET_ANALYSIS_MODEL=deepseek-v4-pro[1m]
 MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-v4-pro[1m]
 MARKET_ANALYSIS_REPAIR_MODEL=deepseek-v4-flash
 MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-v4-pro[1m]
+MARKET_ANALYSIS_SOURCE_SCOUT_ENABLED=1
+MARKET_ANALYSIS_SOURCE_SCOUT_MODEL=deepseek-v4-flash
+MARKET_ANALYSIS_SOURCE_SCOUT_MAX_TURNS=35
+MARKET_ANALYSIS_SOURCE_SCOUT_MAX_BUDGET_USD=2.5
+MARKET_ANALYSIS_SOURCE_VERIFY_WORKERS=4
 MARKET_ANALYSIS_REPAIR_MAX_BUDGET_USD=3
 MARKET_ANALYSIS_ESCALATION_MAX_BUDGET_USD=6
 MARKET_ANALYSIS_MIN_QUALITY_SCORE=9.0
 CLAUDE_CODE_EFFORT_LEVEL=max
 ```
 
-首次深度研究和最终跨期综合由Pro完成；Claude Code的Haiku/轻量子任务和第一次定向修复使用Flash。Flash修复后仍不合格时只允许再用Pro升级修复一次，仍失败则不发布。CLI的`total_cost_usd`仅作为调用相对观察值，实际扣费以DeepSeek控制台为准。
+首次深度研究和最终跨期综合由Pro完成；Flash承担来源侦察、Claude Code轻量子任务和第一次定向修复。来源侦察本身失败时自动降级到原Pro研究链，不阻断报告；Flash修复后仍不合格时只允许再用Pro升级修复一次，仍失败则不发布。CLI的`total_cost_usd`仅作为调用相对观察值，实际扣费以DeepSeek控制台为准。
 
 ## 首次验证与启用
 
@@ -77,6 +82,8 @@ systemctl list-timers market-analysis.timer --all
 
 发布门禁还会阻止：页面标题不符、最终 URL 不一致、非公开地址、敏感查询参数、非标准端口、正文不可提取、事实与证据片段不匹配、事实数字未出现在证据、历史主题跳过最新一期或篡改 `history.since`。
 
+微信公众号仅接受公开直达的 `https://mp.weixin.qq.com/s...` 文章。程序必须同时核对最终URL、标题、公众号主体、公开正文、50字内证据锚点和内容哈希；搜索摘要、转载、公众号主页、登录/验证码/环境异常页面均按线索淘汰。公众号数量不作为发布硬指标，无法复核时使用同机构官网镜像或如实披露缺口。
+
 来源计数、模块短标题及页面字段长度由程序按实际报告自动校准。生产9分门槛启用后，独立验证失败的外部来源只在所有引用项仍有替代证据、宏观/监管模块仍保留官方 A 级、每个同业模块仍保留一手 A/B 级且总来源仍不少于12项时才会剔除，并在研究边界中留下记录；唯一或关键证据失败时继续阻止发布。
 
 行动提示同时是跨期台账。`actionKey`标识同一管理任务，`status`区分新增、持续、调整和完成，`progress`记录本期变化，`acceptanceMetric`定义验收标准，`nextReviewAt`明确下次复核日期；相同行动不能重新包装为“新增”，完成状态必须有内部证据。
@@ -94,6 +101,12 @@ systemctl list-timers market-analysis.timer --all
 - `market-analysis-manual.path` 监听该文件，由 root 运行固定 helper，并且只能启动 `market-analysis.service`。
 - helper 设有5分钟冷却；研究已运行时重复请求不会启动第二个进程。
 - 该链路不使用 sudoers，不允许网页传入服务名、命令或参数。
+
+只验证来源侦察与独立核验、不发布报告也不修改运行状态：
+
+```bash
+sudo -u market-ai -g market-analysis bash -lc 'set -a; source /etc/business-analysis-market/market-analysis.env; set +a; cd /opt/business-analysis/backend; ./venv/bin/python run_market_research.py --source-scout-only'
+```
 
 查看触发链路：
 

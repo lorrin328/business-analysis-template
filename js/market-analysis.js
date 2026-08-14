@@ -44,7 +44,15 @@
 
   function modelPlanLabel(plan) {
     if (!plan?.primary) return '';
-    return `模型组合 ${shortModelName(plan.primary)}主研 / ${shortModelName(plan.repair)}修复 / ${shortModelName(plan.escalation)}升级`;
+    const scout = plan.scout ? `${shortModelName(plan.scout)}侦察 / ` : '';
+    return `模型组合 ${scout}${shortModelName(plan.primary)}主研 / ${shortModelName(plan.repair)}修复 / ${shortModelName(plan.escalation)}升级`;
+  }
+
+  function sourceScoutLabel(scout) {
+    if (!scout?.enabled) return '';
+    if (scout.status === 'degraded') return '来源侦察已降级，Pro继续研究';
+    if (!scout.completed) return '来源侦察待执行';
+    return `来源侦察 ${scout.candidateCount || 0}→${scout.verifiedCount || 0}，公众号 ${scout.wechatCandidateCount || 0}→${scout.verifiedWechatCount || 0}`;
   }
 
   function sourceMap(report) {
@@ -322,7 +330,8 @@
       document.getElementById('runDot').className = `dot ${state}`;
       document.getElementById('runState').textContent = ({ success: '最近运行成功', running: '研究正在运行', failed: '最近运行失败', never_run: '尚未运行' })[state] || state;
       const planText = modelPlanLabel(status?.modelPlan);
-      document.getElementById('runMessage').textContent = `${status?.message || ''}${status?.updatedAt ? ` · ${formatTime(status.updatedAt)}` : ''}${planText ? ` · ${planText}` : ''}`;
+      const scoutText = sourceScoutLabel(status?.sourceScout);
+      document.getElementById('runMessage').textContent = `${status?.message || ''}${status?.updatedAt ? ` · ${formatTime(status.updatedAt)}` : ''}${planText ? ` · ${planText}` : ''}${scoutText ? ` · ${scoutText}` : ''}`;
       const runNowButton = document.getElementById('runNowButton');
       if (runNowButton && !runNowButton.classList.contains('hidden')) {
         runNowButton.disabled = state === 'running';
@@ -336,7 +345,7 @@
 
   async function runNow() {
     const button = document.getElementById('runNowButton');
-    if (!window.confirm('将立即启动一次深度市场研究，可能持续10—30分钟并产生模型调用费用。确认运行吗？')) return;
+    if (!window.confirm('将立即启动一次深度市场研究，通常持续15—45分钟并产生模型调用费用。确认运行吗？')) return;
     button.disabled = true;
     button.textContent = '正在提交…';
     try {

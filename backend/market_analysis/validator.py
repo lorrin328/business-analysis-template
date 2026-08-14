@@ -179,6 +179,17 @@ def validate_report(report: dict, *, require_verified_sources: bool = True) -> d
             errors.append(f"source {source_id}: external evidence must use http(s) URL")
         if source_type == "official" and parsed.hostname and not (parsed.hostname == "gov.cn" or parsed.hostname.endswith(".gov.cn")):
             errors.append(f"source {source_id}: official evidence must use a verified gov.cn domain")
+        if source_type == "official_wechat":
+            if (
+                parsed.scheme != "https"
+                or parsed.hostname != "mp.weixin.qq.com"
+                or not (parsed.path == "/s" or parsed.path.startswith("/s/"))
+            ):
+                errors.append(f"source {source_id}: official WeChat evidence must use a direct mp.weixin.qq.com HTTPS URL")
+            if level != "B":
+                errors.append(f"source {source_id}: official WeChat evidence must be B-level")
+        elif parsed.hostname == "mp.weixin.qq.com":
+            errors.append(f"source {source_id}: mp.weixin.qq.com evidence must use sourceType=official_wechat")
         retrieved_at = _parse_iso_datetime(_text(source.get("retrievedAt")))
         if _text(source.get("retrievedAt")) and not retrieved_at:
             errors.append(f"source {source_id}: retrievedAt must be timezone-aware ISO-8601")
@@ -217,6 +228,11 @@ def validate_report(report: dict, *, require_verified_sources: bool = True) -> d
                     errors.append(f"source {source_id}: a successful verification HTTP status is required")
                 if not _text(verification.get("contentType")) or not isinstance(verification.get("bytesRead"), int):
                     errors.append(f"source {source_id}: verification content metadata is required")
+                if source_type == "official_wechat":
+                    if verification.get("publisherMatched") is not True or not _text(verification.get("publisherIdentity")):
+                        errors.append(f"source {source_id}: official WeChat publisher identity must be independently matched")
+                    if verification.get("titleMatched") is not True:
+                        errors.append(f"source {source_id}: official WeChat article title must be independently matched")
 
     coverage = report.get("coverage") or {}
     try:

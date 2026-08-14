@@ -124,12 +124,17 @@ ensure_env_value MARKET_ANALYSIS_MODEL 'deepseek-v4-pro[1m]'
 ensure_env_value MARKET_ANALYSIS_PRIMARY_MODEL 'deepseek-v4-pro[1m]'
 ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL 'deepseek-v4-flash'
 ensure_env_value MARKET_ANALYSIS_ESCALATION_MODEL 'deepseek-v4-pro[1m]'
+ensure_env_value MARKET_ANALYSIS_SOURCE_SCOUT_ENABLED '1'
+ensure_env_value MARKET_ANALYSIS_SOURCE_SCOUT_MODEL 'deepseek-v4-flash'
+ensure_env_value MARKET_ANALYSIS_SOURCE_SCOUT_MAX_TURNS '35'
+ensure_env_value MARKET_ANALYSIS_SOURCE_SCOUT_MAX_BUDGET_USD '2.5'
 ensure_env_value MARKET_ANALYSIS_REPAIR_MAX_TURNS '40'
 ensure_env_value MARKET_ANALYSIS_REPAIR_MAX_BUDGET_USD '3'
 ensure_env_value MARKET_ANALYSIS_ESCALATION_MAX_TURNS '45'
 ensure_env_value MARKET_ANALYSIS_ESCALATION_MAX_BUDGET_USD '6'
 ensure_env_value MARKET_ANALYSIS_MAX_REPAIR_ATTEMPTS '2'
 ensure_env_value MARKET_ANALYSIS_MIN_QUALITY_SCORE '9.0'
+ensure_env_value MARKET_ANALYSIS_SOURCE_VERIFY_WORKERS '4'
 
 install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis.service" /etc/systemd/system/market-analysis.service
 install -o root -g root -m 0755 "$APP_DIR/deploy/market-analysis-schedule.sh" /usr/local/sbin/business-analysis-market-schedule

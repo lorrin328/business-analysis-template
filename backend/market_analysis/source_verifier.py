@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import copy
 import hashlib
+import html
 import http.client
 import ipaddress
 import os
 import re
 import socket
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from html.parser import HTMLParser
@@ -15,6 +18,11 @@ from urllib.parse import parse_qsl, urljoin, urlparse
 
 ALLOWED_CONTENT_TYPES = {"text/html", "application/xhtml+xml", "text/plain", "application/pdf"}
 SENSITIVE_QUERY_KEYS = {"token", "access_token", "api_key", "apikey", "secret", "authorization"}
+WECHAT_HOST = "mp.weixin.qq.com"
+WECHAT_BLOCK_MARKERS = (
+    "环境异常", "访问过于频繁", "请在微信客户端打开链接", "该内容已被发布者删除",
+    "此内容因违规无法查看", "当前环境存在异常", "完成验证后即可继续访问",
+)
 
 
 class SourceVerificationError(ValueError):
@@ -29,6 +37,9 @@ class _PageParser(HTMLParser):
         self.title_parts: list[str] = []
         self.body_parts: list[str] = []
         self.meta_titles: list[str] = []
+        self.meta_authors: list[str] = []
+        self.wechat_account_parts: list[str] = []
+        self._wechat_account_tag: str | None = None
 
     def handle_starttag(self, tag, attrs):
         name = tag.lower()
@@ -41,6 +52,11 @@ class _PageParser(HTMLParser):
             key = (attributes.get("property") or attributes.get("name") or "").lower()
             if key in {"og:title", "twitter:title"} and attributes.get("content"):
                 self.meta_titles.append(attributes["content"].strip())
+            if key in {"author", "article:author", "og:article:author"} and attributes.get("content"):
+                self.meta_authors.append(attributes["content"].strip())
+        css_class = attributes.get("class", "")
+        if attributes.get("id") == "js_name" or "profile_nickname" in css_class or "rich_media_meta_nickname" in css_class:
+            self._wechat_account_tag = name
 
     def handle_endtag(self, tag):
         name = tag.lower()
@@ -48,6 +64,8 @@ class _PageParser(HTMLParser):
             self._in_title = False
         if name in {"script", "style", "noscript", "svg"} and self._ignored_depth:
             self._ignored_depth -= 1
+        if self._wechat_account_tag == name:
+            self._wechat_account_tag = None
 
     def handle_data(self, data):
         text = " ".join(str(data or "").split())
@@ -55,6 +73,8 @@ class _PageParser(HTMLParser):
             return
         if self._in_title:
             self.title_parts.append(text)
+        if self._wechat_account_tag is not None:
+            self.wechat_account_parts.append(text)
         if not self._ignored_depth:
             self.body_parts.append(text)
 
@@ -66,6 +86,11 @@ class _PageParser(HTMLParser):
     @property
     def body(self) -> str:
         return " ".join(self.body_parts)
+
+    @property
+    def wechat_account(self) -> str:
+        value = " ".join(self.wechat_account_parts).strip()
+        return value or (self.meta_authors[0] if self.meta_authors else "")
 
 
 def _now_iso() -> str:
@@ -109,14 +134,33 @@ def _decode_text(data: bytes, declared_charset: str | None) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def _extract_content(data: bytes, content_type: str, charset: str | None) -> tuple[str, str]:
+def _extract_wechat_publisher(raw_html: str, parser: _PageParser) -> str:
+    if parser.wechat_account:
+        return parser.wechat_account[:120]
+    patterns = (
+        r"\b(?:nickname|nick_name)\s*[:=]\s*[\"']([^\"']{2,120})[\"']",
+        r"<strong[^>]+(?:profile_nickname|js_name)[^>]*>(.*?)</strong>",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, raw_html, flags=re.I | re.S)
+        if not match:
+            continue
+        value = re.sub(r"<[^>]+>", " ", match.group(1))
+        value = " ".join(html.unescape(value).split())
+        if value:
+            return value[:120]
+    return ""
+
+
+def _extract_content(data: bytes, content_type: str, charset: str | None) -> tuple[str, str, dict]:
     if content_type in {"text/html", "application/xhtml+xml"}:
+        raw_html = _decode_text(data, charset)
         parser = _PageParser()
-        parser.feed(_decode_text(data, charset))
-        return parser.title, parser.body
+        parser.feed(raw_html)
+        return parser.title, parser.body, {"wechatPublisher": _extract_wechat_publisher(raw_html, parser)}
     if content_type == "text/plain":
         body = _decode_text(data, charset)
-        return body.splitlines()[0][:300] if body else "", body
+        return body.splitlines()[0][:300] if body else "", body, {}
     if content_type == "application/pdf":
         try:
             from pypdf import PdfReader
@@ -126,7 +170,7 @@ def _extract_content(data: bytes, content_type: str, charset: str | None) -> tup
             raise SourceVerificationError(f"PDF text extraction failed: {exc}") from exc
         if not body.strip():
             raise SourceVerificationError("PDF has no independently extractable text")
-        return "", body
+        return "", body, {}
     raise SourceVerificationError(f"unsupported source content type: {content_type or 'unknown'}")
 
 
@@ -142,6 +186,23 @@ def _title_matches(declared: str, fetched: str) -> bool:
     if expected in actual or actual in expected:
         return True
     return SequenceMatcher(None, expected, actual).ratio() >= 0.6
+
+
+def _publisher_matches(declared: str, fetched: str) -> bool:
+    expected = _normalized_text(declared)
+    actual = _normalized_text(fetched)
+    if not expected or not actual:
+        return False
+    if expected in actual or actual in expected:
+        return True
+    return SequenceMatcher(None, expected, actual).ratio() >= 0.72
+
+
+def _is_wechat_article_url(url: str) -> bool:
+    parsed = urlparse(str(url or ""))
+    return parsed.scheme == "https" and parsed.hostname == WECHAT_HOST and (
+        parsed.path == "/s" or parsed.path.startswith("/s/")
+    )
 
 
 def _excerpt_matches(excerpt: str, body: str) -> bool:
@@ -331,7 +392,17 @@ def _fetch_external(url: str) -> dict:
     truncated = len(data) > max_bytes
     if truncated:
         raise SourceVerificationError(f"source exceeds {max_bytes} byte verification limit")
-    page_title, body = _extract_content(data, content_type, charset)
+    page_title, body, metadata = _extract_content(data, content_type, charset)
+    parsed_final = urlparse(final_url)
+    is_wechat = parsed_final.hostname == WECHAT_HOST
+    if is_wechat:
+        blocked = next((marker for marker in WECHAT_BLOCK_MARKERS if marker in body), "")
+        if blocked:
+            raise SourceVerificationError(f"official WeChat article is access-controlled or unavailable: {blocked}")
+        if len(_normalized_text(body)) < 120:
+            raise SourceVerificationError("official WeChat article body is not independently extractable")
+        if not str(metadata.get("wechatPublisher") or "").strip():
+            raise SourceVerificationError("official WeChat publisher identity could not be extracted")
     return {
         "status": "verified",
         "httpStatus": status,
@@ -342,69 +413,181 @@ def _fetch_external(url: str) -> dict:
         "contentHash": hashlib.sha256(data).hexdigest(),
         "bytesRead": len(data),
         "truncated": False,
+        "isWechat": is_wechat,
+        "publisherIdentity": str(metadata.get("wechatPublisher") or "").strip() or None,
         "_body": body,
     }
 
 
+def _verify_external_source(source: dict, context: str) -> dict:
+    verified_source = copy.deepcopy(source)
+    source_type = str(verified_source.get("sourceType") or "").strip()
+    declared_url = str(verified_source.get("url") or "")
+    declared_host = urlparse(declared_url).hostname
+    if source_type == "official_wechat" and not _is_wechat_article_url(declared_url):
+        raise SourceVerificationError("official WeChat evidence must use a direct mp.weixin.qq.com article URL")
+    if declared_host == WECHAT_HOST and source_type != "official_wechat":
+        raise SourceVerificationError("mp.weixin.qq.com evidence must be classified as official_wechat")
+
+    verification = _fetch_external(declared_url)
+    if source_type == "official_wechat" and (
+        verification.get("isWechat") is not True
+        or not _is_wechat_article_url(str(verification.get("finalUrl") or ""))
+    ):
+        raise SourceVerificationError("official WeChat article redirected outside mp.weixin.qq.com")
+    if source_type != "official_wechat" and verification.get("isWechat") is True:
+        raise SourceVerificationError("WeChat article source type does not match its final URL")
+
+    content_type = verification.get("contentType")
+    if content_type in {"text/html", "application/xhtml+xml", "text/plain"}:
+        verification["titleMatched"] = _title_matches(
+            str(verified_source.get("title") or ""),
+            str(verification.get("pageTitle") or ""),
+        )
+        if not verification["titleMatched"]:
+            fetched_title = str(verification.get("pageTitle") or "").strip()
+            if not fetched_title:
+                raise SourceVerificationError("page title does not match the declared source title")
+            verified_source["title"] = fetched_title[:120]
+            verification["titleMatched"] = True
+    else:
+        verification["titleMatched"] = None
+
+    if source_type == "official_wechat":
+        publisher_identity = str(verification.get("publisherIdentity") or "").strip()
+        verification["publisherMatched"] = _publisher_matches(
+            str(verified_source.get("publisher") or ""), publisher_identity
+        )
+        if verification["publisherMatched"] is not True:
+            raise SourceVerificationError("official WeChat publisher identity does not match the declared publisher")
+    else:
+        verification["publisherMatched"] = None
+
+    body = str(verification.pop("_body", ""))
+    verification["excerptMatched"] = _excerpt_matches(str(verified_source.get("excerpt") or ""), body)
+    if not verification["excerptMatched"]:
+        verified_source["excerpt"] = _best_exact_excerpt(body, context)
+        verification["excerptMatched"] = _excerpt_matches(str(verified_source.get("excerpt") or ""), body)
+        if not verification["excerptMatched"]:
+            raise SourceVerificationError("evidence excerpt was not found in the source body")
+
+    published_at = str(verified_source.get("publishedAt") or "").strip()
+    verification["publishedAtMatched"] = _published_at_matches(published_at, body) if published_at else None
+    if published_at and verification["publishedAtMatched"] is not True:
+        verified_source["publishedAt"] = None
+        verification["publishedAtMatched"] = None
+    verified_source["url"] = verification["finalUrl"]
+    verified_source["retrievedAt"] = verification["verifiedAt"]
+    verified_source["contentHash"] = verification["contentHash"]
+    verified_source["verification"] = verification
+    return verified_source
+
+
+def _verify_external_sources(sources: list[dict], contexts: list[str]) -> tuple[dict[int, dict], dict[int, str]]:
+    try:
+        configured_workers = int(os.getenv("MARKET_ANALYSIS_SOURCE_VERIFY_WORKERS", "4"))
+    except ValueError:
+        configured_workers = 4
+    workers = max(1, min(configured_workers, 8))
+    verified: dict[int, dict] = {}
+    errors: dict[int, str] = {}
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="market-source") as executor:
+        futures = {
+            executor.submit(_verify_external_source, source, contexts[index]): index
+            for index, source in enumerate(sources)
+        }
+        for future in as_completed(futures):
+            index = futures[future]
+            try:
+                verified[index] = future.result()
+            except Exception as exc:
+                errors[index] = str(exc)
+    return verified, errors
+
+
+def _source_failure_category(message: str) -> str:
+    value = str(message or "").lower()
+    if any(term in value for term in ("access-controlled", "验证码", "环境异常", "访问过于频繁")):
+        return "access_controlled"
+    if "publisher" in value:
+        return "publisher_unverified"
+    if "excerpt" in value:
+        return "excerpt_unmatched"
+    if any(term in value for term in ("content type", "body", "empty body")):
+        return "body_unavailable"
+    if any(term in value for term in ("resolve", "public address", "http ", "redirect", "url")):
+        return "unreachable"
+    return "verification_failed"
+
+
+def verify_source_candidates(candidates: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Pre-verify scout candidates before the primary model receives them."""
+    external = [copy.deepcopy(candidate) for candidate in candidates if isinstance(candidate, dict)]
+    contexts = [str(candidate.get("claim") or candidate.get("excerpt") or "") for candidate in external]
+    verified_by_index, errors_by_index = _verify_external_sources(external, contexts)
+    verified: list[dict] = []
+    rejected: list[dict] = []
+    seen_urls: set[str] = set()
+    for index, candidate in enumerate(external):
+        candidate_id = str(candidate.get("id") or f"P{index + 1}")
+        if index in errors_by_index:
+            rejected.append({
+                "id": candidate_id,
+                "category": _source_failure_category(errors_by_index[index]),
+                "reason": errors_by_index[index][:300],
+            })
+            continue
+        source = verified_by_index[index]
+        final_url = str(source.get("url") or "")
+        if final_url in seen_urls:
+            rejected.append({"id": candidate_id, "category": "duplicate", "reason": "duplicate canonical URL"})
+            continue
+        seen_urls.add(final_url)
+        source["id"] = candidate_id
+        verified.append(source)
+    return verified, rejected
+
+
 def verify_report_sources(report: dict, *, internal_content_hash: str, internal_content_text: str) -> dict:
     errors: list[str] = []
-    for source in report.get("sources") or []:
+    external_sources: list[dict] = []
+    external_contexts: list[str] = []
+    external_positions: list[int] = []
+    sources = report.get("sources") or []
+    for position, source in enumerate(sources):
         source_id = str(source.get("id") or "?")
-        if source.get("sourceType") == "internal":
+        if source.get("sourceType") != "internal":
+            external_sources.append(source)
+            external_contexts.append(_evidence_context(report, source_id))
+            external_positions.append(position)
+            continue
+        excerpt_matched = _excerpt_matches(str(source.get("excerpt") or ""), internal_content_text)
+        if not excerpt_matched:
+            source["excerpt"] = _best_exact_excerpt(internal_content_text, _evidence_context(report, source_id))
             excerpt_matched = _excerpt_matches(str(source.get("excerpt") or ""), internal_content_text)
             if not excerpt_matched:
-                source["excerpt"] = _best_exact_excerpt(
-                    internal_content_text,
-                    _evidence_context(report, source_id),
-                )
-                excerpt_matched = _excerpt_matches(str(source.get("excerpt") or ""), internal_content_text)
-                if not excerpt_matched:
-                    errors.append(f"source {source_id} evidence excerpt was not found in the internal snapshot")
-                    continue
-            verified_at = _now_iso()
-            source["retrievedAt"] = verified_at
-            source["contentHash"] = internal_content_hash
-            source["verification"] = {
-                "status": "internal",
-                "verifiedAt": verified_at,
-                "contentHash": internal_content_hash,
-                "excerptMatched": True,
-            }
-            continue
-        try:
-            verification = _fetch_external(str(source.get("url") or ""))
-        except Exception as exc:
-            errors.append(f"source {source_id} failed independent verification: {exc}")
-            continue
-        content_type = verification.get("contentType")
-        if content_type in {"text/html", "application/xhtml+xml", "text/plain"}:
-            verification["titleMatched"] = _title_matches(str(source.get("title") or ""), str(verification.get("pageTitle") or ""))
-            if not verification["titleMatched"]:
-                fetched_title = str(verification.get("pageTitle") or "").strip()
-                if not fetched_title:
-                    errors.append(f"source {source_id} page title does not match the declared source title")
-                    continue
-                source["title"] = fetched_title[:120]
-                verification["titleMatched"] = True
-        else:
-            verification["titleMatched"] = None
-        body = str(verification.pop("_body", ""))
-        verification["excerptMatched"] = _excerpt_matches(str(source.get("excerpt") or ""), body)
-        if not verification["excerptMatched"]:
-            source["excerpt"] = _best_exact_excerpt(body, _evidence_context(report, source_id))
-            verification["excerptMatched"] = _excerpt_matches(str(source.get("excerpt") or ""), body)
-            if not verification["excerptMatched"]:
-                errors.append(f"source {source_id} evidence excerpt was not found in the source body")
+                errors.append(f"source {source_id} evidence excerpt was not found in the internal snapshot")
                 continue
-        published_at = str(source.get("publishedAt") or "").strip()
-        verification["publishedAtMatched"] = _published_at_matches(published_at, body) if published_at else None
-        if published_at and verification["publishedAtMatched"] is not True:
-            source["publishedAt"] = None
-            verification["publishedAtMatched"] = None
-        source["url"] = verification["finalUrl"]
-        source["retrievedAt"] = verification["verifiedAt"]
-        source["contentHash"] = verification["contentHash"]
-        source["verification"] = verification
+        verified_at = _now_iso()
+        source["retrievedAt"] = verified_at
+        source["contentHash"] = internal_content_hash
+        source["verification"] = {
+            "status": "internal",
+            "verifiedAt": verified_at,
+            "contentHash": internal_content_hash,
+            "excerptMatched": True,
+        }
+
+    verified_by_index, errors_by_index = _verify_external_sources(external_sources, external_contexts)
+    for external_index, position in enumerate(external_positions):
+        source_id = str(sources[position].get("id") or "?")
+        if external_index in errors_by_index:
+            errors.append(
+                f"source {source_id} failed independent verification: {errors_by_index[external_index]}"
+            )
+            continue
+        sources[position].clear()
+        sources[position].update(verified_by_index[external_index])
     if errors:
         raise SourceVerificationError("; ".join(errors))
     return report

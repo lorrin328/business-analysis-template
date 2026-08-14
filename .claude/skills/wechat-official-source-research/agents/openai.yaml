@@ -1,0 +1,4 @@
+interface:
+  display_name: "微信公众号官方证据研究"
+  short_description: "发现、筛选并独立核验公开可访问的官方微信公众号原文证据"
+  default_prompt: "Use $wechat-official-source-research to find and verify public official WeChat evidence for this research topic."
