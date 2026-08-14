@@ -1,5 +1,12 @@
 # 运行手册
 
+## 市场研判9分门禁验收
+
+- 受保护配置必须包含`MARKET_ANALYSIS_MIN_QUALITY_SCORE=9.0`。
+- 完整运行后同时检查`status.json.qualityScore`和`latest.json.qualityAssessment`；低于9.0时`latest.json`应保持上一期。
+- 页面应展示“研究质量评分”和五个维度；旧报告没有评分时正常隐藏该区域，不回填虚构分数。
+- 生产测试除服务退出码外，还要核验报告来源验证、行动连续性、正式JSON更新、页面HTTP、定时器和模型调用遥测。
+
 ## 客户清单网页增量导入
 
 - 页面：`/customer-analysis` → `数据导入`；查看需要`customer_analysis`，预检和确认导入还需要`upload`。

@@ -2,6 +2,7 @@ import copy
 import json
 import os
 import subprocess
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +11,7 @@ import api.market_analysis as market_analysis_api
 from auth import get_current_user
 from main import app
 from market_analysis.repository import MarketAnalysisRepository
+from market_analysis.quality import assess_report_quality, maturity_draft_errors
 from market_analysis.source_verifier import SourceVerificationError, _ensure_public_url, _open_pinned, _published_at_matches, _title_matches, align_module_facts_to_verified_excerpts, verify_report_sources
 from market_analysis.validator import ReportValidationError, validate_report
 import run_market_research
@@ -94,9 +96,97 @@ def valid_report(report_id="market-20260722-120000"):
     }
 
 
+def mature_report(report_id="market-20260722-120000"):
+    report = valid_report(report_id)
+    template = copy.deepcopy(report["sources"][0])
+    additions = [
+        {**template, "id": "S9", "title": "监管补充", "publisher": "金融监管总局", "url": "https://www.nfra.gov.cn/policy-2", "sourceType": "official", "sourceLevel": "A"},
+        {**template, "id": "S10", "title": "政府补充", "publisher": "中国政府网", "url": "https://www.gov.cn/policy-2", "sourceType": "official", "sourceLevel": "A"},
+        {**template, "id": "S11", "title": "同业制度", "publisher": "第三家保险公司", "url": "https://insurer.example.net/news", "sourceType": "company", "sourceLevel": "B"},
+        {**template, "id": "S12", "title": "协会观察", "publisher": "保险行业协会", "url": "https://ia.example.net/report", "sourceType": "association", "sourceLevel": "B"},
+    ]
+    for source in additions:
+        source["verification"] = {**source["verification"], "finalUrl": source["url"]}
+    report["sources"].extend(additions)
+    extra_modules = []
+    for index, (section, source_id) in enumerate(
+        (("macro", "S5"), ("regulation", "S9"), ("peers", "S7"), ("business_line", "S4")),
+        start=5,
+    ):
+        module = copy.deepcopy(report["modules"][index - 5])
+        module.update({
+            "id": f"M{index}",
+            "topicKey": f"{section}-second-trend",
+            "title": f"{section} 第二项判断",
+            "evidenceIds": [source_id],
+        })
+        extra_modules.append(module)
+        report["changeSignals"]["new"].append({
+            "topicKey": module["topicKey"],
+            "title": f"{section} 第二项新增判断",
+            "summary": "出现第二项新的可验证信号",
+            "relatedModuleIds": [module["id"]],
+            "previousReportId": None,
+            "evidenceIds": [source_id],
+        })
+    report["modules"].extend(extra_modules)
+    report["coverage"].update({"queryCount": 12, "sourceCount": 12, "officialSourceCount": 5})
+    report["actions"] = [{
+        "actionKey": "policy-readiness-ledger",
+        "status": "new",
+        "previousReportId": None,
+        "priority": "P1",
+        "title": "建立政策准备清单",
+        "action": "按新规适用范围建立渠道、产品和销售动作清单",
+        "progress": "本期新设清单，等待责任条线确认首轮项目",
+        "acceptanceMetric": "清单覆盖全部适用条线并完成责任人确认",
+        "nextReviewAt": "2026-07-25",
+        "owner": "业发督导室",
+        "cadence": "每3天",
+        "trigger": "新规正式发布或生效安排变化",
+        "evidenceIds": ["S2"],
+    }]
+    return report
+
+
 def test_report_validator_accepts_complete_atomic_modules():
     report = valid_report()
     assert validate_report(report) is report
+
+
+def test_maturity_gate_and_quality_score_reach_nine_points(tmp_path, monkeypatch):
+    repository = MarketAnalysisRepository(tmp_path)
+    report = mature_report()
+    monkeypatch.setenv("MARKET_ANALYSIS_MIN_QUALITY_SCORE", "9.0")
+    assert maturity_draft_errors(report, repository) == []
+    calls = [{"role": "primary", "model": "deepseek-v4-pro[1m]", "status": "success", "elapsedMs": 1000}]
+    assessment = assess_report_quality(report, repository, calls)
+    assert assessment["score"] >= 9.0
+    assert assessment["status"] == "passed"
+    assert {row["key"] for row in assessment["dimensions"]} == {"evidence", "coverage", "rolling", "actions", "operations"}
+
+
+def test_maturity_gate_rejects_weak_coverage_and_action_accountability(tmp_path, monkeypatch):
+    repository = MarketAnalysisRepository(tmp_path)
+    report = valid_report()
+    monkeypatch.setenv("MARKET_ANALYSIS_MIN_QUALITY_SCORE", "9.0")
+    errors = maturity_draft_errors(report, repository)
+    assert any("sourceCount" in error for error in errors)
+    assert any("moduleDepth" in error for error in errors)
+    assert any("maturity fields missing" in error for error in errors)
+
+
+def test_analysis_cannot_add_unsupported_numbers_or_peer_media_only():
+    report = mature_report()
+    report["modules"][0]["judgment"] = "预计未来增长99.9%"
+    with pytest.raises(ReportValidationError, match="unsupported factual tokens"):
+        validate_report(report)
+
+    report = mature_report()
+    peer = next(module for module in report["modules"] if module["id"] == "M7")
+    peer["evidenceIds"] = ["S8"]
+    with pytest.raises(ReportValidationError, match="peer analysis requires"):
+        validate_report(report)
 
 
 def test_report_validator_rejects_uncited_and_missing_layer():
@@ -468,9 +558,33 @@ def test_worker_passes_private_context_over_stdin_and_restricts_tools(tmp_path, 
     assert "Read" not in captured["command"]
     assert "WebSearch" in captured["command"] and "WebFetch" in captured["command"]
     schema_index = captured["command"].index("--json-schema") + 1
-    assert json.loads(captured["command"][schema_index])["properties"]["sources"]["minItems"] == 8
+    assert json.loads(captured["command"][schema_index])["properties"]["sources"]["minItems"] == 12
     assert "research_context" in captured["input"]
     assert captured["input"] not in " ".join(captured["command"])
+
+
+def test_worker_publishes_report_only_after_nine_point_quality_gate(tmp_path, monkeypatch):
+    repository = MarketAnalysisRepository(tmp_path)
+    model_report = mature_report()
+    model_report["actions"][0]["nextReviewAt"] = (date.today() + timedelta(days=7)).isoformat()
+
+    def fake_invoke(_resolved_bin, _prompt, *, model, role, telemetry, **_kwargs):
+        telemetry.append({"role": role, "model": model, "status": "success", "elapsedMs": 1000})
+        return copy.deepcopy(model_report)
+
+    monkeypatch.setattr(run_market_research, "fetch_internal_snapshot", lambda: {"year": 2026, "kpi": {"qj": 1}})
+    monkeypatch.setattr(run_market_research.shutil, "which", lambda value: "/usr/local/bin/claude")
+    monkeypatch.setattr(run_market_research, "invoke_claude", fake_invoke)
+    monkeypatch.setattr(run_market_research, "verify_report_sources", lambda report, **_kwargs: report)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+    monkeypatch.setenv("MARKET_ANALYSIS_MIN_QUALITY_SCORE", "9.0")
+
+    result = run_market_research.run_research(repository)
+
+    assert result["qualityAssessment"]["score"] >= 9.0
+    assert result["qualityAssessment"]["status"] == "passed"
+    assert repository.latest()["reportId"] == result["reportId"]
+    assert repository.status()["qualityScore"] == result["qualityAssessment"]["score"]
 
 
 def test_worker_runs_bounded_evidence_repair_before_publication(tmp_path, monkeypatch):
@@ -800,11 +914,14 @@ def test_market_analysis_page_is_modular_and_whitelisted():
     assert "本期变化信号" in page
     assert "四层研判模块" in page
     assert "条线行动提示" in page
+    assert "研究质量评分" in page
     assert "证据与来源" in page
     assert "CHANGE_LABELS" in script
     assert "跨期轨迹" in script
     assert "modelPlanLabel" in script
     assert "模型组合" in script
+    assert "renderQuality" in script
+    assert "专业成熟度" in script
     assert "executiveEvidence" in page
     assert "entries.slice(0, 3)" in script
     assert "innerHTML" not in script
@@ -845,6 +962,7 @@ def test_market_timer_runs_at_1am_when_three_calendar_days_are_due_and_template_
     assert "MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-v4-pro[1m]" in env_template
     assert "MARKET_ANALYSIS_REPAIR_MODEL=deepseek-v4-flash" in env_template
     assert "MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-v4-pro[1m]" in env_template
+    assert "MARKET_ANALYSIS_MIN_QUALITY_SCORE=9.0" in env_template
     assert "NoNewPrivileges=true" in service
     assert "ProtectSystem=strict" in service
     assert "Restart=on-failure" in service
@@ -853,6 +971,7 @@ def test_market_timer_runs_at_1am_when_three_calendar_days_are_due_and_template_
     assert "ensure_env_value ANTHROPIC_DEFAULT_HAIKU_MODEL 'deepseek-v4-flash'" in installer
     assert "ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL 'deepseek-v4-flash'" in installer
     assert "ensure_env_value MARKET_ANALYSIS_ESCALATION_MODEL 'deepseek-v4-pro[1m]'" in installer
+    assert "ensure_env_value MARKET_ANALYSIS_MIN_QUALITY_SCORE '9.0'" in installer
     assert "apt-get install -y curl ca-certificates nodejs npm" not in installer
     assert "@anthropic-ai/claude-code@latest" in installer
     assert "set +x" in configurator

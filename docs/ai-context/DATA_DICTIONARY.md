@@ -1,5 +1,15 @@
 # 数据字典
 
+## 市场研判质量与行动连续性
+
+- `qualityAssessment.score`：程序按五个维度计算的0—10分研究质量分；生产发布下限为9.0。
+- `qualityAssessment.dimensions`：证据完整性、来源权威与覆盖、滚动分析质量、行动闭环、运行可靠性分项得分。
+- `qualityAssessment.checks`：每项机器检查的通过状态、得分、满分和可读说明；不包含提示词、密钥或来源正文。
+- `actions[].actionKey`：跨期稳定的小写行动标识；同一管理任务延续时必须复用。
+- `actions[].status`：`new`、`continuing`、`adjusted`、`completed`；完成必须由内部证据支持。
+- `actions[].previousReportId`：该行动最近一次出现的真实报告编号；新增行动为空。
+- `actions[].progress`、`acceptanceMetric`、`nextReviewAt`：本期进度、验收指标和31天内下一复核日期。
+
 ## 2026-08-02 客户清单增量导入
 
 ### 表：`customer_import_batches`

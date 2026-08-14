@@ -14,6 +14,7 @@
     expired: '已失效'
   };
   const CONFIDENCE_LABELS = { high: '高置信', medium: '中置信', low: '低置信' };
+  const ACTION_STATUS_LABELS = { new: '本期新增', continuing: '持续推进', adjusted: '已调整', completed: '已完成' };
   let currentReport = null;
   let currentSection = 'all';
 
@@ -88,8 +89,33 @@
     ];
     const reportModelPlan = modelPlanLabel(report.model);
     if (reportModelPlan) metaItems.push(reportModelPlan);
+    const qualityScore = Number(report.qualityAssessment?.score);
+    if (Number.isFinite(qualityScore)) metaItems.push(`专业成熟度 ${qualityScore.toFixed(1)}/10`);
     metaItems.forEach(text => meta.appendChild(node('span', 'pill', text)));
     document.getElementById('coverageNote').textContent = `检索 ${coverage.queryCount || 0} 组主题；微信公众号来源 ${coverage.wechatSourceCount || 0} 项。`;
+  }
+
+  function renderQuality(report) {
+    const assessment = report.qualityAssessment;
+    const section = document.getElementById('qualitySection');
+    const grid = document.getElementById('qualityGrid');
+    clear(grid);
+    section.classList.toggle('hidden', !assessment);
+    if (!assessment) return;
+    const total = node('article', 'quality-card total');
+    total.appendChild(node('strong', '', `${Number(assessment.score || 0).toFixed(1)}/10`));
+    total.appendChild(node('span', '', `发布门槛 ${Number(assessment.minimumScore || 0).toFixed(1)} · ${assessment.status === 'passed' ? '已通过' : '未通过'}`));
+    grid.appendChild(total);
+    (assessment.dimensions || []).forEach(dimension => {
+      const card = node('article', 'quality-card');
+      card.appendChild(node('strong', '', `${Number(dimension.score || 0).toFixed(1)}/${Number(dimension.maxScore || 0).toFixed(1)}`));
+      card.appendChild(node('span', '', dimension.label || dimension.key));
+      grid.appendChild(card);
+    });
+    const failed = (assessment.checks || []).filter(item => !item.passed);
+    document.getElementById('qualitySummary').textContent = failed.length
+      ? `已通过发布门槛；仍有 ${failed.length} 项观察指标未满分：${failed.map(item => item.label).join('、')}。`
+      : '证据、覆盖、滚动分析、行动闭环和运行可靠性全部达到本期满分标准。';
   }
 
   function renderSignals(report) {
@@ -216,13 +242,16 @@
       const card = node('article', 'action-card');
       const top = node('div', 'action-top');
       top.appendChild(node('h3', '', action.title));
-      top.appendChild(node('span', 'priority', action.priority || 'P2'));
+      top.appendChild(node('span', 'priority', `${action.priority || 'P2'} · ${ACTION_STATUS_LABELS[action.status] || '待归类'}`));
       card.appendChild(top);
       card.appendChild(node('p', 'action-text', action.action));
+      if (action.progress) card.appendChild(node('div', 'action-progress', `当前进度：${action.progress}`));
       const meta = node('div', 'action-meta');
       meta.appendChild(node('span', '', `责任对象：${action.owner || '待明确'}`));
       meta.appendChild(node('span', '', `复核节奏：${action.cadence || '待明确'}`));
       meta.appendChild(node('span', '', `触发条件：${action.trigger || '待明确'}`));
+      if (action.acceptanceMetric) meta.appendChild(node('span', '', `验收指标：${action.acceptanceMetric}`));
+      if (action.nextReviewAt) meta.appendChild(node('span', '', `下次复核：${action.nextReviewAt}`));
       card.appendChild(meta);
       card.appendChild(evidenceChips(action.evidenceIds, report));
       grid.appendChild(card);
@@ -268,6 +297,7 @@
       return;
     }
     renderHero(report);
+    renderQuality(report);
     renderSignals(report);
     renderTabs();
     renderModules(report);

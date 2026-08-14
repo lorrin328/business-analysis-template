@@ -176,7 +176,7 @@ sudo -u www-data /opt/business-analysis/backend/venv/bin/python /opt/business-an
 - 历史研究不做全文拼接，滚动归并为持续有效、继续强化、发生反转、本期新增和已失效五类信号，并支持历史期次切换。
 - 新增证据台账和模型外发布校验：宏观与监管必须有官方 A 级来源，D 级转载不能单独支撑判断；来源正文、标题、发布日期、最终 URL、内容哈希和短证据锚点均需独立复核，模块事实与数字必须能回到证据原文。
 - 新增 Claude Code + DeepSeek V4 Pro 研究执行器、项目级研究 Skill和隔离systemd服务；timer每天北京时间凌晨1点检查，距上次成功报告满3个自然日才启动研究。凭据只允许写入服务器受保护环境文件，未配置时定时器保持关闭。
-- 生产运行、模型配置和故障处理见 [docs/MARKET_ANALYSIS.md](docs/MARKET_ANALYSIS.md)。
+- 生产运行、模型配置和故障处理见 [docs/MARKET_ANALYSIS.md](docs/MARKET_ANALYSIS.md)；9分质量合同见 [docs/市场研判9分成熟度迭代方案_20260814.md](docs/市场研判9分成熟度迭代方案_20260814.md)。
 
 ## v1.0.106 人均保费与顶部操作优化
 

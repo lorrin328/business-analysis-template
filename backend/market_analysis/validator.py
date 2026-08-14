@@ -92,6 +92,23 @@ def _fact_supported_by_verified_excerpt(fact: str, evidence_ids: list[str], sour
     return False
 
 
+def _unsupported_analysis_tokens(module: dict, sources: dict[str, dict]) -> list[str]:
+    evidence_ids = _evidence_ids(module)
+    context = "".join([
+        _normalized_text(module.get("fact")),
+        *[_normalized_text(sources[eid].get("excerpt")) for eid in evidence_ids if eid in sources],
+    ])
+    analysis = _normalized_text(f"{module.get('judgment', '')}{module.get('impact', '')}")
+    unsupported: list[str] = []
+    for token in re.findall(r"\d+(?:[.,]\d+)*(?:%|万|亿|元|年|月|日)?", analysis):
+        if token not in context and token not in unsupported:
+            unsupported.append(token)
+    for term in {"征求意见", "正式发布", "生效", "实施", "废止", "取消", "禁止", "不得", "尚未"}:
+        if term in analysis and term not in context and term not in unsupported:
+            unsupported.append(term)
+    return unsupported
+
+
 def validate_report(report: dict, *, require_verified_sources: bool = True) -> dict:
     """Validate structural, evidence, history and independent-verification gates."""
     errors: list[str] = []
@@ -264,6 +281,11 @@ def validate_report(report: dict, *, require_verified_sources: bool = True) -> d
         if state == "new" and _text(history.get("previousReportId")):
             errors.append(f"module {module_id or index}: new history must not reference previousReportId")
         _validate_evidence(errors, f"module {module_id or index}", module, source_by_id)
+        unsupported_analysis = _unsupported_analysis_tokens(module, source_by_id)
+        if unsupported_analysis:
+            errors.append(
+                f"module {module_id or index}: judgment/impact introduces unsupported factual tokens {unsupported_analysis}"
+            )
         if require_verified_sources and not _fact_supported_by_verified_excerpt(module.get("fact"), _evidence_ids(module), source_by_id):
             errors.append(f"module {module_id or index}: fact is not supported by its verified source excerpts")
 
@@ -297,6 +319,15 @@ def validate_report(report: dict, *, require_verified_sources: bool = True) -> d
         for eid in peer_evidence
     ):
         errors.append("section peers requires A/B-level first-party evidence")
+    for module in modules:
+        if _text(module.get("section")) != "peers":
+            continue
+        if not any(
+            _text(source_by_id.get(eid, {}).get("sourceLevel")) in {"A", "B"}
+            and _text(source_by_id.get(eid, {}).get("sourceType")) in FIRST_PARTY_TYPES
+            for eid in _evidence_ids(module)
+        ):
+            errors.append(f"module {_text(module.get('id'))}: peer analysis requires A/B-level first-party evidence")
 
     changes = report.get("changeSignals") or {}
     classified_module_ids: list[str] = []

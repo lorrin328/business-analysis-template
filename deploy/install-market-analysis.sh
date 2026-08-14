@@ -129,6 +129,7 @@ ensure_env_value MARKET_ANALYSIS_REPAIR_MAX_BUDGET_USD '3'
 ensure_env_value MARKET_ANALYSIS_ESCALATION_MAX_TURNS '45'
 ensure_env_value MARKET_ANALYSIS_ESCALATION_MAX_BUDGET_USD '6'
 ensure_env_value MARKET_ANALYSIS_MAX_REPAIR_ATTEMPTS '2'
+ensure_env_value MARKET_ANALYSIS_MIN_QUALITY_SCORE '9.0'
 
 install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis.service" /etc/systemd/system/market-analysis.service
 install -o root -g root -m 0755 "$APP_DIR/deploy/market-analysis-schedule.sh" /usr/local/sbin/business-analysis-market-schedule

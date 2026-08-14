@@ -36,7 +36,7 @@
     .btn:disabled { opacity: .55; cursor: not-allowed; }
     main { max-width: 1500px; margin: 0 auto; padding: 24px; }
     .hero { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(300px, .7fr); gap: 16px; margin-bottom: 16px; }
-    .hero-main, .run-card, .signal-card, .module-card, .action-card, .source-card, .empty { background: linear-gradient(145deg, rgba(23,42,66,.96), rgba(13,27,45,.96)); border: 1px solid var(--line); border-radius: 14px; }
+    .hero-main, .run-card, .quality-card, .signal-card, .module-card, .action-card, .source-card, .empty { background: linear-gradient(145deg, rgba(23,42,66,.96), rgba(13,27,45,.96)); border: 1px solid var(--line); border-radius: 14px; }
     .hero-main { padding: 24px; position: relative; overflow: hidden; }
     .hero-main::after { content: ""; position: absolute; width: 260px; height: 260px; right: -110px; top: -130px; border-radius: 50%; background: rgba(71,215,207,.11); }
     .eyebrow { color: var(--cyan); letter-spacing: .12em; font-size: 12px; font-weight: 700; }
@@ -57,6 +57,12 @@
     .history-control select { width: 100%; }
     .section-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin: 28px 0 12px; }
     .section-head p { color: var(--muted); margin: 4px 0 0; }
+    .quality-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+    .quality-card { padding: 14px; }
+    .quality-card strong { display: block; color: var(--cyan); font-size: 22px; }
+    .quality-card span { color: var(--muted); font-size: 12px; }
+    .quality-card.total { border-color: rgba(71,201,138,.55); }
+    .quality-card.total strong { color: var(--green); }
     .signal-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
     .signal-card { padding: 14px; min-height: 150px; }
     .signal-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; margin-bottom: 10px; }
@@ -107,6 +113,7 @@
     .action-card h3 { margin: 0; font-size: 15px; }
     .priority { color: var(--gold); font-weight: 700; }
     .action-text { margin: 12px 0; color: #d4e0ef; }
+    .action-progress { margin: 10px 0; padding: 9px 10px; background: rgba(8,17,31,.38); border-radius: 8px; color: #bdd0e6; font-size: 12px; }
     .action-meta { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
     details.sources { margin-top: 24px; }
     details.sources > summary { cursor: pointer; color: var(--blue); font-weight: 700; padding: 12px 0; }
@@ -118,8 +125,8 @@
     .limitations { color: var(--muted); margin-top: 16px; }
     .empty { padding: 38px; text-align: center; color: var(--muted); }
     .hidden { display: none !important; }
-    @media (max-width: 1100px) { .hero { grid-template-columns: 1fr; } .signal-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } .actions-grid { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 760px) { .header { align-items: flex-start; padding: 12px 16px; } .brand { display: grid; gap: 2px; } main { padding: 16px; } .module-grid, .source-grid, .actions-grid, .signal-grid { grid-template-columns: 1fr; } .module-fields { grid-template-columns: 1fr; } .hero-main { padding: 18px; } }
+    @media (max-width: 1100px) { .hero { grid-template-columns: 1fr; } .quality-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } .signal-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } .actions-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 760px) { .header { align-items: flex-start; padding: 12px 16px; } .brand { display: grid; gap: 2px; } main { padding: 16px; } .module-grid, .source-grid, .actions-grid, .signal-grid, .quality-grid { grid-template-columns: 1fr; } .module-fields { grid-template-columns: 1fr; } .hero-main { padding: 18px; } }
   </style>
 </head>
 <body>
@@ -147,6 +154,11 @@
 
     <div id="emptyState" class="empty hidden">尚无通过证据校验的报告。定时研究完成后，本页会自动展示第一期结果。</div>
     <div id="reportContent" class="hidden">
+      <section id="qualitySection" class="hidden">
+        <div class="section-head"><div><h2>研究质量评分</h2><p id="qualitySummary">以证据、覆盖、滚动分析、行动闭环和运行可靠性进行程序化验收。</p></div></div>
+        <div class="quality-grid" id="qualityGrid"></div>
+      </section>
+
       <section>
         <div class="section-head"><div><h2>本期变化信号</h2><p>历史判断经当前证据重新核验后，只保留发生了什么变化。</p></div></div>
         <div class="signal-grid" id="signalGrid"></div>
@@ -170,6 +182,6 @@
       </details>
     </div>
   </main>
-  <script src="/js/market-analysis.js?v=1.0.112"></script>
+  <script src="/js/market-analysis.js?v=20260814-quality9"></script>
 </body>
 </html>
