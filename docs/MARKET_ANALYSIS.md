@@ -30,8 +30,15 @@ sudo bash deploy/install-market-analysis.sh
 
 - `ANTHROPIC_AUTH_TOKEN`：已轮换且未在聊天、日志和仓库出现的新 DeepSeek Key；
 - `AI_READONLY_TOKEN`：与主应用一致、已轮换的聚合经营快照只读 Token。
+- `ZHIHU_ACCESS_SECRET`：知乎数据开放平台的 Access Secret；只允许写入本受保护文件，不进入命令参数、Git或日志。
 
 文件必须为 `root:market-analysis`、权限 `0640`。不要在命令行参数、shell 历史、Git、项目 `.env`、systemd unit 或日志中写真实值。
+
+知乎密钥使用交互式安全配置脚本写入；脚本会静默读取、验证官方API，并在失败时恢复原配置：
+
+```bash
+sudo bash /opt/business-analysis/deploy/configure-zhihu-api.sh
+```
 
 固定模型配置：
 
@@ -51,6 +58,11 @@ MARKET_ANALYSIS_SOURCE_SCOUT_MODEL=deepseek-v4-flash
 MARKET_ANALYSIS_SOURCE_SCOUT_MAX_TURNS=25
 MARKET_ANALYSIS_SOURCE_SCOUT_MAX_BUDGET_USD=3.2
 MARKET_ANALYSIS_SOURCE_SCOUT_TIMEOUT_SECONDS=900
+MARKET_ANALYSIS_ZHIHU_ENABLED=1
+ZHIHU_ACCESS_SECRET=<securely-configured>
+MARKET_ANALYSIS_ZHIHU_MAX_QUERIES=4
+MARKET_ANALYSIS_ZHIHU_MAX_RESULTS=12
+MARKET_ANALYSIS_ZHIHU_TIMEOUT_SECONDS=20
 MARKET_ANALYSIS_SOURCE_VERIFY_WORKERS=4
 MARKET_ANALYSIS_REPAIR_MAX_BUDGET_USD=3
 MARKET_ANALYSIS_ESCALATION_MAX_BUDGET_USD=6
@@ -84,6 +96,8 @@ systemctl list-timers market-analysis.timer --all
 发布门禁还会阻止：页面标题不符、最终 URL 不一致、非公开地址、敏感查询参数、非标准端口、正文不可提取、事实与证据片段不匹配、事实数字未出现在证据、历史主题跳过最新一期或篡改 `history.since`。
 
 微信公众号仅接受公开直达的 `https://mp.weixin.qq.com/s...` 文章。程序必须同时核对最终URL、标题、公众号主体、公开正文、50字内证据锚点和内容哈希；搜索摘要、转载、公众号主页、登录/验证码/环境异常页面均按线索淘汰。公众号数量不作为发布硬指标，无法复核时使用同机构官网镜像或如实披露缺口。
+
+知乎只调用官方 `https://developer.zhihu.com/api/v1/content/zhihu_search` 搜索接口，使用Bearer鉴权和秒级时间戳。API只负责发现候选，不直接生成正式证据；候选必须再次访问公开文章直达页并通过标题、正文锚点、发布时间和内容哈希校验。知乎普通作者、机构号和专家内容在首期统一按C级观点证据处理，不计入官方来源或同业一手来源门槛。API不可用、限流或原文无法公开复核时自动降级，不阻断Flash和Pro主链路。
 
 来源计数、模块短标题及页面字段长度由程序按实际报告自动校准。生产9分门槛启用后，独立验证失败的外部来源只在所有引用项仍有替代证据、宏观/监管模块仍保留官方 A 级、每个同业模块仍保留一手 A/B 级且总来源仍不少于12项时才会剔除，并在研究边界中留下记录；唯一或关键证据失败时继续阻止发布。
 
