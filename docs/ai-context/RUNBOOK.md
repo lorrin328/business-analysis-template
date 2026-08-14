@@ -8,6 +8,7 @@
 - 生产测试除服务退出码外，还要核验报告来源验证、行动连续性、正式JSON更新、页面HTTP、定时器和模型调用遥测。
 - 公众号来源必须为公开`mp.weixin.qq.com/s`直达文章，并在`verification`中同时具有`publisherMatched=true`、`titleMatched=true`、`excerptMatched=true`和匹配的SHA-256。
 - 只读验证来源侦察使用`run_market_research.py --source-scout-only`；执行前后对`latest.json`和`status.json`计算哈希，必须保持不变。
+- 连续观察读取`GET /api/market-analysis/observability?limit=6`；核对成功周期、运行尝试、首次成稿率、运行成功率、Pro升级率、时长、来源核验率和引用覆盖率。历史报告缺少运行字段时允许显示“待积累”，不得倒填虚构成本或耗时。
 
 ## 客户清单网页增量导入
 
@@ -100,14 +101,14 @@ GET /api/customer-analysis/overview?year=2026    -> 管理员200
 
 - 安装与完整运维流程见 `docs/MARKET_ANALYSIS.md`。
 - 生产研究服务：`market-analysis.service`；定时检查服务：`market-analysis-scheduled.service`；定时器：`market-analysis.timer`。timer每天北京时间凌晨1点检查，距最近成功报告满3个自然日才启动研究；不足3天正常跳过，不调用模型。
-- 运行数据：`/var/lib/business-analysis-market`；受保护配置：`/etc/business-analysis-market/market-analysis.env`。
+- 运行数据：`/var/lib/business-analysis-market`；成功报告归档位于`reports/`，每次成功或失败尝试的安全运行摘要位于`runs/`；受保护配置为`/etc/business-analysis-market/market-analysis.env`。
 - 手工触发：管理员可在市场研判页点击“立即运行研究”；服务器仍可执行 `sudo systemctl start market-analysis.service`。网页触发链由 `market-analysis-manual.path` 监听固定请求文件，root helper 只允许启动固定研究服务，并设5分钟冷却，不使用 sudoers。
 - 查看结果：`sudo systemctl status market-analysis.service --no-pager`、`sudo journalctl -u market-analysis.service -n 100 --no-pager`；触发器状态使用 `systemctl status market-analysis-manual.path --no-pager`。
 - 查看定时判断：`systemctl list-timers market-analysis.timer --all`、`sudo journalctl -u market-analysis-scheduled.service -n 30 --no-pager`。timer显示的是下一次凌晨1点“到期检查”，不等同于每晚都执行完整研究；失败报告不会更新成功日期，因此次日凌晨1点自动重试。
 - 失败处置：先查看 `status.json` 和 journal；不要删除 `latest.json`，模型失败时网页应继续展示上一期有效报告。
 - 失败恢复：服务保留6小时修复检查点；来源计数、字段长度、来源标题/日期/摘录及变化信号映射等确定性错误会复用已有报告，不重新执行整轮模型研究。历史主题起始日期和上一报告编号由程序从最近已发布主题自动续接；变化信号按当前模块状态重建，每个模块必须恰好出现一次。冗余坏源只有在每个引用项仍满足证据等级且总来源不少于8项时才会剔除；结构或证据错误最多执行两轮定向修复，同业一手证据不足时改搜可核验的公司/协会页面，证据门槛不降低。
 - 模型路由：来源侦察`MARKET_ANALYSIS_SOURCE_SCOUT_MODEL=deepseek-v4-flash`；主研`MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-v4-pro[1m]`；第一次修复`MARKET_ANALYSIS_REPAIR_MODEL=deepseek-v4-flash`；第二次升级`MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-v4-pro[1m]`。候选来源默认4线程程序核验；`ANTHROPIC_DEFAULT_HAIKU_MODEL`和`CLAUDE_CODE_SUBAGENT_MODEL`均使用Flash。修改后先做Flash最小JSON调用，再用dry-run核对`modelPlan`，不得输出受保护环境文件全文。
-- 调用审计：`status.json.modelCalls`记录本次调用角色、模型、耗时、轮次、token、WebSearch/WebFetch次数和CLI估算成本。CLI估算值不等于DeepSeek实际账单，只用于同一链路的相对比较；不得将提示词、密钥和网页正文写入状态。
+- 调用审计：`status.json.modelCalls`记录本次调用角色、模型、耗时、轮次、token、WebSearch/WebFetch次数和CLI估算成本；成功报告的`runtimeAssessment`和`runs/`继续保留跨期安全摘要。CLI估算值不等于DeepSeek实际账单，只用于同一链路的相对比较；不得将提示词、密钥和网页正文写入状态或运行台账。
 - 证据边界：独立抓取负责确定真实标题、发布日期、内容哈希和50字内原文锚点；发布前模块“事实”会收敛为最接近的已核验原文，判断、影响和行动属于模型推演，页面不得把二者混为同一事实层。
 - 凭据轮换：同时更新 DeepSeek Key 和主应用/研究服务的 AI 只读 Token；验证旧值失效后再启用 timer。
 - TLS链修复：禁止使用`-k`或关闭验证。2026-08-02为中国人寿站点安装的中间证书为`DigiCert Secure Site OV G2 TLS CN RSA4096 SHA256 2022 CA1`，DER SHA256=`7cd6cdd25eee2512aaf1419afd44c146c43aa1093d5a60d4ed39efbdda815ad4`，来源为叶子证书AIA指向的DigiCert官方地址。若证书更新或失效，必须重新读取AIA并核验，不机械复用旧文件。

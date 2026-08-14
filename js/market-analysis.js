@@ -17,6 +17,7 @@
   const ACTION_STATUS_LABELS = { new: '本期新增', continuing: '持续推进', adjusted: '已调整', completed: '已完成' };
   let currentReport = null;
   let currentSection = 'all';
+  let currentObservability = null;
 
   function node(tag, className, text) {
     const item = document.createElement(tag);
@@ -53,6 +54,112 @@
     if (scout.status === 'degraded') return '来源侦察已降级，Pro继续研究';
     if (!scout.completed) return '来源侦察待执行';
     return `来源侦察 ${scout.candidateCount || 0}→${scout.verifiedCount || 0}，公众号 ${scout.wechatCandidateCount || 0}→${scout.verifiedWechatCount || 0}`;
+  }
+
+  function formatPercent(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? `${Math.round(number * 100)}%` : '待积累';
+  }
+
+  function managementBrief(report) {
+    const stateRank = { reversed: 0, expired: 1, strengthened: 2, new: 3, persistent: 4 };
+    const sectionRank = { business_line: 0, regulation: 1, peers: 2, macro: 3 };
+    const modules = [...(report.modules || [])].sort((left, right) => {
+      const leftState = left.history?.state || 'persistent';
+      const rightState = right.history?.state || 'persistent';
+      return (stateRank[leftState] ?? 9) - (stateRank[rightState] ?? 9)
+        || (sectionRank[left.section] ?? 9) - (sectionRank[right.section] ?? 9);
+    });
+    const watched = modules
+      .filter(item => ['reversed', 'expired'].includes(item.history?.state) || item.confidence !== 'high')
+      .concat(modules)
+      .filter((item, index, rows) => rows.findIndex(row => row.id === item.id) === index)
+      .slice(0, 2);
+    const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3 };
+    const actions = [...(report.actions || [])]
+      .filter(item => item.status !== 'completed')
+      .sort((left, right) => (priorityRank[left.priority] ?? 9) - (priorityRank[right.priority] ?? 9))
+      .slice(0, 3);
+    return { judgments: modules.slice(0, 3), watched, actions };
+  }
+
+  function renderManagementBrief(report) {
+    const grid = document.getElementById('managementBriefGrid');
+    clear(grid);
+    const brief = managementBrief(report);
+    const cards = [
+      {
+        kind: 'judgment',
+        title: '三个核心判断',
+        rows: brief.judgments.map(item => ({ title: item.title, detail: item.judgment }))
+      },
+      {
+        kind: 'risk',
+        title: '两个重点监测',
+        rows: brief.watched.map(item => ({ title: item.title, detail: item.watchCondition }))
+      },
+      {
+        kind: 'action',
+        title: '三项优先行动',
+        rows: brief.actions.map(item => ({ title: `${item.priority || 'P2'} · ${item.title}`, detail: item.action }))
+      }
+    ];
+    cards.forEach(config => {
+      const card = node('article', 'brief-card');
+      card.dataset.kind = config.kind;
+      card.appendChild(node('h3', '', config.title));
+      const list = node('div', 'brief-list');
+      if (!config.rows.length) list.appendChild(node('div', 'brief-item', '本期无对应事项'));
+      config.rows.forEach(item => {
+        const row = node('div', 'brief-item');
+        row.appendChild(node('strong', '', item.title));
+        row.appendChild(node('span', '', item.detail || '待本期研究补充'));
+        list.appendChild(row);
+      });
+      card.appendChild(list);
+      grid.appendChild(card);
+    });
+  }
+
+  function renderObservability(observability, report) {
+    currentObservability = observability || currentObservability;
+    observability = currentObservability;
+    const section = document.getElementById('observabilitySection');
+    const grid = document.getElementById('observabilityGrid');
+    clear(grid);
+    section.classList.toggle('hidden', !observability);
+    if (!observability) return;
+    const summary = observability.summary || {};
+    const windowInfo = observability.window || {};
+    const sourceMetrics = report?.researchMetrics?.sourceContribution || {};
+    const cards = [
+      [`${windowInfo.availableCycles || 0}/${windowInfo.targetCycles || 6}`, '成功周期观察进度'],
+      [summary.averageQualityScore == null ? '待积累' : `${Number(summary.averageQualityScore).toFixed(1)}/10`, '平均质量评分'],
+      [formatPercent(summary.firstPassSuccessRate), '首次成稿成功率'],
+      [summary.medianDurationMinutes == null ? '待积累' : `${summary.medianDurationMinutes}分钟`, '完整运行中位时长'],
+      [formatPercent(summary.proEscalationRate), 'Pro升级修复率'],
+      [formatPercent(sourceMetrics.citationCoverageRate ?? summary.averageCitationCoverageRate), '有效来源被引用率']
+    ];
+    cards.forEach(([value, label], index) => {
+      const card = node('article', `observation-card${index === 2 && summary.firstPassSuccessRate != null && summary.firstPassSuccessRate < (summary.firstPassTarget || .8) ? ' alert' : ''}`);
+      card.appendChild(node('strong', '', value));
+      card.appendChild(node('span', '', label));
+      grid.appendChild(card);
+    });
+    const actionSummary = observability.actions || {};
+    const sourceParts = [
+      `运行成功率 ${formatPercent(summary.runSuccessRate)}`,
+      `失败尝试 ${summary.failedRunCount || 0} 次`,
+      `来源独立核验率 ${formatPercent(summary.verifiedSourceRate)}`,
+      `一手来源占比 ${formatPercent(sourceMetrics.firstPartyExternalRate)}`,
+      `公众号 ${sourceMetrics.wechatSourceCount || 0} 项`,
+      `知乎 ${sourceMetrics.zhihuSourceCount || 0} 项`,
+      `行动待复核 ${actionSummary.due || 0} 项`
+    ];
+    if (summary.averageCliEstimatedCostUsd != null) {
+      sourceParts.push(`CLI估算单期均值 $${Number(summary.averageCliEstimatedCostUsd).toFixed(2)}`);
+    }
+    document.getElementById('observabilityNote').textContent = sourceParts.join(' · ');
   }
 
   function sourceMap(report) {
@@ -305,6 +412,7 @@
       return;
     }
     renderHero(report);
+    renderManagementBrief(report);
     renderQuality(report);
     renderSignals(report);
     renderTabs();
@@ -378,12 +486,20 @@
 
   async function loadReport(reportId) {
     const path = reportId ? `/api/market-analysis/reports/${encodeURIComponent(reportId)}` : '/api/market-analysis/latest';
-    renderReport(await api(path));
+    const report = await api(path);
+    renderReport(report);
+    renderObservability(currentObservability, report);
+    return report;
   }
 
   async function refreshAll() {
     try {
-      await Promise.all([loadStatus(), loadHistory()]);
+      const [, , observability] = await Promise.all([
+        loadStatus(),
+        loadHistory(),
+        api('/api/market-analysis/observability?limit=6')
+      ]);
+      currentObservability = observability;
       await loadReport(document.getElementById('historySelect').value);
     } catch (error) {
       document.getElementById('reportHeadline').textContent = '市场研判读取失败';

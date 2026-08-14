@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 from market_analysis.config import CHANGE_KEYS
+from market_analysis.insights import build_report_metrics, build_runtime_assessment
 from market_analysis.quality import (
     action_for_context,
     action_ledger,
@@ -284,7 +285,7 @@ Hard publication rules:
 13. Produce 2-4 modules for each of macro, regulation, peers and business_line, with 8-14 modules overall. Before finalizing, ensure every peer-company module cites at least one directly supporting B-level first-party source from the named insurer/company, its official WeChat page, or an industry association. If a proposed peer fact lacks an accessible first-party page, choose a different verifiable peer action instead of citing media alone.
 14. Judgment and impact are analysis, not a second fact field. Do not introduce new external figures, dates, policy status, company actions, or causal claims that are absent from the cited evidence. Quantified forecasts must be explicitly labelled as inference and paired with a watch/invalidating condition.
 15. Prioritize decision-relevant changes since the previous report. Carry forward a stable topic only when new evidence, a changed implication, or an approaching watch condition makes it material. Never force reversed or expired states merely to make the report look dynamic.
-16. Do not repeat an unchanged action from prior reports as if it were new. When an action remains open, state the observed progress, missed milestone or new evidence and give the next accountable step, cadence and trigger.
+16. Do not repeat an unchanged action from prior reports as if it were new. When an action remains open, state the observed progress, missed milestone or new evidence and give the next accountable step, cadence and trigger. If its prior nextReviewAt is already due, explicitly record the acceptance result, missed milestone or evidence gap before setting a new review date; never silently roll the date forward.
 17. Before returning JSON, use WebFetch on every proposed external URL. Keep the final canonical public URL only; replace any URL that is inaccessible, redirects to an unrelated page, lacks the stated title/body evidence, or requires login/captcha.
 18. Every action must reuse the authoritative actionKey when the same management task continues. Include status=new|continuing|adjusted|completed, previousReportId, progress, acceptanceMetric and nextReviewAt. Never claim completed without internal evidence. nextReviewAt must be within 31 days after period.end.
 19. At least 80% of watchCondition values must contain an observable threshold, date, event or directional trigger. Do not use vague wording such as “持续关注” by itself.
@@ -356,7 +357,7 @@ Use WebSearch and WebFetch for targeted evidence repair. Do not weaken, delete, 
 - A-level means government/regulator/statistical raw evidence on gov.cn (or the supplied internal snapshot only); do not relabel media or company pages as A.
 - Each source excerpt must be an exact <=50-character fragment present in the cited page. Every number, direction and policy-status term in a module fact must appear in its cited excerpts.
 - Keep facts and analysis separate. Judgment and impact may infer implications but may not add unsupported external figures, dates, policy status or company actions. Label quantified forecasts as inference and preserve a concrete invalidating condition.
-- Do not recycle a prior action unchanged. If it remains open, preserve accountability by stating progress, a missed milestone or the new evidence that changes the next step.
+- Do not recycle a prior action unchanged. If it remains open, preserve accountability by stating progress, a missed milestone or the new evidence that changes the next step. A due prior nextReviewAt requires an explicit acceptance result, missed milestone or evidence gap before the date may roll forward.
 - Meet the maturity floor: >=12 query themes and sources, >=4 official sources, >=5 external publishers/domains, >=50% first-party external sources, 2-4 modules per section, and observable watch conditions for >=80% of modules.
 - Every action requires stable actionKey, status, previousReportId, progress, acceptanceMetric and nextReviewAt. Reuse the authoritative actionKey for continuing work; nextReviewAt must be within 31 days after period.end.
 - Preserve all four sections, atomic modules, history semantics, source-count and query-count rules. The authoritativeTopicLedger is trusted system metadata: for a non-new topic preserve its exact history.since and latest reportId. Add or replace sources when needed and update every affected evidenceIds/count.
@@ -1269,6 +1270,15 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
             align_module_facts_to_verified_excerpts(report)
             report["generatedAt"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
             validate_report(report)
+            finished_at = now_iso()
+            runtime_assessment = build_runtime_assessment(
+                started_at,
+                finished_at,
+                model_calls,
+                scout_summary,
+            )
+            report["runtimeAssessment"] = runtime_assessment
+            report["researchMetrics"] = build_report_metrics(report)
             report["qualityAssessment"] = assess_report_quality(report, repository, model_calls)
             minimum_quality = float(os.getenv("MARKET_ANALYSIS_MIN_QUALITY_SCORE", "0") or 0)
             if report["qualityAssessment"]["score"] < minimum_quality:
@@ -1289,6 +1299,24 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
             break
         repository.clear_repair_checkpoint()
         finished_at = now_iso()
+        runtime_assessment = build_runtime_assessment(
+            started_at,
+            finished_at,
+            model_calls,
+            scout_summary,
+        )
+        try:
+            repository.record_run({
+                "state": "success",
+                "startedAt": started_at,
+                "finishedAt": finished_at,
+                "reportId": report.get("reportId"),
+                "qualityScore": (report.get("qualityAssessment") or {}).get("score"),
+                "runtimeAssessment": runtime_assessment,
+            })
+            runtime_assessment["runLedgerStatus"] = "written"
+        except OSError:
+            runtime_assessment["runLedgerStatus"] = "write_failed"
         repository.write_status({
             "state": "success",
             "message": "市场研判报告已通过证据校验并发布",
@@ -1301,12 +1329,31 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
             "modelCalls": model_calls,
             "sourceScout": scout_summary,
             "qualityScore": (report.get("qualityAssessment") or {}).get("score"),
+            "runtimeAssessment": runtime_assessment,
         })
         return report
     except Exception as exc:
         message = redact(exc)
         details = exc.errors if isinstance(exc, ReportValidationError) else None
         if not dry_run:
+            runtime_assessment = build_runtime_assessment(
+                started_at,
+                now_iso(),
+                model_calls,
+                scout_summary,
+            )
+            try:
+                repository.record_run({
+                    "state": "failed",
+                    "startedAt": started_at,
+                    "finishedAt": runtime_assessment.get("finishedAt"),
+                    "message": message,
+                    "validationErrorCount": len(details or []),
+                    "runtimeAssessment": runtime_assessment,
+                })
+                runtime_assessment["runLedgerStatus"] = "written"
+            except OSError:
+                runtime_assessment["runLedgerStatus"] = "write_failed"
             repository.write_status({
                 "state": "failed",
                 "message": message,
@@ -1316,6 +1363,7 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
                 "modelPlan": model_plan,
                 "modelCalls": model_calls,
                 "sourceScout": scout_summary,
+                "runtimeAssessment": runtime_assessment,
             })
         raise
 

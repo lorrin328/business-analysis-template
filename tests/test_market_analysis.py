@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 import api.market_analysis as market_analysis_api
 from auth import get_current_user
 from main import app
+from market_analysis.insights import build_report_metrics, build_runtime_assessment
 from market_analysis.repository import MarketAnalysisRepository
 from market_analysis.quality import assess_report_quality, maturity_draft_errors
 from market_analysis.source_verifier import SourceVerificationError, _ensure_public_url, _open_pinned, _published_at_matches, _title_matches, _verify_external_source, align_module_facts_to_verified_excerpts, verify_report_sources, verify_source_candidates
@@ -164,6 +165,53 @@ def test_maturity_gate_and_quality_score_reach_nine_points(tmp_path, monkeypatch
     assert assessment["score"] >= 9.0
     assert assessment["status"] == "passed"
     assert {row["key"] for row in assessment["dimensions"]} == {"evidence", "coverage", "rolling", "actions", "operations"}
+
+
+def test_report_metrics_track_source_contribution_and_runtime_observability(tmp_path):
+    repository = MarketAnalysisRepository(tmp_path)
+    report = mature_report()
+    runtime = build_runtime_assessment(
+        "2026-07-22T11:30:00+08:00",
+        "2026-07-22T12:00:00+08:00",
+        [{
+            "role": "primary",
+            "model": "deepseek-v4-pro[1m]",
+            "status": "success",
+            "elapsedMs": 1_500_000,
+            "cliEstimatedCostUsd": 4.25,
+            "webSearchRequests": 12,
+        }],
+        {"enabled": True, "completed": True, "candidateCount": 14, "verifiedCount": 12},
+    )
+    report["runtimeAssessment"] = runtime
+    report["researchMetrics"] = build_report_metrics(report)
+    report["qualityAssessment"] = {"score": 9.4, "minimumScore": 9.0, "status": "passed"}
+    repository.publish(report)
+    repository.record_run({
+        "state": "success",
+        "startedAt": runtime["startedAt"],
+        "finishedAt": runtime["finishedAt"],
+        "reportId": report["reportId"],
+        "qualityScore": 9.4,
+        "runtimeAssessment": runtime,
+    })
+
+    source_metrics = report["researchMetrics"]["sourceContribution"]
+    assert source_metrics["sourceCount"] == 12
+    assert source_metrics["verifiedSourceRate"] == 1.0
+    assert source_metrics["citationCoverageRate"] > 0
+    assert source_metrics["topSources"]
+    assert runtime["firstPassSuccess"] is True
+    assert runtime["elapsedMs"] == 1_800_000
+
+    observability = repository.observability(limit=6)
+    assert observability["window"]["availableCycles"] == 1
+    assert observability["window"]["runtimeObservedCycles"] == 1
+    assert observability["summary"]["firstPassSuccessRate"] == 1.0
+    assert observability["summary"]["runSuccessRate"] == 1.0
+    assert observability["window"]["runAttemptCount"] == 1
+    assert observability["summary"]["medianDurationMinutes"] == 30.0
+    assert observability["reports"][0]["cliEstimatedCostUsd"] == 4.25
 
 
 def test_maturity_gate_rejects_weak_coverage_and_action_accountability(tmp_path, monkeypatch):
@@ -438,6 +486,7 @@ def test_market_analysis_api_exposes_latest_history_and_status(tmp_path, monkeyp
     assert client.get(f"/api/market-analysis/reports/{report['reportId']}").status_code == 200
     assert client.get("/api/market-analysis/topics/macro-trend").json()["data"][0]["reportId"] == report["reportId"]
     assert client.get("/api/market-analysis/status").json()["data"]["state"] == "success"
+    assert client.get("/api/market-analysis/observability?limit=6").json()["data"]["window"]["availableCycles"] == 1
     assert client.get("/api/market-analysis/reports/not-found").status_code == 404
 
 
@@ -525,6 +574,26 @@ def test_dry_run_reports_model_plan_without_overwriting_runtime_status(tmp_path,
     assert repository.status() == previous_status
 
 
+def test_failed_research_attempt_is_kept_in_safe_run_history(tmp_path, monkeypatch):
+    repository = MarketAnalysisRepository(tmp_path)
+    monkeypatch.setattr(
+        run_market_research,
+        "fetch_internal_snapshot",
+        lambda: (_ for _ in ()).throw(RuntimeError("snapshot unavailable")),
+    )
+
+    with pytest.raises(RuntimeError, match="snapshot unavailable"):
+        run_market_research.run_research(repository)
+
+    status = repository.status()
+    history = repository.run_history(6)
+    assert status["state"] == "failed"
+    assert status["runtimeAssessment"]["runLedgerStatus"] == "written"
+    assert history[0]["state"] == "failed"
+    assert history[0]["validationErrorCount"] == 0
+    assert repository.latest() is None
+
+
 def test_flash_source_scout_feeds_only_verified_evidence_to_primary(tmp_path, monkeypatch):
     repository = MarketAnalysisRepository(tmp_path)
     prompts = []
@@ -564,6 +633,10 @@ def test_flash_source_scout_feeds_only_verified_evidence_to_primary(tmp_path, mo
     assert "已核验的一手来源" in prompts[0]
     assert [call["role"] for call in repository.status()["modelCalls"]] == ["source_scout", "primary"]
     assert repository.status()["sourceScout"]["verifiedWechatCount"] == 1
+    assert repository.status()["runtimeAssessment"]["runLedgerStatus"] == "written"
+    assert repository.run_history(6)[0]["state"] == "success"
+    assert result["runtimeAssessment"]["firstPassSuccess"] is True
+    assert result["researchMetrics"]["sourceContribution"]["sourceCount"] == len(result["sources"])
     assert result["coverage"]["queryCount"] >= 14
     assert any("公众号候选4项，通过1项" in item for item in result["limitations"])
 
@@ -1052,6 +1125,8 @@ def test_market_analysis_page_is_modular_and_whitelisted():
     assert "四层研判模块" in page
     assert "条线行动提示" in page
     assert "研究质量评分" in page
+    assert "本期管理摘要" in page
+    assert "连续运行观察" in page
     assert "证据与来源" in page
     assert "CHANGE_LABELS" in script
     assert "跨期轨迹" in script
@@ -1060,6 +1135,9 @@ def test_market_analysis_page_is_modular_and_whitelisted():
     assert "来源侦察" in script
     assert "模型组合" in script
     assert "renderQuality" in script
+    assert "renderManagementBrief" in script
+    assert "renderObservability" in script
+    assert "/api/market-analysis/observability?limit=6" in script
     assert "专业成熟度" in script
     assert "executiveEvidence" in page
     assert "entries.slice(0, 3)" in script

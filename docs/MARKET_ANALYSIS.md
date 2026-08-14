@@ -92,6 +92,7 @@ systemctl list-timers market-analysis.timer --all
 5. `/market-analysis.html` 可切换历史期次，桌面和手机无横向溢出；
 6. timer 的下一次检查时间为次日凌晨1点；只有满3个自然日才启动完整研究，失败时 `latest.json` 不被覆盖并在次日凌晨1点重试；
 7. `qualityAssessment.score` 不低于9.0，页面展示证据、覆盖、滚动分析、行动闭环和运行可靠性五项分值。
+8. `/api/market-analysis/observability?limit=6`登录后可读；页面展示成功周期、运行尝试、首次成稿、运行成功、Pro升级、时长、来源贡献和待复核行动。旧报告没有历史运行字段时显示“待积累”，不得补0。
 
 发布门禁还会阻止：页面标题不符、最终 URL 不一致、非公开地址、敏感查询参数、非标准端口、正文不可提取、事实与证据片段不匹配、事实数字未出现在证据、历史主题跳过最新一期或篡改 `history.since`。
 
@@ -101,7 +102,7 @@ systemctl list-timers market-analysis.timer --all
 
 来源计数、模块短标题及页面字段长度由程序按实际报告自动校准。生产9分门槛启用后，独立验证失败的外部来源只在所有引用项仍有替代证据、宏观/监管模块仍保留官方 A 级、每个同业模块仍保留一手 A/B 级且总来源仍不少于12项时才会剔除，并在研究边界中留下记录；唯一或关键证据失败时继续阻止发布。
 
-行动提示同时是跨期台账。`actionKey`标识同一管理任务，`status`区分新增、持续、调整和完成，`progress`记录本期变化，`acceptanceMetric`定义验收标准，`nextReviewAt`明确下次复核日期；相同行动不能重新包装为“新增”，完成状态必须有内部证据。
+行动提示同时是跨期台账。`actionKey`标识同一管理任务，`status`区分新增、持续、调整和完成，`progress`记录本期变化，`acceptanceMetric`定义验收标准，`nextReviewAt`明确下次复核日期；相同行动不能重新包装为“新增”，完成状态必须有内部证据。到期行动必须先记录验收结果、未达节点或证据缺口，不能只顺延下一复核日期。
 
 独立抓取完成后，程序以实际页面内容校准标题、可核验发布日期和证据摘录；每个模块的“事实”直接采用最匹配的已核验原文锚点，模型的业务解释仅保留在判断、影响、复核条件和行动字段。该处理不会把证据不足的模型转述自动认定为事实。
 
@@ -158,7 +159,10 @@ TLS 验证不得使用 `-k`、关闭证书校验或把任意站点加入例外�
 /var/lib/business-analysis-market/latest.json
 /var/lib/business-analysis-market/status.json
 /var/lib/business-analysis-market/reports/
+/var/lib/business-analysis-market/runs/
 ```
+
+`reports/`保存成功报告，`runs/`保存每次成功或失败尝试的脱敏运行摘要。跨期观测只记录模型角色、耗时、token、工具请求、CLI估算成本和结果状态，不保存提示词、凭据或网页正文。
 
 ## 模型切换
 

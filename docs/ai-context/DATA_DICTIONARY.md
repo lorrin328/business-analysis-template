@@ -9,6 +9,11 @@
 - `actions[].status`：`new`、`continuing`、`adjusted`、`completed`；完成必须由内部证据支持。
 - `actions[].previousReportId`：该行动最近一次出现的真实报告编号；新增行动为空。
 - `actions[].progress`、`acceptanceMetric`、`nextReviewAt`：本期进度、验收指标和31天内下一复核日期。
+- `runtimeAssessment`：单次成功报告固化的运行摘要，包含`startedAt`、`finishedAt`、`elapsedMs`、`firstPassSuccess`、`repairCount`、`escalated`、模型调用数量、CLI估算成本、token、WebSearch/WebFetch和来源侦察；不含提示词、密钥或来源正文。
+- `researchMetrics.sourceContribution`：来源总数、实际被引用来源数、总引用次数、引用覆盖率、独立核验率、一手外部来源占比、来源类型/等级、发布主体/域名数、公众号/知乎使用数和前五项高贡献来源。
+- `researchMetrics.decisionTracking`：五类变化信号、置信度、延续主题、发生强化/反转/失效的主题以及行动状态数量。
+- `runs/*.json`：每次成功或失败研究尝试的安全运行记录；失败记录只保留脱敏错误摘要和校验错误数量，不保存报告正文或凭据。
+- `/api/market-analysis/observability`：最近1—24期成功报告及相邻运行尝试的聚合观察口径。首次成稿率和运行成功率包含失败尝试；旧期缺失字段显示为空，不补0。
 
 ## 2026-08-02 客户清单增量导入
 

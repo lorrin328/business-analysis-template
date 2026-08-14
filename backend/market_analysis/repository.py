@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from market_analysis.config import data_dir
+from market_analysis.insights import research_observability
 from market_analysis.validator import ReportValidationError, validate_report
 
 
@@ -18,6 +19,7 @@ class MarketAnalysisRepository:
     def __init__(self, root: str | os.PathLike | None = None):
         self.root = Path(root).resolve() if root else data_dir()
         self.reports_dir = self.root / "reports"
+        self.runs_dir = self.root / "runs"
 
     def _read_json(self, path: Path):
         if not path.is_file():
@@ -119,6 +121,12 @@ class MarketAnalysisRepository:
                 "reviewStatus": report.get("reviewStatus"),
                 "moduleCount": len(report.get("modules") or []),
                 "sourceCount": len(report.get("sources") or []),
+                "qualityScore": (report.get("qualityAssessment") or {}).get("score"),
+                "firstPassSuccess": (report.get("runtimeAssessment") or {}).get("firstPassSuccess"),
+                "durationMinutes": round(
+                    float((report.get("runtimeAssessment") or {}).get("elapsedMs")) / 60000,
+                    1,
+                ) if (report.get("runtimeAssessment") or {}).get("elapsedMs") is not None else None,
             })
         rows.sort(key=lambda item: str(item.get("generatedAt") or ""), reverse=True)
         return rows[: max(1, min(int(limit), 100))]
@@ -153,6 +161,30 @@ class MarketAnalysisRepository:
 
     def write_status(self, status: dict) -> None:
         self._atomic_write(self.root / "status.json", status)
+
+    def record_run(self, payload: dict) -> dict:
+        row = dict(payload or {})
+        run_id = "run-" + datetime.now(timezone.utc).astimezone().strftime("%Y%m%dT%H%M%S%f%z")
+        row["runId"] = run_id
+        self._atomic_write(self.runs_dir / f"{run_id}.json", row)
+        return row
+
+    def run_history(self, limit: int = 24) -> list[dict]:
+        rows: list[dict] = []
+        if not self.runs_dir.is_dir():
+            return rows
+        for path in self.runs_dir.glob("run-*.json"):
+            try:
+                row = self._read_json(path)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(row, dict):
+                rows.append(row)
+        rows.sort(key=lambda item: str(item.get("finishedAt") or item.get("startedAt") or ""), reverse=True)
+        return rows[: max(1, min(int(limit), 100))]
+
+    def observability(self, limit: int = 6) -> dict:
+        return research_observability(self, limit=max(1, min(int(limit), 24)))
 
     def repair_checkpoint(self, *, max_age_hours: int = 6) -> dict | None:
         path = self.root / "repair-checkpoint.json"

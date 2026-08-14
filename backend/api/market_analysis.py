@@ -47,6 +47,14 @@ def status(_user=Depends(require_permission("market_analysis"))):
     return success_response(_repository().status())
 
 
+@router.get("/observability")
+def observability(
+    limit: int = Query(6, ge=1, le=24),
+    _user=Depends(require_permission("market_analysis")),
+):
+    return success_response(_repository().observability(limit=limit))
+
+
 @router.post("/run", status_code=202)
 def run_now(admin=Depends(require_admin)):
     trigger_file = Path(

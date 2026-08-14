@@ -885,7 +885,56 @@ def test_field_mappings_jingdai_day_aliases():
         assert expected in day_aliases, f"Missing jingdai day alias: {expected}"
 
 
-def test_product_structure_uses_transform_product_type_and_jingdai_product_name():
+def _patch_minimal_product_structure_db(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        '''
+        CREATE TABLE performance (
+            "年月" TEXT,
+            "业务模式" TEXT,
+            "销售机构名称" TEXT,
+            "产品名称" TEXT,
+            "产品类型" TEXT,
+            "产品代码" TEXT,
+            "期交保费" REAL,
+            "承保件数" INTEGER
+        )
+        '''
+    )
+    conn.execute(
+        '''
+        CREATE TABLE jingdai (
+            "时间" TEXT,
+            "经代机构" TEXT,
+            "产品名称" TEXT,
+            "期交保费" REAL
+        )
+        '''
+    )
+    conn.executemany(
+        'INSERT INTO performance VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+            ("202605", "OTO", "上海", "OTO产品", "寿险", "A", 10000, 1),
+            ("202605", "证券", "上海", "证保产品", "年金", "B", 20000, 1),
+            ("202605", "网服", "上海", "蚁桥产品", "短期险", "C", 30000, 1),
+        ],
+    )
+    conn.execute(
+        'INSERT INTO jingdai VALUES (?, ?, ?, ?)',
+        ("202605", "测试经代", "经代产品", 40000),
+    )
+
+    @contextmanager
+    def fake_get_db():
+        yield conn
+
+    monkeypatch.setattr(product_repo, "get_db", fake_get_db)
+    return conn
+
+
+def test_product_structure_uses_transform_product_type_and_jingdai_product_name(monkeypatch):
+    _patch_minimal_product_structure_db(monkeypatch)
     result = get_product_structure(
         2026,
         dimension="product_mix",
@@ -1091,7 +1140,8 @@ def test_product_structure_mixed_sources_uses_common_daily_cutoff(monkeypatch):
     assert premium["经代-经代产品"] == 2.0
 
 
-def test_product_structure_normalizes_transform_channel_aliases():
+def test_product_structure_normalizes_transform_channel_aliases(monkeypatch):
+    _patch_minimal_product_structure_db(monkeypatch)
     zhengbao = get_product_structure(
         2026,
         dimension="product_mix",
@@ -1112,7 +1162,8 @@ def test_product_structure_normalizes_transform_channel_aliases():
     assert yiqiao["premium"]
 
 
-def test_product_structure_keeps_transform_and_jingdai_labels_separate_when_mixed():
+def test_product_structure_keeps_transform_and_jingdai_labels_separate_when_mixed(monkeypatch):
+    _patch_minimal_product_structure_db(monkeypatch)
     mixed = get_product_structure(
         2026,
         dimension="product_mix",
