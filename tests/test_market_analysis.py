@@ -506,6 +506,10 @@ def test_model_plan_uses_pro_for_primary_flash_for_first_repair_and_pro_for_esca
     assert plan["escalation"] == "deepseek-v4-pro[1m]"
     assert repair_model_for_attempt(plan, 0) == ("deepseek-v4-flash", "repair_flash")
     assert repair_model_for_attempt(plan, 1) == ("deepseek-v4-pro[1m]", "repair_escalation")
+    monkeypatch.setenv("MARKET_ANALYSIS_SOURCE_SCOUT_TIMEOUT_SECONDS", "99999")
+    assert run_market_research.source_scout_timeout_seconds(3600) == 3600
+    monkeypatch.setenv("MARKET_ANALYSIS_SOURCE_SCOUT_TIMEOUT_SECONDS", "invalid")
+    assert run_market_research.source_scout_timeout_seconds(3600) == 900
 
 
 def test_dry_run_reports_model_plan_without_overwriting_runtime_status(tmp_path, monkeypatch):
