@@ -9,6 +9,7 @@ from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
 from honor.config import DATA_SOURCE_MODE, RULE_VERSION
 from honor.exporter import build_honor_export_workbook
+from honor.periods import honor_result_meta
 from honor.repository import fetch_dashboard, fetch_summary, fetch_table, latest_batch, list_available_periods
 from honor.service import recalculate_honor, run_field_audit
 from services.audit_log import log_operation
@@ -70,6 +71,8 @@ def periods(
                 "month": batch_month,
                 "recommendedBatchId": None,
                 "sourceCutoff": None,
+                "monthEndSnapshotBatchId": None,
+                "finalBatchId": None,
                 "versions": [],
             },
         )
@@ -78,18 +81,47 @@ def periods(
         if version_key in seen_versions.setdefault(key, set()):
             continue
         seen_versions[key].add(version_key)
+        result_meta = honor_result_meta(
+            batch_year,
+            batch_month,
+            cutoff or None,
+            created_at=batch.get("created_at"),
+        )
         version = {
             "batchId": int(batch["id"]),
             "sourceCutoff": cutoff or None,
             "createdAt": batch.get("created_at"),
             "ruleVersion": batch.get("rule_version"),
+            **result_meta,
         }
         item["versions"].append(version)
-        if item["recommendedBatchId"] is None:
-            item["recommendedBatchId"] = version["batchId"]
-            item["sourceCutoff"] = version["sourceCutoff"]
+        if result_meta["resultType"] == "month_end":
+            item["monthEndSnapshotBatchId"] = version["batchId"]
+        elif result_meta["resultType"] == "final" and result_meta["finalConfirmed"]:
+            item["finalBatchId"] = version["batchId"]
 
     items = [grouped[key] for key in sorted(grouped, reverse=True)]
+    for item in items:
+        recommended = next(
+            (version for version in item["versions"] if version["finalConfirmed"]),
+            next(
+                (version for version in item["versions"] if version["resultType"] != "final"),
+                item["versions"][0],
+            ),
+        )
+        item["recommendedBatchId"] = recommended["batchId"]
+        item["sourceCutoff"] = recommended["sourceCutoff"]
+        period_meta = honor_result_meta(item["year"], item["month"], item.get("sourceCutoff"))
+        item.update(
+            {
+                "monthEnd": period_meta["monthEnd"],
+                "finalReadyOn": period_meta["finalReadyOn"],
+                "canCreateMonthEndSnapshot": period_meta["canCreateMonthEndSnapshot"],
+                "canCreateFinal": period_meta["canCreateFinal"],
+                "monthEndSnapshotAvailable": item["monthEndSnapshotBatchId"] is not None,
+                "finalAvailable": item["finalBatchId"] is not None,
+            }
+        )
     return success_response(
         {
             "years": sorted({item["year"] for item in items}, reverse=True),
@@ -127,7 +159,24 @@ def recalculate(payload: dict = Body(...), _user=Depends(require_permission("hon
     year = int(payload.get("year") or DEFAULT_YEAR)
     month = int(payload.get("month") or 12)
     source_cutoff = _normalize_source_cutoff(payload.get("asOf") or payload.get("sourceCutoff"), year=year, month=month)
+    result_meta = honor_result_meta(year, month, source_cutoff)
+    if source_cutoff and date.fromisoformat(source_cutoff) > date.today():
+        raise HTTPException(status_code=400, detail="测算截止日不能晚于今天")
+    if source_cutoff is None and not result_meta["canCreateFinal"]:
+        current_guidance = (
+            f"当前可生成{result_meta['monthEnd']}月末快照。"
+            if result_meta["canCreateMonthEndSnapshot"]
+            else "当前月份尚未结束，只能生成不晚于今天的过程数据。"
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{year}年{month}月最终结果最早可在{result_meta['finalReadyOn']}生成，"
+                f"且需先更新回销数据；{current_guidance}"
+            ),
+        )
     result = recalculate_honor(year, month, source_cutoff=source_cutoff, user=_user)
+    result.update(result_meta)
     log_operation(
         "honor_recalculate",
         user=_user,

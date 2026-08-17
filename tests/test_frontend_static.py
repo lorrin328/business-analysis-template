@@ -508,7 +508,7 @@ def test_honor_page_is_separate_runtime():
     assert "????" not in html
     assert "<title>星钻联盟</title>" in honor_html
     assert "星钻联盟荣誉体系" not in honor_html
-    assert '<script src="/js/honor.js?v=1.0.121"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.136"></script>' in honor_html
     assert honor_html.count('role="tab"') == 4
     assert 'data-tab="tracking">总览</button>' in honor_html
     assert 'data-tab="analysis">机构与项目</button>' in honor_html
@@ -537,6 +537,12 @@ def test_honor_page_is_separate_runtime():
     assert "tracking_policy_count: '当月件数'" in honor_js
     assert 'id="honorMonth"' in honor_html
     assert 'id="honorBatch"' in honor_html
+    assert 'id="honorPeriodAction"' in honor_html
+    assert 'id="createMonthEndSnapshotBtn"' in honor_js
+    assert "生成月末快照" in honor_js
+    assert "月末快照已生成" in honor_js
+    assert "finalReadyOn" in honor_js
+    assert "resultLabel" in honor_js
     assert 'type="number" min="1" max="12"' not in honor_html
     assert "/api/honor/periods" in honor_js
     assert "本月未达标" in honor_js

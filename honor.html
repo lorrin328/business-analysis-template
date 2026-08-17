@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>星钻联盟</title>
-  <script src="/js/api-client.js?v=1.0.121"></script>
+  <script src="/js/api-client.js?v=1.0.136"></script>
   <style>
     :root {
       color-scheme: dark;
@@ -80,6 +80,21 @@
       line-height: 1.5;
       padding: 0 2px;
     }
+    .period-action {
+      display: none;
+      flex-basis: 100%;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid rgba(244,183,64,.42);
+      border-radius: 8px;
+      background: rgba(244,183,64,.08);
+      color: #f2d99a;
+      line-height: 1.5;
+    }
+    .period-action.visible { display: flex; }
+    .period-action button { flex: 0 0 auto; }
     .status-pill {
       color: var(--muted);
       border: 1px solid var(--line);
@@ -331,6 +346,7 @@
       header { padding: 0 14px; align-items: flex-start; flex-direction: column; justify-content: center; padding-top: 10px; padding-bottom: 10px; }
       main { padding: 14px; }
       .toolbar { align-items: stretch; }
+      .period-action { align-items: stretch; flex-direction: column; }
       button, input, select { width: 100%; }
       .toolbar label, .filter-bar label { width: 100%; }
       .filter-bar input, .filter-bar select { min-width: 0; }
@@ -345,7 +361,7 @@
 </head>
 <body>
   <header>
-    <div><span class="page-title">星钻联盟</span><span class="version">v1.0.122</span></div>
+    <div><span class="page-title">星钻联盟</span><span class="version">v1.0.136</span></div>
     <div><a href="/">返回经营看板</a></div>
   </header>
   <main>
@@ -355,6 +371,7 @@
       <label>数据版本 <select id="honorBatch" class="batch-select"><option value="">正在读取</option></select></label>
       <span id="honorStatus" class="status-pill" role="status" aria-live="polite">正在加载</span>
       <div id="honorPeriodNote" class="period-note">正在读取可用月份和数据版本...</div>
+      <div id="honorPeriodAction" class="period-action"></div>
     </div>
 
     <section class="metric-groups" id="honorCards" aria-label="荣誉核心指标"></section>
@@ -373,7 +390,7 @@
       <div class="panel-head">
         <div><h2>数据与规则</h2><p>查看统计范围、数据来源和批次信息；有权限的用户可在这里检查数据、重新测算或导出明细。</p></div>
         <div class="section-actions">
-          <label data-permission="honor_recalculate">过程截至日 <input id="honorAsOf" type="date"></label>
+          <label data-permission="honor_recalculate">测算截止日 <input id="honorAsOf" type="date"></label>
           <button id="auditBtn" data-permission="honor_audit">检查数据</button>
           <button id="recalcBtn" class="primary" data-permission="honor_recalculate">重新测算</button>
           <button id="exportBtn" data-permission="honor_export">导出明细</button>
@@ -383,11 +400,12 @@
         <div class="summary-note"><strong>适用业务：</strong>OTO、证保；经代和蚁桥不纳入。</div>
         <div class="summary-note"><strong>团队统计：</strong>仅统计 OTO、证保人员及业绩。</div>
         <div class="summary-note"><strong>数据来源：</strong>业绩基表、人力基表。</div>
+        <div class="summary-note"><strong>版本说明：</strong>月内日期为过程数据，月末日期为月末快照；留空仅用于45天回销观察完成后的最终结果。</div>
       </section>
       <div id="batchSummary" class="summary-note">正在读取批次信息...</div>
       <div id="auditResult" class="detail-section"><div class="empty">需要时点击“检查数据”查看源表字段是否完整。</div></div>
     </section>
   </main>
-  <script src="/js/honor.js?v=1.0.121"></script>
+  <script src="/js/honor.js?v=1.0.136"></script>
 </body>
 </html>

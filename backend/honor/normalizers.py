@@ -83,3 +83,8 @@ def role_type(rank_name: Any) -> str:
     if "创新主管" in text or "主管" in text or "服务经理" in text:
         return "主管"
     return "个人"
+
+
+def staff_category(rank_name: Any) -> str:
+    """Return the external-staff position category, independent of honor track."""
+    return "外勤管理职" if role_type(rank_name) in {"主管", "经理"} else "专员"
