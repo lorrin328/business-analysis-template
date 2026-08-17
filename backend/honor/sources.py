@@ -18,6 +18,7 @@ from .normalizers import (
     optional_int,
     parse_date,
     role_type,
+    staff_category,
     staff_code as normalize_staff_code,
     text_value,
     ym_from_value,
@@ -115,13 +116,15 @@ def load_staff(year: int, month: int) -> tuple[
         business_line = normalize_business_line(row["业务模式名称"])
         if business_line not in {"OTO", "证保"}:
             continue
+        rank_name = text_value(row["职等"] or row["职级"])
         item = {
             "org": text_value(row["销售机构名称"]),
             "business_line": business_line,
             "staff_code": staff_code,
             "staff_name": text_value(row["人员姓名"]),
-            "rank_name": text_value(row["职等"] or row["职级"]),
-            "role_type": role_type(row["职等"] or row["职级"]),
+            "rank_name": rank_name,
+            "role_type": role_type(rank_name),
+            "staff_category": staff_category(rank_name),
             "entry_year": optional_int(row["入职年"]),
             "entry_month": optional_int(row["入职月"]),
             "is_employed_end_month": 1 if number_value(row["月末在职人力"]) > 0 else 0,

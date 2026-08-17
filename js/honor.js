@@ -25,6 +25,7 @@
     org: '机构',
     business_line: '项目',
     role_type: '层级',
+    staff_category: '外勤岗位类别',
     staff_code: '人员代码',
     staff_name: '人员姓名',
     manager_code: '主管/经理代码',
@@ -38,12 +39,15 @@
     oto_members: 'OTO会员',
     zhengbao_members: '证保会员',
     personal_members: '个人会员',
+    specialist_members: '专员会员',
     supervisor_members: '主管会员',
     manager_members: '经理会员',
     management_members: '管理职会员',
+    management_track_members: '管理职团队轨道会员',
     new_member_count: '新晋人数',
     promotion_count: '晋升人数',
     personal_member_count: '个人会员',
+    management_staff_member_count: '管理职会员',
     supervisor_member_count: '主管会员',
     member_rate: '会员率',
     avg_diamond: '人均钻石',
@@ -99,8 +103,9 @@
     'manager_diamond_balance', 'longterm_policy_count', 'standard_premium_gap',
     'premium_threshold', 'premium_gap', 'longterm_gap',
     'count', 'gain_count', 'deduct_count', 'qualified_count',
-    'total_members', 'oto_members', 'zhengbao_members', 'personal_members',
+    'total_members', 'oto_members', 'zhengbao_members', 'personal_members', 'specialist_members',
     'supervisor_members', 'manager_members', 'management_members',
+    'management_track_members', 'management_staff_member_count',
     'new_member_count', 'promotion_count', 'personal_member_count',
     'supervisor_member_count', 'monthly_qualified', 'tracking_policy_count',
   ]);
@@ -268,7 +273,8 @@
     const newMembers = tracking.newMembers || [];
     const promotions = tracking.promotions || [];
     const progress = data.qualificationProgress || {};
-    const sourceNote = tracking.sourceCutoff ? `数据截至 ${tracking.sourceCutoff}` : '月底数据';
+    const sourceNote = tracking.trackingMode || (tracking.sourceCutoff ? `数据截至 ${tracking.sourceCutoff}` : '最终结果');
+    const progressNote = data.batch?.resultNote || (tracking.sourceCutoff ? '以下为过程值，会随新单、入账和回销状态变化。' : '以下为最终结果。');
     document.getElementById('tracking').innerHTML = `
       <div class="panel-head">
         <div><h2>本月概况</h2><p>${escapeHtml(tracking.periodLabel || '-')} · ${escapeHtml(sourceNote)}</p></div>
@@ -276,12 +282,12 @@
       <section class="structure-strip" aria-label="会员结构">
         <div class="structure-item"><span>OTO会员</span><strong>${numberText(overview.oto_members)}</strong></div>
         <div class="structure-item"><span>证保会员</span><strong>${numberText(overview.zhengbao_members)}</strong></div>
-        <div class="structure-item"><span>个人会员</span><strong>${numberText(overview.personal_members)}</strong></div>
+        <div class="structure-item"><span>专员会员</span><strong>${numberText(overview.specialist_members ?? overview.personal_members)}</strong></div>
         <div class="structure-item"><span>管理职会员</span><strong>${numberText(overview.management_members)}</strong></div>
       </section>
       <section class="panel-block detail-section">
         <h2>当月个人达标进度</h2>
-        <p class="panel-note">${tracking.sourceCutoff ? '以下为过程值，会随新单、入账和回销状态变化。' : '以下为本月完整结果。'}主管、经理按团队规则计算，不并入个人差额。</p>
+        <p class="panel-note">${escapeHtml(progressNote)}主管、经理按团队规则计算，不并入个人差额。</p>
         <div class="structure-strip">
           <div class="structure-item"><span>个人追踪</span><strong>${numberText(progress.trackedCount)}</strong></div>
           <div class="structure-item"><span>已达标</span><strong>${numberText(progress.qualifiedCount)}</strong></div>
@@ -741,15 +747,17 @@
     renderAnalysis();
     renderPeople();
     const batch = data.batch || {};
-    const cutoff = batch.source_cutoff ? `，数据截至 ${batch.source_cutoff}` : '，月底数据';
+    const resultLabel = batch.resultLabel || cutoffLabel(batch.year, batch.month, batch);
     const batchSummary = document.getElementById('batchSummary');
     if (batchSummary) {
-      batchSummary.innerHTML = `<strong>当前数据：</strong>${escapeHtml(`${batch.year || '-'}年${batch.month || '-'}月${cutoff}`)}；规则版本 ${escapeHtml(batch.rule_version || '-') }；批次 ${escapeHtml(batch.id || '-')}`;
+      batchSummary.innerHTML = `<strong>当前数据：</strong>${escapeHtml(`${batch.year || '-'}年${resultLabel}`)}；规则版本 ${escapeHtml(batch.rule_version || '-') }；批次 ${escapeHtml(batch.id || '-')}`;
     }
   }
 
-  function cutoffLabel(year, month, cutoff) {
-    if (!cutoff) return '完整月结果';
+  function cutoffLabel(year, month, version) {
+    if (version?.resultLabel) return version.resultLabel;
+    const cutoff = typeof version === 'object' ? version?.sourceCutoff || version?.source_cutoff : version;
+    if (!cutoff) return `${month}月最终结果`;
     const parts = String(cutoff).split('-').map(Number);
     if (parts[0] === Number(year) && parts[1] === Number(month)) {
       return `截至${parts[1]}月${parts[2]}日（过程）`;
@@ -760,16 +768,48 @@
   function renderPeriodNote(batch) {
     const target = document.getElementById('honorPeriodNote');
     if (!target || !batch) return;
-    if (!batch.source_cutoff) {
-      target.textContent = `${batch.year}年${batch.month}月完整月结果。`;
+    const resultLabel = batch.resultLabel || cutoffLabel(batch.year, batch.month, batch);
+    const resultNote = batch.resultNote || '';
+    target.textContent = `${batch.year}年${resultLabel}。${resultNote}`;
+  }
+
+  function selectedPeriod() {
+    const year = Number(document.getElementById('honorYear')?.value || 0);
+    const month = Number(document.getElementById('honorMonth')?.value || 0);
+    return state.periods.find(item => Number(item.year) === year && Number(item.month) === month) || null;
+  }
+
+  function renderPeriodAction() {
+    const target = document.getElementById('honorPeriodAction');
+    if (!target) return;
+    const period = selectedPeriod();
+    target.classList.remove('visible');
+    target.innerHTML = '';
+    if (!period || period.finalAvailable) return;
+
+    const finalDate = formatDateLabel(period.finalReadyOn);
+    if (period.monthEndSnapshotAvailable) {
+      target.innerHTML = `<span>月末快照已生成；最终结果需等45天回销观察结束，最早于${escapeHtml(finalDate)}生成。</span>`;
+      target.classList.add('visible');
       return;
     }
-    const parts = String(batch.source_cutoff).split('-').map(Number);
-    if (parts[0] === Number(batch.year) && parts[1] === Number(batch.month)) {
-      target.textContent = `${batch.month}月尚未形成完整月结果，本页为截至${parts[1]}月${parts[2]}日的过程数据；差额会随新单、入账和回销状态变化。`;
-      return;
-    }
-    target.textContent = `${batch.year}年${batch.month}月结果，回销等后续状态更新至${parts[1]}月${parts[2]}日。`;
+    if (!period.canCreateMonthEndSnapshot) return;
+
+    const monthEnd = formatDateLabel(period.monthEnd);
+    const button = hasPermission('honor_recalculate')
+      ? '<button id="createMonthEndSnapshotBtn" class="primary" type="button">生成月末快照</button>'
+      : '';
+    target.innerHTML = `<span>尚未生成${escapeHtml(monthEnd)}月末快照。该版本覆盖整月业绩，但仍需等待回销观察。</span>${button}`;
+    target.classList.add('visible');
+    document.getElementById('createMonthEndSnapshotBtn')?.addEventListener('click', () => {
+      createMonthEndSnapshot().catch(err => setStatus(err.message, 'bad'));
+    });
+  }
+
+  function formatDateLabel(value) {
+    const parts = String(value || '').split('-').map(Number);
+    if (parts.length !== 3 || parts.some(item => !Number.isFinite(item))) return value || '-';
+    return `${parts[0]}年${parts[1]}月${parts[2]}日`;
   }
 
   function renderBatchOptions(preferredBatchId = null) {
@@ -779,12 +819,13 @@
     const batchSelect = document.getElementById('honorBatch');
     const versions = period?.versions || [];
     batchSelect.innerHTML = versions.length
-      ? versions.map(version => `<option value="${escapeHtml(version.batchId)}">${escapeHtml(cutoffLabel(year, month, version.sourceCutoff))}</option>`).join('')
+      ? versions.map(version => `<option value="${escapeHtml(version.batchId)}">${escapeHtml(cutoffLabel(year, month, version))}</option>`).join('')
       : '<option value="">暂无结果</option>';
     const selected = versions.some(item => Number(item.batchId) === Number(preferredBatchId))
       ? Number(preferredBatchId)
       : Number(period?.recommendedBatchId || versions[0]?.batchId || 0);
     if (selected) batchSelect.value = String(selected);
+    renderPeriodAction();
     return selected;
   }
 
@@ -839,8 +880,9 @@
     document.getElementById('honorBatch').value = String(currentBatchId);
     renderAll();
     renderPeriodNote(data.batch);
-    const cutoff = data.batch?.source_cutoff ? `，截至 ${data.batch.source_cutoff}` : '，完整月结果';
-    setStatus(`${data.batch?.year || '-'}年${data.batch?.month || '-'}月${cutoff}`, 'ok');
+    renderPeriodAction();
+    const resultLabel = data.batch?.resultLabel || cutoffLabel(data.batch?.year, data.batch?.month, data.batch);
+    setStatus(`${data.batch?.year || '-'}年${resultLabel}`, 'ok');
   }
 
   async function runAudit() {
@@ -862,7 +904,20 @@
       body: JSON.stringify({ year, month, asOf, scope: 'all', force: true }),
     });
     await loadAvailablePeriods(result.batchId);
-    setStatus(`测算完成：${result.personCount}人，${result.exceptionCount}条待核对记录`, 'ok');
+    setStatus(`${result.resultLabel || '测算完成'}：${result.personCount}人，${result.exceptionCount}条待核对记录`, 'ok');
+  }
+
+  async function createMonthEndSnapshot() {
+    const period = selectedPeriod();
+    if (!period?.monthEnd) throw new Error('无法确定所选月份的月末日期');
+    setStatus('正在生成月末快照...');
+    const result = await api('/api/honor/recalculate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year: period.year, month: period.month, asOf: period.monthEnd, scope: 'all', force: true }),
+    });
+    await loadAvailablePeriods(result.batchId);
+    setStatus(`${result.resultLabel || '月末快照'}生成完成：${result.personCount}人，${result.exceptionCount}条待核对记录`, 'ok');
   }
 
   function exportExcel() {

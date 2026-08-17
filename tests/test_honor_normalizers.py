@@ -4,6 +4,7 @@ from honor.normalizers import (
     optional_int,
     parse_date,
     role_type,
+    staff_category,
     staff_code,
     text_value,
     ym_from_value,
@@ -43,3 +44,7 @@ def test_honor_business_line_and_role_normalization():
     assert role_type("创新主管") == "主管"
     assert role_type("服务经理") == "主管"
     assert role_type("客户经理") == "个人"
+    assert staff_category("创新主管") == "外勤管理职"
+    assert staff_category("创新经理") == "外勤管理职"
+    assert staff_category("客户经理") == "专员"
+    assert staff_category("创新专员") == "专员"

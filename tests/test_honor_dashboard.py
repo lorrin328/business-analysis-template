@@ -261,6 +261,7 @@ def test_honor_dashboard_explains_personal_monthly_gap_without_management_rows()
             "business_line": "OTO",
             "staff_code": "1001",
             "staff_name": "张三",
+            "staff_category": "专员",
             "membership_level": "未入会",
             "standard_premium": 12500.0,
             "premium_threshold": 20000.0,
@@ -269,3 +270,64 @@ def test_honor_dashboard_explains_personal_monthly_gap_without_management_rows()
             "longterm_gap": 1,
         }
     ]
+
+
+def test_honor_dashboard_keeps_management_personal_track_out_of_specialists():
+    payload = build_honor_dashboard_payload(
+        summary={"batch": {"year": 2026, "month": 7}, "overview": {}},
+        org_rows=[],
+        person_summary=[
+            {
+                "org": "上海",
+                "business_line": "OTO",
+                "staff_code": "2001",
+                "staff_name": "李主管",
+                "role_type": "个人",
+                "staff_category": "外勤管理职",
+                "diamond_balance": 3,
+                "membership_level": "初级会员",
+                "warning_tags": "[]",
+            }
+        ],
+        person_month=[
+            {
+                "month": 7,
+                "org": "上海",
+                "business_line": "OTO",
+                "staff_code": "2001",
+                "staff_name": "李主管",
+                "role_type": "个人",
+                "staff_category": "外勤管理职",
+                "is_employed_end_month": 1,
+                "diamond_delta": 1,
+                "diamond_balance": 3,
+                "membership_level": "初级会员",
+                "standard_premium": 20000,
+                "longterm_policy_count": 1,
+                "monthly_qualified": 1,
+            }
+        ],
+        source_staff=[
+            {
+                "month": 7,
+                "org": "上海",
+                "business_line": "OTO",
+                "staff_code": "2001",
+                "staff_name": "李主管",
+                "role_type": "主管",
+                "staff_category": "外勤管理职",
+                "group_code": "G1",
+                "department_code": "D1",
+            }
+        ],
+        source_policy=[],
+        exceptions=[],
+    )
+
+    assert payload["specialists"] == []
+    assert payload["specialistHistory"] == []
+    assert payload["orgMemberStructure"][0]["specialist_member_count"] == 0
+    assert payload["orgMemberStructure"][0]["manager_member_count"] == 1
+    assert payload["tracking"]["overview"]["specialist_members"] == 0
+    assert payload["tracking"]["overview"]["management_members"] == 1
+    assert payload["tracking"]["memberRoster"][0]["staff_category"] == "外勤管理职"

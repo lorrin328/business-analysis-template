@@ -284,6 +284,7 @@ def init_db():
             staff_name TEXT,
             rank_name TEXT,
             role_type TEXT,
+            staff_category TEXT,
             entry_year INTEGER,
             entry_month INTEGER,
             is_employed_end_month INTEGER DEFAULT 0,
@@ -403,6 +404,7 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
         _migrate_honor_identity_tracks(c)
+        _migrate_honor_staff_category(c)
 
         c.execute('''CREATE TABLE IF NOT EXISTS scheme_import_batches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -812,6 +814,60 @@ def _migrate_honor_identity_tracks(c):
     c.execute('''
         INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
         VALUES ('20260702_honor_identity_tracks', 0, 'Allows separate personal and management honor tracks')
+    ''')
+
+
+def _migrate_honor_staff_category(c):
+    """Separate a person's external position from the personal/management honor track."""
+    _migrate(c, "ALTER TABLE honor_source_staff_month ADD COLUMN staff_category TEXT")
+    _migrate(c, "ALTER TABLE honor_person_month ADD COLUMN staff_category TEXT")
+    _migrate(c, "ALTER TABLE honor_person_summary ADD COLUMN staff_category TEXT")
+
+    c.execute('''
+        UPDATE honor_source_staff_month
+        SET staff_category = CASE
+            WHEN role_type IN ('主管', '经理') THEN '外勤管理职'
+            ELSE '专员'
+        END
+        WHERE staff_category IS NULL OR TRIM(staff_category) = ''
+    ''')
+    c.execute('''
+        UPDATE honor_person_month AS person
+        SET staff_category = COALESCE(
+            (
+                SELECT source.staff_category
+                FROM honor_source_staff_month AS source
+                WHERE source.batch_id = person.batch_id
+                  AND source.year = person.year
+                  AND source.month = person.month
+                  AND source.staff_code = person.staff_code
+                  AND source.business_line = person.business_line
+                LIMIT 1
+            ),
+            CASE WHEN person.role_type IN ('主管', '经理') THEN '外勤管理职' ELSE '专员' END
+        )
+        WHERE staff_category IS NULL OR TRIM(staff_category) = ''
+    ''')
+    c.execute('''
+        UPDATE honor_person_summary AS person
+        SET staff_category = COALESCE(
+            (
+                SELECT source.staff_category
+                FROM honor_source_staff_month AS source
+                WHERE source.batch_id = person.batch_id
+                  AND source.year = person.year
+                  AND source.month = person.latest_month
+                  AND source.staff_code = person.staff_code
+                  AND source.business_line = person.business_line
+                LIMIT 1
+            ),
+            CASE WHEN person.role_type IN ('主管', '经理') THEN '外勤管理职' ELSE '专员' END
+        )
+        WHERE staff_category IS NULL OR TRIM(staff_category) = ''
+    ''')
+    c.execute('''
+        INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+        VALUES ('20260817_honor_staff_category', 0, 'Separates external management and specialist positions from honor identity tracks')
     ''')
 
 

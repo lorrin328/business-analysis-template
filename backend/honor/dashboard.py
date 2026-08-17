@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from honor.config import MONTHLY_RULES
+from honor.periods import honor_result_meta
 
 
 def build_honor_dashboard_payload(
@@ -17,6 +18,17 @@ def build_honor_dashboard_payload(
     source_staff: list[dict[str, Any]],
     source_policy: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    batch = dict(summary.get("batch") or {})
+    if batch.get("year") and batch.get("month"):
+        batch.update(
+            honor_result_meta(
+                int(batch["year"]),
+                int(batch["month"]),
+                batch.get("source_cutoff"),
+                created_at=batch.get("created_at"),
+            )
+        )
+    summary = {**summary, "batch": batch}
     person_index = {
         (str(row.get("staff_code") or ""), str(row.get("business_line") or ""), str(row.get("role_type") or "")): row
         for row in person_summary
@@ -29,14 +41,18 @@ def build_honor_dashboard_payload(
     project_org_rows = _project_org_rows(org_rows)
     org_member_structure = _org_member_structure(person_summary, person_month, current_month)
     specialist_rows = _aggregate_rows(
-        [row for row in person_summary if row.get("role_type") not in {"主管", "经理"}],
+        [row for row in person_summary if _staff_category(row) == "专员"],
         person_month,
         "org",
         extra_key="business_line",
         current_month=current_month,
     )
     manager_rows = _aggregate_rows(
-        [row for row in person_summary if row.get("role_type") in {"主管", "经理"}],
+        [
+            row
+            for row in person_summary
+            if _staff_category(row) == "外勤管理职" and row.get("role_type") in {"主管", "经理"}
+        ],
         person_month,
         "role_type",
         extra_key="business_line",
@@ -52,7 +68,7 @@ def build_honor_dashboard_payload(
     qualification_progress = _build_qualification_progress(person_month, current_month)
 
     return {
-        "batch": summary.get("batch"),
+        "batch": batch,
         "overview": summary.get("overview") or {},
         "tracking": tracking,
         "orgs": _rank_rows(org_rows, "member_rate", "total_diamond"),
@@ -114,6 +130,7 @@ def _build_qualification_progress(
                     "business_line": business_line,
                     "staff_code": row.get("staff_code"),
                     "staff_name": row.get("staff_name"),
+                    "staff_category": _staff_category(row),
                     "membership_level": row.get("membership_level"),
                     "standard_premium": round(premium, 2),
                     "premium_threshold": premium_threshold,
@@ -300,19 +317,23 @@ def _build_tracking(
     personal_count = sum(1 for row in current_members if row.get("role_type") == "个人")
     supervisor_count = sum(1 for row in current_members if row.get("role_type") == "主管")
     manager_count = sum(1 for row in current_members if row.get("role_type") == "经理")
+    specialist_count = sum(1 for row in current_members if _staff_category(row) == "专员")
+    management_count = sum(1 for row in current_members if _staff_category(row) == "外勤管理职")
 
     return {
         "periodLabel": f"{int(batch.get('year') or 0)}年{current_month}月" if current_month else "",
         "sourceCutoff": batch.get("source_cutoff") or "",
-        "trackingMode": "过程追踪" if batch.get("source_cutoff") else "月底最终",
+        "trackingMode": batch.get("resultLabel") or ("过程数据" if batch.get("source_cutoff") else "最终结果"),
         "overview": {
             "total_members": len(current_members),
             "oto_members": sum(1 for row in current_members if row.get("business_line") == "OTO"),
             "zhengbao_members": sum(1 for row in current_members if row.get("business_line") == "证保"),
             "personal_members": personal_count,
+            "specialist_members": specialist_count,
             "supervisor_members": supervisor_count,
             "manager_members": manager_count,
-            "management_members": supervisor_count + manager_count,
+            "management_members": management_count,
+            "management_track_members": supervisor_count + manager_count,
             "new_member_count": len(new_members),
             "promotion_count": len(promotions),
         },
@@ -349,6 +370,8 @@ def _tracking_org_members(
                 "tracked_headcount": 0,
                 "member_count": 0,
                 "personal_member_count": 0,
+                "specialist_member_count": 0,
+                "management_staff_member_count": 0,
                 "supervisor_member_count": 0,
                 "manager_member_count": 0,
             },
@@ -363,6 +386,8 @@ def _tracking_org_members(
                 "tracked_headcount": 0,
                 "member_count": 0,
                 "personal_member_count": 0,
+                "specialist_member_count": 0,
+                "management_staff_member_count": 0,
                 "supervisor_member_count": 0,
                 "manager_member_count": 0,
             },
@@ -374,6 +399,10 @@ def _tracking_org_members(
             item["manager_member_count"] += 1
         else:
             item["personal_member_count"] += 1
+        if _staff_category(row) == "外勤管理职":
+            item["management_staff_member_count"] += 1
+        else:
+            item["specialist_member_count"] += 1
     return list(grouped.values())
 
 
@@ -387,6 +416,7 @@ def _tracking_member_row(
         "org": row.get("org"),
         "business_line": row.get("business_line"),
         "role_type": row.get("role_type"),
+        "staff_category": _staff_category(row),
         "staff_code": row.get("staff_code"),
         "staff_name": row.get("staff_name"),
         "membership_level": row.get("membership_level"),
@@ -470,6 +500,13 @@ def _role_rank(role_type: Any) -> int:
     return order.get(str(role_type or ""), 9)
 
 
+def _staff_category(row: dict[str, Any]) -> str:
+    category = str(row.get("staff_category") or "").strip()
+    if category in {"专员", "外勤管理职"}:
+        return category
+    return "外勤管理职" if row.get("role_type") in {"主管", "经理"} else "专员"
+
+
 def _rank_tracking_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{"rank": idx + 1, **row} for idx, row in enumerate(rows)]
 
@@ -495,7 +532,7 @@ def _org_member_structure(
             {"org": org, "member_count": 0, "specialist_member_count": 0, "manager_member_count": 0},
         )
         item["member_count"] += 1
-        if row.get("role_type") in {"主管", "经理"}:
+        if _staff_category(row) == "外勤管理职":
             item["manager_member_count"] += 1
         else:
             item["specialist_member_count"] += 1
@@ -530,7 +567,7 @@ def _specialist_history(
 ) -> list[dict[str, Any]]:
     rows = []
     for row in person_month:
-        if row.get("role_type") in {"主管", "经理"}:
+        if _staff_category(row) == "外勤管理职":
             continue
         key = (int(row.get("month") or 0), str(row.get("staff_code") or ""), str(row.get("business_line") or ""))
         premium = qj_index.get(key, {})
@@ -540,6 +577,7 @@ def _specialist_history(
                 "business_line": row.get("business_line"),
                 "staff_code": row.get("staff_code"),
                 "staff_name": row.get("staff_name"),
+                "staff_category": _staff_category(row),
                 "month": row.get("month"),
                 "qj_premium": round(float(premium.get("qj_premium") or 0), 2),
                 "standard_premium": round(float(row.get("standard_premium") or 0), 2),
@@ -601,6 +639,7 @@ def _manager_history(
                 "org": org,
                 "business_line": line,
                 "role_type": role_type,
+                "staff_category": _staff_category(manager),
                 "manager_code": manager.get("staff_code"),
                 "manager_name": manager.get("staff_name"),
                 "month": month,
@@ -668,6 +707,7 @@ def _build_monthly_warnings(
                     "staff_code": row.get("staff_code"),
                     "staff_name": row.get("staff_name") or person.get("staff_name"),
                     "role_type": row.get("role_type") or person.get("role_type"),
+                    "staff_category": _staff_category(row if row.get("staff_category") else person),
                     "membership_level": row.get("membership_level"),
                     "previous_level": previous_level,
                     "current_level": current_level,
@@ -692,6 +732,7 @@ def _build_monthly_warnings(
                 "staff_code": staff_code,
                 "staff_name": person.get("staff_name"),
                 "role_type": person.get("role_type"),
+                "staff_category": _staff_category(person),
                 "membership_level": person.get("membership_level"),
                 "previous_level": "",
                 "current_level": person.get("membership_level"),

@@ -209,6 +209,7 @@ def test_honor_periods_lists_available_months_and_recommends_latest_cutoff(auth_
     calculated_batch(4, "2026-04-20")
     calculated_batch(7, "2026-07-20")
     latest_july_batch = calculated_batch(7, "2026-07-27")
+    july_month_end_batch = calculated_batch(7, "2026-07-31")
     create_batch(year=2026, month=8, rule_version="2026-v1", created_by="pytest")
 
     resp = client.get("/api/honor/periods?year=2026", headers=_headers(token))
@@ -216,17 +217,43 @@ def test_honor_periods_lists_available_months_and_recommends_latest_cutoff(auth_
     data = resp.json()["data"]
     assert data["years"] == [2026]
     assert [item["month"] for item in data["periods"]] == [7, 4]
-    assert data["periods"][0]["recommendedBatchId"] == latest_july_batch
-    assert data["periods"][0]["sourceCutoff"] == "2026-07-27"
+    assert latest_july_batch != july_month_end_batch
+    assert data["periods"][0]["recommendedBatchId"] == july_month_end_batch
+    assert data["periods"][0]["sourceCutoff"] == "2026-07-31"
+    assert data["periods"][0]["monthEndSnapshotBatchId"] == july_month_end_batch
+    assert data["periods"][0]["monthEndSnapshotAvailable"] is True
+    assert data["periods"][0]["finalAvailable"] is False
+    assert data["periods"][0]["finalReadyOn"] == "2026-09-14"
     assert [item["sourceCutoff"] for item in data["periods"][0]["versions"]] == [
+        "2026-07-31",
         "2026-07-27",
         "2026-07-20",
+    ]
+    assert [item["resultType"] for item in data["periods"][0]["versions"]] == [
+        "month_end",
+        "process",
+        "process",
     ]
     assert data["periods"][1]["recommendedBatchId"] == april_batch
     assert [item["sourceCutoff"] for item in data["periods"][1]["versions"]] == [
         None,
         "2026-04-20",
     ]
+
+
+def test_honor_recalculate_blocks_final_result_before_callback_window_closes(auth_db):
+    client = TestClient(app)
+    token = _login(client)["token"]
+
+    resp = client.post(
+        "/api/honor/recalculate",
+        json={"year": 2099, "month": 7},
+        headers=_headers(token),
+    )
+
+    assert resp.status_code == 409
+    assert "最终结果最早可在2099-09-14生成" in resp.json()["detail"]
+    assert "当前月份尚未结束" in resp.json()["detail"]
 
 
 def test_honor_dashboard_returns_tracking_sections(auth_db):
@@ -394,6 +421,10 @@ def test_honor_dashboard_returns_tracking_sections(auth_db):
     resp = client.get(f"/api/honor/dashboard?batchId={batch_id}", headers=_headers(token))
     assert resp.status_code == 200
     data = resp.json()["data"]
+    assert data["batch"]["resultType"] == "final"
+    assert data["batch"]["resultLabel"] == "5月最终结果"
+    assert data["batch"]["finalReadyOn"] == "2026-07-15"
+    assert data["tracking"]["trackingMode"] == "5月最终结果"
     assert data["orgs"][0]["org"] == "上海"
     assert data["projects"][0]["dimension"] == "OTO"
     assert data["projectOrgs"][0]["org"] == "上海"

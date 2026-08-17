@@ -101,6 +101,7 @@ def test_honor_calculator_tolerates_missing_entry_date_columns(tmp_path, monkeyp
 
     assert summary["diamond_balance"] == 1
     assert summary["is_new_star"] == 0
+    assert summary["staff_category"] == "专员"
 
 
 def test_honor_calculator_restores_new_star_when_entry_columns_return(tmp_path, monkeypatch):
