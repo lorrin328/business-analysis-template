@@ -158,7 +158,8 @@
     const q = state.data.quality;
     const batch = state.data.meta.referenceBatch || {};
     const definitions = Object.entries(q.definitions).map(([key, value]) => `<div><b>${esc({
-      regularCount: '常规网点数', referralCount: '转介绍网点数', activity: '活动网点', referralPerformance: '转介绍业绩'
+      regularCount: '常规网点数', referralCount: '转介绍网点数', activity: '活动网点',
+      referralPerformance: '转介绍业绩', dataCutoff: '数据截止日'
     }[key] || key)}</b><br><span class="meta">${esc(value)}</span></div>`).join('');
     const unmatched = q.unmatchedBranches.map(item => [esc(item.branch), number(item.premiumWan), integer(item.policies)]);
     return `<div class="grid-2">${panel('统计口径', '本页面不把待确认项填成0。', `<div class="definition">${definitions}</div>`)}
@@ -195,7 +196,10 @@
     if (!el('asOfInput').value) el('asOfInput').value = state.data.meta.performanceCutoff;
     el('periodType').value = state.data.meta.periodType;
     rebuildPeriodOptions(state.data.meta.periodValue);
-    el('sourceLine').textContent = `${state.data.meta.periodLabel} · ${state.data.meta.periodStart} 至 ${state.data.meta.asOf} · 同比 ${state.data.meta.previousPeriodStart} 至 ${state.data.meta.previousAsOf} · 参考表批次 ${state.data.meta.referenceBatch?.id || '--'}`;
+    const lastBranchDate = state.data.meta.lastBranchBusinessDate
+      ? `本期证保最后出单 ${state.data.meta.lastBranchBusinessDate}`
+      : '本期暂无证保出单';
+    el('sourceLine').textContent = `数据截至 ${state.data.meta.performanceCutoff} · ${state.data.meta.periodLabel} ${state.data.meta.periodStart} 至 ${state.data.meta.asOf} · ${lastBranchDate} · 同比 ${state.data.meta.previousPeriodStart} 至 ${state.data.meta.previousAsOf} · 参考表批次 ${state.data.meta.referenceBatch?.id || '--'}`;
     render();
   }
 

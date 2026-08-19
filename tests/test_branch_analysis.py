@@ -93,6 +93,25 @@ def _seed_first_quarter_data():
         conn.commit()
 
 
+def _seed_non_branch_cutoff_data():
+    import db.connection as connection
+
+    with connection.get_db() as conn:
+        conn.executemany(
+            '''
+            INSERT INTO performance (
+                "年月", "年月日", "业务模式", "销售机构名称", "人员工号",
+                "投保单号", "证券方营业网点名称", "证券方销售人员工号", "期交保费"
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            [
+                ("2026-08", "2026-08-17", "OTO", "广东", "A999", "P-OTO-2026", "", "", 999999),
+                ("2025-08", "2025-08-16", "证券", "广东", "A007", "P-2025-08", "测试证券一号营业部", "S007", 10000),
+            ],
+        )
+        conn.commit()
+
+
 def test_branch_overview_separates_regular_and_referral_counts(auth_db):
     _seed_branch_data()
     client = TestClient(app)
@@ -115,6 +134,39 @@ def test_branch_overview_separates_regular_and_referral_counts(auth_db):
     assert data["regularBranches"][0]["status"] == "持续经营"
     assert data["regularBranches"][1]["status"] == "新增/恢复"
     assert len(data["referralBranches"]) == 1
+
+
+def test_branch_cutoff_uses_full_performance_coverage_not_last_branch_sale(auth_db):
+    _seed_branch_data()
+    _seed_non_branch_cutoff_data()
+    client = TestClient(app)
+    login = _login(client)
+    headers = _headers(login["token"])
+
+    annual = client.get(
+        "/api/branch-analysis/overview?year=2026&periodType=year",
+        headers=headers,
+    )
+    assert annual.status_code == 200
+    annual_data = annual.json()["data"]
+    assert annual_data["meta"]["performanceCutoff"] == "2026-08-17"
+    assert annual_data["meta"]["asOf"] == "2026-08-17"
+    assert annual_data["meta"]["lastBranchBusinessDate"] == "2026-07-28"
+    assert annual_data["meta"]["previousAsOf"] == "2025-08-17"
+    assert annual_data["summary"]["premiumWan"] == 14
+    assert annual_data["summary"]["previousPremiumWan"] == 8
+
+    august = client.get(
+        "/api/branch-analysis/overview?year=2026&periodType=month&periodValue=8",
+        headers=headers,
+    )
+    assert august.status_code == 200
+    august_data = august.json()["data"]
+    assert august_data["meta"]["asOf"] == "2026-08-17"
+    assert august_data["meta"]["lastBranchBusinessDate"] is None
+    assert august_data["summary"]["premiumWan"] == 0
+    assert august_data["summary"]["previousPremiumWan"] == 1
+    assert august_data["summary"]["activeRegular"] == 0
 
 
 def test_branch_period_filters_recalculate_month_quarter_and_year(auth_db):
@@ -241,6 +293,8 @@ def test_branch_page_permission_and_static_runtime(auth_db):
     assert script.status_code == 200
     assert "query.set('periodType', periodType)" in script.text
     assert "query.set('periodValue', periodValue)" in script.text
+    assert "数据截至 ${state.data.meta.performanceCutoff}" in script.text
+    assert "lastBranchBusinessDate" in script.text
     assert ROLE_DEFAULT_PERMISSIONS["admin"]["branch_analysis"] is True
     assert ROLE_DEFAULT_PERMISSIONS["senior"]["branch_analysis"] is True
     assert ROLE_DEFAULT_PERMISSIONS["normal"]["branch_analysis"] is False

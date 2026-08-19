@@ -95,6 +95,23 @@ def _columns(conn, table: str) -> set[str]:
     return {row["name"] for row in conn.execute(f'PRAGMA table_info("{table}")').fetchall()}
 
 
+def _performance_cutoff(conn, year: int | None = None) -> date | None:
+    if year is None:
+        value = conn.execute(
+            'SELECT MAX("年月日") FROM performance WHERE "年月日" IS NOT NULL'
+        ).fetchone()[0]
+    else:
+        value = conn.execute(
+            '''
+            SELECT MAX("年月日")
+            FROM performance
+            WHERE "年月日" >= ? AND "年月日" < ?
+            ''',
+            (f"{year:04d}-01-01", f"{year + 1:04d}-01-01"),
+        ).fetchone()[0]
+    return _date(value)
+
+
 def _performance_rows(conn) -> list[dict]:
     required = {
         "年月日",
@@ -204,21 +221,18 @@ def analyze_branch_network(
         reference, batch = read_reference(conn)
         if not reference:
             raise ValueError("尚未导入证保网点参考表")
+        source_cutoff = _performance_cutoff(conn, year)
+        if source_cutoff is None:
+            if year is None:
+                raise ValueError("当前业绩库没有可用业务日期")
+            raise ValueError(f"当前业绩库没有{year}年业务数据")
+        if year is None:
+            year = source_cutoff.year
         performance = _performance_rows(conn)
 
-    available_dates = [_date(row["年月日"]) for row in performance]
-    available_dates = [item for item in available_dates if item]
-    if not available_dates:
-        raise ValueError("当前业绩库没有证保业务日期")
-    if year is None:
-        year = max(item.year for item in available_dates)
-    year_dates = [item for item in available_dates if item.year == year]
-    if not year_dates:
-        raise ValueError(f"当前业绩库没有{year}年证保业务")
-    source_cutoff = max(year_dates)
-    cutoff = min(as_of, source_cutoff) if as_of else source_cutoff
-    if cutoff.year != year:
+    if as_of and as_of.year != year:
         raise ValueError("统计截止日必须属于所选年份")
+    cutoff = min(as_of, source_cutoff) if as_of else source_cutoff
 
     period_start, period_end, period_label = _period_window(
         year,
@@ -230,6 +244,12 @@ def analyze_branch_network(
     previous_cutoff = _previous_cutoff(period_end)
     current = _aggregate(performance, period_start, period_end)
     previous = _aggregate(performance, previous_period_start, previous_cutoff)
+    period_branch_dates = [
+        item
+        for row in performance
+        if (item := _date(row["年月日"])) and period_start <= item <= period_end
+    ]
+    last_branch_business_date = max(period_branch_dates, default=None)
 
     regular = [row for row in reference if row["include_in_regular_count"] == 1]
     referral = [row for row in reference if row["branch_type"] == "转介绍网点"]
@@ -355,6 +375,7 @@ def analyze_branch_network(
             "previousPeriodStart": previous_period_start.isoformat(),
             "previousAsOf": previous_cutoff.isoformat(),
             "performanceCutoff": source_cutoff.isoformat(),
+            "lastBranchBusinessDate": last_branch_business_date.isoformat() if last_branch_business_date else None,
             "referenceBatch": batch,
             "unit": "万元",
         },
@@ -393,6 +414,7 @@ def analyze_branch_network(
                 "referralCount": "参数表AA151-AA237的有效转介绍网点归属于广发证券股份有限公司，共86个；常规统计不纳入网点数。",
                 "activity": "统计期内至少有1件净期交保费大于0的保单，认定为活动网点。",
                 "referralPerformance": "业绩底表以广发证券股份有限公司汇总时，只展示转介绍总体贡献，不平均分摊到86个子网点。",
+                "dataCutoff": "数据截止日取生产业绩基表全业务的最新覆盖日；证保最后出单日单列，不再替代数据截止日。",
             },
         },
     }
