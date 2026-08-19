@@ -190,6 +190,16 @@ curl http://127.0.0.1:45679/api/health
 sudo bash deploy/deploy.sh
 ```
 
+在备份保留策略写入脚本前，每次发布必须先检查根分区和备份目录；可用空间至少应大于当前数据库文件大小再加2GB的WAL及系统余量，不满足时在运行`deploy.sh`前停止发布：
+
+```bash
+df -h /
+du -sh /opt/business-analysis-backups
+stat -c '%s' /var/lib/business-analysis/business_data.db
+```
+
+不得为腾空间删除唯一一份已验证完整备份。只可在确认没有备份进程使用、文件没有完整元数据且另有有效完整备份后，清理遗留的隐藏`.tmp`、`.tmp-wal`和`.tmp-shm`文件。2026-08-19曾因约4.99GB新备份写满根分区，导致SQLite无法创建WAL、服务健康检查失败；容量检查属于发布前置门禁。
+
 已有生产数据库时，部署脚本默认不再使用 `/opt/business-analysis/` 根目录中的 Excel 全量重建数据库，避免旧 Excel 覆盖 Web 页面导入后的最新数据。脚本先在服务在线期间用 SQLite Online Backup API 备份当前库，校验完整性并生成 SHA256 元数据；`init_db()`后比较部署前后的强制迁移清单，只有新增`requires_aggregate_rebuild=1`迁移时才自动重建聚合。安全标记优先于人工跳过设置，重建失败时部署中止并恢复主服务。
 
 如确需用服务器根目录 Excel 全量重建数据库，必须显式执行：
