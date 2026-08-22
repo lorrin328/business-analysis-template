@@ -7,6 +7,10 @@
 - 原`AI_READONLY_TOKEN`保留为自动市场研判等服务间调用兼容通道，避免本次接口优化中断现有定时任务；OpenAPI、README、Docker说明和AI接口说明已同步。
 - 本地验证：AI只读及账号权限专项`24 passed`，最终全量回归`408 passed, 1 warning`，2026年数据质量审计`status=ok, issue_count=0`，Python编译和`git diff --check`通过。
 - Ubuntu发布前只读核验：当前生产为`v1.0.137`，主服务和nginx均为active/enabled、失败单元为0；运行库约4.99GB、52张表。应用、数据库和备份目录均已bind mount至2TB`/data`盘，当前约1.9TB可用，已解除此前根分区备份容量风险。
+- GitHub：功能提交`ce583c8`经PR #16合并到`master`，合并提交为`8de92925ef2b66fe86442c98fa59f21a0925f590`；Docker构建`32547563046`成功。可信发布包SHA256为`7504c299629664bf91aae6813680f8a026c479b34c610b0b0b7b520d4b93370f`，上传服务器后再次核对一致。
+- Ubuntu使用`REBUILD_DATABASE=0`、`REBUILD_AGGREGATES=auto`部署，未使用旧Excel重建数据库，也未触发聚合重建。在线备份`business_data.db.20260822_105621`大小`4,989,345,792`字节、SHA256为`ac61b4f2270fa02406542cc645905edbb2ea5527f6a93bf54ebf6d91b3344b0c`，52张表的`integrity_check`和`quick_check`均为`ok`。
+- 生产验收：应用、页面均为`v1.0.138`，最新业务期间为202608；主服务、nginx和市场研判timer均为active/enabled，失败单元和发布后warning日志为0。生产库与部署前备份的`performance=5,158,426`、`jingdai=136,737`、`customer_policy_snapshot=3,100,006`一致，运行库保持`www-data:www-data 640`，代码树保持`root:root 755`。
+- 鉴权验收：匿名AI接口和后台接口均返回401，OpenAPI公开返回200并同时声明Basic/Bearer两种方案，`/.env`和`/.git/config`返回404。使用随机临时普通账号逐一调用KPI、机构、队伍、指标定义和综合快照均返回200；真实HTTPS域名下Basic综合快照返回`HTTP 200`、`success=true`、`version=v1.0.138`。两轮临时账号的用户、Session、权限和测试审计记录均已清理并复核为0。
 
 ## 2026-08-19 v1.0.137 网点数据截止日修正
 
