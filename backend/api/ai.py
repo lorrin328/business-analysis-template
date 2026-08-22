@@ -1,13 +1,22 @@
 ﻿"""Read-only API surface for external AI assistants."""
 from __future__ import annotations
 
+import base64
+import binascii
 import hmac
 import os
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 
+from api.auth_routes import (
+    _clear_login_failures,
+    _login_attempt_key,
+    _login_retry_after,
+    _record_login_failure,
+)
 from api.params import DashboardYearQuery
+from auth import ROLE_ADMIN, get_current_user, verify_user_credentials
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import DASHBOARD_KPI_CARDS, DISPLAY_CONSTRAINTS, METRICS
 from config.version import get_app_version, get_semver
@@ -38,25 +47,87 @@ def _extract_token(authorization: str | None, x_ai_token: str | None) -> str:
     return ""
 
 
+def _unauthorized(detail: str = "AI read-only authentication failed") -> None:
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+        headers={"WWW-Authenticate": 'Basic realm="Business Analysis AI", Bearer'},
+    )
+
+
+def _extract_basic_credentials(authorization: str) -> tuple[str, str]:
+    encoded = authorization.removeprefix("Basic ").strip()
+    try:
+        decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
+        username, password = decoded.split(":", 1)
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        _unauthorized("Invalid Basic authentication header")
+    if not username or not password:
+        _unauthorized("Username and password are required")
+    return username, password
+
+
+def _authenticate_basic(request: Request, authorization: str) -> dict:
+    username, password = _extract_basic_credentials(authorization)
+    attempt_key = _login_attempt_key(request, username)
+    retry_after = _login_retry_after(attempt_key)
+    if retry_after:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="登录失败次数过多，请稍后再试",
+            headers={"Retry-After": str(retry_after)},
+        )
+    user = verify_user_credentials(username, password)
+    if not user:
+        retry_after = _record_login_failure(attempt_key)
+        log_operation(
+            "ai_basic_login",
+            status="failed",
+            target_username=str(username or "")[:64],
+            detail={"reason": "invalid_credentials"},
+        )
+        if retry_after:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="登录失败次数过多，请稍后再试",
+                headers={"Retry-After": str(retry_after)},
+            )
+        _unauthorized("用户名或密码错误")
+    _clear_login_failures(attempt_key)
+    return user
+
+
 def require_ai_readonly(
+    request: Request,
     authorization: str | None = Header(default=None),
     x_ai_token: str | None = Header(default=None, alias="X-AI-Token"),
 ) -> dict:
+    if authorization and authorization.startswith("Basic "):
+        return _authenticate_basic(request, authorization)
+
     expected = _ai_token()
-    if not expected:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI_READONLY_TOKEN is not configured",
-        )
     provided = _extract_token(authorization, x_ai_token)
-    if not provided or not hmac.compare_digest(provided, expected):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid AI token")
-    return {
-        "id": 0,
-        "username": "ai-readonly",
-        "role": "ai_reader",
-        "permissions": {"ai_readonly": True},
-    }
+    if expected and provided and hmac.compare_digest(provided, expected):
+        return {
+            "id": 0,
+            "username": "ai-readonly",
+            "role": "ai_reader",
+            "permissions": {"ai_readonly": True},
+        }
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            return get_current_user(authorization)
+        except HTTPException:
+            _unauthorized("Invalid AI token or account session")
+    _unauthorized()
+
+
+def _require_ai_permission(user: dict, module_key: str) -> None:
+    if user.get("role") in {ROLE_ADMIN, "ai_reader"}:
+        return
+    if user.get("permissions", {}).get(module_key) is True:
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
 
 
 def _log_ai(action: str, user: dict, detail: dict[str, Any]) -> None:
@@ -143,6 +214,7 @@ def _snapshot(kpi: dict, org_data: dict, *, include_org_detail: bool) -> dict:
 
 @router.get("/kpi")
 def ai_kpi(year: DashboardYearQuery = DEFAULT_YEAR, user=Depends(require_ai_readonly)):
+    _require_ai_permission(user, "kpi")
     data = get_kpi_data(year)
     _log_ai("ai_kpi_read", user, {"year": year})
     return success_response(
@@ -162,6 +234,7 @@ def ai_org_summary(
     includeDetail: bool = Query(False),
     user=Depends(require_ai_readonly),
 ):
+    _require_ai_permission(user, "org")
     org_data = get_org_kpi_data(year)
     data = {"overview": _org_overview(org_data)}
     if includeDetail:
@@ -189,6 +262,7 @@ def ai_team_summary(
     scope: str = Query("all", pattern="^(all|active)$"),
     user=Depends(require_ai_readonly),
 ):
+    _require_ai_permission(user, "team_enhanced")
     data = get_team_enhanced_analysis(
         year=year,
         month=month,
@@ -224,6 +298,7 @@ def ai_team_summary(
 
 @router.get("/metric-definitions")
 def ai_metric_definitions(user=Depends(require_ai_readonly)):
+    _require_ai_permission(user, "kpi")
     _log_ai("ai_metric_definitions_read", user, {})
     return success_response(
         {
@@ -245,6 +320,8 @@ def ai_dashboard_snapshot(
     includeOrgDetail: bool = Query(False),
     user=Depends(require_ai_readonly),
 ):
+    _require_ai_permission(user, "kpi")
+    _require_ai_permission(user, "org")
     kpi = get_kpi_data(year)
     org_data = get_org_kpi_data(year)
     data = _snapshot(kpi, org_data, include_org_detail=includeOrgDetail)
@@ -280,14 +357,19 @@ def ai_openapi(request: Request):
         "servers": [{"url": base_url}],
         "components": {
             "securitySchemes": {
+                "AIAccountBasic": {
+                    "type": "http",
+                    "scheme": "basic",
+                    "description": "Recommended: use an active dashboard username and password over HTTPS.",
+                },
                 "AIReadonlyToken": {
                     "type": "http",
                     "scheme": "bearer",
-                    "description": "Use AI_READONLY_TOKEN as Bearer token.",
+                    "description": "Compatibility: use a dashboard session token or AI_READONLY_TOKEN.",
                 }
             }
         },
-        "security": [{"AIReadonlyToken": []}],
+        "security": [{"AIAccountBasic": []}, {"AIReadonlyToken": []}],
         "paths": {
             "/api/ai/dashboard-snapshot": {
                 "get": {

@@ -20,25 +20,33 @@ https://kpi.bcyt.tech:30443/api/ai/openapi.json
 
 ## 三、鉴权方式
 
-AI 接口使用独立环境变量：
+### 推荐：使用现有看板用户名和密码
 
-```text
-AI_READONLY_TOKEN=<高强度随机字符串>
+AI工具使用HTTP Basic认证，把现有看板用户名和密码放在标准`Authorization`请求头中：
+
+```http
+Authorization: Basic <用户名:密码的Base64编码>
 ```
 
-请求时二选一：
+账号方式不要求服务器配置`AI_READONLY_TOKEN`，并按账号现有模块权限控制可读范围：KPI接口需要KPI权限，机构接口需要机构权限，队伍接口需要队伍增强权限，综合快照同时需要KPI和机构权限。
+
+账号密码必须通过HTTPS传输，不得放在URL、查询参数、OpenAPI文件、日志或提示词中。
+
+### 兼容：网页登录会话或专用Token
+
+通过`POST /api/auth/login`登录得到的会话Token也可直接访问：
+
+```http
+Authorization: Bearer <登录返回的会话Token>
+```
+
+为避免中断现有自动市场研判服务，仍兼容服务器受保护环境文件中的`AI_READONLY_TOKEN`：
 
 ```http
 Authorization: Bearer <AI_READONLY_TOKEN>
 ```
 
-或：
-
-```http
-X-AI-Token: <AI_READONLY_TOKEN>
-```
-
-如果服务器未配置 `AI_READONLY_TOKEN`，接口返回 `503`，不提供任何经营数据。
+也兼容`X-AI-Token`请求头。专用Token不再是人工配置AI读取接口的必需项。
 
 ## 四、接口清单
 
@@ -53,14 +61,14 @@ X-AI-Token: <AI_READONLY_TOKEN>
 
 ## 五、安全边界
 
-1. 不复用管理员账号。
-2. 不开放后台登录态。
-3. 不开放任何 `POST`、`PUT`、`DELETE` 写接口。
+1. 账号认证只复用身份和读取权限，不向AI开放任何写接口。
+2. 普通账号只能读取其已有模块权限允许的数据；管理员账号可读取全部AI只读接口。
+3. 不开放任何 `POST`、`PUT`、`DELETE` 业务写接口。
 4. 不开放 SQLite 直连和任意 SQL 查询。
 5. 不返回用户密码、会话、权限配置等账号管理数据。
-6. AI 访问会写入操作日志，管理员可在“操作日志”中审计。
+6. 账号密码错误复用登录失败限流和锁定；AI访问会写入操作日志，管理员可审计真实操作人。
 
-## 六、服务器配置
+## 六、服务器配置（仅兼容Token需要）
 
 systemd 服务会读取：
 
@@ -68,7 +76,7 @@ systemd 服务会读取：
 /opt/business-analysis/deploy/.ai_env
 ```
 
-建议服务器上执行：
+仅现有自动服务仍需Token时配置：
 
 ```bash
 sudo mkdir -p /opt/business-analysis/deploy
