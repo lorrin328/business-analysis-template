@@ -223,6 +223,18 @@ def create_session(conn, user_id: int) -> tuple[str, str]:
     return token, expires_at
 
 
+def verify_user_credentials(username: str, password: str) -> dict | None:
+    """Verify an active account without creating a persistent login session."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE username = ? AND is_active = 1",
+            ((username or "").strip(),),
+        ).fetchone()
+        if not row or not _verify_password(password or "", row["password_salt"], row["password_hash"]):
+            return None
+        return serialize_user(conn, row)
+
+
 def authenticate_user(username: str, password: str) -> dict | None:
     with get_db() as conn:
         row = conn.execute(

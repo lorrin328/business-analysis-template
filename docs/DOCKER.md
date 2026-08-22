@@ -51,7 +51,7 @@ The image does not include Excel source files, SQLite runtime databases, logs, o
 | `MAX_UPLOAD_SIZE_MB` | Upload size limit. | `100` in Compose |
 | `AUTH_ALLOW_PUBLIC_REGISTRATION` | Whether public self-registration is enabled. Production should keep this `0` unless an explicit onboarding window is needed. | disabled when `APP_ENV=production` |
 | `CORS_ORIGINS` | Optional comma-separated allowed origins. | empty |
-| `AI_READONLY_TOKEN` | Optional token for read-only AI APIs. | unset |
+| `AI_READONLY_TOKEN` | Optional compatibility token for service-to-service AI reads; dashboard account Basic auth works without it. | unset |
 
 Secrets must be provided by `.env`, the server secret manager, or the container platform. Do not commit real tokens or passwords.
 

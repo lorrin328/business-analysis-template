@@ -15,6 +15,7 @@ services:
       MAX_UPLOAD_SIZE_MB: 100
       # Set these in .env or in the deployment platform secret manager.
       # AUTH_ALLOW_PUBLIC_REGISTRATION: "0"
+      # Optional compatibility token for service-to-service AI reads.
       # AI_READONLY_TOKEN:
       # CORS_ORIGINS:
     volumes:

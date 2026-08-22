@@ -1,4 +1,13 @@
 # 经营分析看板 - 需求与开发文档
+## v1.0.138 更新说明（2026-08-22）
+**类型**：enhancement / ai-readonly / authentication
+
+**变更内容**：
+- AI只读接口新增HTTP Basic账号认证，可直接使用现有看板用户名和密码，不再强制配置独立Token。
+- 支持使用现有网页登录会话访问AI只读接口，专用`AI_READONLY_TOKEN`保留为兼容通道。
+- 账号方式按KPI、机构、队伍模块权限限制读取范围，并复用登录失败限流、锁定和操作审计。
+- OpenAPI增加账号密码安全方案，文档明确账号密码仅允许通过HTTPS传输。
+
 ## v1.0.137 更新说明（2026-08-19）
 **类型**：fix / branch-analysis / data-cutoff
 
