@@ -7,6 +7,8 @@ from fastapi.responses import StreamingResponse
 
 from auth import require_permission
 from config.business_lines import DEFAULT_YEAR
+from db.connection import get_db
+from honor.availability import latest_honor_data_availability
 from honor.config import DATA_SOURCE_MODE, RULE_VERSION
 from honor.exporter import build_honor_export_workbook
 from honor.periods import honor_result_meta
@@ -56,6 +58,8 @@ def periods(
     _user=Depends(require_permission("honor_view")),
 ):
     batches = list_available_periods(year)
+    with get_db() as conn:
+        availability = latest_honor_data_availability(conn, year=year)
     grouped: dict[tuple[int, int], dict] = {}
     seen_versions: dict[tuple[int, int], set[str]] = {}
     for batch in batches:
@@ -100,18 +104,53 @@ def periods(
         elif result_meta["resultType"] == "final" and result_meta["finalConfirmed"]:
             item["finalBatchId"] = version["batchId"]
 
+    if availability:
+        key = (int(availability["year"]), int(availability["month"]))
+        grouped.setdefault(
+            key,
+            {
+                "year": key[0],
+                "month": key[1],
+                "recommendedBatchId": None,
+                "sourceCutoff": None,
+                "monthEndSnapshotBatchId": None,
+                "finalBatchId": None,
+                "versions": [],
+            },
+        )
+
     items = [grouped[key] for key in sorted(grouped, reverse=True)]
     for item in items:
-        recommended = next(
-            (version for version in item["versions"] if version["finalConfirmed"]),
-            next(
-                (version for version in item["versions"] if version["resultType"] != "final"),
-                item["versions"][0],
-            ),
+        is_latest_data_period = bool(
+            availability
+            and int(item["year"]) == int(availability["year"])
+            and int(item["month"]) == int(availability["month"])
         )
-        item["recommendedBatchId"] = recommended["batchId"]
-        item["sourceCutoff"] = recommended["sourceCutoff"]
-        period_meta = honor_result_meta(item["year"], item["month"], item.get("sourceCutoff"))
+        latest_data_cutoff = availability["latestDataCutoff"] if is_latest_data_period else None
+        latest_data_version = next(
+            (
+                version
+                for version in item["versions"]
+                if version.get("sourceCutoff") == latest_data_cutoff
+            ),
+            None,
+        )
+        recommended = latest_data_version
+        if recommended is None and item["versions"]:
+            recommended = next(
+                (version for version in item["versions"] if version["finalConfirmed"]),
+                next(
+                    (version for version in item["versions"] if version["resultType"] != "final"),
+                    item["versions"][0],
+                ),
+            )
+        item["recommendedBatchId"] = recommended["batchId"] if recommended else None
+        item["sourceCutoff"] = recommended["sourceCutoff"] if recommended else None
+        period_meta = honor_result_meta(
+            item["year"],
+            item["month"],
+            item.get("sourceCutoff") or latest_data_cutoff,
+        )
         item.update(
             {
                 "monthEnd": period_meta["monthEnd"],
@@ -120,6 +159,15 @@ def periods(
                 "canCreateFinal": period_meta["canCreateFinal"],
                 "monthEndSnapshotAvailable": item["monthEndSnapshotBatchId"] is not None,
                 "finalAvailable": item["finalBatchId"] is not None,
+                "latestDataCutoff": latest_data_cutoff,
+                "latestDataBatchId": latest_data_version["batchId"] if latest_data_version else None,
+                "latestDataBatchAvailable": latest_data_version is not None,
+                "canCreateLatestDataBatch": bool(
+                    is_latest_data_period
+                    and availability["canCalculate"]
+                    and latest_data_version is None
+                ),
+                "dataAvailability": availability if is_latest_data_period else None,
             }
         )
     return success_response(
@@ -162,6 +210,20 @@ def recalculate(payload: dict = Body(...), _user=Depends(require_permission("hon
     result_meta = honor_result_meta(year, month, source_cutoff)
     if source_cutoff and date.fromisoformat(source_cutoff) > date.today():
         raise HTTPException(status_code=400, detail="测算截止日不能晚于今天")
+    if source_cutoff:
+        requested_cutoff = date.fromisoformat(source_cutoff)
+        with get_db() as conn:
+            availability = latest_honor_data_availability(conn, year=year)
+        if (
+            availability
+            and (requested_cutoff.year, requested_cutoff.month) == (int(year), int(month))
+            and (int(availability["year"]), int(availability["month"])) == (int(year), int(month))
+            and requested_cutoff > date.fromisoformat(availability["latestDataCutoff"])
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=f"当前业绩数据仅截至{availability['latestDataCutoff']}，不能生成更晚日期的星钻过程结果",
+            )
     if source_cutoff is None and not result_meta["canCreateFinal"]:
         current_guidance = (
             f"当前可生成{result_meta['monthEnd']}月末快照。"

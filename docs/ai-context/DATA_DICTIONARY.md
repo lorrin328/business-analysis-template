@@ -293,6 +293,9 @@
 - 冲销/退保净额：正向保单先判断是否符合星钻统计条件；已计入统计的正向保单，如出现同一投保单号负向冲销，则负向标保和负向件数参与净额扣回；正向保单本身未计入统计的，后续负向记录不再重复扣减。负向冲销的团队扣回沿用对应有效正向保单的团队归属。源表明确 `承保件数=0` 的调整记录按 0 件处理，不默认算作 1 件。
 - 等级分布：dashboard API 的 `levels` 表示已入会会员等级分布，只统计 `membership_level <> '未入会'` 的身份轨道；追踪池和未入会人员通过追踪人力、累计追踪池和人员明细另行展示。
 - 数据版本：荣誉重算支持 `asOf` / `sourceCutoff`，保存到 `honor_import_batches.source_cutoff`；当前月源保单按承保/入账日期不晚于截至日纳入，缺日期且无法判断是否已发生的同月记录进入异常提示。`source_cutoff` 早于月末为过程数据，等于月末为月末快照，晚于月末为回销观察更新，留空为最终结果。
+- 最新数据月份：从 `agg_org_daily_performance` 读取 OTO、证保最新业绩日期，从 `agg_org_hr_data` 校验目标月份两条业务线的人力数据。`GET /api/honor/periods` 中的待生成月份只是数据可用性提示，不代表已存在荣誉测算结果，也不得在 GET 请求中自动生成批次。
+- 最新数据字段：`latestDataCutoff` 为星钻适用业务的统一测算截止日；`dataAvailability.channelCutoffs` 为 OTO、证保各自最近出单日；`dataAvailability.staffPeriods` 为各业务线最新人力月份；`canCreateLatestDataBatch` 仅在最新月份尚无对应批次且人力数据齐备时为真。
+- 个人差额：仅统计当月在职的 OTO、证保个人轨道。个人标保差额为 `max(业务线个人门槛 - 当月个人承保标保, 0)`；缺长险件为 `max(1 - 当月个人长险件数, 0)`。页面合计为逐人差额求和，不将主管、经理团队门槛并入个人差额。
 - 最终结果边界：最终结果最早生成日为所选月份最后一天加45天；在此之前留空截至日的重算请求必须阻断。月末快照覆盖整月业绩，但仍可能随45天内的回销状态变化。
 - 荣誉追踪 dashboard：`/api/honor/dashboard` 新增 `tracking`，包含 `overview`、`orgMembers`、`newMembers`、`topContributors`、`promotions`、`memberRoster`。会员数按身份轨道统计，不按自然人去重。
 - 荣誉追踪当月件数：`tracking_policy_count` 为追踪展示件数，按当前月投保单去重，剔除 `长短险=一年期` 且非“一年期以上”的一年期/医疗类件数，以及短期类件数；`longterm_policy_count` 仍为底层月度计算件数。

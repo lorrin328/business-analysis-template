@@ -508,7 +508,7 @@ def test_honor_page_is_separate_runtime():
     assert "????" not in html
     assert "<title>星钻联盟</title>" in honor_html
     assert "星钻联盟荣誉体系" not in honor_html
-    assert '<script src="/js/honor.js?v=1.0.136"></script>' in honor_html
+    assert '<script src="/js/honor.js?v=1.0.139"></script>' in honor_html
     assert honor_html.count('role="tab"') == 4
     assert 'data-tab="tracking">总览</button>' in honor_html
     assert 'data-tab="analysis">机构与项目</button>' in honor_html
@@ -543,6 +543,11 @@ def test_honor_page_is_separate_runtime():
     assert "月末快照已生成" in honor_js
     assert "finalReadyOn" in honor_js
     assert "resultLabel" in honor_js
+    assert "createLatestDataBatchBtn" in honor_js
+    assert "生成后可查看还差标保和还缺长险件" in honor_js
+    assert "latestDataCutoff" in honor_js
+    assert "业绩数据已更新至" in honor_js
+    assert "且不得晚于最新业绩数据日" in honor_html
     assert 'type="number" min="1" max="12"' not in honor_html
     assert "/api/honor/periods" in honor_js
     assert "本月未达标" in honor_js
