@@ -2,7 +2,7 @@
 
 ## 结论
 
-生产运行采用 Claude Code CLI 直接连接 DeepSeek 官方 Anthropic 兼容端点，使用“Flash来源侦察、Pro主研、Flash首修、Pro升级”的质量优先组合。Flash先以低成本覆盖更多检索主题，程序并发淘汰不可达、正文不符和公众号主体不明的候选，Pro只接收通过核验的证据包并补齐缺口。服务器不依赖 CC Switch；模型配置由 `/etc/business-analysis-market/market-analysis.env` 管理，减少桌面工具、配置同步和headless兼容故障。
+生产运行采用 Claude Code CLI 直接连接 DeepSeek 官方 Anthropic 兼容端点。来源侦察、主研、首次修复、升级修复及Claude轻量子任务统一使用实验模型`deepseek-v4-flash-vision-exp`；程序仍在主研前并发淘汰不可达、正文不符和公众号主体不明的候选。服务器不依赖 CC Switch；模型配置由 `/etc/business-analysis-market/market-analysis.env` 管理。
 
 Web 服务不直接调用模型。独立 `market-analysis.service` 每次完成多源搜索、历史归并、结构化输出和证据校验，只有通过门禁的 JSON 才会替换 `latest.json`；失败时网页继续显示上一期有效报告。
 
@@ -44,17 +44,17 @@ sudo bash /opt/business-analysis/deploy/configure-zhihu-api.sh
 
 ```text
 ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
-ANTHROPIC_MODEL=deepseek-v4-pro[1m]
-ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4-pro[1m]
-ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-pro[1m]
-ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash
-CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash
-MARKET_ANALYSIS_MODEL=deepseek-v4-pro[1m]
-MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-v4-pro[1m]
-MARKET_ANALYSIS_REPAIR_MODEL=deepseek-v4-flash
-MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-v4-pro[1m]
+ANTHROPIC_MODEL=deepseek-v4-flash-vision-exp
+ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4-flash-vision-exp
+ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-flash-vision-exp
+ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash-vision-exp
+CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash-vision-exp
+MARKET_ANALYSIS_MODEL=deepseek-v4-flash-vision-exp
+MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-v4-flash-vision-exp
+MARKET_ANALYSIS_REPAIR_MODEL=deepseek-v4-flash-vision-exp
+MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-v4-flash-vision-exp
 MARKET_ANALYSIS_SOURCE_SCOUT_ENABLED=1
-MARKET_ANALYSIS_SOURCE_SCOUT_MODEL=deepseek-v4-flash
+MARKET_ANALYSIS_SOURCE_SCOUT_MODEL=deepseek-v4-flash-vision-exp
 MARKET_ANALYSIS_SOURCE_SCOUT_MAX_TURNS=25
 MARKET_ANALYSIS_SOURCE_SCOUT_MAX_BUDGET_USD=3.2
 MARKET_ANALYSIS_SOURCE_SCOUT_TIMEOUT_SECONDS=900
@@ -70,7 +70,7 @@ MARKET_ANALYSIS_MIN_QUALITY_SCORE=9.0
 CLAUDE_CODE_EFFORT_LEVEL=max
 ```
 
-首次深度研究和最终跨期综合由Pro完成；Flash承担来源侦察、Claude Code轻量子任务和第一次定向修复。来源侦察本身失败时自动降级到原Pro研究链，不阻断报告；Flash修复后仍不合格时只允许再用Pro升级修复一次，仍失败则不发布。CLI的`total_cost_usd`仅作为调用相对观察值，实际扣费以DeepSeek控制台为准。
+所有模型角色统一使用`deepseek-v4-flash-vision-exp`。来源侦察失败时仍降级到主研链路；首次修复后仍不合格时允许同模型再做一次升级修复，仍失败则不发布。9分质量门槛、独立来源复核和上一期报告保护不变。该模型属于实验版本，需通过运行台账持续观察首次成稿率、修复率、耗时和质量；CLI的`total_cost_usd`仅作为相对观察值，实际扣费以DeepSeek控制台为准。
 
 ## 首次验证与启用
 
@@ -92,13 +92,13 @@ systemctl list-timers market-analysis.timer --all
 5. `/market-analysis.html` 可切换历史期次，桌面和手机无横向溢出；
 6. timer 的下一次检查时间为次日凌晨1点；只有满3个自然日才启动完整研究，失败时 `latest.json` 不被覆盖并在次日凌晨1点重试；
 7. `qualityAssessment.score` 不低于9.0，页面展示证据、覆盖、滚动分析、行动闭环和运行可靠性五项分值。
-8. `/api/market-analysis/observability?limit=6`登录后可读；页面展示成功周期、运行尝试、首次成稿、运行成功、Pro升级、时长、来源贡献和待复核行动。旧报告没有历史运行字段时显示“待积累”，不得补0。
+8. `/api/market-analysis/observability?limit=6`登录后可读；页面展示成功周期、运行尝试、首次成稿、运行成功、升级修复、时长、来源贡献和待复核行动。旧报告没有历史运行字段时显示“待积累”，不得补0。
 
 发布门禁还会阻止：页面标题不符、最终 URL 不一致、非公开地址、敏感查询参数、非标准端口、正文不可提取、事实与证据片段不匹配、事实数字未出现在证据、历史主题跳过最新一期或篡改 `history.since`。
 
 微信公众号仅接受公开直达的 `https://mp.weixin.qq.com/s...` 文章。程序必须同时核对最终URL、标题、公众号主体、公开正文、50字内证据锚点和内容哈希；搜索摘要、转载、公众号主页、登录/验证码/环境异常页面均按线索淘汰。公众号数量不作为发布硬指标，无法复核时使用同机构官网镜像或如实披露缺口。
 
-知乎只调用官方 `https://developer.zhihu.com/api/v1/content/zhihu_search` 搜索接口，使用Bearer鉴权和秒级时间戳。API只负责发现候选，不直接生成正式证据；候选必须再次访问公开文章直达页并通过标题、正文锚点、发布时间和内容哈希校验。知乎普通作者、机构号和专家内容在首期统一按C级观点证据处理，不计入官方来源或同业一手来源门槛。API不可用、限流或原文无法公开复核时自动降级，不阻断Flash和Pro主链路。
+知乎只调用官方 `https://developer.zhihu.com/api/v1/content/zhihu_search` 搜索接口，使用Bearer鉴权和秒级时间戳。API只负责发现候选，不直接生成正式证据；候选必须再次访问公开文章直达页并通过标题、正文锚点、发布时间和内容哈希校验。知乎普通作者、机构号和专家内容在首期统一按C级观点证据处理，不计入官方来源或同业一手来源门槛。API不可用、限流或原文无法公开复核时自动降级，不阻断主研究链路。
 
 来源计数、模块短标题及页面字段长度由程序按实际报告自动校准。生产9分门槛启用后，独立验证失败的外部来源只在所有引用项仍有替代证据、宏观/监管模块仍保留官方 A 级、每个同业模块仍保留一手 A/B 级且总来源仍不少于12项时才会剔除，并在研究边界中留下记录；唯一或关键证据失败时继续阻止发布。
 
@@ -149,7 +149,7 @@ sudo systemctl start market-analysis.service
 
 `market-analysis.timer` 每天凌晨1点唤醒 `market-analysis-scheduled.service`。调度器只读取最近成功报告的北京时间日期：日期间隔不足3天时正常退出，不调用模型；满3天时启动固定的 `market-analysis.service`。服务器凌晨1点关机时，`Persistent=true` 会在恢复开机后补做到期检查。
 
-失败后优先查看journal中的校验错误。6小时内的修复检查点会复用已完成研究，来源元数据和变化信号映射类错误会先由程序确定性修复，不再次调用模型；结构或证据不合格时先用Flash定向修复，仍失败再升级Pro一次。同一进程遇到无法安全剔除的坏源时直接进入该修复链，不再先等待systemd重启。同业事实缺少一手依据时允许换成另一项有真实公司/协会来源支持的近期动作，但不得把媒体来源改标为一手证据。
+失败后优先查看journal中的校验错误。6小时内的修复检查点会复用已完成研究，来源元数据和变化信号映射类错误会先由程序确定性修复，不再次调用模型；结构或证据不合格时由统一模型定向修复，仍失败再执行一次升级修复。同一进程遇到无法安全剔除的坏源时直接进入该修复链，不再先等待systemd重启。同业事实缺少一手依据时允许换成另一项有真实公司/协会来源支持的近期动作，但不得把媒体来源改标为一手证据。
 
 TLS 验证不得使用 `-k`、关闭证书校验或把任意站点加入例外。若一手网站漏发中间证书，只能从叶子证书 AIA 指向的CA官方地址取得对应中间证书，核验主体、`CA:TRUE`和SHA256后加入系统信任链，并再次用研究服务自己的验证器确认标题、日期和摘录全部匹配。
 
@@ -166,7 +166,7 @@ TLS 验证不得使用 `-k`、关闭证书校验或把任意站点加入例外�
 
 ## 模型切换
 
-若未来确有多模型切换需求，先在测试运行中验证 Anthropic 接口、WebSearch/WebFetch、长上下文、JSON 输出和工具调用，再修改受保护环境文件。生产变更不依赖 CC Switch；如另行安装 CC Switch/其 CLI，只作为管理员辅助工具，不能成为 timer 的必需运行链路。
+模型切换应同时更新Claude默认模型、来源侦察、主研、首次修复和升级修复配置；修改后至少验证Anthropic接口、固定JSON Schema和dry-run模型计划。生产变更不依赖CC Switch；如另行安装CC Switch/其CLI，只作为管理员辅助工具，不能成为timer的必需运行链路。
 
 ## 回滚
 

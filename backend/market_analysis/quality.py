@@ -368,7 +368,7 @@ def assess_report_quality(report: dict, repository, model_calls: list[dict] | No
         "passed": not repairs,
         "score": reliability_points,
         "maxScore": 0.4,
-        "detail": "首次通过" if not repairs else ("Flash修复后通过" if not escalated else "Pro升级修复后通过"),
+        "detail": "首次通过" if not repairs else ("首次修复后通过" if not escalated else "升级修复后通过"),
     })
 
     dimension_rows = []

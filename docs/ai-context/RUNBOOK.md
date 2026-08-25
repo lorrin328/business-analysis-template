@@ -111,7 +111,7 @@ GET /api/customer-analysis/overview?year=2026    -> 管理员200
 - 查看定时判断：`systemctl list-timers market-analysis.timer --all`、`sudo journalctl -u market-analysis-scheduled.service -n 30 --no-pager`。timer显示的是下一次凌晨1点“到期检查”，不等同于每晚都执行完整研究；失败报告不会更新成功日期，因此次日凌晨1点自动重试。
 - 失败处置：先查看 `status.json` 和 journal；不要删除 `latest.json`，模型失败时网页应继续展示上一期有效报告。
 - 失败恢复：服务保留6小时修复检查点；来源计数、字段长度、来源标题/日期/摘录及变化信号映射等确定性错误会复用已有报告，不重新执行整轮模型研究。历史主题起始日期和上一报告编号由程序从最近已发布主题自动续接；变化信号按当前模块状态重建，每个模块必须恰好出现一次。冗余坏源只有在每个引用项仍满足证据等级且总来源不少于8项时才会剔除；结构或证据错误最多执行两轮定向修复，同业一手证据不足时改搜可核验的公司/协会页面，证据门槛不降低。
-- 模型路由：来源侦察`MARKET_ANALYSIS_SOURCE_SCOUT_MODEL=deepseek-v4-flash`；主研`MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-v4-pro[1m]`；第一次修复`MARKET_ANALYSIS_REPAIR_MODEL=deepseek-v4-flash`；第二次升级`MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-v4-pro[1m]`。候选来源默认4线程程序核验；`ANTHROPIC_DEFAULT_HAIKU_MODEL`和`CLAUDE_CODE_SUBAGENT_MODEL`均使用Flash。不得仅凭网传或单次时延全切单一模型；至少结合官方同模式评测和项目内首次成功率、修复率、总耗时、成本、最终质量进行判断。修改后先做Flash最小JSON调用，再用dry-run核对`modelPlan`，不得输出受保护环境文件全文。
+- 模型路由：`ANTHROPIC_MODEL`、Opus/Sonnet/Haiku默认、Claude子任务、来源侦察、主研、第一次修复和第二次升级修复全部使用`deepseek-v4-flash-vision-exp`。候选来源默认4线程程序核验，9分发布门槛与独立来源复核不变。模型属于实验版本；切换后先做最小JSON Schema调用，再用dry-run核对`modelPlan`五个角色全部一致，不得输出受保护环境文件全文。
 - 调用审计：`status.json.modelCalls`记录本次调用角色、模型、耗时、轮次、token、WebSearch/WebFetch次数和CLI估算成本；成功报告的`runtimeAssessment`和`runs/`继续保留跨期安全摘要。CLI估算值不等于DeepSeek实际账单，只用于同一链路的相对比较；不得将提示词、密钥和网页正文写入状态或运行台账。
 - 证据边界：独立抓取负责确定真实标题、发布日期、内容哈希和50字内原文锚点；发布前模块“事实”会收敛为最接近的已核验原文，判断、影响和行动属于模型推演，页面不得把二者混为同一事实层。
 - 凭据轮换：同时更新 DeepSeek Key 和主应用/研究服务的 AI 只读 Token；验证旧值失效后再启用 timer。

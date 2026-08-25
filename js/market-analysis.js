@@ -51,7 +51,7 @@
 
   function sourceScoutLabel(scout) {
     if (!scout?.enabled) return '';
-    if (scout.status === 'degraded') return '来源侦察已降级，Pro继续研究';
+    if (scout.status === 'degraded') return '来源侦察已降级，主模型继续研究';
     if (!scout.completed) return '来源侦察待执行';
     return `来源侦察 ${scout.candidateCount || 0}→${scout.verifiedCount || 0}，公众号 ${scout.wechatCandidateCount || 0}→${scout.verifiedWechatCount || 0}`;
   }
@@ -137,7 +137,7 @@
       [summary.averageQualityScore == null ? '待积累' : `${Number(summary.averageQualityScore).toFixed(1)}/10`, '平均质量评分'],
       [formatPercent(summary.firstPassSuccessRate), '首次成稿成功率'],
       [summary.medianDurationMinutes == null ? '待积累' : `${summary.medianDurationMinutes}分钟`, '完整运行中位时长'],
-      [formatPercent(summary.proEscalationRate), 'Pro升级修复率'],
+      [formatPercent(summary.proEscalationRate), '升级修复率'],
       [formatPercent(sourceMetrics.citationCoverageRate ?? summary.averageCitationCoverageRate), '有效来源被引用率']
     ];
     cards.forEach(([value, label], index) => {
