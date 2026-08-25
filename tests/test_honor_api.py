@@ -211,34 +211,79 @@ def test_honor_periods_lists_available_months_and_recommends_latest_cutoff(auth_
     latest_july_batch = calculated_batch(7, "2026-07-27")
     july_month_end_batch = calculated_batch(7, "2026-07-31")
     create_batch(year=2026, month=8, rule_version="2026-v1", created_by="pytest")
+    from db.connection import get_db
+    with get_db() as conn:
+        conn.executemany(
+            """
+            INSERT INTO agg_org_daily_performance (
+                year, month, day, org, channel, qj_premium
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (2026, 8, 17, "上海", "OTO", 10),
+                (2026, 8, 14, "上海", "证保", 5),
+            ],
+        )
+        conn.executemany(
+            """
+            INSERT INTO agg_org_hr_data (
+                year, month, org, channel, end_headcount
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (2026, 8, "上海", "OTO", 10),
+                (2026, 8, "上海", "证保", 5),
+            ],
+        )
+        conn.commit()
 
     resp = client.get("/api/honor/periods?year=2026", headers=_headers(token))
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["years"] == [2026]
-    assert [item["month"] for item in data["periods"]] == [7, 4]
+    assert [item["month"] for item in data["periods"]] == [8, 7, 4]
+    august = data["periods"][0]
+    assert august["versions"] == []
+    assert august["recommendedBatchId"] is None
+    assert august["latestDataCutoff"] == "2026-08-17"
+    assert august["latestDataBatchAvailable"] is False
+    assert august["canCreateLatestDataBatch"] is True
+    assert august["dataAvailability"]["channelCutoffs"] == {
+        "OTO": "2026-08-17",
+        "证保": "2026-08-14",
+    }
+    assert august["dataAvailability"]["missingStaffChannels"] == []
     assert latest_july_batch != july_month_end_batch
-    assert data["periods"][0]["recommendedBatchId"] == july_month_end_batch
-    assert data["periods"][0]["sourceCutoff"] == "2026-07-31"
-    assert data["periods"][0]["monthEndSnapshotBatchId"] == july_month_end_batch
-    assert data["periods"][0]["monthEndSnapshotAvailable"] is True
-    assert data["periods"][0]["finalAvailable"] is False
-    assert data["periods"][0]["finalReadyOn"] == "2026-09-14"
-    assert [item["sourceCutoff"] for item in data["periods"][0]["versions"]] == [
+    july = data["periods"][1]
+    assert july["recommendedBatchId"] == july_month_end_batch
+    assert july["sourceCutoff"] == "2026-07-31"
+    assert july["monthEndSnapshotBatchId"] == july_month_end_batch
+    assert july["monthEndSnapshotAvailable"] is True
+    assert july["finalAvailable"] is False
+    assert july["finalReadyOn"] == "2026-09-14"
+    assert [item["sourceCutoff"] for item in july["versions"]] == [
         "2026-07-31",
         "2026-07-27",
         "2026-07-20",
     ]
-    assert [item["resultType"] for item in data["periods"][0]["versions"]] == [
+    assert [item["resultType"] for item in july["versions"]] == [
         "month_end",
         "process",
         "process",
     ]
-    assert data["periods"][1]["recommendedBatchId"] == april_batch
-    assert [item["sourceCutoff"] for item in data["periods"][1]["versions"]] == [
+    assert data["periods"][2]["recommendedBatchId"] == april_batch
+    assert [item["sourceCutoff"] for item in data["periods"][2]["versions"]] == [
         None,
         "2026-04-20",
     ]
+
+    august_batch = calculated_batch(8, "2026-08-17")
+    refreshed = client.get("/api/honor/periods?year=2026", headers=_headers(token)).json()["data"]
+    august = refreshed["periods"][0]
+    assert august["recommendedBatchId"] == august_batch
+    assert august["latestDataBatchId"] == august_batch
+    assert august["latestDataBatchAvailable"] is True
+    assert august["canCreateLatestDataBatch"] is False
 
 
 def test_honor_recalculate_blocks_final_result_before_callback_window_closes(auth_db):
@@ -254,6 +299,31 @@ def test_honor_recalculate_blocks_final_result_before_callback_window_closes(aut
     assert resp.status_code == 409
     assert "最终结果最早可在2099-09-14生成" in resp.json()["detail"]
     assert "当前月份尚未结束" in resp.json()["detail"]
+
+
+def test_honor_recalculate_blocks_process_date_after_latest_business_data(auth_db):
+    from db.connection import get_db
+
+    client = TestClient(app)
+    token = _login(client)["token"]
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO agg_org_daily_performance (
+                year, month, day, org, channel, qj_premium
+            ) VALUES (2026, 8, 17, '上海', 'OTO', 10)
+            """
+        )
+        conn.commit()
+
+    resp = client.post(
+        "/api/honor/recalculate",
+        json={"year": 2026, "month": 8, "asOf": "2026-08-20"},
+        headers=_headers(token),
+    )
+
+    assert resp.status_code == 409
+    assert "当前业绩数据仅截至2026-08-17" in resp.json()["detail"]
 
 
 def test_honor_dashboard_returns_tracking_sections(auth_db):

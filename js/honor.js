@@ -138,7 +138,16 @@
 
   async function api(path, options = {}) {
     const resp = await window.authFetch(path, options);
-    if (!resp.ok) throw new Error(`${path} ${resp.status}`);
+    if (!resp.ok) {
+      let message = `${path} ${resp.status}`;
+      try {
+        const errorPayload = await resp.json();
+        message = errorPayload.detail || errorPayload.message || message;
+      } catch (_error) {
+        // Keep the HTTP fallback when the response is not JSON.
+      }
+      throw new Error(message);
+    }
     const payload = await resp.json();
     return payload.data || payload;
   }
@@ -785,7 +794,47 @@
     const period = selectedPeriod();
     target.classList.remove('visible');
     target.innerHTML = '';
-    if (!period || period.finalAvailable) return;
+    if (!period) return;
+
+    const availability = period.dataAvailability || {};
+    const channelCutoffs = availability.channelCutoffs || {};
+    const activityNote = ['OTO', '证保']
+      .filter(line => channelCutoffs[line])
+      .map(line => `${line}最近出单${formatShortDate(channelCutoffs[line])}`)
+      .join('，');
+    if (period.latestDataCutoff && !period.latestDataBatchAvailable) {
+      const cutoff = formatDateLabel(period.latestDataCutoff);
+      const missingLines = availability.missingStaffChannels || [];
+      if (!availability.canCalculate) {
+        const reason = missingLines.length
+          ? `${missingLines.join('、')}当月人力数据尚未就绪`
+          : '数据截止日异常';
+        target.innerHTML = `<span>业绩数据已到${escapeHtml(cutoff)}，但${escapeHtml(reason)}，暂不能生成星钻过程结果。</span>`;
+        target.classList.add('visible');
+        return;
+      }
+      const button = hasPermission('honor_recalculate')
+        ? `<button id="createLatestDataBatchBtn" class="primary" type="button">生成截至${escapeHtml(formatShortDate(period.latestDataCutoff))}数据</button>`
+        : '';
+      const permissionNote = button ? '' : ' 请由有重算权限的管理员更新。';
+      target.innerHTML = `<span>业绩数据已更新至${escapeHtml(cutoff)}，星钻尚未生成同口径过程结果。生成后可查看还差标保和还缺长险件。${escapeHtml(activityNote ? ` ${activityNote}。` : '')}${escapeHtml(permissionNote)}</span>${button}`;
+      target.classList.add('visible');
+      document.getElementById('createLatestDataBatchBtn')?.addEventListener('click', () => {
+        createLatestDataBatch().catch(err => setStatus(err.message, 'bad'));
+      });
+      return;
+    }
+    if (period.latestDataBatchAvailable && period.latestDataCutoff) {
+      const selectedBatchId = Number(document.getElementById('honorBatch')?.value || 0);
+      const viewingLatest = selectedBatchId === Number(period.latestDataBatchId);
+      const prefix = viewingLatest
+        ? `当前星钻结果已按最新业绩数据计算至${formatDateLabel(period.latestDataCutoff)}。`
+        : `最新过程结果已计算至${formatDateLabel(period.latestDataCutoff)}；当前查看的是历史版本。`;
+      target.innerHTML = `<span>${escapeHtml(prefix)}${escapeHtml(activityNote ? `${activityNote}。` : '')}</span>`;
+      target.classList.add('visible');
+      return;
+    }
+    if (period.finalAvailable) return;
 
     const finalDate = formatDateLabel(period.finalReadyOn);
     if (period.monthEndSnapshotAvailable) {
@@ -812,6 +861,12 @@
     return `${parts[0]}年${parts[1]}月${parts[2]}日`;
   }
 
+  function formatShortDate(value) {
+    const parts = String(value || '').split('-').map(Number);
+    if (parts.length !== 3 || parts.some(item => !Number.isFinite(item))) return value || '-';
+    return `${parts[1]}月${parts[2]}日`;
+  }
+
   function renderBatchOptions(preferredBatchId = null) {
     const year = Number(document.getElementById('honorYear').value);
     const month = Number(document.getElementById('honorMonth').value);
@@ -820,13 +875,34 @@
     const versions = period?.versions || [];
     batchSelect.innerHTML = versions.length
       ? versions.map(version => `<option value="${escapeHtml(version.batchId)}">${escapeHtml(cutoffLabel(year, month, version))}</option>`).join('')
-      : '<option value="">暂无结果</option>';
+      : `<option value="">${period?.latestDataCutoff ? `待生成截至${escapeHtml(formatShortDate(period.latestDataCutoff))}数据` : '暂无结果'}</option>`;
     const selected = versions.some(item => Number(item.batchId) === Number(preferredBatchId))
       ? Number(preferredBatchId)
       : Number(period?.recommendedBatchId || versions[0]?.batchId || 0);
     if (selected) batchSelect.value = String(selected);
     renderPeriodAction();
     return selected;
+  }
+
+  function renderPendingPeriod(period) {
+    state.dashboard = null;
+    currentBatchId = null;
+    renderMetricCards({});
+    ['tracking', 'analysis', 'people'].forEach(id => {
+      const target = document.getElementById(id);
+      if (target) target.innerHTML = '<div class="empty">请先生成所选月份的最新过程数据。</div>';
+    });
+    const cutoff = formatDateLabel(period?.latestDataCutoff);
+    const asOfInput = document.getElementById('honorAsOf');
+    if (asOfInput) {
+      asOfInput.value = period?.latestDataCutoff || '';
+      asOfInput.max = period?.latestDataCutoff || '';
+    }
+    const periodNote = document.getElementById('honorPeriodNote');
+    if (periodNote) periodNote.textContent = `${period?.year || '-'}年${period?.month || '-'}月业绩数据已到${cutoff}，尚无同口径星钻测算结果。`;
+    const batchSummary = document.getElementById('batchSummary');
+    if (batchSummary) batchSummary.innerHTML = '<strong>当前数据：</strong>尚未生成所选月份过程结果。';
+    renderPeriodAction();
   }
 
   function renderMonthOptions(preferredMonth = null) {
@@ -860,8 +936,14 @@
     if (selectedYear) yearSelect.value = String(selectedYear);
     const selectedMonth = renderMonthOptions(preferredPeriod?.month);
     const selectedBatchId = renderBatchOptions(preferredBatchId);
-    if (!selectedMonth || !selectedBatchId) {
+    if (!selectedMonth) {
       setStatus('暂无可查看的星钻测算结果', 'warn');
+      return;
+    }
+    if (!selectedBatchId) {
+      const period = selectedPeriod();
+      renderPendingPeriod(period);
+      setStatus(period?.latestDataCutoff ? `${selectedMonth}月数据待生成` : '暂无可查看的星钻测算结果', 'warn');
       return;
     }
     await loadDashboard(selectedBatchId);
@@ -920,6 +1002,25 @@
     setStatus(`${result.resultLabel || '月末快照'}生成完成：${result.personCount}人，${result.exceptionCount}条待核对记录`, 'ok');
   }
 
+  async function createLatestDataBatch() {
+    const period = selectedPeriod();
+    if (!period?.latestDataCutoff) throw new Error('无法确定最新业绩数据截止日');
+    setStatus(`正在生成截至${formatShortDate(period.latestDataCutoff)}的过程数据...`);
+    const result = await api('/api/honor/recalculate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        year: period.year,
+        month: period.month,
+        asOf: period.latestDataCutoff,
+        scope: 'all',
+        force: true,
+      }),
+    });
+    await loadAvailablePeriods(result.batchId);
+    setStatus(`${result.resultLabel || '过程数据'}生成完成：${result.personCount}人，${result.exceptionCount}条待核对记录`, 'ok');
+  }
+
   function exportExcel() {
     if (!currentBatchId) {
       setStatus('请先加载数据或重新测算后再导出。', 'warn');
@@ -962,11 +1063,21 @@
     document.getElementById('honorYear')?.addEventListener('change', () => {
       renderMonthOptions();
       const batchId = renderBatchOptions();
-      if (batchId) loadDashboard(batchId).catch(err => setStatus(err.message, 'bad'));
+      if (batchId) {
+        loadDashboard(batchId).catch(err => setStatus(err.message, 'bad'));
+      } else {
+        renderPendingPeriod(selectedPeriod());
+        setStatus(`${document.getElementById('honorMonth').value}月数据待生成`, 'warn');
+      }
     });
     document.getElementById('honorMonth')?.addEventListener('change', () => {
       const batchId = renderBatchOptions();
-      if (batchId) loadDashboard(batchId).catch(err => setStatus(err.message, 'bad'));
+      if (batchId) {
+        loadDashboard(batchId).catch(err => setStatus(err.message, 'bad'));
+      } else {
+        renderPendingPeriod(selectedPeriod());
+        setStatus(`${document.getElementById('honorMonth').value}月数据待生成`, 'warn');
+      }
     });
     document.getElementById('honorBatch')?.addEventListener('change', event => {
       const batchId = Number(event.target.value || 0);

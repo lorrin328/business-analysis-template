@@ -4,12 +4,13 @@ from __future__ import annotations
 import calendar
 import json
 import os
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
 from db.connection import get_db
-from services.raw_table_reader import quote_identifier, raw_table_column_set
+from services.raw_table_reader import compact_period_expr, quote_identifier, raw_table_column_set
 
 from .config import MONTHLY_RULES, TEAM_RULES
 from .normalizers import (
@@ -183,6 +184,27 @@ def metric_for_staff(
     }
 
 
+def _performance_year_filter(conn, year: int) -> tuple[str, list[Any]]:
+    """Limit a multi-year raw table before applying exact honor date rules in Python."""
+    columns = raw_table_column_set(conn, "performance")
+    if "年月" not in columns:
+        return "1 = 1", []
+    sample = conn.execute(
+        'SELECT "年月" FROM performance WHERE "年月" IS NOT NULL LIMIT 1'
+    ).fetchone()
+    sample_value = str(sample[0] if sample else "").strip()
+    if re.match(r"^\d{4}-\d{2}", sample_value):
+        return '"年月" >= ? AND "年月" < ?', [
+            f"{int(year) - 1:04d}-12",
+            f"{int(year) + 1:04d}-02",
+        ]
+    expression = compact_period_expr("年月")
+    return f"CAST(substr({expression}, 1, 6) AS INTEGER) BETWEEN ? AND ?", [
+        (int(year) - 1) * 100 + 12,
+        (int(year) + 1) * 100 + 1,
+    ]
+
+
 def load_policies(
     year: int,
     month: int,
@@ -202,14 +224,17 @@ def load_policies(
     source_cutoff_dt = _as_of_date(year, month, source_cutoff) if source_cutoff else None
     counted_positive_policy_refs: dict[tuple[str, str, str], dict[str, str]] = {}
     with get_db() as conn:
+        period_where, period_params = _performance_year_filter(conn, year)
         rows = conn.execute(
-            """
+            f"""
             SELECT "年月", "销售机构名称", "业务模式", "人员工号",
                    "主管工号" AS supervisor_code, "经理工号" AS manager_code,
                    "投保单号", "承保时间", "回销时间", "入账时间", "长短险", "缴费年限", "折算保费",
                    "年化规保", "期交保费", "承保件数" AS policy_count, "产品代码", "产品名称"
             FROM performance
+            WHERE {period_where}
             """,
+            period_params,
         ).fetchall()
     prepared_rows: list[dict[str, Any]] = []
     counted_positive_policy_keys: set[tuple[str, str, str]] = set()
