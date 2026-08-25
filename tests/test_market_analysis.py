@@ -76,7 +76,7 @@ def valid_report(report_id="market-20260722-120000"):
         "title": "寿险市场滚动研判",
         "generatedAt": "2026-07-22T12:00:00+08:00",
         "period": {"start": "2026-07-19", "end": "2026-07-22"},
-        "model": {"provider": "DeepSeek", "name": "deepseek-v4-pro[1m]"},
+        "model": {"provider": "DeepSeek", "name": "deepseek-v4-flash-vision-exp"},
         "reviewStatus": "machine_validated",
         "coverage": {"queryCount": 12, "sourceCount": 8, "officialSourceCount": 3, "wechatSourceCount": 0, "limitations": []},
         "executiveSummary": {"headline": "测试主判断", "summary": "测试摘要", "evidenceIds": ["S1", "S2"]},
@@ -160,7 +160,7 @@ def test_maturity_gate_and_quality_score_reach_nine_points(tmp_path, monkeypatch
     report = mature_report()
     monkeypatch.setenv("MARKET_ANALYSIS_MIN_QUALITY_SCORE", "9.0")
     assert maturity_draft_errors(report, repository) == []
-    calls = [{"role": "primary", "model": "deepseek-v4-pro[1m]", "status": "success", "elapsedMs": 1000}]
+    calls = [{"role": "primary", "model": "deepseek-v4-flash-vision-exp", "status": "success", "elapsedMs": 1000}]
     assessment = assess_report_quality(report, repository, calls)
     assert assessment["score"] >= 9.0
     assert assessment["status"] == "passed"
@@ -175,7 +175,7 @@ def test_report_metrics_track_source_contribution_and_runtime_observability(tmp_
         "2026-07-22T12:00:00+08:00",
         [{
             "role": "primary",
-            "model": "deepseek-v4-pro[1m]",
+            "model": "deepseek-v4-flash-vision-exp",
             "status": "success",
             "elapsedMs": 1_500_000,
             "cliEstimatedCostUsd": 4.25,
@@ -542,19 +542,19 @@ def test_claude_result_parser_and_secret_redaction():
     assert "sk-example-secret-value" not in redact("token=sk-example-secret-value")
 
 
-def test_model_plan_uses_pro_for_primary_flash_for_first_repair_and_pro_for_escalation(monkeypatch):
+def test_model_plan_uses_flash_vision_for_all_roles(monkeypatch):
     for key in (
         "MARKET_ANALYSIS_MODEL", "MARKET_ANALYSIS_PRIMARY_MODEL",
         "MARKET_ANALYSIS_REPAIR_MODEL", "MARKET_ANALYSIS_ESCALATION_MODEL",
     ):
         monkeypatch.delenv(key, raising=False)
     plan = resolve_model_plan()
-    assert plan["primary"] == "deepseek-v4-pro[1m]"
-    assert plan["scout"] == "deepseek-v4-flash"
-    assert plan["repair"] == "deepseek-v4-flash"
-    assert plan["escalation"] == "deepseek-v4-pro[1m]"
-    assert repair_model_for_attempt(plan, 0) == ("deepseek-v4-flash", "repair_flash")
-    assert repair_model_for_attempt(plan, 1) == ("deepseek-v4-pro[1m]", "repair_escalation")
+    assert plan["primary"] == "deepseek-v4-flash-vision-exp"
+    assert plan["scout"] == "deepseek-v4-flash-vision-exp"
+    assert plan["repair"] == "deepseek-v4-flash-vision-exp"
+    assert plan["escalation"] == "deepseek-v4-flash-vision-exp"
+    assert repair_model_for_attempt(plan, 0) == ("deepseek-v4-flash-vision-exp", "repair_flash")
+    assert repair_model_for_attempt(plan, 1) == ("deepseek-v4-flash-vision-exp", "repair_escalation")
     monkeypatch.setenv("MARKET_ANALYSIS_SOURCE_SCOUT_TIMEOUT_SECONDS", "99999")
     assert run_market_research.source_scout_timeout_seconds(3600) == 3600
     monkeypatch.setenv("MARKET_ANALYSIS_SOURCE_SCOUT_TIMEOUT_SECONDS", "invalid")
@@ -569,8 +569,8 @@ def test_dry_run_reports_model_plan_without_overwriting_runtime_status(tmp_path,
 
     result = run_market_research.run_research(repository, dry_run=True)
 
-    assert result["modelPlan"]["primary"] == "deepseek-v4-pro[1m]"
-    assert result["modelPlan"]["repair"] == "deepseek-v4-flash"
+    assert result["modelPlan"]["primary"] == "deepseek-v4-flash-vision-exp"
+    assert result["modelPlan"]["repair"] == "deepseek-v4-flash-vision-exp"
     assert repository.status() == previous_status
 
 
@@ -782,7 +782,7 @@ def test_worker_runs_bounded_evidence_repair_before_publication(tmp_path, monkey
     result = run_market_research.run_research(MarketAnalysisRepository(tmp_path))
     assert result["reviewStatus"] == "machine_validated"
     assert len(prompts) == 2
-    assert models == ["deepseek-v4-pro[1m]", "deepseek-v4-flash"]
+    assert models == ["deepseek-v4-flash-vision-exp", "deepseek-v4-flash-vision-exp"]
     assert "validationErrors" in prompts[1]
     assert "Regulation modules must cite" in prompts[1]
     assert "internalBusinessSnapshot" in prompts[1]
@@ -828,7 +828,7 @@ def test_worker_allows_second_targeted_repair_for_peer_first_party_evidence(tmp_
 
     assert result["reviewStatus"] == "machine_validated"
     assert len(prompts) == 3
-    assert models == ["deepseek-v4-pro[1m]", "deepseek-v4-flash", "deepseek-v4-pro[1m]"]
+    assert models == ["deepseek-v4-flash-vision-exp", "deepseek-v4-flash-vision-exp", "deepseek-v4-flash-vision-exp"]
     assert "section peers requires A/B-level first-party evidence" in prompts[1]
     assert "authoritativeTopicLedger" in prompts[1]
     assert "replace that peer module" in prompts[1]
@@ -875,11 +875,11 @@ def test_worker_repairs_unprunable_source_in_same_run_with_flash(tmp_path, monke
 
     assert result["reviewStatus"] == "machine_validated"
     assert verification_calls == 2
-    assert models == ["deepseek-v4-pro[1m]", "deepseek-v4-flash"]
+    assert models == ["deepseek-v4-flash-vision-exp", "deepseek-v4-flash-vision-exp"]
     assert "source S3 failed independent verification" in prompts[1]
     status = repository.status()
     assert [call["role"] for call in status["modelCalls"]] == ["primary", "repair_flash"]
-    assert status["modelPlan"]["strategy"] == "flash_scout_pro_primary_flash_repair_pro_escalation"
+    assert status["modelPlan"]["strategy"] == "single_flash_vision_all_roles"
 
 
 def test_private_repair_checkpoint_is_resumable_and_clearable(tmp_path):
@@ -1174,20 +1174,20 @@ def test_market_timer_runs_at_1am_when_three_calendar_days_are_due_and_template_
     assert '"$SYSTEMCTL_BIN" start --no-block "$SERVICE_NAME"' in scheduler
     assert "ANTHROPIC_AUTH_TOKEN=\n" in env_template
     assert "AI_READONLY_TOKEN=\n" in env_template
-    assert "ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash" in env_template
-    assert "CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash" in env_template
-    assert "MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-v4-pro[1m]" in env_template
-    assert "MARKET_ANALYSIS_REPAIR_MODEL=deepseek-v4-flash" in env_template
-    assert "MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-v4-pro[1m]" in env_template
+    assert "ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash-vision-exp" in env_template
+    assert "CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash-vision-exp" in env_template
+    assert "MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-v4-flash-vision-exp" in env_template
+    assert "MARKET_ANALYSIS_REPAIR_MODEL=deepseek-v4-flash-vision-exp" in env_template
+    assert "MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-v4-flash-vision-exp" in env_template
     assert "MARKET_ANALYSIS_MIN_QUALITY_SCORE=9.0" in env_template
     assert "NoNewPrivileges=true" in service
     assert "ProtectSystem=strict" in service
     assert "Restart=on-failure" in service
     assert "StartLimitBurst=2" in service
     assert "tr -d '\\r'" in installer
-    assert "ensure_env_value ANTHROPIC_DEFAULT_HAIKU_MODEL 'deepseek-v4-flash'" in installer
-    assert "ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL 'deepseek-v4-flash'" in installer
-    assert "ensure_env_value MARKET_ANALYSIS_ESCALATION_MODEL 'deepseek-v4-pro[1m]'" in installer
+    assert "ensure_env_value ANTHROPIC_DEFAULT_HAIKU_MODEL 'deepseek-v4-flash-vision-exp'" in installer
+    assert "ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL 'deepseek-v4-flash-vision-exp'" in installer
+    assert "ensure_env_value MARKET_ANALYSIS_ESCALATION_MODEL 'deepseek-v4-flash-vision-exp'" in installer
     assert "ensure_env_value MARKET_ANALYSIS_MIN_QUALITY_SCORE '9.0'" in installer
     assert "apt-get install -y curl ca-certificates nodejs npm" not in installer
     assert "@anthropic-ai/claude-code@latest" in installer

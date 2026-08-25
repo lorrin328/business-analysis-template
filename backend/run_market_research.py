@@ -36,6 +36,7 @@ from market_analysis.zhihu_api import scout_zhihu_sources
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_MARKET_MODEL = "deepseek-v4-flash-vision-exp"
 SECRET_PATTERN = re.compile(r"(?i)(sk-[A-Za-z0-9_-]{12,}|(?:api[_-]?key|token|secret)\s*[=:]\s*\S+)")
 REPORT_OUTPUT_SCHEMA = {
     "type": "object",
@@ -229,7 +230,7 @@ def build_source_scout_prompt(history: list[dict], ledger: list[dict]) -> str:
 Search current Chinese life-insurance evidence across macro economy, regulation and peer-company actions. Do not write analysis, modules or actions.
 
 Evidence-scout rules:
-1. This is a bounded discovery pass, not the final research. Run 8-10 high-value query themes and return 12-16 candidate sources when available. Seek at least three government/regulator/statistics pages and at least four first-party company, association or official WeChat pages. The Pro primary stage will complete the >=12-theme publication research.
+1. This is a bounded discovery pass, not the final research. Run 8-10 high-value query themes and return 12-16 candidate sources when available. Seek at least three government/regulator/statistics pages and at least four first-party company, association or official WeChat pages. The primary stage will complete the >=12-theme publication research.
 2. Deliberately attempt three targeted official WeChat article searches across regulators, industry associations and major life insurers. Use account-name+topic+date, site:mp.weixin.qq.com+institution+topic, and official-website+WeChat+topic searches. Search summaries and reposts are discovery leads only.
 3. For official WeChat, invoke $wechat-official-source-research: keep only public direct https://mp.weixin.qq.com article URLs whose page exposes the title, account identity and body without login, CAPTCHA or access-control bypass. If unavailable, find the same institution's official website mirror and classify it by its actual type.
 4. Keep the pass within 20 combined WebSearch/WebFetch calls. Use WebFetch only on the final candidate set, not every search lead. Exclude search pages, home pages, unrelated redirects, inaccessible pages, private/non-public hosts, missing bodies and unsupported claims.
@@ -298,7 +299,7 @@ Required JSON contract:
   "title":"...",
   "generatedAt":"ISO-8601 with timezone",
   "period":{{"start":"YYYY-MM-DD","end":"YYYY-MM-DD"}},
-  "model":{{"provider":"DeepSeek","name":"deepseek-v4-pro[1m]"}},
+  "model":{{"provider":"DeepSeek","name":"{DEFAULT_MARKET_MODEL}"}},
   "reviewStatus":"machine_validated",
   "coverage":{{"queryCount":0,"sourceCount":0,"officialSourceCount":0,"wechatSourceCount":0,"limitations":["..."]}},
   "executiveSummary":{{"headline":"...","summary":"...","evidenceIds":["S1"]}},
@@ -420,17 +421,17 @@ def _decode_embedded_json_objects(text: str) -> list[dict]:
 
 
 def resolve_model_plan() -> dict[str, str]:
-    """Return the quality-first model routing plan with backward-compatible env names."""
+    """Return the configured model routing plan with backward-compatible env names."""
     primary = (
         os.getenv("MARKET_ANALYSIS_PRIMARY_MODEL", "").strip()
         or os.getenv("MARKET_ANALYSIS_MODEL", "").strip()
-        or "deepseek-v4-pro[1m]"
+        or DEFAULT_MARKET_MODEL
     )
-    repair = os.getenv("MARKET_ANALYSIS_REPAIR_MODEL", "deepseek-v4-flash").strip() or "deepseek-v4-flash"
+    repair = os.getenv("MARKET_ANALYSIS_REPAIR_MODEL", DEFAULT_MARKET_MODEL).strip() or DEFAULT_MARKET_MODEL
     escalation = os.getenv("MARKET_ANALYSIS_ESCALATION_MODEL", "").strip() or primary
     scout = os.getenv("MARKET_ANALYSIS_SOURCE_SCOUT_MODEL", "").strip() or repair
     return {
-        "strategy": "flash_scout_pro_primary_flash_repair_pro_escalation",
+        "strategy": "single_flash_vision_all_roles",
         "scout": scout,
         "primary": primary,
         "repair": repair,
