@@ -2,6 +2,7 @@
 import re
 import sqlite3
 from db.connection import get_db
+from db.repositories.zhituo import get_zhituo_kpi
 from services.cutoff_policy import (
     build_period_context,
     build_source_cutoff_policy,
@@ -377,6 +378,11 @@ def get_kpi_data(
         prev_perf = _period_premiums_daily(year - 1) if use_daily else {}
         prev_jingdai_qj = _period_jingdai_daily(year - 1) if use_daily else 0.0
 
+        # 职拓为转型业绩中的独立标识，沿用当前看板所选范围和转型数据截止日。
+        zhituo_end = transform_daily_cutoff or selected_cutoff
+        zhituo = get_zhituo_kpi(conn, year, selected_start, zhituo_end)
+        zhituo_prev = get_zhituo_kpi(conn, year - 1, selected_start, zhituo_end)
+
         return {
             'year': year,
             'month': query_month,
@@ -410,6 +416,8 @@ def get_kpi_data(
                 ),
                 'total': round(prev_jingdai_qj + prev_perf.get('OTO', 0) + prev_perf.get('证保', 0) + prev_perf.get('蚁桥', 0), 2),
             } if use_daily else None,
+            'zhituo': zhituo,
+            'zhituo_prev': zhituo_prev,
             'longterm_qj': lt_total,
             'longterm_qj_tf': lt_tf,
             'longterm_qj_jd': lt_jd,

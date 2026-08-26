@@ -21,6 +21,7 @@ AGG_TABLES = [
     'agg_longterm_qj',
     'agg_staff_month_performance',
     'agg_product_daily',
+    'agg_zhituo_performance',
 ]
 
 
@@ -96,6 +97,20 @@ def init_db():
             count INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(year, month, day, business_type, channel, org, product_category, product_name))''')
+
+        c.execute('''CREATE TABLE IF NOT EXISTS agg_zhituo_performance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL, month INTEGER NOT NULL, day INTEGER NOT NULL DEFAULT 1,
+            channel TEXT NOT NULL DEFAULT '', org TEXT NOT NULL DEFAULT '',
+            staff_id TEXT NOT NULL DEFAULT '人员待确认',
+            product_name TEXT NOT NULL DEFAULT '产品待确认',
+            product_type TEXT NOT NULL DEFAULT '产品类型待确认',
+            payment_period TEXT NOT NULL DEFAULT '交期待确认',
+            qj_premium REAL NOT NULL DEFAULT 0,
+            gm_premium REAL NOT NULL DEFAULT 0,
+            policy_count INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(year, month, day, channel, org, staff_id, product_name, product_type, payment_period))''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS agg_org_performance (
             id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
@@ -613,6 +628,10 @@ def init_db():
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
             VALUES ('20260802_customer_incremental_import', 0, 'Adds governed customer snapshot CSV/XLSX import audit')
         ''')
+        c.execute('''
+            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+            VALUES ('20260826_zhituo_analysis', 1, 'Adds dedicated zhituo aggregate and analysis page')
+        ''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS performance (
             "年月" TEXT, "业务模式" TEXT, "销售机构名称" TEXT, "产品类型" TEXT,
@@ -636,6 +655,9 @@ def init_db():
             'CREATE INDEX IF NOT EXISTS ix_staff_perf_staff ON agg_staff_month_performance(year, staff_id, month)',
             'CREATE INDEX IF NOT EXISTS ix_product_daily_filter ON agg_product_daily(year, month, day, business_type, channel, org)',
             'CREATE INDEX IF NOT EXISTS ix_product_daily_name ON agg_product_daily(year, business_type, channel, product_name)',
+            'CREATE INDEX IF NOT EXISTS ix_zhituo_filter ON agg_zhituo_performance(year, month, org)',
+            'CREATE INDEX IF NOT EXISTS ix_zhituo_staff ON agg_zhituo_performance(year, staff_id, month)',
+            'CREATE INDEX IF NOT EXISTS ix_zhituo_product ON agg_zhituo_performance(year, product_name, month)',
             'CREATE INDEX IF NOT EXISTS ix_target_values_year_period ON target_values(year, period_type, period_value)',
             'CREATE INDEX IF NOT EXISTS ix_target_values_line_org_metric ON target_values(business_line, org, metric_code)',
             'CREATE INDEX IF NOT EXISTS ix_pay_period_year_month_type ON agg_payment_period(year, month, business_type)',

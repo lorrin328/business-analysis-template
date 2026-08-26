@@ -18,3 +18,4 @@ from etl.aggregates.dashboard import (
     aggregate_staff_month_performance,
     aggregate_transform_product_daily,
 )
+from etl.aggregates.zhituo import aggregate_zhituo_performance

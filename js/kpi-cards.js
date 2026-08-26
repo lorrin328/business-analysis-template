@@ -368,6 +368,26 @@
           perCapitaSubEl.innerHTML = '<span style="color:var(--text-secondary)">当前范围缺少同口径月度人力数据</span>';
         }
       }
+
+      // 9. 职拓业务业绩：与其他KPI卡片共用右上角所选统计范围。
+      const zhituo = hasApiKpi && kpi.zhituo ? kpi.zhituo : null;
+      const zhituoPrev = hasApiKpi && kpi.zhituo_prev ? kpi.zhituo_prev : null;
+      const zhituoPremiumEl = document.getElementById('kpi-zhituo-premium');
+      const zhituoSubEl = document.getElementById('kpi-zhituo-sub');
+      if (zhituo) {
+        const premium = Number(zhituo.qj_premium || 0);
+        const premiumText = window.FMT?.formatWan
+          ? window.FMT.formatWan(premium, 2)
+          : premium.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
+        const yoy = calcYoy(premium, Number(zhituoPrev?.qj_premium || 0));
+        if (zhituoPremiumEl) zhituoPremiumEl.innerHTML = `${premiumText}<span style="font-size:18px">万</span>`;
+        if (zhituoSubEl) zhituoSubEl.innerHTML = `
+          <span>${period.label || '所选范围'} · ${Number(zhituo.policy_count || 0)}件</span>
+          <span class="${yoyClass(yoy)}">同比 ${yoyText(yoy)}</span>`;
+      } else {
+        if (zhituoPremiumEl) zhituoPremiumEl.textContent = '--';
+        if (zhituoSubEl) zhituoSubEl.innerHTML = '<span style="color:var(--text-secondary)">基表尚未提供职拓标识</span>';
+      }
         updateTargetTrustState();
       } catch (e) { console.error('updateKPICards error:', e); }
     }
@@ -379,6 +399,10 @@
       grid.addEventListener('click', event => {
         const card = event.target.closest('.kpi-card[data-kpi-modal]');
         if (!card || !grid.contains(card)) return;
+        if (card.dataset.kpiHref) {
+          window.location.href = card.dataset.kpiHref;
+          return;
+        }
         const modalType = card.dataset.kpiModal;
         if (!modalType) return;
         if (typeof window.openModal !== 'function') {

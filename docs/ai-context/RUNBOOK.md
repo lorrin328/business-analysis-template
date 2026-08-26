@@ -211,6 +211,8 @@ stat -c '%s' /var/lib/business-analysis/business_data.db
 REBUILD_DATABASE=1 sudo bash deploy/deploy.sh
 ```
 
+本地执行`python backend/rebuild_from_excels.py`时，脚本会在项目根目录和`excel/原每日导入/`中分别匹配四类基表并选择修改时间最新的文件；该兼容路径只读取文件，不移动或改写`excel/`目录。生产部署仍以服务器根目录正式发布源为准。
+
 仅需按现有SQLite原始明细强制重建聚合时：
 
 ```bash

@@ -171,6 +171,14 @@ DASHBOARD_KPI_CARDS = [
         "supportsBusinessBreakdown": True,
         "definition": "月均新单保费 / 月均在职人力",
     },
+    {
+        "code": "zhituo",
+        "name": "职拓业务业绩",
+        "targetCategory": None,
+        "actualField": "zhituo.qj_premium",
+        "supportsBusinessBreakdown": False,
+        "definition": "业绩基表中是否职拓=是的所选范围期交保费净额",
+    },
 ]
 
 __all__ = ["METRICS", "DISPLAY_CONSTRAINTS", "DASHBOARD_KPI_CARDS"]

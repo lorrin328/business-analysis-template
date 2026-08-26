@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 VERSION_FILE = ROOT / "VERSION"
-DEFAULT_VERSION = "v1.0.140"
+DEFAULT_VERSION = "v1.0.141"
 
 
 def get_app_version() -> str:

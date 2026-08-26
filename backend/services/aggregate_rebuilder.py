@@ -29,6 +29,7 @@ from etl import (
     aggregate_staff_month_performance,
     aggregate_transform_product_daily,
     aggregate_transform_longterm,
+    aggregate_zhituo_performance,
     aggregate_value,
 )
 from services.raw_table_reader import (
@@ -165,6 +166,7 @@ def build_aggregate_rows_from_raw(raw_tables: dict[str, pd.DataFrame]) -> dict[s
         table_rows["agg_product_structure"] = aggregate_product_structure(perf)
         table_rows["agg_staff_month_performance"] = aggregate_staff_month_performance(perf)
         table_rows["agg_product_daily"].extend(aggregate_transform_product_daily(perf))
+        table_rows["agg_zhituo_performance"] = aggregate_zhituo_performance(perf)
         table_rows["agg_org_performance"] = aggregate_org_performance(perf)
         table_rows["agg_payment_period"].extend(aggregate_payment_period(perf))
         table_rows["agg_payment_period_daily"].extend(aggregate_payment_period_daily(perf))

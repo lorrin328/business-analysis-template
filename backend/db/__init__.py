@@ -36,6 +36,7 @@ from db.repositories.target import (
     get_target_values,
     save_target_config,
 )
+from db.repositories.zhituo import get_zhituo_analysis, get_zhituo_kpi
 
 __all__ = [
     # connection
@@ -55,4 +56,6 @@ __all__ = [
     # target
     'get_target_config', '_flatten_target_payload',
     'save_target_values', 'get_target_values', 'save_target_config',
+    # zhituo
+    'get_zhituo_analysis', 'get_zhituo_kpi',
 ]

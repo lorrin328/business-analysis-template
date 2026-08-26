@@ -29,6 +29,7 @@ from etl import (
     aggregate_staff_month_performance,
     aggregate_transform_product_daily,
     aggregate_transform_longterm,
+    aggregate_zhituo_performance,
     aggregate_value,
     parse_hr_excel,
     parse_jingdai_excel,
@@ -47,6 +48,7 @@ AGGREGATE_TABLE_ORDER = [
     "agg_product_structure",
     "agg_staff_month_performance",
     "agg_product_daily",
+    "agg_zhituo_performance",
     "agg_jingdai",
     "agg_jingdai_daily",
     "agg_hr_data",
@@ -190,6 +192,7 @@ def _parse_performance(source: ExcelSource, result: ExcelPipelineResult) -> None
     _merge_rows(rows, "agg_product_structure", aggregate_product_structure(frame))
     _merge_rows(rows, "agg_staff_month_performance", aggregate_staff_month_performance(frame))
     _merge_rows(rows, "agg_product_daily", aggregate_transform_product_daily(frame))
+    _merge_rows(rows, "agg_zhituo_performance", aggregate_zhituo_performance(frame))
     _merge_rows(rows, "_active_headcount", aggregate_active_headcount(frame))
     _merge_rows(rows, "_org_active_headcount", aggregate_org_active_headcount(frame))
     _merge_rows(rows, "agg_org_performance", org_perf_rows)
