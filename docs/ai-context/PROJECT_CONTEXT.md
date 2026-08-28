@@ -9,13 +9,14 @@
 - 后端：FastAPI + SQLite
 - 前端：原生 HTML/JS + ECharts
 - 数据源：业绩、客户、经代、人力、价值等 CSV/Excel 文件
-- 部署：Ubuntu + Nginx + systemd + FastAPI，后端默认端口 `45679`
+- 部署：Ubuntu以systemd运行FastAPI，后端端口`45679`；正式公网入口由极空间Docker Nginx Proxy Manager提供TLS并反向代理到FastAPI，Ubuntu本机nginx仅为局域网80端口备用入口
 - 容器化：Docker 镜像运行 FastAPI，SQLite 与日志通过 volume 持久化
 - 本地测试：pytest，Windows 推荐执行 `powershell -ExecutionPolicy Bypass -File scripts\preflight.ps1`
 
 ## 当前运行边界
 
 - 生产入口为根目录 `经营分析模板.html`。
+- 正式公网访问链路为“极空间 Nginx Proxy Manager → Ubuntu FastAPI:45679”；验收以公网HTTPS域名为准，Ubuntu本机80端口只做备用入口检查。
 - 本地后端默认运行库为 `backend/business_data.db`；systemd 生产环境通过 `BUSINESS_ANALYSIS_DB` 固定为 `/var/lib/business-analysis/business_data.db`。
 - 业务 `/api/` 默认需要登录；`/api/auth/`、`/api/health`、`/api/ai/` 为公开前缀。
 - 首次初始化管理员必须通过 `DEFAULT_ADMIN_PASSWORD` 环境变量提供密码。

@@ -31,6 +31,8 @@ data/reference/*
 _external_materials/
 _cleanup_backup_*/
 bak/
+backups/
+*.sync-conflict-*
 .pytest_cache/
 .venv/
 .uv-cache/

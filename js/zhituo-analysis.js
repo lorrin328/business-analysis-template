@@ -18,7 +18,7 @@
       return false;
     }
     el('currentUser').textContent = `${user().username} · ${user().roleLabel || user().role}`;
-    if (!can('kpi')) {
+    if (!can('team_enhanced')) {
       el('accessDenied').classList.remove('hidden');
       return false;
     }

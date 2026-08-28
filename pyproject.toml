@@ -1,9 +1,10 @@
 [project]
 name = "business-analysis-template"
-version = "1.0.138"
+version = "1.0.142"
 requires-python = ">=3.10"
 dependencies = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["backend"]
+addopts = "--ignore-glob=*sync-conflict*"

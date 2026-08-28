@@ -108,7 +108,7 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/export-excel.js?v=1.0.116"></script>' in html
     assert '<script src="js/upload.js?v=1.0.116"></script>' in html
     assert '<script src="js/target-modal.js?v=1.0.120"></script>' in html
-    assert '<script src="js/kpi-cards.js?v=1.0.141"></script>' in html
+    assert '<script src="js/kpi-cards.js?v=1.0.142"></script>' in html
     assert '<script src="js/platform-trend.js?v=1.0.116"></script>' in html
     assert '<script src="js/team-analysis.js?v=1.0.124"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
@@ -827,12 +827,14 @@ def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
     kpi_section = html.split('<!-- 机构维度 -->', 1)[0]
 
     assert "function updateKPICards()" not in html
-    assert 'src="js/kpi-cards.js?v=1.0.141"' in html
+    assert 'src="js/kpi-cards.js?v=1.0.142"' in html
     assert 'onclick="openModal(' not in kpi_section
     for modal_type in ["overall", "value", "activity", "annuity", "protection", "10year", "longterm", "percapita"]:
         assert f'data-kpi-modal="{modal_type}"' in kpi_section
     assert "function updateKPICards()" in kpi
     assert "function bindKPICardActions()" in kpi
+    assert "card.dataset.kpiPermission" in kpi
+    assert "window.hasPermission?.(requiredPermission)" in kpi
     assert ".kpi-card[data-kpi-modal]" in kpi
     assert "window.openModal(modalType)" in kpi
     assert "window.updateKPICards = updateKPICards" in kpi
@@ -1391,6 +1393,8 @@ def test_production_static_serving_does_not_expose_repository_root():
     assert 'location ^~ /js/' in nginx
     assert 'location = / {' in nginx
     assert 'location = /webhook/deploy' in nginx
+    assert 'location = /zhituo-analysis {' in nginx
+    assert 'location = /zhituo-analysis.html {' in nginx
     assert 'return 404;' in nginx
     assert 'try_files $uri =404;' in nginx
     assert 'try_files $uri $uri/ =404;' not in nginx

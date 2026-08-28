@@ -187,6 +187,14 @@ curl http://127.0.0.1:45679/api/health
 日志：/var/log/business-analysis/app.log
 ```
 
+正式访问拓扑：
+
+```text
+公网HTTPS → 极空间Docker Nginx Proxy Manager → Ubuntu FastAPI:45679
+```
+
+Ubuntu本机nginx的80端口仅作为局域网备用入口。部署验收应分别验证`127.0.0.1:45679`健康接口和正式公网HTTPS页面/API，不以Ubuntu 80端口替代Nginx Proxy Manager链路。
+
 代码部署：
 
 ```bash

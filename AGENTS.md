@@ -8,6 +8,12 @@ This file provides guidance to Codex (Codex.ai/code) and OpenClaw for safe deplo
 
 ## 部署流程
 
+### 当前真实访问拓扑
+
+正式公网访问由极空间 Docker 中的 Nginx Proxy Manager 提供 TLS 和反向代理，转发到 Ubuntu 主机上的 FastAPI `45679` 端口。Ubuntu 上的 `business-analysis.service`、SQLite 数据目录和日志目录仍是应用运行主体；`deploy/nginx.conf` 管理的 Ubuntu 本机 nginx 仅作为局域网 `80` 端口备用入口，不是正式公网入口。
+
+发布验收必须同时检查：FastAPI 本机健康接口、极空间 Nginx Proxy Manager 公网 HTTPS 页面/API、鉴权、页面静态资源和业务数据。不能用 Ubuntu `80` 端口结果替代正式公网入口验收；Nginx Proxy Manager 的证书、上传大小和代理超时在极空间侧单独管理。
+
 ### 一键部署（推荐）
 
 ```bash
@@ -40,9 +46,9 @@ REBUILD_DATABASE=0 REBUILD_AGGREGATES=1 sudo bash deploy/deploy.sh
 
 ## 关键配置注意项
 
-### nginx client_max_body_size（必须）
+### Ubuntu备用nginx client_max_body_size
 
-**上传 4 份 Excel 合计约 16MB，nginx 默认限制仅 1MB，会导致 413 错误。** `deploy/nginx.conf` 已配置 `client_max_body_size 100m`，部署时必须确保该配置生效。
+**上传 4 份 Excel 合计约 16MB，nginx 默认限制仅 1MB，会导致 413 错误。** `deploy/nginx.conf` 已配置 `client_max_body_size 100m`，使用Ubuntu本机80端口时必须确保该配置生效。正式公网入口还需在极空间 Nginx Proxy Manager 中独立确认上传大小和代理超时。
 
 ### 数据库重建
 

@@ -36,7 +36,11 @@ from etl import (
     parse_performance_excel,
     parse_value_excel,
 )
-from services.import_safety import write_raw_table_incremental
+from services.import_safety import (
+    RawIncrementalWriteError,
+    extract_raw_periods,
+    write_raw_table_incremental,
+)
 from services.product_config_service import extract_jingdai_products_to_config
 from validators.data_validator import validate_rows
 
@@ -62,6 +66,13 @@ AGGREGATE_TABLE_ORDER = [
 ]
 
 RAW_TABLE_ORDER = ["performance", "jingdai", "hr_data", "value_data"]
+
+# These aggregates are filtered subsets of a raw source. A covered month can
+# legitimately produce zero rows after a correction, so incremental imports
+# must clear every covered month before inserting the remaining aggregates.
+CONDITIONAL_AGGREGATE_SOURCES = {
+    "agg_zhituo_performance": "performance",
+}
 
 
 @dataclass(frozen=True)
@@ -291,6 +302,20 @@ def replace_aggregate_rows(conn, result: ExcelPipelineResult, *, incremental: bo
     writer = replace_rows_incremental if incremental else replace_rows
     for table in AGGREGATE_TABLE_ORDER:
         rows = result.rows_by_table.get(table, [])
+        source_table = CONDITIONAL_AGGREGATE_SOURCES.get(table) if incremental else None
+        source_frame = result.raw_tables.get(source_table) if source_table else None
+        if source_frame is not None and not source_frame.empty:
+            periods, _period_columns = extract_raw_periods(source_table, source_frame)
+            if not periods:
+                raise RawIncrementalWriteError(
+                    f"conditional aggregate {table} has no recognizable source year/month period"
+                )
+            for year, month in periods:
+                conn.execute(f'DELETE FROM "{table}" WHERE year = ? AND month = ?', (year, month))
+            if rows:
+                replace_rows(conn, table, rows)
+            table_counts[table] = len(rows)
+            continue
         if rows:
             writer(conn, table, rows)
             table_counts[table] = len(rows)

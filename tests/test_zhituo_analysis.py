@@ -81,6 +81,37 @@ def test_zhituo_repository_filters_year_month_and_org(tmp_path, monkeypatch):
     assert result["paymentPeriods"][0]["paymentPeriod"] == "10年及以上"
 
 
+def test_incremental_refresh_clears_zhituo_when_covered_month_becomes_empty(tmp_path, monkeypatch):
+    import db as db_module
+    import db.connection as connection
+    from db import init_db, replace_rows
+    from etl import aggregate_zhituo_performance
+    from services.excel_pipeline import ExcelPipelineResult, replace_aggregate_rows
+
+    db_path = tmp_path / "zhituo_incremental.db"
+    monkeypatch.setattr(connection, "DB_PATH", str(db_path))
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    init_db()
+
+    original = _source_frame()
+    corrected = original.copy()
+    corrected.loc[:, "是否职拓"] = "否"
+    with connection.get_db() as conn:
+        replace_rows(conn, "agg_zhituo_performance", aggregate_zhituo_performance(original))
+        conn.commit()
+        assert conn.execute("SELECT COUNT(*) FROM agg_zhituo_performance").fetchone()[0] == 3
+
+        result = ExcelPipelineResult(
+            rows_by_table={"agg_zhituo_performance": aggregate_zhituo_performance(corrected)},
+            raw_tables={"performance": corrected},
+        )
+        counts = replace_aggregate_rows(conn, result, incremental=True)
+        conn.commit()
+
+        assert counts["agg_zhituo_performance"] == 0
+        assert conn.execute("SELECT COUNT(*) FROM agg_zhituo_performance").fetchone()[0] == 0
+
+
 def test_zhituo_api_wraps_repository_result(monkeypatch):
     pytest.importorskip("fastapi")
     from api import zhituo_analysis as api
@@ -93,6 +124,40 @@ def test_zhituo_api_wraps_repository_result(monkeypatch):
     assert response["meta"]["metric"] == "zhituo-analysis"
 
 
+def test_zhituo_api_requires_team_enhanced_permission(auth_db):
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+    from main import app
+
+    client = TestClient(app)
+    registered = client.post(
+        "/api/auth/register",
+        json={"username": "kpi_only", "password": "normal-pass-123"},
+    )
+    assert registered.status_code == 200
+    user_id = registered.json()["data"]["user"]["id"]
+    user_token = registered.json()["data"]["token"]
+
+    admin_login = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "Test-only-admin-2026!"},
+    )
+    assert admin_login.status_code == 200
+    admin_token = admin_login.json()["data"]["token"]
+    updated = client.patch(
+        f"/api/admin/users/{user_id}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"role": "normal", "permissions": {"kpi": True, "team_enhanced": False}},
+    )
+    assert updated.status_code == 200
+
+    response = client.get(
+        "/api/zhituo-analysis/overview",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert response.status_code == 403
+
+
 def test_zhituo_page_and_assets_are_registered():
     pytest.importorskip("fastapi")
     from main import app
@@ -103,8 +168,13 @@ def test_zhituo_page_and_assets_are_registered():
     html = open(os.path.join(ROOT, "zhituo-analysis.html"), encoding="utf-8").read()
     script = open(os.path.join(ROOT, "js", "zhituo-analysis.js"), encoding="utf-8").read()
     dashboard = open(os.path.join(ROOT, "经营分析模板.html"), encoding="utf-8").read()
+    nginx = open(os.path.join(ROOT, "deploy", "nginx.conf"), encoding="utf-8").read()
     assert "职拓业务分析" in html
     assert 'id="yearChecks"' in html and 'id="monthChecks"' in html and 'id="orgChecks"' in html
     assert "/api/zhituo-analysis/overview" in script
-    assert 'data-dashboard-href="/zhituo-analysis">职拓业务分析</button>' in dashboard
+    assert 'data-permission="team_enhanced" data-dashboard-action="navigate"' in dashboard
+    assert 'data-kpi-permission="team_enhanced"' in dashboard
     assert 'id="kpi-zhituo-premium"' in dashboard
+    assert "can('team_enhanced')" in script
+    assert "location = /zhituo-analysis {" in nginx
+    assert "location = /zhituo-analysis.html {" in nginx

@@ -14,7 +14,7 @@ def zhituo_overview(
     years: str | None = Query(None, max_length=200),
     months: str | None = Query(None, max_length=100),
     orgs: str | None = Query(None, max_length=2000),
-    _user=Depends(require_permission("kpi")),
+    _user=Depends(require_permission("team_enhanced")),
 ):
     return success_response(
         get_zhituo_analysis(years=years, months=months, orgs=orgs),

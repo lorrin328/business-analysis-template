@@ -400,6 +400,8 @@
         const card = event.target.closest('.kpi-card[data-kpi-modal]');
         if (!card || !grid.contains(card)) return;
         if (card.dataset.kpiHref) {
+          const requiredPermission = card.dataset.kpiPermission;
+          if (requiredPermission && !window.hasPermission?.(requiredPermission)) return;
           window.location.href = card.dataset.kpiHref;
           return;
         }

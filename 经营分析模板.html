@@ -15,7 +15,7 @@
   <script src="js/upload.js?v=1.0.116"></script>
   <script src="js/target-modal.js?v=1.0.120"></script>
   <script src="js/dashboard-actions.js?v=1.0.116"></script>
-  <script src="js/kpi-cards.js?v=1.0.141"></script>
+  <script src="js/kpi-cards.js?v=1.0.142"></script>
   <script src="js/platform-trend.js?v=1.0.116"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1365,12 +1365,12 @@
       <div class="header-left">
         <div class="logo">太平人寿 <span>经营分析看板</span></div>
         <span class="tag">网电多元条线</span>
-        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.141</span>
+        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.142</span>
       </div>
       <div class="header-right">
         <nav class="primary-nav" aria-label="主要页面">
           <button class="chart-btn" type="button" aria-current="page">经营看板</button>
-          <button class="chart-btn" type="button" data-permission="kpi" data-dashboard-action="navigate" data-dashboard-href="/zhituo-analysis">职拓业务分析</button>
+          <button class="chart-btn" type="button" data-permission="team_enhanced" data-dashboard-action="navigate" data-dashboard-href="/zhituo-analysis">职拓业务分析</button>
           <button class="chart-btn" type="button" data-permission="branch_analysis" data-dashboard-action="navigate" data-dashboard-href="/branch-analysis">网点分析</button>
           <button class="chart-btn" type="button" data-permission="customer_analysis" data-dashboard-action="navigate" data-dashboard-href="/customer-analysis">客户分析</button>
           <button class="chart-btn" type="button" data-permission="honor_view" data-dashboard-action="navigate" data-dashboard-href="/honor">荣誉体系</button>
@@ -1481,7 +1481,7 @@
         </div>
 
         <!-- 9. 职拓业务业绩 -->
-        <div class="kpi-card" data-kpi-modal="zhituo" data-kpi-href="/zhituo-analysis" role="button" tabindex="0" aria-label="打开职拓业务分析">
+        <div class="kpi-card" data-kpi-modal="zhituo" data-kpi-href="/zhituo-analysis" data-kpi-permission="team_enhanced" role="button" tabindex="0" aria-label="打开职拓业务分析">
           <div class="kpi-top-label">职拓业务业绩</div>
           <div class="kpi-big-value" id="kpi-zhituo-premium" style="color: #22d3ee;">--</div>
           <div class="kpi-bottom-meta" id="kpi-zhituo-sub"></div>

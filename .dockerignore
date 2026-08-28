@@ -21,6 +21,8 @@ backend/business_data.db-*
 *.xlsm
 ~$*.xlsx
 output/
+backups/
+*.sync-conflict-*
 node_modules/
 .env
 .env.*
