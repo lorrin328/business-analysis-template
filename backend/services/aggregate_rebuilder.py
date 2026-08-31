@@ -19,6 +19,7 @@ from etl import (
     aggregate_jingdai_payment_period_daily,
     aggregate_org_active_headcount,
     aggregate_org_daily_performance,
+    aggregate_org_daily_activity,
     aggregate_org_hr,
     aggregate_org_performance,
     aggregate_org_value,
@@ -40,6 +41,7 @@ from services.raw_table_reader import (
     raw_table_columns,
     read_raw_table_dataframe,
 )
+from etl.aggregates.org_zero_streak import ACTIVITY_SOURCE_COLUMNS
 
 
 RAW_TABLES = ("performance", "jingdai", "hr_data", "value_data")
@@ -150,7 +152,9 @@ def _years_from_rows(table_rows: dict[str, list[dict]]) -> list[int]:
     return sorted(years)
 
 
-def build_aggregate_rows_from_raw(raw_tables: dict[str, pd.DataFrame]) -> dict[str, list[dict]]:
+def build_aggregate_rows_from_raw(
+    raw_tables: dict[str, pd.DataFrame], *, include_org_activity: bool = True,
+) -> dict[str, list[dict]]:
     """Build all aggregate table rows from raw DataFrames."""
     perf = raw_tables.get("performance")
     jingdai = raw_tables.get("jingdai")
@@ -163,6 +167,8 @@ def build_aggregate_rows_from_raw(raw_tables: dict[str, pd.DataFrame]) -> dict[s
         table_rows["agg_performance"] = aggregate_performance(perf)
         table_rows["agg_daily_performance"] = aggregate_daily_performance(perf)
         table_rows["agg_org_daily_performance"] = aggregate_org_daily_performance(perf)
+        if include_org_activity:
+            table_rows["agg_org_daily_activity"] = aggregate_org_daily_activity(perf)
         table_rows["agg_product_structure"] = aggregate_product_structure(perf)
         table_rows["agg_staff_month_performance"] = aggregate_staff_month_performance(perf)
         table_rows["agg_product_daily"].extend(aggregate_transform_product_daily(perf))
@@ -200,6 +206,45 @@ def build_aggregate_rows_from_raw(raw_tables: dict[str, pd.DataFrame]) -> dict[s
     return table_rows
 
 
+def _read_org_activity_rows(conn, *, source_columns: list[str] | None = None) -> list[dict]:
+    """Scan only required columns in bounded chunks, independent of legacy year slicing.
+
+    A malformed 年月 must not hide an otherwise valid 业绩归属日, nor may an
+    unidentifiable date disappear from this new quality-sensitive aggregate.
+    """
+    available = set(raw_table_columns(conn, "performance"))
+    if not available:
+        return []
+    effective = available if source_columns is None else set(source_columns)
+    columns = [column for column in ACTIVITY_SOURCE_COLUMNS if column in effective]
+    if not columns:
+        return []
+    # Read-only import preflight can project the schema after new columns are
+    # added: a newly introduced 年月日 is NULL for all retained historical rows.
+    select_list = ", ".join(
+        quote_identifier(column) if column in available else f"NULL AS {quote_identifier(column)}"
+        for column in columns
+    )
+    merged: dict[tuple, dict] = {}
+    for frame in pd.read_sql_query(f'SELECT {select_list} FROM "performance"', conn, chunksize=50000):
+        for row in aggregate_org_daily_activity(frame):
+            key = tuple(row[column] for column in ("year", "month", "day", "org", "channel"))
+            if key in merged:
+                merged[key]["has_positive_qj"] = max(merged[key]["has_positive_qj"], row["has_positive_qj"])
+                merged[key]["uncertain"] = max(merged[key]["uncertain"], row["uncertain"])
+            else:
+                merged[key] = row
+    return list(merged.values())
+
+
+def replace_org_activity_from_raw(conn) -> int:
+    """Replace this table only, after all evidence has been read successfully."""
+    activity_rows = _read_org_activity_rows(conn)
+    conn.execute("DELETE FROM agg_org_daily_activity")
+    replace_rows(conn, "agg_org_daily_activity", activity_rows)
+    return len(activity_rows)
+
+
 def rebuild_aggregates_from_raw_tables() -> RebuildResult:
     """Rebuild aggregates one year at a time so multi-million-row history stays bounded."""
     init_db()
@@ -219,6 +264,7 @@ def rebuild_aggregates_from_raw_tables() -> RebuildResult:
         conn.execute("BEGIN IMMEDIATE")
         try:
             table_counts = {table: 0 for table in AGG_TABLES}
+            activity_rows = _read_org_activity_rows(conn)
             for year in years:
                 raw_tables = {
                     table: frame
@@ -227,12 +273,17 @@ def rebuild_aggregates_from_raw_tables() -> RebuildResult:
                 }
                 for table, frame in raw_tables.items():
                     raw_counts[table] += len(frame)
-                table_rows = build_aggregate_rows_from_raw(raw_tables)
+                table_rows = build_aggregate_rows_from_raw(raw_tables, include_org_activity=False)
                 for table in AGG_TABLES:
+                    if table == "agg_org_daily_activity":
+                        continue
                     clear_table_year_data(conn, table, year)
                     rows = table_rows.get(table, [])
                     replace_rows(conn, table, rows)
                     table_counts[table] += len(rows)
+            conn.execute("DELETE FROM agg_org_daily_activity")
+            replace_rows(conn, "agg_org_daily_activity", activity_rows)
+            table_counts["agg_org_daily_activity"] = len(activity_rows)
             conn.commit()
             # Refresh planner statistics after a bulk rebuild so the first
             # dashboard request does not pay for stale index choices.
