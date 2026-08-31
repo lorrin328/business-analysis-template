@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>税优产品测算 · 经营分析看板</title>
+  <script src="js/tax-calculator-core.js?v=20260831" defer></script>
+  <script src="js/tax-calculator.js?v=20260831" defer></script>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1320; --panel:#152235; --line:#334b67; --text:#f5f8fc; --muted:#adbdce; --blue:#8fb7ff; --green:#60dfb2; --orange:#ffc18b; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.65 "Microsoft YaHei",Arial,sans-serif; }
+    a { color:var(--blue); text-underline-offset:4px; }
+    header { background:#121f33; border-bottom:1px solid var(--line); }
+    .header-inner { max-width:1240px; margin:auto; padding:16px 24px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .brand { font-size:17px; font-weight:700; }
+    main { max-width:1240px; margin:auto; padding:32px 24px 48px; }
+    h1 { margin:0 0 6px; font-size:30px; letter-spacing:.5px; }
+    h2 { margin:0 0 14px; font-size:18px; }
+    h3 { margin:0 0 6px; font-size:15px; }
+    p { margin:6px 0; }
+    .muted,.hint { color:var(--muted); }
+    .eyebrow { color:var(--green); font-size:12px; letter-spacing:2px; margin-bottom:8px; }
+    .intro { display:flex; justify-content:space-between; align-items:center; gap:20px; margin-bottom:24px; }
+    .privacy { border:1px solid var(--line); border-radius:20px; padding:6px 12px; color:var(--green); font-size:12px; white-space:nowrap; }
+    .workspace { display:grid; grid-template-columns:360px minmax(0,1fr); gap:20px; align-items:start; }
+    .panel { min-width:0; border:1px solid var(--line); background:var(--panel); border-radius:14px; padding:24px; }
+    .field { margin-bottom:19px; }
+    label { display:block; font-weight:600; margin-bottom:7px; }
+    .input-wrap { position:relative; }
+    input { width:100%; padding:12px 61px 12px 13px; border:1px solid #526781; border-radius:8px; background:#0e1a2b; color:var(--text); font:600 19px/1.4 Arial,sans-serif; }
+    input::placeholder { font:14px "Microsoft YaHei",sans-serif; color:#8999ad; }
+    input[aria-invalid="true"] { border-color:#ff9e9e; }
+    .unit { position:absolute; right:12px; top:12px; color:var(--muted); }
+    .hint { font-size:12px; line-height:1.6; margin-top:6px; }
+    .error { color:#ffb0b0; font-size:12px; margin-top:4px; }
+    button { cursor:pointer; font:inherit; color:var(--text); background:#253a54; border:1px solid #526781; border-radius:7px; padding:8px 12px; }
+    button:hover { background:#304b6d; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    :is(button,input,a,summary):focus-visible { outline:3px solid var(--blue); outline-offset:3px; }
+    .primary { width:100%; background:#306bc5; border-color:#5797ee; font-weight:600; padding:11px; }
+    .primary:hover { background:#3978d7; }
+    .actions { display:flex; gap:8px; margin-top:10px; }
+    .actions button { flex:1; font-size:12px; }
+    .assumption { margin:16px 0; border-top:1px solid var(--line); padding-top:15px; }
+    summary { cursor:pointer; color:var(--blue); }
+    details .field { margin-top:12px; margin-bottom:10px; }
+    .result-stack { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; min-width:0; }
+    .hero { background:linear-gradient(125deg,#173b41,#162b40); border-color:#3f7b79; }
+    .hero-label { color:#d6ebe7; }
+    .hero-value { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; margin:7px 0; }
+    .hero-value strong { font:700 48px/1.25 Arial,sans-serif; color:var(--green); overflow-wrap:anywhere; }
+    .hero-value span { color:var(--green); }
+    .hero-note { font-size:13px; color:#c7dcd8; }
+    .stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .stat { padding:17px; border:1px solid var(--line); border-radius:10px; background:var(--panel); }
+    .stat .label { color:var(--muted); font-size:12px; }
+    .stat strong { display:block; font:600 23px/1.5 Arial,sans-serif; margin-top:7px; overflow-wrap:anywhere; }
+    .positive { color:var(--green); }
+    .table-scroll { overflow:auto; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    caption { text-align:left; margin-bottom:8px; color:var(--muted); font-size:12px; }
+    th,td { padding:11px 9px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
+    th { color:var(--muted); font-weight:400; }
+    th:first-child,td:first-child { text-align:left; }
+    tr.highlight { background:#1a393b; }
+    .notice { border-left:3px solid #daa471; padding:9px 13px; background:#2c2b2b; color:var(--orange); font-size:13px; }
+    .notice p + p { margin-top:7px; }
+    .empty { text-align:center; padding:70px 24px; color:var(--muted); }
+    .empty strong { display:block; margin-bottom:10px; color:var(--text); font-size:20px; }
+    .formula { margin-top:12px; padding:13px; background:#0e1a2b; border-radius:8px; font-size:13px; overflow-wrap:anywhere; }
+    .lower { margin-top:24px; }
+    .rules { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+    .rules p { color:var(--muted); font-size:13px; }
+    .sources { border-top:1px solid var(--line); margin-top:20px; padding-top:16px; font-size:12px; color:var(--muted); }
+    .sources a { display:inline-block; margin:5px 18px 0 0; }
+    .result-actions { display:flex; align-items:center; gap:12px; justify-content:flex-end; }
+    [hidden] { display:none !important; }
+    @media (max-width:920px) { .workspace { grid-template-columns:minmax(0,1fr); } .intro { align-items:flex-start; } }
+    @media (max-width:560px) { main { padding:22px 14px; } .header-inner { padding:14px; } .intro { flex-direction:column; gap:10px; } h1 { font-size:26px; } .panel { padding:19px; } .stats { grid-template-columns:1fr; gap:8px; } .stat { display:flex; justify-content:space-between; align-items:center; gap:12px; } .stat strong { margin:0; font-size:22px; } .rules { grid-template-columns:1fr; gap:16px; } .hero-value strong { font-size:40px; } }
+    @media print { :root { color-scheme:light; --text:#111; --muted:#444; --line:#bbb; --green:#175c48; --blue:#194d83; } body,header,.panel,.stat,.hero,.formula { color:#111; background:white; } .header-inner a,.actions,.primary,.result-actions,.privacy { display:none; } main { padding:12px; } .workspace { grid-template-columns:1fr; } .hero-note,.hero-label,.notice { color:#333; } .panel { break-inside:avoid; } input { color:#111; background:white; } }
+  </style>
+</head>
+<body>
+  <header><div class="header-inner"><span class="brand">税优产品测算</span><a href="/">返回经营看板</a></div></header>
+  <main>
+    <section class="intro">
+      <div><div class="eyebrow">个人税收优惠测算工具</div><h1>算清税优健康险能节多少税</h1><p class="muted">先计入个人养老金，再比较增加税优健康险后的年度税额。</p></div>
+      <span class="privacy">本机计算 · 输入不上传、不保存</span>
+    </section>
+    <noscript><p class="notice">请启用浏览器 JavaScript 后使用测算功能。</p></noscript>
+    <div class="workspace">
+      <section class="panel" aria-labelledby="inputTitle">
+        <h2 id="inputTitle">填写年度数据</h2>
+        <p class="hint">适用于中国居民个人年度综合所得。所有金额单位均为元，按全年填写。</p>
+        <form id="taxForm" autocomplete="off" novalidate>
+          <div class="field">
+            <label for="annualIncome">年收入</label>
+            <div class="input-wrap"><input id="annualIncome" type="text" inputmode="decimal" placeholder="例如 300000" aria-describedby="incomeHelp annualIncomeError" required><span class="unit">元/年</span></div>
+            <p id="incomeHelp" class="hint">工资薪金填全年税前收入；不含单独计税年终奖。劳务、稿酬等须先换算为税法口径的收入额。</p>
+            <p id="annualIncomeError" class="error" hidden></p>
+          </div>
+          <div class="field">
+            <label for="otherDeductions">其他税前扣除（其他扣税）</label>
+            <div class="input-wrap"><input id="otherDeductions" type="text" inputmode="decimal" value="0" aria-describedby="otherHelp otherDeductionsError" required><span class="unit">元/年</span></div>
+            <p id="otherHelp" class="hint">填三险一金、专项附加扣除等合计。不含系统自动扣除的6万元、不含个养及税优健康险，也不填已缴税额或直接减免税额。</p>
+            <p id="otherDeductionsError" class="error" hidden></p>
+          </div>
+          <div class="field">
+            <label for="pensionDeduction">个人养老金扣除（个养扣减）</label>
+            <div class="input-wrap"><input id="pensionDeduction" type="text" inputmode="decimal" value="0" aria-describedby="pensionHelp pensionDeductionError" required><span class="unit">元/年</span></div>
+            <p id="pensionHelp" class="hint">按个人养老金扣除凭证填写，最高12,000元；未缴填0。不重复计入基本养老保险。</p>
+            <p id="pensionDeductionError" class="error" hidden></p>
+          </div>
+          <details class="assumption" id="healthSettings">
+            <summary>税优健康险情景：<span id="healthAssumption">全年扣除2,400元</span>（可改）</summary>
+            <div class="field">
+              <label for="healthDeduction">税优健康险本年可扣除金额</label>
+              <div class="input-wrap"><input id="healthDeduction" type="text" inputmode="decimal" value="2400" aria-describedby="healthHelp healthDeductionError" required><span class="unit">元/年</span></div>
+              <p id="healthHelp" class="hint">默认是假设全年足额扣除的试算，并非购买即获2,400元扣除。请按税优识别码、扣除凭证及本年有效扣除月份核定；限200元/月、2,400元/年，多份保单合并限额。此处不是保费输入。</p>
+              <p id="healthDeductionError" class="error" hidden></p>
+            </div>
+          </details>
+          <button class="primary" type="submit">开始测算</button>
+          <div class="actions"><button id="exampleButton" type="button">填入演示数据</button><button id="resetButton" type="button">清空重填</button></div>
+          <p class="hint" id="inputStatus" role="status">基本减除费用60,000元已自动计入。</p>
+        </form>
+      </section>
+      <section class="result-stack" aria-label="测算结果" aria-live="polite">
+        <div id="emptyState" class="panel empty"><strong>填写年收入，开始测算</strong><p>扣除前后税额、个养节税及税优健康险节税将在这里展示。</p><p>也可使用演示数据查看计算过程。</p></div>
+        <div id="results" class="result-stack" hidden>
+          <div class="panel hero">
+            <div class="hero-label">税优健康险当年节税 <span class="hint">· 已先扣除个养</span></div>
+            <div class="hero-value"><strong id="healthSaving">—</strong><span>元/年</span></div>
+            <p id="heroNote" class="hero-note"></p>
+          </div>
+          <div class="stats">
+            <div class="stat"><span class="label">仅扣个养后应纳税额 / 元</span><strong id="pensionTax">—</strong></div>
+            <div class="stat"><span class="label">两项扣除后应纳税额 / 元</span><strong id="combinedTax">—</strong></div>
+            <div class="stat"><span class="label">两项合计当年节税 / 元</span><strong id="totalSaving" class="positive">—</strong></div>
+          </div>
+          <div class="panel">
+            <h2>四种情景，一表对比</h2>
+            <div class="table-scroll"><table>
+              <caption>均已扣除6万元和其他税前扣除；金额单位：元/年。</caption>
+              <thead><tr><th scope="col">扣除情景</th><th scope="col">应纳税所得额</th><th scope="col">税档</th><th scope="col">应纳税额</th><th scope="col">较基准节税</th></tr></thead>
+              <tbody id="scenarioRows"></tbody>
+            </table></div>
+            <div id="formula" class="formula"></div>
+            <p class="hint">税档为该情景的边际税率。跨档扣除按两次税额之差计算，不能直接用扣除金额乘原税率。</p>
+          </div>
+          <div id="warnings" class="notice"></div>
+          <div class="result-actions"><span id="copyStatus" class="hint" role="status"></span><button id="copyButton" type="button">复制测算摘要</button><button id="printButton" type="button">打印 / 存为PDF</button></div>
+        </div>
+      </section>
+    </div>
+    <section class="panel lower" aria-labelledby="rulesTitle">
+      <h2 id="rulesTitle">计算口径与使用边界</h2>
+      <div class="rules">
+        <div><h3>扣除额不等于节税额</h3><p>年度应纳税所得额＝max（0，年度收入额－60,000－其他税前扣除－个人养老金扣除－税优健康险扣除）。年度税额按3%—45%七级超额累进税率计算，结果四舍五入到分。</p></div>
+        <div><h3>个养当年节税不等于最终收益</h3><p>个人养老金领取时另按3%计税，并受领取条件约束。本页未估算未来领取金额、投资损益、费用或资金时间价值，不计算最终净收益。</p></div>
+        <div><h3>税优健康险须核实扣除资格</h3><p>仅适用于符合税收优惠政策、具有税优识别码的商业健康险；年中投保、续保或凭证提交时间会影响扣除。请将默认全年情景改为本年实际可扣除金额。普通商业保险不能直接套用。</p></div>
+        <div><h3>本页不计算退补税或产品收益</h3><p>未录入预缴税款，不能据此判断退税金额。经营所得、非居民所得、单独计税奖金、境外抵免及特殊减免不在本模型范围内。劳务报酬、特许权使用费按收入的80%，稿酬按收入的56%计入年度收入额；具体申报以税务机关核定为准。</p></div>
+      </div>
+      <details class="lower"><summary>查看综合所得年度税率表</summary><div class="table-scroll"><table><thead><tr><th scope="col">全年应纳税所得额</th><th scope="col">税率</th><th scope="col">速算扣除数 / 元</th></tr></thead><tbody>
+        <tr><td>不超过36,000元</td><td>3%</td><td>0</td></tr><tr><td>超过36,000至144,000元</td><td>10%</td><td>2,520</td></tr><tr><td>超过144,000至300,000元</td><td>20%</td><td>16,920</td></tr><tr><td>超过300,000至420,000元</td><td>25%</td><td>31,920</td></tr><tr><td>超过420,000至660,000元</td><td>30%</td><td>52,920</td></tr><tr><td>超过660,000至960,000元</td><td>35%</td><td>85,920</td></tr><tr><td>超过960,000元</td><td>45%</td><td>181,920</td></tr>
+      </tbody></table></div></details>
+      <div class="sources"><div>政策核验日期：2026年8月31日。仅用于税务情景估算，不构成报税或投保建议。政策变化后需重新核验。</div>
+        <a href="https://www.chinatax.gov.cn/n810219/n810744/n3752930/n3752974/c3970366/content.html" target="_blank" rel="noopener noreferrer">个人所得税法及年度税率表</a>
+        <a href="https://fgk.chinatax.gov.cn/zcfgk/c102416/c5237110/content.html" target="_blank" rel="noopener noreferrer">个人养老金：2024年第21号公告</a>
+        <a href="https://shanghai.chinatax.gov.cn/zcfw/zcfgk/grsds/201705/t432115.html" target="_blank" rel="noopener noreferrer">税优健康险：财税〔2017〕39号</a>
+        <a href="https://www.chinatax.gov.cn/chinatax/n810341/n810760/c2644729/content.html" target="_blank" rel="noopener noreferrer">税优识别码及征管说明</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

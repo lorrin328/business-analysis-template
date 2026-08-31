@@ -358,6 +358,11 @@ if os.path.exists(os.path.join(static_dir, '经营分析模板.html')):
     def scheme_calculator_page():
         return FileResponse(os.path.join(static_dir, "scheme-calculator.html"))
 
+    @app.get("/tax-calculator")
+    @app.get("/tax-calculator.html")
+    def tax_calculator_page():
+        return FileResponse(os.path.join(static_dir, "tax-calculator.html"))
+
     @app.get("/branch-analysis")
     @app.get("/branch-analysis.html")
     def branch_analysis_page():
