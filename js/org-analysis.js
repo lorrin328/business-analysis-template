@@ -371,8 +371,8 @@
         if (r.p10Target > 0) sum.p10Target += r.p10Target;
         if (r.annuityTarget > 0) sum.annuityTarget += r.annuityTarget;
         if (r.protectionTarget > 0) sum.protectionTarget += r.protectionTarget;
-        qjPrevSum += getOrgPrevActual(org, r.channel, 'qj', dim, periodIdx);
-        valuePrevSum += getOrgPrevActual(org, r.channel, 'value', dim, periodIdx);
+        qjPrevSum += getOrgPrevActual(r.org, r.channel, 'qj', dim, periodIdx);
+        valuePrevSum += getOrgPrevActual(r.org, r.channel, 'value', dim, periodIdx);
       });
       sum.qjRate = qjHasTarget ? calcOrgRate(sum.qjActual, sum.qjTarget) : null;
       sum.valueRate = valueHasTarget ? calcOrgRate(sum.valueActual, sum.valueTarget) : null;
@@ -470,6 +470,12 @@
         }
       });
 
+      // 业务小计始终按筛选后的原始项目行计算，避免展开后重复加总。
+      CHANNEL_LIST.forEach(channel => {
+        const subtotal = aggregateOrgRows(`${channel}小计`, rows.filter(r => r.channel === channel), dim, selectedMonths);
+        displayRows.push({...subtotal, isChannelSubtotal: true, isSubtotal: false, isOrgSummary: false, zeroStreak: null});
+      });
+
       // 总计行
       const totalPeriodIdx = selectedMonths;
       const totalRow = {
@@ -538,9 +544,11 @@
           </thead>
           <tbody>
             ${displayRows.map(r => `
-              <tr ${r.isSubtotal ? 'style="background:rgba(255,255,255,0.03);"' : ''} ${r.isTotal ? 'class="total-row"' : ''}>
+              <tr ${r.isSubtotal ? 'style="background:rgba(255,255,255,0.03);"' : ''} ${r.isChannelSubtotal ? 'class="channel-subtotal-row"' : r.isTotal ? 'class="total-row"' : ''}>
+                ${r.isChannelSubtotal ? `<td colspan="2">${escapeOrgText(r.org)}</td>` : `
                 <td style="${r.isTotal ? 'font-weight:600;' : ''}">${escapeOrgText(r.org)}</td>
                 <td class="${r.channel !== '小计' && r.channel !== '' && orgExpanded ? 'sub-channel' : ''}" style="${r.isTotal||r.isSubtotal||r.isOrgSummary?'font-weight:600;':''}"${r.streakOnly ? ' title="本行仅用于挂零追踪，不计入既有指标汇总"' : ''}>${escapeOrgText(r.channel || '机构汇总')}</td>
+                `}
                 <td>${fmtOrgNum(r.qjTarget)}</td>
                 <td>${fmtOrgNum(r.qjActual)}</td>
                 ${rateCell(r.qjRate)}
@@ -561,7 +569,7 @@
                 <td>${fmtOrgNum(r.protectionTarget)}</td>
                 <td>${fmtOrgNum(r.protectionActual)}</td>
                 ${rateCell(r.protectionRate)}
-                ${orgZeroStreakCell(r.zeroStreak, zeroStreakSnapshot)}
+                ${r.isChannelSubtotal ? '<td class="org-zero-streak" title="连续挂零天数不作业务小计">—</td>' : orgZeroStreakCell(r.zeroStreak, zeroStreakSnapshot)}
               </tr>
             `).join('')}
             <tr class="total-row">

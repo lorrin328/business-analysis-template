@@ -1291,6 +1291,11 @@
       border-top: 2px solid var(--border);
     }
     .org-table tr.total-row:hover td { background: var(--bg-hover); }
+    .org-table tr.channel-subtotal-row td {
+      background: var(--bg);
+      font-weight: 600;
+    }
+    .org-table tr.channel-subtotal-row:hover td { background: var(--bg-hover); }
     .org-table .sub-channel { color: var(--text-secondary); padding-left: 16px; }
     .org-table .org-ind-green { color: var(--success); font-weight: 600; }
     .org-table .org-ind-light-red { color: #fca5a5; font-weight: 600; }
@@ -1365,7 +1370,7 @@
       <div class="header-left">
         <div class="logo">太平人寿 <span>经营分析看板</span></div>
         <span class="tag">网电多元条线</span>
-        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.144</span>
+        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.145</span>
       </div>
       <div class="header-right">
         <nav class="primary-nav" aria-label="主要页面">
@@ -1949,7 +1954,7 @@
   <script>
     // API integration lives in js/data-integration.js
   </script>
-  <script src="js/org-analysis.js?v=1.0.144"></script>
+  <script src="js/org-analysis.js?v=1.0.145"></script>
   <script src="js/seed-data.js?v=1.0.116"></script>
   <script src="js/platform-seed-data.js?v=1.0.116"></script>
   <script src="js/data-integration.js?v=1.0.124"></script>
