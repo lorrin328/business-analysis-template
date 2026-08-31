@@ -30,7 +30,7 @@ def org_analysis(
         meta=response_meta(
             metric="org-analysis",
             unit="万元",
-            data_source="agg_org_*, agg_longterm_qj",
+            data_source="agg_org_*, agg_longterm_qj; zeroStreak: agg_org_daily_activity",
             year=year,
             asOf=asOf,
             rangeType=rangeType,

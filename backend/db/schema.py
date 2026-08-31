@@ -14,6 +14,7 @@ AGG_TABLES = [
     'agg_product_structure',
     'agg_daily_performance',
     'agg_org_daily_performance',
+    'agg_org_daily_activity',
     'agg_org_performance',
     'agg_org_value',
     'agg_payment_period',
@@ -165,6 +166,13 @@ def init_db():
         _migrate(c, "ALTER TABLE agg_org_daily_performance ADD COLUMN product_10year REAL NOT NULL DEFAULT 0")
         _migrate(c, "ALTER TABLE agg_org_daily_performance ADD COLUMN product_annuity REAL NOT NULL DEFAULT 0")
         _migrate(c, "ALTER TABLE agg_org_daily_performance ADD COLUMN product_protection REAL NOT NULL DEFAULT 0")
+
+        c.execute('''CREATE TABLE IF NOT EXISTS agg_org_daily_activity (
+            year INTEGER NOT NULL, month INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
+            day INTEGER NOT NULL CHECK(day BETWEEN 0 AND 31), org TEXT NOT NULL, channel TEXT NOT NULL,
+            has_positive_qj INTEGER NOT NULL DEFAULT 0 CHECK(has_positive_qj IN (0, 1)),
+            uncertain INTEGER NOT NULL DEFAULT 0 CHECK(uncertain IN (0, 1)),
+            UNIQUE(year, month, day, org, channel))''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS target_config (
             year INTEGER PRIMARY KEY, payload TEXT NOT NULL,
@@ -631,6 +639,10 @@ def init_db():
         c.execute('''
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
             VALUES ('20260826_zhituo_analysis', 1, 'Adds dedicated zhituo aggregate and analysis page')
+        ''')
+        c.execute('''
+            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+            VALUES ('20260831_org_zero_streak', 1, 'Adds daily positive QJ acceptance evidence by business attribution date')
         ''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS performance (

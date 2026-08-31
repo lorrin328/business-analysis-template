@@ -19,6 +19,7 @@ from etl import (
     aggregate_jingdai_payment_period_daily,
     aggregate_org_active_headcount,
     aggregate_org_daily_performance,
+    aggregate_org_daily_activity,
     aggregate_org_hr,
     aggregate_org_performance,
     aggregate_org_value,
@@ -41,6 +42,9 @@ from services.import_safety import (
     extract_raw_periods,
     write_raw_table_incremental,
 )
+from etl.aggregates.org_zero_streak import ACTIVITY_SOURCE_COLUMNS, extract_org_activity_periods
+from services.aggregate_rebuilder import _read_org_activity_rows, replace_org_activity_from_raw
+from services.raw_table_reader import raw_table_columns
 from services.product_config_service import extract_jingdai_products_to_config
 from validators.data_validator import validate_rows
 
@@ -49,6 +53,7 @@ AGGREGATE_TABLE_ORDER = [
     "agg_performance",
     "agg_daily_performance",
     "agg_org_daily_performance",
+    "agg_org_daily_activity",
     "agg_product_structure",
     "agg_staff_month_performance",
     "agg_product_daily",
@@ -72,6 +77,7 @@ RAW_TABLE_ORDER = ["performance", "jingdai", "hr_data", "value_data"]
 # must clear every covered month before inserting the remaining aggregates.
 CONDITIONAL_AGGREGATE_SOURCES = {
     "agg_zhituo_performance": "performance",
+    "agg_org_daily_activity": "performance",
 }
 
 
@@ -200,6 +206,7 @@ def _parse_performance(source: ExcelSource, result: ExcelPipelineResult) -> None
     _merge_rows(rows, "agg_performance", perf_rows)
     _merge_rows(rows, "agg_daily_performance", daily_rows)
     _merge_rows(rows, "agg_org_daily_performance", aggregate_org_daily_performance(frame))
+    _merge_rows(rows, "agg_org_daily_activity", aggregate_org_daily_activity(frame))
     _merge_rows(rows, "agg_product_structure", aggregate_product_structure(frame))
     _merge_rows(rows, "agg_staff_month_performance", aggregate_staff_month_performance(frame))
     _merge_rows(rows, "agg_product_daily", aggregate_transform_product_daily(frame))
@@ -297,15 +304,22 @@ def build_excel_pipeline_result(sources: list[ExcelSource]) -> ExcelPipelineResu
     return finalize_excel_pipeline_result(result)
 
 
-def replace_aggregate_rows(conn, result: ExcelPipelineResult, *, incremental: bool) -> dict[str, int]:
+def replace_aggregate_rows(
+    conn, result: ExcelPipelineResult, *, incremental: bool, include_org_activity: bool = True,
+) -> dict[str, int]:
     table_counts: dict[str, int] = {}
     writer = replace_rows_incremental if incremental else replace_rows
     for table in AGGREGATE_TABLE_ORDER:
+        if table == "agg_org_daily_activity" and not include_org_activity:
+            continue
         rows = result.rows_by_table.get(table, [])
         source_table = CONDITIONAL_AGGREGATE_SOURCES.get(table) if incremental else None
         source_frame = result.raw_tables.get(source_table) if source_table else None
         if source_frame is not None and not source_frame.empty:
-            periods, _period_columns = extract_raw_periods(source_table, source_frame)
+            if table == "agg_org_daily_activity":
+                periods = extract_org_activity_periods(source_frame)
+            else:
+                periods, _period_columns = extract_raw_periods(source_table, source_frame)
             if not periods:
                 raise RawIncrementalWriteError(
                     f"conditional aggregate {table} has no recognizable source year/month period"
@@ -337,8 +351,28 @@ def replace_raw_tables(conn, result: ExcelPipelineResult, *, incremental: bool) 
 
 
 def write_excel_pipeline_result(conn, result: ExcelPipelineResult, *, incremental: bool) -> dict[str, int]:
-    table_counts = replace_aggregate_rows(conn, result, incremental=incremental)
+    performance = result.raw_tables.get("performance")
+    refresh_activity = performance is not None and (not incremental or not performance.empty)
+    if refresh_activity:
+        if incremental:
+            effective_columns = set(raw_table_columns(conn, "performance")) | set(performance.columns)
+            activity_columns = [column for column in ACTIVITY_SOURCE_COLUMNS if column in effective_columns]
+            # Validate before any writes. pandas raw-table writes may commit the
+            # caller's transaction, so a newly unavailable business date must
+            # fail here, not during the post-write activity refresh.
+            _read_org_activity_rows(conn, source_columns=activity_columns)
+            aggregate_org_daily_activity(performance.reindex(columns=activity_columns))
+        else:
+            aggregate_org_daily_activity(performance)
+    table_counts = replace_aggregate_rows(
+        conn, result, incremental=incremental, include_org_activity=not refresh_activity,
+    )
     table_counts.update(replace_raw_tables(conn, result, incremental=incremental))
+    if refresh_activity:
+        # The persisted raw schema and replacement scope can differ from the
+        # uploaded frame (including date-column priority changes). Recompute
+        # only the new evidence table from the actual resulting source rows.
+        table_counts["agg_org_daily_activity"] = replace_org_activity_from_raw(conn)
     return table_counts
 
 

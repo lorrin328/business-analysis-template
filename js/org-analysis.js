@@ -294,6 +294,44 @@
       return Math.round(n).toLocaleString('zh-CN');
     }
 
+    function escapeOrgText(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[char]);
+    }
+
+    function getOrgZeroStreakSnapshot(dim, months) {
+      const streak = orgKpiData?.zeroStreak;
+      if (!streak) return null;
+      if (dim === 'year') return streak.year || null;
+      // 挂零天数是截止日状态，多选月份取最后一个月的快照，不作累加。
+      const selected = Array.isArray(months) ? months.map(Number).filter(month => Number.isInteger(month) && month >= 1 && month <= 12) : [];
+      return selected.length ? streak.month?.[String(Math.max(...selected))] || null : null;
+    }
+
+    function orgZeroStreakCell(result, snapshot) {
+      const validDays = Number.isInteger(result?.days) && result.days >= 0;
+      const text = validDays && result.status === 'ok' ? String(result.days)
+        : validDays && result.status === 'lower_bound' ? `≥${result.days}` : '—';
+      const details = [
+        `截止日：${snapshot?.cutoff || '待确认'}`,
+        '按业绩归属日的新增承保期交保费判断，犹退不抵扣承保出单',
+        `最近出单日：${result?.lastPositiveDate || '未观察到'}`,
+        `观察起始日：${result?.startDate || '待确认'}`
+      ];
+      if (result?.status === 'lower_bound') details.push('历史覆盖有限，实际连续挂零天数可能更长');
+      if (result?.reason) details.push(result.reason);
+      if (snapshot?.warning) details.push(snapshot.warning);
+      if (!result) details.push('暂无可用挂零数据');
+      return `<td class="org-zero-streak" title="${escapeOrgText(details.join('；'))}">${text}</td>`;
+    }
+
+    function orgZeroStreakNote(snapshot) {
+      const cutoff = snapshot?.cutoff || '待确认';
+      const warning = snapshot?.warning || '暂无可用挂零数据';
+      return `<p class="org-zero-streak-note" title="${escapeOrgText(warning)}" style="margin:0;padding:10px 12px;font-size:12px;line-height:1.6;color:var(--text-secondary);white-space:normal;overflow-wrap:anywhere;max-width:100%;box-sizing:border-box;">连续挂零截至 ${escapeOrgText(cutoff)}：按期交新增承保及业绩归属日判断，犹退不抵消出单；自然日连续，跨月不清零。≥ 为至少天数，— 为数据或开展状态待核。详细口径见数值提示。</p>`;
+    }
+
     function rateCell(rate) {
       if (rate == null) return '<td>-</td>';
       const progress = calcOrgTimeProgressPercent(orgKpiData?.year);
@@ -310,6 +348,7 @@
     function aggregateOrgRows(org, group, dim, periodIdx) {
       const sum = {
         org, channel: orgExpanded ? '小计' : '', isSubtotal: orgExpanded, isOrgSummary: !orgExpanded,
+        zeroStreak: getOrgZeroStreakSnapshot(dim, periodIdx)?.orgs?.[org] || null,
         qjTarget: 0, qjActual: 0, qjRate: null, qjYoy: null,
         valueTarget: 0, valueActual: 0, valueRate: null, valueYoy: null,
         longtermTarget: 0, longtermActual: 0, longtermRate: null,
@@ -358,6 +397,7 @@
       const globalRangeActive = orgKpiData?.period?.rangeType && orgKpiData.period.rangeType !== 'ytd';
       const dim = globalRangeActive ? 'year' : orgTimeDim;
       const selectedMonths = dim === 'year' ? null : getOrgSelectedMonths();
+      const zeroStreakSnapshot = getOrgZeroStreakSnapshot(dim, selectedMonths);
       const dimControls = document.getElementById('orgDimBtns');
       const monthControl = document.getElementById('orgMonthMultiSelect');
       if (dimControls) {
@@ -385,19 +425,22 @@
           const valuePrev = getOrgPrevActual(org, ch, 'value', dim, periodIdx);
 
           // 本年或去年同期任一方有数据，都要进入同比分母，避免上一年有业绩、今年为0的行被漏算。
-          if (qjActual === 0 && valueActual === 0 && longtermActual === 0 && p10Actual === 0 && annuityActual === 0 && protectionActual === 0 && qjPrev === 0 && valuePrev === 0) {
+          const zeroStreak = zeroStreakSnapshot?.projects?.[`${org}|${ch}`] || null;
+          const hasMetricData = !(qjActual === 0 && valueActual === 0 && longtermActual === 0 && p10Actual === 0 && annuityActual === 0 && protectionActual === 0 && qjPrev === 0 && valuePrev === 0);
+          if (!hasMetricData && (!zeroStreak || zeroStreak.status === 'not_observed')) {
             return;
           }
 
-          const qjTarget = getOrgTarget(org, ch, 'qj', dim, periodIdx);
-          const valueTarget = getOrgTarget(org, ch, 'value', dim, periodIdx);
-          const longtermTarget = getOrgTarget(org, ch, 'longterm', dim, periodIdx);
-          const p10Target = getOrgTarget(org, ch, '10year', dim, periodIdx);
-          const annuityTarget = getOrgTarget(org, ch, 'annuity', dim, periodIdx);
-          const protectionTarget = getOrgTarget(org, ch, 'protection', dim, periodIdx);
+          // 仅为挂零追踪保留的行不改变既有指标的目标汇总口径。
+          const qjTarget = hasMetricData ? getOrgTarget(org, ch, 'qj', dim, periodIdx) : 0;
+          const valueTarget = hasMetricData ? getOrgTarget(org, ch, 'value', dim, periodIdx) : 0;
+          const longtermTarget = hasMetricData ? getOrgTarget(org, ch, 'longterm', dim, periodIdx) : 0;
+          const p10Target = hasMetricData ? getOrgTarget(org, ch, '10year', dim, periodIdx) : 0;
+          const annuityTarget = hasMetricData ? getOrgTarget(org, ch, 'annuity', dim, periodIdx) : 0;
+          const protectionTarget = hasMetricData ? getOrgTarget(org, ch, 'protection', dim, periodIdx) : 0;
 
           rows.push({
-            org, channel: ch,
+            org, channel: ch, zeroStreak, streakOnly: !hasMetricData,
             qjTarget, qjActual, qjRate: calcOrgRate(qjActual, qjTarget), qjYoy: calcOrgYoy(qjActual, qjPrev),
             valueTarget, valueActual, valueRate: calcOrgRate(valueActual, valueTarget), valueYoy: calcOrgYoy(valueActual, valuePrev),
             longtermTarget, longtermActual, longtermRate: calcOrgRate(longtermActual, longtermTarget),
@@ -408,14 +451,9 @@
         });
       });
 
-      if (rows.length === 0) {
-        wrapper.innerHTML = '<div class="org-empty">暂无机构数据，请上传含"销售机构名称"和"业务模式"的Excel</div>';
-        return;
-      }
-
       // 按机构分组，添加小计行
       let displayRows = [];
-      const orgGroups = {};
+      const orgGroups = Object.fromEntries(orgs.map(org => [org, []]));
       rows.forEach(r => {
         if (!orgGroups[r.org]) orgGroups[r.org] = [];
         orgGroups[r.org].push(r);
@@ -426,7 +464,7 @@
         const periodIdx = selectedMonths;
         if (orgExpanded) {
           group.forEach(r => displayRows.push(r));
-          if (group.length > 1) displayRows.push(aggregateOrgRows(org, group, dim, periodIdx));
+          displayRows.push(aggregateOrgRows(org, group, dim, periodIdx));
         } else {
           displayRows.push(aggregateOrgRows(org, group, dim, periodIdx));
         }
@@ -475,17 +513,19 @@
         ? (orgKpiData?.period?.label || '自定义区间')
         : dim === 'year' ? '年度' : `${selectedMonths.join('、')}月`;
       const html = `
+        ${orgZeroStreakNote(zeroStreakSnapshot)}
         <table class="org-table">
           <thead>
             <tr>
               <th rowspan="2" style="min-width:80px;">机构</th>
               <th rowspan="2" style="min-width:60px;">${orgExpanded ? '业务模式' : '维度'}</th>
-              <th colspan="4" class="group-header">期交保费 (${periodLabel})</th>
+              <th colspan="4" class="group-header">期交保费 (${escapeOrgText(periodLabel)})</th>
               <th colspan="4" class="group-header">价值保费</th>
               <th colspan="3" class="group-header">长险期交</th>
               <th colspan="3" class="group-header">10年期产品</th>
               <th colspan="3" class="group-header">商保年金</th>
               <th colspan="3" class="group-header">保障类产品</th>
+              <th rowspan="2" class="group-header" style="min-width:100px;">连续挂零（天）</th>
             </tr>
             <tr>
               <th>目标(万)</th><th>达成(万)</th><th>达成率</th><th>同比</th>
@@ -499,8 +539,8 @@
           <tbody>
             ${displayRows.map(r => `
               <tr ${r.isSubtotal ? 'style="background:rgba(255,255,255,0.03);"' : ''} ${r.isTotal ? 'class="total-row"' : ''}>
-                <td style="${r.isTotal ? 'font-weight:600;' : ''}">${r.org}</td>
-                <td class="${r.channel !== '小计' && r.channel !== '' && orgExpanded ? 'sub-channel' : ''}" style="${r.isTotal||r.isSubtotal||r.isOrgSummary?'font-weight:600;':''}">${r.channel || '机构汇总'}</td>
+                <td style="${r.isTotal ? 'font-weight:600;' : ''}">${escapeOrgText(r.org)}</td>
+                <td class="${r.channel !== '小计' && r.channel !== '' && orgExpanded ? 'sub-channel' : ''}" style="${r.isTotal||r.isSubtotal||r.isOrgSummary?'font-weight:600;':''}"${r.streakOnly ? ' title="本行仅用于挂零追踪，不计入既有指标汇总"' : ''}>${escapeOrgText(r.channel || '机构汇总')}</td>
                 <td>${fmtOrgNum(r.qjTarget)}</td>
                 <td>${fmtOrgNum(r.qjActual)}</td>
                 ${rateCell(r.qjRate)}
@@ -521,6 +561,7 @@
                 <td>${fmtOrgNum(r.protectionTarget)}</td>
                 <td>${fmtOrgNum(r.protectionActual)}</td>
                 ${rateCell(r.protectionRate)}
+                ${orgZeroStreakCell(r.zeroStreak, zeroStreakSnapshot)}
               </tr>
             `).join('')}
             <tr class="total-row">
@@ -545,6 +586,7 @@
               <td>${fmtOrgNum(totalRow.protectionTarget)}</td>
               <td>${fmtOrgNum(totalRow.protectionActual)}</td>
               ${rateCell(totalRow.protectionRate)}
+              <td class="org-zero-streak" title="连续挂零天数不作合计">—</td>
             </tr>
           </tbody>
         </table>

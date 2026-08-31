@@ -3,6 +3,7 @@ import json
 import sqlite3
 from db.connection import get_db
 from db.schema import init_db
+from services.org_zero_streak import get_org_zero_streak
 from services.cutoff_policy import (
     build_period_context,
     channel_cutoff_filter_sql,
@@ -262,4 +263,5 @@ def get_org_kpi_data(
             'value_prev': org_value_prev,
             'as_of': as_of_context,
             'period': period_context,
+            'zeroStreak': get_org_zero_streak(conn, year, period_context.get('endDate')),
         }
