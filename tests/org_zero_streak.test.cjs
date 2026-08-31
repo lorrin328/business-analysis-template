@@ -58,7 +58,7 @@ test('最后指标为连续挂零，收起显示机构整体结果且十家机�
   const html = harness().render();
   assert.ok(html.indexOf('连续挂零（天）') > html.indexOf('保障类产品'));
   const rows = tableRows(html);
-  assert.equal(rows.length, 11);
+  assert.equal(rows.length, 14);
   assert.equal(rows.find(row => row.cells[0] === '上海').cells.at(-1), '3');
   assert.equal(rows.find(row => row.cells[0] === '湖北').cells.at(-1), '—');
   assert.equal(rows.at(-1).cells.at(-1), '—');
@@ -121,7 +121,7 @@ test('兼容旧API和缺失月快照，不把缺失数据当0，也不回退到�
   const payload = data();
   delete payload.zeroStreak;
   const rows = tableRows(harness(payload).render());
-  assert.equal(rows.length, 11);
+  assert.equal(rows.length, 14);
   assert.ok(rows.every(row => row.cells.at(-1) === '—'));
   const monthRows = tableRows(harness().render("orgTimeDim = 'month'; orgSelectedMonths.month = [6]"));
   assert.ok(monthRows.every(row => row.cells.at(-1) === '—'));
@@ -166,4 +166,49 @@ test('非法天数不能展示为有效统计', () => {
     '辽宁': result(3, 'unknown'), '山东': result(null),
   });
   assert.ok(tableRows(harness(payload).render()).every(row => row.cells.at(-1) === '—'));
+});
+
+test('业务小计固定在合计前，跨机构重算达成率和同比，展开不重复汇总', () => {
+  const payload = data();
+  payload.perf = {
+    '上海|OTO': {qj_premium: 100, product_10year: 20, product_annuity: 30, product_protection: 40},
+    '湖北|OTO': {qj_premium: 300, product_10year: 60, product_annuity: 90, product_protection: 120},
+    '四川|OTO': {qj_premium: 0},
+    '上海|证保': {qj_premium: 50}, '湖北|蚁桥': {qj_premium: -10},
+  };
+  payload.perf_prev = {'上海|OTO': {qj_premium: 50}, '湖北|OTO': {qj_premium: 250}, '四川|OTO': {qj_premium: 100}};
+  payload.value = {'上海|OTO': 10, '湖北|OTO': 30};
+  payload.value_prev = {'上海|OTO': 5, '湖北|OTO': 15};
+  payload.longterm = {'上海|OTO': 80, '湖北|OTO': 240};
+  const targets = {
+    '上海|OTO': {qjPremium: {year: 100}, value: {year: 20}, tenYear: {year: 40}, shangbao: {year: 60}, baozhang: {year: 80}},
+    '湖北|OTO': {qjPremium: {year: 900}, value: {year: 80}, tenYear: {year: 160}, shangbao: {year: 240}, baozhang: {year: 320}},
+  };
+  const h = harness(payload, targets);
+  const rows = tableRows(h.render());
+  assert.deepEqual(rows.slice(-4).map(r => r.cells[0]), ['OTO小计', '证保小计', '蚁桥小计', '合计']);
+  assert.deepEqual(rows.at(-4).cells, ['OTO小计','1,000','400','40.0%','0.0%','100','40','40.0%','+100.0%','1,000','320','32.0%','200','80','40.0%','300','120','40.0%','400','160','40.0%','—']);
+  assert.equal(rows.at(-2).cells[2], '-10');
+  assert.equal(rows.at(-1).cells[2], '440');
+  assert.match(rows.at(-4).html, /连续挂零天数不作业务小计/);
+  assert.deepEqual(tableRows(h.render('orgExpanded = true')).slice(-4).map(r => r.cells), rows.slice(-4).map(r => r.cells));
+  const filtered = tableRows(h.render("selectedOrgs = ['上海']"));
+  assert.equal(filtered.at(-4).cells[2], '100');
+  assert.equal(filtered.at(-4).cells[3], '100.0%');
+  assert.equal(filtered.at(-4).cells[4], '+100.0%');
+  assert.equal(filtered.at(-1).cells[2], '150');
+  assert.equal(filtered.at(-2).cells[3], '-');
+});
+
+test('业务小计遵循月度、季度多选及全局自定义范围，缺目标不伪造达成率', () => {
+  const payload = data();
+  payload.perf = {'上海|OTO': {year: {qj_premium: 100}, month: {'7': {qj_premium: 30}, '8': {qj_premium: 70}}}};
+  payload.perf_prev = {'上海|OTO': {year: {qj_premium: 80}, month: {'7': {qj_premium: 20}, '8': {qj_premium: 60}}}};
+  const months = Array(12).fill(0); months[6] = 50; months[7] = 150;
+  const h = harness(payload, {'上海|OTO': {qjPremium: {year: 1000, month: months}}});
+  const summary = state => tableRows(h.render(state)).at(-4).cells;
+  assert.deepEqual(summary("orgTimeDim = 'month'; orgSelectedMonths.month = [7]").slice(1,5), ['50','30','60.0%','+50.0%']);
+  assert.deepEqual(summary('orgSelectedMonths.month = [7,8]').slice(1,5), ['200','100','50.0%','+25.0%']);
+  assert.deepEqual(summary("orgTimeDim = 'quarter'; orgSelectedMonths.quarter = [7,8]").slice(1,5), ['200','100','50.0%','+25.0%']);
+  assert.deepEqual(summary("orgKpiData.period = {rangeType: 'custom', targetMode: 'none'}").slice(1,5), ['-','100','-','+25.0%']);
 });
