@@ -4,6 +4,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js 18+ is required for tax calculator tests; install it before running the test suite." >&2
+  exit 1
+fi
+node -e "if (Number(process.versions.node.split('.')[0]) < 18) { console.error('Node.js 18+ is required for tests'); process.exit(1); }"
+
 if [ -n "${PYTHON:-}" ]; then
   PYTHON_BIN="$PYTHON"
 elif command -v python3.12 >/dev/null 2>&1; then

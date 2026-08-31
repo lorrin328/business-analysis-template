@@ -17,6 +17,14 @@ function Invoke-Checked {
   }
 }
 
+Write-Host "== preflight: Node.js test runtime =="
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+  throw "Node.js 18+ is required for the tax calculator tests. Install it before running preflight; the production app does not require Node.js."
+}
+Invoke-Checked -Name "Node.js version" -Command {
+  node -e "if (Number(process.versions.node.split('.')[0]) < 18) { console.error('Node.js 18+ is required for tests'); process.exit(1); }"
+}
+
 Write-Host "== preflight: required files =="
 @(
   "backend\main.py",

@@ -520,7 +520,7 @@ sudo -u www-data /opt/business-analysis/backend/venv/bin/python /opt/business-an
 
 ## 本地测试环境
 
-项目代码和部署脚本要求 **Python 3.10+**。本地建议使用 `scripts/test.sh` 运行测试，它会优先选择 `python3.12`、`python3.11`、`python3.10`，并在版本不符合时直接停止。
+项目代码和部署脚本要求 **Python 3.10+**。完整测试及发布前检查还要求 **Node.js 18+**（用于税优测算的浏览器计算测试，无需npm依赖），运行前先确认`node --version`满足要求。Node.js仅是测试依赖，FastAPI生产服务和Docker运行镜像不依赖Node.js。本地建议使用 `scripts/test.sh` 运行测试，它会优先选择 `python3.12`、`python3.11`、`python3.10`，并在版本不符合时直接停止。
 
 ```bash
 bash scripts/test.sh

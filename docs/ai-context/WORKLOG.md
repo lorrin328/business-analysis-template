@@ -1,5 +1,16 @@
 # 工作日志
 
+## 2026-08-31 v1.0.143 税优测算GitHub同步与Ubuntu保库发布
+
+- 用户明确授权同步GitHub及部署Ubuntu。功能PR #21已合并至master，生产应用提交为`de4b2ceccc213f1c32f73a6b889466350b7cf524`；Build Docker image运行`33350804820`成功。隔离发布副本完整pytest 425项通过，包含9组Node计算测试。
+- 可信归档SHA256为`c9098e0b06877cf90707cf253e516adbe3e366f4ef0527ffd947e64d84e06123`；仅含已提交代码，无Excel、SQLite、真实凭据、临时文件或同步冲突副本。
+- Ubuntu部署于北京时间10:30:31开始、10:33:44完成；先在线备份，后短暂停服同步。`REBUILD_DATABASE=0 REBUILD_AGGREGATES=auto`，复用既有venv，无新增强制聚合迁移，未重建数据库或聚合。
+- 备份为`/opt/business-analysis-backups/business_data.db.20260831_103031`，备份`integrityCheck`和`quickCheck`均为`ok`；旧版代码回滚归档保存在同目录`code-v1.0.142-before-v1.0.143.tar.gz`。
+- 正式公网`https://kpi.bcyt.tech:30443/tax-calculator`及FastAPI本机页面、两份JS、首页均200且文件逐字节匹配；应用和页面版本均为v1.0.143。Ubuntu备用nginx页面200、`nginx -t`通过、主服务和nginx均active。
+- 生产库53表，核心业务行数、导入批次、目标配置摘要和认证后KPI摘要与发布前一致，运行库`quick_check=ok`。匿名业务/AI接口401，Git/数据库/环境配置路径404，发布后主应用错误日志为0。
+- 公网浏览器演示健康险节税480元及跨档142元均通过，浏览器无错误。自动审查指出完整测试所需Node.js依赖说明不足，已补充Node.js 18+测试环境说明和Windows/Linux预检查，不增加生产运行依赖。
+- 既有问题：`market-analysis.service`发布前即为failed，发布后保持该状态，本次未启动研究或改动其业务配置。原工作区无关文档修改与损坏的历史Codex检查点引用保留，发布使用独立干净副本。
+
 ## 2026-08-31 税优产品年度测算模块（本地完成，未发布）
 
 - 新增`/tax-calculator`与主看板“税优测算”入口；主要输入为年收入、其他税前扣除及个养扣除。税优健康险默认按全年2,400元扣除情景试算，可展开修改本年实际可扣除金额。

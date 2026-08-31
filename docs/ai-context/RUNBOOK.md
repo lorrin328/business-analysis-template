@@ -122,6 +122,7 @@ GET /api/customer-analysis/overview?year=2026    -> 管理员200
 ### 前置工具
 
 - Python 3.10+
+- Node.js 18+（完整pytest中的税优计算测试使用；无需npm依赖；仅运行生产服务不需要）
 - Git
 - uv
 
@@ -129,6 +130,7 @@ GET /api/customer-analysis/overview?year=2026    -> 管理员200
 
 ```powershell
 python --version
+node --version
 uv --version
 git --version
 ```

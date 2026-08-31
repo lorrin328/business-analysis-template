@@ -4,6 +4,13 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cd "$APP_DIR"
 
+echo "== preflight: Node.js test runtime =="
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js 18+ is required for tax calculator tests; install it before preflight. The production app does not require Node.js." >&2
+  exit 1
+fi
+node -e "if (Number(process.versions.node.split('.')[0]) < 18) { console.error('Node.js 18+ is required for tests'); process.exit(1); }"
+
 echo "== preflight: python version =="
 python3 - <<'PY'
 import sys
