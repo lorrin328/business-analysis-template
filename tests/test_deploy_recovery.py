@@ -111,7 +111,8 @@ def test_deployment_orders_frozen_backup_before_mutation_and_never_auto_accepts(
     mutate = script.index('rsync -a --delete')
     assert stop < freeze < mutate
     assert script.index('flock -n 8') < stop
-    assert script.count('BUSINESS_ANALYSIS_LOCK="$DEPLOY_REBUILD_LOCK" "$APP_DIR/backend/venv/bin/python"') == 2
+    for command in ("rebuild_from_excels.py", "rebuild_aggregates_from_raw_tables.py", "rebuild_customer_facts.py"):
+        assert f'BUSINESS_ANALYSIS_LOCK="$DEPLOY_REBUILD_LOCK" "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/{command}"' in script
     assert 'get("status") != "ok"' in script
     assert 'python3 "$RECOVERY_TOOL" accept-release' not in script
 

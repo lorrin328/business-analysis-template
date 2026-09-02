@@ -315,11 +315,31 @@ elif [ "$SHOULD_REBUILD_AGGREGATES" = "1" ]; then
   if [ "$DB_EXISTED_BEFORE" = "1" ]; then
     echo "检测到已有生产数据库，默认不从 Excel 全量重建；如需强制重建请设置 REBUILD_DATABASE=1"
   fi
-  echo "正在从SQLite原始明细表重建聚合..."
-  BUSINESS_ANALYSIS_LOCK="$DEPLOY_REBUILD_LOCK" "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_aggregates_from_raw_tables.py" || {
-    echo "ERROR: SQLite 原始表重建失败，部署已中止，避免以空聚合或旧聚合继续上线。" >&2
-    restore_service_on_error 1
-  }
+  REBUILD_SCOPE="$("$APP_DIR/backend/venv/bin/python" "$APP_DIR/deploy/deployment_plan.py" plan \
+    --database "$DB_PATH" --snapshot "$MIGRATION_SNAPSHOT" \
+    --database-existed "$DB_EXISTED_BEFORE" --excel-count "$EXCEL_COUNT" \
+    --rebuild-database "$REBUILD_DATABASE" --rebuild-aggregates "$REBUILD_AGGREGATES" \
+    --format scope)"
+  case "$REBUILD_SCOPE" in
+    customer_facts)
+      echo "本次强制迁移仅涉及客户事实，正在单独重建客户事实及索引..."
+      BUSINESS_ANALYSIS_LOCK="$DEPLOY_REBUILD_LOCK" "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_customer_facts.py" || {
+        echo "ERROR: 客户事实重建失败，部署已中止。" >&2
+        restore_service_on_error 1
+      }
+      ;;
+    full)
+      echo "正在从SQLite原始明细表重建聚合..."
+      BUSINESS_ANALYSIS_LOCK="$DEPLOY_REBUILD_LOCK" "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_aggregates_from_raw_tables.py" || {
+        echo "ERROR: SQLite 原始表重建失败，部署已中止，避免以空聚合或旧聚合继续上线。" >&2
+        restore_service_on_error 1
+      }
+      ;;
+    *)
+      echo "ERROR: 强制重建迁移没有有效的执行范围，部署已中止。" >&2
+      restore_service_on_error 1
+      ;;
+  esac
 else
   echo "保留现有生产库及聚合结果，跳过耗时的全量聚合重建。"
 fi

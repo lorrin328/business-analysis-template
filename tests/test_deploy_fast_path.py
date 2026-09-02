@@ -43,3 +43,13 @@ def test_service_uses_python_module_after_candidate_venv_is_moved():
     unit = (ROOT / "deploy" / "systemd.service").read_text(encoding="utf-8")
     assert "venv/bin/python -m uvicorn main:app" in unit
     assert "venv/bin/uvicorn" not in unit
+
+
+def test_scoped_customer_rebuild_keeps_migration_gate_and_write_lock():
+    aggregate_branch = DEPLOY_SCRIPT.index('elif [ "$SHOULD_REBUILD_AGGREGATES" = "1" ]')
+    scope = DEPLOY_SCRIPT.index('case "$REBUILD_SCOPE" in')
+    customer = DEPLOY_SCRIPT.index('"$APP_DIR/backend/rebuild_customer_facts.py"')
+    full = DEPLOY_SCRIPT.index('"$APP_DIR/backend/rebuild_aggregates_from_raw_tables.py"')
+    assert aggregate_branch < scope < customer < full
+    assert '--format scope' in DEPLOY_SCRIPT
+    assert 'BUSINESS_ANALYSIS_LOCK="$DEPLOY_REBUILD_LOCK" "$APP_DIR/backend/venv/bin/python" "$APP_DIR/backend/rebuild_customer_facts.py"' in DEPLOY_SCRIPT

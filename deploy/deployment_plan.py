@@ -11,6 +11,10 @@ from pathlib import Path
 
 TRUE_VALUES = {"1", "true", "yes", "force"}
 FALSE_VALUES = {"0", "false", "no", "skip", "none"}
+CUSTOMER_FACT_MIGRATIONS = frozenset({
+    "20260902_customer_fact_consistency",
+    "20260902_customer_alias_exact_fallback",
+})
 
 
 @dataclass(frozen=True)
@@ -102,6 +106,23 @@ def _load_snapshot(path: str | Path) -> tuple[str, ...]:
     return tuple(payload)
 
 
+def rebuild_scope(plan: DeploymentPlan, *, rebuild_database: str, rebuild_aggregates: str) -> str:
+    """Narrow only explicitly known customer migrations; unknown work stays full."""
+    database_mode = _normalize_mode(rebuild_database, allow_excel_aliases=True)
+    aggregate_mode = _normalize_mode(rebuild_aggregates)
+    if plan.rebuild_from_excel:
+        return "excel"
+    if not plan.rebuild_aggregates:
+        return "none"
+    if (
+        database_mode != "force" and aggregate_mode != "force"
+        and plan.new_required_migrations
+        and set(plan.new_required_migrations).issubset(CUSTOMER_FACT_MIGRATIONS)
+    ):
+        return "customer_facts"
+    return "full"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -116,7 +137,7 @@ def main() -> None:
     plan.add_argument("--excel-count", type=int, required=True)
     plan.add_argument("--rebuild-database", default="auto")
     plan.add_argument("--rebuild-aggregates", default="auto")
-    plan.add_argument("--format", choices=("json", "lines"), default="json")
+    plan.add_argument("--format", choices=("json", "lines", "scope"), default="json")
     args = parser.parse_args()
 
     if args.command == "snapshot":
@@ -138,7 +159,9 @@ def main() -> None:
         )
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
-    if args.format == "lines":
+    if args.format == "scope":
+        print(rebuild_scope(result, rebuild_database=args.rebuild_database, rebuild_aggregates=args.rebuild_aggregates))
+    elif args.format == "lines":
         print("1" if result.rebuild_from_excel else "0")
         print("1" if result.rebuild_aggregates else "0")
         print(",".join(result.new_required_migrations) or "-")
