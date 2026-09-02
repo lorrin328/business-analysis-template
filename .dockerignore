@@ -4,10 +4,11 @@
 !.dockerignore
 !VERSION
 !backend/
-!backend/**/
+backend/**
 !backend/**/*.py
 !backend/requirements.txt
 !js/
+js/**
 !js/*.js
 !经营分析模板.html
 !branch-analysis.html
