@@ -434,6 +434,15 @@ def _seed_customer_incremental_import():
                 ("P-NEW", None, None, None, 20000, None, None, "unmatched", 0, batch_id),
             ],
         )
+        # Incremental refresh now rebuilds facts from authoritative synthetic raw rows.
+        import pandas as pd
+        from services.import_safety import append_raw_frame
+        append_raw_frame(conn, "performance", pd.DataFrame([
+            {"年月": "2026-07", "年月日": "2026-07-10", "业务模式": "OTO", "销售机构名称": "上海",
+             "投保单号": "P-OLD", "投保人id": "C-OLD", "期交保费": 10000, "承保件数": 1, "长短险": "长期"},
+            {"年月": "2026-07", "年月日": "2026-07-10", "业务模式": "OTO", "销售机构名称": "上海",
+             "投保单号": "P-NEW", "投保人id": "C-NEW", "期交保费": 20000, "承保件数": 1, "长短险": "长期"},
+        ]))
         conn.commit()
 
 
@@ -470,6 +479,10 @@ def test_customer_csv_preview_commit_refreshes_customer_domains(auth_db):
     import db.connection as connection
 
     _seed_customer_incremental_import()
+    with connection.get_db() as conn:
+        # A newly imported policy has raw premium but no pre-existing fact row.
+        conn.execute("DELETE FROM customer_policy_month_fact WHERE policy_no='P-NEW'")
+        conn.commit()
     client = TestClient(app)
     token = _login(client)["token"]
     headers = _headers(token)
@@ -542,6 +555,20 @@ def test_customer_import_blocks_identity_conflict_and_template_is_downloadable(a
     xlsx_template = client.get("/api/customer-analysis/import/template?format=xlsx", headers=headers)
     assert xlsx_template.status_code == 200
     assert xlsx_template.content.startswith(b"PK")
+
+
+def test_customer_import_preview_blocks_multiple_full_numbers_with_same_business_key(auth_db):
+    _seed_customer_incremental_import()
+    client = TestClient(app)
+    headers = _headers(_login(client)["token"])
+    rows = [
+        {"投保单号": number, "投保人id": "C-ALIASED", "导入时间": "2026-08-01",
+         "承保时间": "2026-07-10", "保单状态名称": "有效"}
+        for number in ("880012345678901", "990012345678901")
+    ]
+    preview = _upload_customer_job(client, headers, "synthetic-collision.csv", _customer_csv_bytes(rows))
+    assert preview["canImport"] is False
+    assert preview["conflictPolicies"] == 2
 
 
 def test_customer_xlsx_is_streamed_and_prepared_in_background(auth_db):

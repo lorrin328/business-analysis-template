@@ -14,6 +14,8 @@ from typing import Iterable, Iterator
 
 from openpyxl import load_workbook
 
+from services.customer_fact_refresh import policy_identity_sql, policy_key_sql, refresh_customer_facts
+
 
 PERFORMANCE_COLUMNS = [
     "年", "年季", "年月", "年月日", "销售机构名称", "项目名称", "业务模式", "人员工号",
@@ -218,13 +220,28 @@ class FullHistoryImporter:
         return total, repairs_total
 
     def _reconcile(self, batch_id: int) -> dict:
+        # Reconciliation must retain the same exact-only identities as customer facts.
+        # Stage collisions are included before the stage becomes the authoritative raw table.
+        self.conn.execute("DROP TABLE IF EXISTS temp.customer_reconcile_ambiguities")
+        self.conn.execute("CREATE TEMP TABLE customer_reconcile_ambiguities(policy_key TEXT PRIMARY KEY)")
+        self.conn.execute("INSERT INTO customer_reconcile_ambiguities SELECT policy_key FROM customer_policy_key_ambiguity")
+        for table in ("performance", "performance_full_stage"):
+            columns = {row[1] for row in self.conn.execute(f'PRAGMA table_info("{table}")')}
+            if "投保单号" in columns:
+                key = policy_key_sql('"投保单号"')
+                self.conn.execute(f"""INSERT OR IGNORE INTO customer_reconcile_ambiguities
+                    SELECT {key} FROM {table} WHERE {key} IS NOT NULL
+                    GROUP BY {key} HAVING COUNT(DISTINCT TRIM(CAST("投保单号" AS TEXT)))>1""")
+        def identity(expression):
+            return policy_identity_sql(expression, ambiguity_table="temp.customer_reconcile_ambiguities")
+        raw_key_expression = identity('"投保单号"')
         self.conn.execute("DROP TABLE IF EXISTS temp.existing_policy_keys")
         self.conn.execute("DROP TABLE IF EXISTS temp.source_policy_keys")
         existing_columns = {row[1] for row in self.conn.execute('PRAGMA table_info("performance")')}
         if "投保单号" in existing_columns:
             self.conn.execute(
                 f"""CREATE TEMP TABLE existing_policy_keys AS
-                    SELECT DISTINCT substr(TRIM("投保单号"), -13) AS policy_key,
+                    SELECT DISTINCT {identity('"投保单号"')} AS policy_key,
                            substr(CAST("年月" AS TEXT), 1, 7) AS period,
                            {TRANSFORM_LINE_SQL} AS business_line
                     FROM performance
@@ -237,7 +254,7 @@ class FullHistoryImporter:
         self.conn.execute("CREATE INDEX temp.ix_existing_policy_keys ON existing_policy_keys(period, business_line, policy_key)")
         self.conn.execute(
             f"""CREATE TEMP TABLE source_policy_keys AS
-                SELECT DISTINCT substr(TRIM(s."投保单号"), -13) AS policy_key,
+                SELECT DISTINCT {identity('s."投保单号"')} AS policy_key,
                        substr(CAST(s."年月" AS TEXT), 1, 7) AS period,
                        {TRANSFORM_LINE_SQL.replace('"业务模式"', 's."业务模式"')} AS business_line
                 FROM performance_full_stage s
@@ -247,7 +264,7 @@ class FullHistoryImporter:
         )
         self.conn.execute("CREATE INDEX temp.ix_source_policy_keys ON source_policy_keys(period, business_line, policy_key)")
         existing_policy_count = (
-            'COUNT(DISTINCT substr(TRIM("投保单号"),-13))' if "投保单号" in existing_columns else "0"
+            f'COUNT(DISTINCT {raw_key_expression})' if "投保单号" in existing_columns else "0"
         )
         existing = {
             (row[0], row[1]): row[2:]
@@ -261,7 +278,7 @@ class FullHistoryImporter:
             (row[0], row[1]): row[2:]
             for row in self.conn.execute(
                 f"""SELECT substr(CAST("年月" AS TEXT),1,7), {TRANSFORM_LINE_SQL}, COUNT(*),
-                           SUM(COALESCE("期交保费",0)), COUNT(DISTINCT substr(TRIM("投保单号"),-13))
+                           SUM(COALESCE("期交保费",0)), COUNT(DISTINCT {identity('"投保单号"')})
                     FROM performance_full_stage GROUP BY 1,2"""
             )
         }
@@ -300,6 +317,7 @@ class FullHistoryImporter:
             "matchedPolicies": sum(row[9] for row in overlap),
         }
         self.conn.commit()
+        self.conn.execute("DROP TABLE customer_reconcile_ambiguities")
         return result
 
     def _activate_performance(self) -> None:
@@ -356,6 +374,16 @@ class FullHistoryImporter:
         return total, source_cutoff
 
     def _build_customer_domains(self, batch_id: int) -> tuple[int, int]:
+        customer_key = policy_key_sql('"投保单号"')
+        ambiguous_source = self.conn.execute(
+            f"""SELECT 1 FROM customer_source_stage GROUP BY {customer_key}
+                HAVING {customer_key} IS NULL
+                    OR COUNT(DISTINCT TRIM(CAST("投保单号" AS TEXT)))>1
+                    OR COUNT(DISTINCT TRIM(COALESCE("投保人id",'')))>1
+                    OR MIN(TRIM(COALESCE("投保人id",'')))='' LIMIT 1"""
+        ).fetchone()
+        if ambiguous_source:
+            raise ValueError("新客户源存在模糊保单编号或客户归属缺失/冲突，已停止客户域更新，请核对源文件")
         for table in ("customer_policy_month_fact", "customer_master", "customer_policy_snapshot"):
             self.conn.execute(f"DELETE FROM {table}")
         status_group = """CASE
@@ -397,43 +425,7 @@ class FullHistoryImporter:
                 ) GROUP BY customer_id""",
             (batch_id,),
         )
-        self.conn.execute(
-            f"""INSERT INTO customer_policy_month_fact
-                (year, month, transaction_date, business_line, org, policy_no, customer_id,
-                 underwriting_time, first_customer_underwriting_time, is_longterm, qj_premium,
-                 gm_premium, zs_premium, value_premium, accepted_count, policy_status,
-                 termination_reason, status_group, customer_match, batch_id)
-                SELECT CAST(substr(CAST(p."年月" AS TEXT),1,4) AS INTEGER),
-                       CAST(substr(CAST(p."年月" AS TEXT),6,2) AS INTEGER),
-                       MIN(CAST(p."年月日" AS TEXT)), {TRANSFORM_LINE_SQL},
-                       TRIM(COALESCE(p."销售机构名称",'')), TRIM(p."投保单号"),
-                       COALESCE(s.customer_id, MAX(NULLIF(TRIM(p."投保人id"),''))),
-                       s.underwriting_time, m.first_underwriting_time,
-                       MAX(CASE
-                           WHEN TRIM(COALESCE(p."长短险",'')) IN
-                                ('长期','长险','长期险','长','一年期以上','一年以上','1年期以上') THEN 1
-                           WHEN TRIM(COALESCE(p."长短险",'')) IN
-                                ('短期','极短期','一年期','一年期以下','一年以下','1年期','1年期以下') THEN 0
-                           WHEN TRIM(COALESCE(p."产品代码",'')) IN ('4281','4281.0') THEN 1
-                           WHEN TRIM(COALESCE(p."长短险",''))=''
-                                AND (CAST(p."缴费年限" AS REAL)>=2
-                                     OR TRIM(COALESCE(p."缴费年限",'')) GLOB '*终身*'
-                                     OR TRIM(COALESCE(p."缴费年限",'')) GLOB '*长期*'
-                                     OR TRIM(COALESCE(p."缴费年限",'')) GLOB '*永久*') THEN 1
-                           ELSE 0 END),
-                       SUM(COALESCE(p."期交保费",0)), SUM(COALESCE(p."年化规保",0)),
-                       SUM(COALESCE(p."折算保费",0)), SUM(COALESCE(p."价值规保",0)),
-                       SUM(COALESCE(p."承保件数",0)), s.policy_status, s.termination_reason,
-                       COALESCE(s.status_group,'unmatched'), CASE WHEN s.policy_no IS NULL THEN 0 ELSE 1 END, ?
-                FROM performance p
-                LEFT JOIN customer_policy_snapshot s ON s.policy_no=TRIM(p."投保单号")
-                LEFT JOIN customer_master m ON m.customer_id=COALESCE(s.customer_id, TRIM(p."投保人id"))
-                WHERE {TRANSFORM_LINE_SQL} IN ('OTO','证保','蚁桥')
-                  AND length(CAST(p."年月" AS TEXT))>=7
-                  AND TRIM(COALESCE(p."投保单号",''))<>''
-                GROUP BY 1,2,4,5,6""",
-            (batch_id,),
-        )
+        refresh_customer_facts(self.conn, batch_id=batch_id)
         policy_count = self.conn.execute("SELECT COUNT(*) FROM customer_policy_snapshot").fetchone()[0]
         fact_count = self.conn.execute("SELECT COUNT(*) FROM customer_policy_month_fact").fetchone()[0]
         self.conn.execute("DROP TABLE customer_source_stage")

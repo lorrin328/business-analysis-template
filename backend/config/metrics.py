@@ -10,7 +10,7 @@ METRICS = {
         "name": "达成率",
         "unit": "%",
         "definition": "实绩 / 目标",
-        "uncalculable_rule": "目标为空或为 0",
+        "uncalculable_rule": "实绩缺失、目标为空或小于等于 0；日/自定义区间无对应正式目标",
     },
     "yoy": {
         "name": "同比",
@@ -21,7 +21,8 @@ METRICS = {
         "granularity_limitations": [
             "期交保费：支持日级精度（使用日累计表）。",
             "人力指标（活动率、人均保费、人均产能）：仅月级精度（人力基表无日维度）。",
-            "价值保费、长险期交、产品结构：仅月级精度（对应聚合表无日维度）。",
+            "长险期交、产品结构：支持日级精度，按各业务来源真实截止日计算；日表缺失时按接口 precision 标记的月级回退。",
+            "价值保费：仅月级精度（价值基表无日维度）。",
         ],
     },
     "mom": {
@@ -51,7 +52,7 @@ METRICS = {
     "avg_premium": {
         "name": "人均保费",
         "unit": "万元/人",
-        "definition": "月均新单保费 / 月均在职人力",
+        "definition": "所选范围转型期交保费 / 覆盖自然月数 / 覆盖月份月均在职人力",
         "uncalculable_rule": "月均在职人力为 0 或缺失",
     },
     "avg_productivity": {
@@ -102,7 +103,7 @@ DISPLAY_CONSTRAINTS = {
     },
     "target_fallback": {
         "description": "服务端目标返回 categories: null 时的降级策略",
-        "rule": "前端可使用默认目标保证页面可用，但必须标明'服务端尚未配置正式目标'",
+        "rule": "仅使用服务端正式目标计算达成率；未配置时保留实绩并标明目标待配置",
     },
 }
 
@@ -169,7 +170,7 @@ DASHBOARD_KPI_CARDS = [
         "targetCategory": None,
         "actualField": "avg_premium",
         "supportsBusinessBreakdown": True,
-        "definition": "月均新单保费 / 月均在职人力",
+        "definition": "所选范围转型期交保费 / 覆盖自然月数 / 覆盖月份月均在职人力",
     },
     {
         "code": "zhituo",

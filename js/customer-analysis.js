@@ -314,10 +314,23 @@
 
   function render() {
     clearCharts();
+    renderAliasCoverage(state.tab === 'import' ? null :
+      (state.tab === 'cohort' ? state.cohortData?.quality : state.data?.quality));
     renderKpis();
     const renderer = { overview: renderOverview, customer: renderCustomer, cohort: renderCohort, holding: renderHolding, policy: renderPolicy, quality: renderQuality, import: renderImport }[state.tab];
     el('content').innerHTML = renderer();
     drawCharts();
+  }
+
+  function renderAliasCoverage(quality) {
+    const notice = el('aliasCoverageNotice');
+    if (!notice) return;
+    const coverage = quality?.aliasCoverage;
+    const message = coverage?.status === 'warning' && typeof coverage.message === 'string'
+      ? coverage.message.trim() : '';
+    notice.classList.toggle('hidden', !message);
+    el('aliasCoverageMessage').textContent = message;
+    el('aliasCoverageScope').textContent = message && coverage.scope ? `适用范围：${coverage.scope}` : '';
   }
 
   function syncOptions(meta) {
@@ -352,6 +365,7 @@
 
   async function loadOverview() {
     const query = analysisQuery();
+    renderAliasCoverage(null);
     el('sourceLine').textContent = '正在读取生产数据…';
     const payload = await window.fetchJson(`/api/customer-analysis/overview?${query}`);
     state.data = window.unwrapApiResponse(payload);
@@ -468,6 +482,7 @@
 
   function showError(error) {
     clearCharts();
+    renderAliasCoverage(null);
     el('sourceLine').textContent = '读取失败';
     el('content').innerHTML = `<div class="panel empty">${esc(error.message)}</div>`;
   }

@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Literal
 
 from db.connection import get_db
+from services.customer_fact_refresh import alias_coverage, policy_match_sql
 
 
 PeriodType = Literal["year", "quarter", "month"]
@@ -162,7 +163,7 @@ def _raw_product_profile_sql(conn) -> str:
         SELECT k.policy_no, COALESCE({product_name}) product_name,
                COALESCE({product_type}) product_type
         FROM policy_keys k
-        LEFT JOIN performance p ON p."投保单号"=k.policy_no
+        LEFT JOIN performance p ON {policy_match_sql('p."投保单号"', 'k.policy_no')}
         GROUP BY k.policy_no
     )"""
 
@@ -401,6 +402,8 @@ def get_new_customer_cohort_analysis(
                 "SELECT DISTINCT org FROM customer_policy_month_fact WHERE TRIM(org)<>'' ORDER BY org"
             ).fetchall()
         ]
+        coverage = alias_coverage(conn)
+        coverage["scope"] = "全量客户事实表；未关联业绩不进入新客追踪"
 
     first_qj = float(summary_row["first_qj"] or 0)
     repeat_qj = float(summary_row["repeat_qj"] or 0)
@@ -440,7 +443,7 @@ def get_new_customer_cohort_analysis(
             "observationCompletenessRate": _ratio(completed_customers, tracked_customers),
         },
         "products": products, "lines": lines, "timeline": timeline, "cohortMonths": cohort_months,
-        "quality": {"definitions": definitions},
+        "quality": {"definitions": definitions, "aliasCoverage": coverage},
     }
 
 
@@ -466,6 +469,8 @@ def get_customer_analysis(
         cutoff = min(source_cutoff, date(year, 12, 31)) if year == source_cutoff.year else date(year, 12, 31)
         start, end, period_label = _window(year, cutoff, period_type, period_value)
         where_sql, params = _filters(start, end, business_line, org, policy_scope)
+        coverage = alias_coverage(conn, where_sql, params)
+        coverage["scope"] = "当前所选期间、业务线、机构及保单范围"
         segment = _segment_sql("f", start, end)
 
         premium_rows = conn.execute(
@@ -724,6 +729,7 @@ def get_customer_analysis(
         "cohorts": cohort_list,
         "terminationReasons": [{"reason": row["reason"], "policies": int(row["policies"])} for row in reason_rows],
         "quality": {
+            "aliasCoverage": coverage,
             "performanceRows": int(batch["performance_rows"]),
             "customerSourceRows": int(batch["customer_source_rows"]),
             "customerPolicyRows": int(batch["customer_policy_rows"]),

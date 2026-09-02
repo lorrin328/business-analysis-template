@@ -111,7 +111,8 @@ def test_ai_api_reads_kpi_snapshot_and_logs(auth_db, monkeypatch):
     snapshot = client.get("/api/ai/dashboard-snapshot?year=2026", headers=headers)
     assert snapshot.status_code == 200
     payload = snapshot.json()["data"]
-    assert payload["version"] == "v1.0.145"
+    from config.version import get_app_version
+    assert payload["version"] == get_app_version()
     assert "kpi" in payload
     assert "orgOverview" in payload
     assert "metricDefinitions" in payload

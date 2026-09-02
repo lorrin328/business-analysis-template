@@ -154,6 +154,7 @@ def _years_from_rows(table_rows: dict[str, list[dict]]) -> list[int]:
 
 def build_aggregate_rows_from_raw(
     raw_tables: dict[str, pd.DataFrame], *, include_org_activity: bool = True,
+    jingdai_config_map: dict | None = None,
 ) -> dict[str, list[dict]]:
     """Build all aggregate table rows from raw DataFrames."""
     perf = raw_tables.get("performance")
@@ -184,8 +185,8 @@ def build_aggregate_rows_from_raw(
         org_active_rows = []
 
     if jingdai is not None and not jingdai.empty:
-        table_rows["agg_jingdai"] = aggregate_jingdai(jingdai)
-        table_rows["agg_jingdai_daily"] = aggregate_jingdai_daily(jingdai)
+        table_rows["agg_jingdai"] = aggregate_jingdai(jingdai, config_map=jingdai_config_map)
+        table_rows["agg_jingdai_daily"] = aggregate_jingdai_daily(jingdai, config_map=jingdai_config_map)
         table_rows["agg_payment_period"].extend(aggregate_jingdai_payment_period(jingdai))
         table_rows["agg_payment_period_daily"].extend(aggregate_jingdai_payment_period_daily(jingdai))
         table_rows["agg_longterm_qj"].extend(aggregate_jingdai_longterm(jingdai))
@@ -284,6 +285,10 @@ def rebuild_aggregates_from_raw_tables() -> RebuildResult:
             conn.execute("DELETE FROM agg_org_daily_activity")
             replace_rows(conn, "agg_org_daily_activity", activity_rows)
             table_counts["agg_org_daily_activity"] = len(activity_rows)
+            from services.customer_fact_refresh import ensure_policy_key_indexes, refresh_customer_facts
+            ensure_policy_key_indexes(conn)
+            customer_refresh = refresh_customer_facts(conn)
+            table_counts["customer_policy_month_fact"] = customer_refresh["refreshedRows"]
             conn.commit()
             # Refresh planner statistics after a bulk rebuild so the first
             # dashboard request does not pay for stale index choices.

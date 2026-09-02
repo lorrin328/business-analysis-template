@@ -37,3 +37,9 @@ def test_main_service_health_is_restored_before_market_worker_sync():
     assert restart < health < market_sync
     assert 'systemctl reload nginx' in DEPLOY_SCRIPT
     assert 'systemctl restart nginx' not in DEPLOY_SCRIPT
+
+
+def test_service_uses_python_module_after_candidate_venv_is_moved():
+    unit = (ROOT / "deploy" / "systemd.service").read_text(encoding="utf-8")
+    assert "venv/bin/python -m uvicorn main:app" in unit
+    assert "venv/bin/uvicorn" not in unit

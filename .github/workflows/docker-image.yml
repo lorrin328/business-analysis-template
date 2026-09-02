@@ -16,7 +16,12 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
+  validation:
+    uses: ./.github/workflows/validation.yml
+    permissions:
+      contents: read
   build:
+    needs: validation
     runs-on: ubuntu-latest
 
     steps:

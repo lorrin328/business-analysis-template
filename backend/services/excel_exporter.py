@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from copy import deepcopy
+from metrics.dashboard import build_dashboard_metrics, number, period_target
+from metrics.formulas import safe_divide
 from io import BytesIO
 from typing import Any
 
@@ -43,18 +46,12 @@ THIN_BORDER = Border(
 
 
 def _safe_float(value: Any) -> float | None:
-    if value is None or value == "":
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    return number(value)
 
 
 def _rate(actual: float | None, target: float | None) -> float | None:
-    if actual is None or target in (None, 0):
-        return None
-    return actual / target
+    target = number(target)
+    return safe_divide(actual, target) if target is not None and target > 0 else None
 
 
 def _target_year(payload: dict | None, category: str, metric: str) -> float | None:
@@ -150,9 +147,9 @@ def _flatten_targets(payload: dict | None) -> list[list[Any]]:
             scope,
             org,
             metric,
-            _safe_float(values.get("year")) or 0,
-            *[(_safe_float(v) or 0) for v in (values.get("quarter") or [0, 0, 0, 0])[:4]],
-            *[(_safe_float(v) or 0) for v in (values.get("month") or [0] * 12)[:12]],
+            _safe_float(values.get("year")),
+            *[_safe_float(v) for v in (values.get("quarter") or [None] * 4)[:4]],
+            *[_safe_float(v) for v in (values.get("month") or [None] * 12)[:12]],
         ])
 
     for category_key, category in (payload.get("categories") or {}).items():
@@ -170,30 +167,40 @@ def _flatten_targets(payload: dict | None) -> list[list[Any]]:
 
 
 def _kpi_rows(kpi: dict, target_payload: dict | None) -> list[list[Any]]:
-    qj = kpi.get("qj_premium") or {}
-    value = kpi.get("value") or {}
-    hr = kpi.get("hr") or {}
-    qj_target = _target_year(target_payload, "qjPremium", "整体")
-    value_target = _target_year(target_payload, "value", "整体")
-    annuity_target = _target_year(target_payload, "shangbao", "整体")
-    protection_target = _target_year(target_payload, "baozhang", "整体")
-    tenyear_target = _target_year(target_payload, "tenYear", "整体")
-    cutoff = _format_cutoff(kpi)
+    cards = build_dashboard_metrics(kpi, target_payload)["cards"]
+    rows = []
+    for code, title in (("overall", "期交保费达成率"), ("value", "价值达成率"),
+                        ("activity", "长险活动率"), ("annuity", "商保年金达成率"),
+                        ("protection", "保障类产品达成率"), ("10year", "10年期产品达成率"),
+                        ("longterm", "长险期交达成率"), ("percapita", "人均保费")):
+        ratio_card = code not in ("activity", "percapita")
+        metric = cards[code]["overall"] if ratio_card else cards[code]
+        note = metric.get("coverage") or metric["definition"]
+        if metric.get("reason"):
+            note += "；" + metric["reason"]
+        if code == "percapita":
+            note += f"；转型业务，按{metric['coveredMonths']}个覆盖自然月折算"
+        cutoff = metric["cutoff"]
+        if isinstance(cutoff, dict):
+            cutoff = _format_cutoff(kpi)
+        rows.append([title, metric["numerator"] if ratio_card else metric["value"],
+                     metric["denominator"] if ratio_card else None,
+                     metric["value"] if ratio_card else None, note, cutoff])
+    return rows
 
-    active = sum((_safe_float(v.get("active")) or 0) for v in hr.values() if isinstance(v, dict))
-    avg = sum((_safe_float(v.get("avg")) or 0) for v in hr.values() if isinstance(v, dict))
-    activity_rate = _rate(active, avg)
 
-    return [
-        ["期交保费达成率", qj.get("total", 0), qj_target, _rate(qj.get("total", 0), qj_target), "经代+OTO+证保+蚁桥", cutoff],
-        ["价值达成率", round(sum((_safe_float(v) or 0) for v in value.values()), 2), value_target, _rate(round(sum((_safe_float(v) or 0) for v in value.values()), 2), value_target), "经代+OTO+证保+蚁桥；经代价值数据未接入时实绩为0", f"{kpi.get('year')}年{kpi.get('month')}月"],
-        ["长险活动率", activity_rate, None, None, "活动人力/月均在职人力", f"{kpi.get('year')}年{kpi.get('month')}月"],
-        ["商保年金达成率", kpi.get("annuity_total", 0), annuity_target, _rate(kpi.get("annuity_total", 0), annuity_target), "转型读取业绩基表标识；经代读取参数设置", f"{kpi.get('year')}年{kpi.get('month')}月"],
-        ["保障类产品达成率", kpi.get("protection_total", 0), protection_target, _rate(kpi.get("protection_total", 0), protection_target), "转型读取业绩基表社会保障型产品标识；经代读取参数设置", f"{kpi.get('year')}年{kpi.get('month')}月"],
-        ["10年期产品达成率", kpi.get("tenyear_total", 0), tenyear_target, _rate(kpi.get("tenyear_total", 0), tenyear_target), "转型10年及以上+经代10年及以上", f"{kpi.get('year')}年{kpi.get('month')}月"],
-        ["长险期交达成率", kpi.get("longterm_qj", 0), qj_target, _rate(kpi.get("longterm_qj", 0), qj_target), "长险期交，目标沿用期交保费目标", cutoff],
-        ["人均保费", None, None, None, "当前看板展示口径为转型业务，不含经代", cutoff],
-    ]
+def _targets_for_period(payload: dict | None, period: dict) -> dict | None:
+    """Adapt existing institution export lookup to the same selected target period."""
+    if not payload:
+        return None
+    result = deepcopy(payload)
+    for category in (result.get("categories") or {}).values():
+        for values in (category.get("metrics") or {}).values():
+            values["year"] = period_target(values, period)
+    for categories in (result.get("orgTargets") or {}).values():
+        for values in categories.values():
+            values["year"] = period_target(values, period)
+    return result
 
 
 def _org_rows(org_data: dict, target_payload: dict | None) -> list[list[Any]]:
@@ -259,10 +266,10 @@ def _payment_rows(payment_data: dict) -> list[list[Any]]:
 def _team_rows(platform: dict) -> list[list[Any]]:
     rows = []
     for r in platform.get("hr") or []:
-        start = _safe_float(r.get("start_headcount")) or 0
-        end = _safe_float(r.get("end_headcount")) or 0
-        avg = (start + end) / 2
-        active = _safe_float(r.get("active_headcount")) or 0
+        start = _safe_float(r.get("start_headcount"))
+        end = _safe_float(r.get("end_headcount"))
+        avg = (start + end) / 2 if start is not None and end is not None else None
+        active = _safe_float(r.get("active_headcount"))
         rows.append([r.get("month"), r.get("channel"), start, end, avg, active, _rate(active, avg)])
     return sorted(rows, key=lambda x: (x[0] or 0, str(x[1] or "")))
 
@@ -317,7 +324,7 @@ def build_dashboard_export_workbook(
             ["统计范围", kpi.get("period", {}).get("label") or _format_cutoff(kpi)],
             ["数据截止", _format_cutoff(kpi)],
             ["目标来源", "target_config 服务端目标" if target_payload else "未配置服务端目标"],
-            ["说明", "KPI、机构、产品明细和交期结构按所选范围导出；平台趋势、队伍和目标设置保留完整年度/月度背景。金额单位为万元。"],
+            ["说明", "KPI、机构、产品明细和交期结构按所选范围导出；月度使用当月目标，日/自定义区间不计算达成率。缺失指标留空并说明原因，真实零保留0。平台趋势、队伍和目标设置保留完整年度/月度背景。金额单位为万元。"],
         ],
     )
 
@@ -328,7 +335,7 @@ def build_dashboard_export_workbook(
     _sheet(ws, f"{year}年目标设置", ["年份", "目标分类", "层级", "机构", "业务线", "年度", "Q1", "Q2", "Q3", "Q4", "1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"], _flatten_targets(target_payload))
 
     ws = wb.create_sheet("机构维度")
-    _sheet(ws, f"{year}年机构维度", ["机构", "业务模式", "期交目标", "期交达成", "期交达成率", "价值目标", "价值达成", "价值达成率", "长险期交目标", "长险期交达成", "长险期交达成率", "10年期目标", "10年期达成", "10年期达成率", "商保年金目标", "商保年金达成", "商保年金达成率", "保障类目标", "保障类达成", "保障类达成率"], _org_rows(org_data, target_payload))
+    _sheet(ws, f"{year}年机构维度", ["机构", "业务模式", "期交目标", "期交达成", "期交达成率", "价值目标", "价值达成", "价值达成率", "长险期交目标", "长险期交达成", "长险期交达成率", "10年期目标", "10年期达成", "10年期达成率", "商保年金目标", "商保年金达成", "商保年金达成率", "保障类目标", "保障类达成", "保障类达成率"], _org_rows(org_data, _targets_for_period(target_payload, kpi.get("period") or {})))
 
     ws = wb.create_sheet("平台趋势")
     _sheet(ws, f"{year}年平台月度数据", ["月份", "业务线", "期交保费", "规模保费", "折算保费"], _platform_rows(platform))

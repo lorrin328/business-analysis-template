@@ -56,7 +56,9 @@ def test_metrics_endpoint_exposes_dashboard_kpi_registry():
     assert resp.status_code == 200
     data = resp.json()["data"]
 
-    assert data["metrics"]["avg_premium"]["definition"] == "月均新单保费 / 月均在职人力"
+    assert data["metrics"]["avg_premium"]["definition"] == "所选范围转型期交保费 / 覆盖自然月数 / 覆盖月份月均在职人力"
+    percapita = next(card for card in data["dashboardKpiCards"] if card["code"] == "percapita")
+    assert percapita["definition"] == data["metrics"]["avg_premium"]["definition"]
     assert "dashboardKpiCards" in data
     assert any(
         card["code"] == "protection" and card["targetCategory"] == "baozhang"

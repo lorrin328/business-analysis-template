@@ -4,10 +4,11 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 from config.version import get_app_version
-from db import AGG_TABLES, DB_PATH, get_db
+from db import AGG_TABLES, DB_PATH
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,6 +22,16 @@ REQUIRED_TABLES = [
     "user_module_permissions",
     *AGG_TABLES,
 ]
+
+
+@contextmanager
+def get_db():
+    conn = sqlite3.connect(Path(DB_PATH).resolve().as_uri() + "?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _page_version() -> str | None:
@@ -73,6 +84,10 @@ def run_health_check() -> dict:
         db_info["error"] = str(exc)
 
     checks["database"] = db_info
+    checks["version_matches"] = checks["page_version"] == checks["app_version"]
+    checks["business_data_available"] = db_info.get("latest_period") is not None
+    if not checks["version_matches"]:
+        status = "error"
     if not checks["database_exists"] or not checks["page_exists"]:
         status = "error"
     return {
