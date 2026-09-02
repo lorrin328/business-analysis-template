@@ -20,6 +20,13 @@ AI-经营分析价值基表*.xlsx
 data_agg.json
 data.json
 *.db
+*.db-wal
+*.db-shm
+*.sqlite*
+.env
+.env.*
+!.env.example
+deploy/.*_env
 *.lock
 *.import.lock
 excel/

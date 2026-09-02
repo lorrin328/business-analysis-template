@@ -39,6 +39,7 @@ def test_health_check_reports_runtime_state(tmp_path, monkeypatch):
 
     monkeypatch.setattr(health_check, "DB_PATH", str(db_path))
     monkeypatch.setattr(health_check, "HTML_PATH", html_path)
+    monkeypatch.setattr(health_check, "get_app_version", lambda: "v1.2.3")
     monkeypatch.setattr(health_check, "REQUIRED_TABLES", ["target_config", "target_values", "data_imports", "agg_performance"])
     monkeypatch.setattr(health_check, "get_db", temp_get_db)
 

@@ -221,9 +221,9 @@ def _assert_matches_persisted_raw(path):
     assert _stored(path) == expected
 
 
-def test_incremental_changed_date_layout_recomputes_retained_and_removed_business_months(activity_db):
-    # The new upload deletes raw rows by 入账时间 because 年月日 is absent in
-    # that upload. Its deletion month is not the old rows' 业绩归属月份.
+def test_incremental_missing_enabled_business_date_preserves_old_months(activity_db):
+    # A monthly replacement may not drop an enabled business date and silently
+    # switch the deletion scope to a different source date.
     original = pd.DataFrame([
         _row(年月="202607", 年月日="2026-07-31", 入账时间="2026-08-01"),
         _row(年月="202608", 年月日="2026-08-05", 入账时间="2026-09-01"),
@@ -232,10 +232,11 @@ def test_incremental_changed_date_layout_recomputes_retained_and_removed_busines
     incoming = pd.DataFrame([
         _row(年月="202607", 入账时间="2026-08-15", 期交保费=0),
     ]).drop(columns=["年月日"])
-    _write_source(activity_db, incoming, incremental=True)
+    with pytest.raises(ValueError, match="完整替换缺少已有业务字段"):
+        _write_source(activity_db, incoming, incremental=True)
     _assert_matches_persisted_raw(activity_db)
     assert _stored(activity_db) == [
-        (2026, 7, 0, "上海", "OTO", 0, 1),
+        (2026, 7, 31, "上海", "OTO", 1, 0),
         (2026, 8, 5, "上海", "OTO", 1, 0),
     ]
 
@@ -250,7 +251,6 @@ def test_incremental_new_primary_date_column_recomputes_old_rows_under_global_pr
     _write_source(activity_db, incoming, incremental=True)
     _assert_matches_persisted_raw(activity_db)
     assert _stored(activity_db) == [
-        (2026, 7, 0, "上海", "OTO", 0, 1),
         (2026, 7, 20, "上海", "OTO", 1, 0),
         (2026, 8, 0, "上海", "OTO", 0, 1),
     ]
@@ -271,7 +271,7 @@ def test_import_preflight_rejects_unresolvable_combined_date_schema_before_any_w
     with sqlite3.connect(activity_db) as conn:
         before_raw = conn.execute("SELECT * FROM performance").fetchall()
         before_columns = conn.execute("PRAGMA table_info(performance)").fetchall()
-    with pytest.raises(ValueError, match="无法识别业绩归属年月"):
+    with pytest.raises(ValueError, match="无法识别业绩归属年月|完整替换缺少已有业务字段"):
         _write_source(activity_db, incoming, incremental=True)
     assert _stored(activity_db) == before_activity
     with sqlite3.connect(activity_db) as conn:

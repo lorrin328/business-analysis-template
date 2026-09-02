@@ -12,10 +12,10 @@
   <script src="js/auth-ui.js?v=1.0.116"></script>
   <script src="js/export-excel.js?v=1.0.116"></script>
   <script src="js/dashboard-config.js?v=1.0.116"></script>
-  <script src="js/upload.js?v=1.0.116"></script>
+  <script src="js/upload.js?v=1.0.146-8becae84ce82"></script>
   <script src="js/target-modal.js?v=1.0.120"></script>
   <script src="js/dashboard-actions.js?v=1.0.116"></script>
-  <script src="js/kpi-cards.js?v=1.0.142"></script>
+  <script src="js/kpi-cards.js?v=1.0.146-29880f1034df"></script>
   <script src="js/platform-trend.js?v=1.0.116"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -828,6 +828,20 @@
     }
 
     .upload-options input { accent-color: var(--accent); }
+    .upload-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+    .upload-toolbar .upload-options { margin: 0; }
+    .upload-toolbar select { margin-left: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--bg-card); }
+    .upload-help, .upload-status { font-size: 13px; line-height: 1.7; color: var(--text-secondary); margin: 12px 0; }
+    .upload-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+    .upload-actions button { padding: 9px 18px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; background: var(--bg-card); color: var(--text); }
+    .upload-actions .upload-confirm { background: var(--accent); color: #fff; }
+    .upload-actions button:disabled, .upload-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .upload-disabled { opacity: .55; cursor: not-allowed; }
+    .upload-preview { margin-top: 20px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
+    .upload-preview-scroll { overflow-x: auto; }
+    .upload-preview table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .upload-preview th, .upload-preview td { text-align: left; vertical-align: top; padding: 10px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+    .upload-preview-notes { white-space: pre-line; }
 
     /* Chart Controls */
     .chart-controls {
@@ -1370,7 +1384,7 @@
       <div class="header-left">
         <div class="logo">太平人寿 <span>经营分析看板</span></div>
         <span class="tag">网电多元条线</span>
-        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.145</span>
+        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.146</span>
       </div>
       <div class="header-right">
         <nav class="primary-nav" aria-label="主要页面">
@@ -1832,52 +1846,78 @@
     <!-- Upload Module -->
     <div class="section" data-permission="upload">
       <div class="section-title">数据上传</div>
-      <label class="upload-options">
-        <input type="checkbox" id="forceUploadRewrite">
-        <span>强制重写相同文件</span>
-      </label>
+      <div class="upload-toolbar">
+        <label for="uploadImportMode">导入模式
+          <select id="uploadImportMode">
+            <option value="replace_months">完整月替换</option>
+            <option value="supplement">业绩补充</option>
+          </select>
+        </label>
+        <label class="upload-options">
+          <input type="checkbox" id="forceUploadRewrite">
+          <span>强制重写相同文件</span>
+        </label>
+      </div>
+      <p id="uploadModeDescription" class="upload-help">按需选择 1–4 份清单。每份清单必须包含其所涉月份的完整记录与字段；确认后替换对应来源的整月数据。</p>
+      <p class="upload-help">1. 选择模式与文件　2. 预览月份和覆盖范围　3. 确认导入。选择文件不会自动写入。</p>
       <div class="upload-grid">
         <div class="upload-card" data-upload-input="file1">
-          <div class="upload-mandatory">必需</div>
+          <div class="upload-mandatory">按需选择</div>
           <div class="upload-icon">👥</div>
           <div class="upload-title">转型队伍清单</div>
           <div class="upload-desc">人员信息、组织架构</div>
           <button class="upload-btn">选择文件</button>
           <div class="file-info" id="info1"></div>
-          <input type="file" id="file1" accept=".xlsx,.xls,.csv" data-upload-info="info1">
+          <input type="file" id="file1" accept=".xlsx,.xls" data-upload-info="info1">
         </div>
 
         <div class="upload-card" data-upload-input="file2">
-          <div class="upload-mandatory">必需</div>
+          <div class="upload-mandatory">按需选择</div>
           <div class="upload-icon">📋</div>
           <div class="upload-title">转型业务清单</div>
           <div class="upload-desc">保费、保单明细</div>
           <button class="upload-btn">选择文件</button>
           <div class="file-info" id="info2"></div>
-          <input type="file" id="file2" accept=".xlsx,.xls,.csv" data-upload-info="info2">
+          <input type="file" id="file2" accept=".xlsx,.xls" data-upload-info="info2">
         </div>
 
         <div class="upload-card" data-upload-input="file3">
-          <div class="upload-mandatory">必需</div>
+          <div class="upload-mandatory">按需选择</div>
           <div class="upload-icon">🤝</div>
           <div class="upload-title">经代业务清单</div>
           <div class="upload-desc">经代渠道业务数据</div>
           <button class="upload-btn">选择文件</button>
           <div class="file-info" id="info3"></div>
-          <input type="file" id="file3" accept=".xlsx,.xls,.csv" data-upload-info="info3">
+          <input type="file" id="file3" accept=".xlsx,.xls" data-upload-info="info3">
         </div>
 
         <div class="upload-card" data-upload-input="file4">
-          <div class="upload-mandatory">必需</div>
+          <div class="upload-mandatory">按需选择</div>
           <div class="upload-icon">💎</div>
           <div class="upload-title">价值清单</div>
           <div class="upload-desc">价值保费、价值率数据</div>
           <button class="upload-btn">选择文件</button>
           <div class="file-info" id="info4"></div>
-          <input type="file" id="file4" accept=".xlsx,.xls,.csv" data-upload-info="info4">
+          <input type="file" id="file4" accept=".xlsx,.xls" data-upload-info="info4">
         </div>
 
       </div>
+      <div class="upload-preview" id="uploadPreview" hidden>
+        <p id="uploadPreviewMode" class="upload-help"></p>
+        <div class="upload-preview-scroll">
+          <table aria-label="导入文件与覆盖范围预览">
+            <thead><tr><th>清单类型</th><th>文件名</th><th>行数</th><th>所涉月份</th><th>覆盖范围与处理</th></tr></thead>
+            <tbody id="uploadPreviewRows"></tbody>
+          </table>
+        </div>
+        <p id="uploadPreviewNotes" class="upload-help upload-preview-notes"></p>
+      </div>
+      <div class="upload-actions">
+        <button type="button" id="previewUploadButton" disabled>预览导入</button>
+        <button type="button" id="confirmUploadButton" class="upload-confirm" disabled>确认导入</button>
+        <button type="button" id="resetUploadButton">清空选择</button>
+      </div>
+      <p id="uploadStatus" class="upload-status" role="status" aria-live="polite">请选择文件并预览，确认前不会写入数据。</p>
     </div>
   </div>
 
@@ -1943,14 +1983,14 @@
   </script>
   <script src="js/product-config-modal.js?v=1.0.116"></script>
   <script>
-    // KPI card rendering lives in js/kpi-cards.js
+    // KPI card rendering lives in js/kpi-cards.js?v=1.0.146-29880f1034df
 
     // ========== 机构维度 KPI ==========
     // Organization analysis lives in js/org-analysis.js
-    // KPI detail modal content lives in js/kpi-modal-content.js
+    // KPI detail modal content lives in js/kpi-modal-content.js?v=1.0.146-a2b35be58cc3
     // Local fallback seed data lives in js/seed-data.js
   </script>
-  <script src="js/kpi-modal-content.js?v=1.0.116"></script>
+  <script src="js/kpi-modal-content.js?v=1.0.146-a2b35be58cc3"></script>
   <script>
     // API integration lives in js/data-integration.js
   </script>

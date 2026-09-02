@@ -1,8 +1,11 @@
 """KPI repository queries."""
 import re
 import sqlite3
+import json
+from contextlib import nullcontext
 from db.connection import get_db
 from db.repositories.zhituo import get_zhituo_kpi
+from metrics.dashboard import build_dashboard_metrics
 from services.cutoff_policy import (
     build_period_context,
     build_source_cutoff_policy,
@@ -90,6 +93,7 @@ def get_kpi_data(
     range_type: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    connection_override: sqlite3.Connection | None = None,
 ):
     """获取 KPI 概览数据。
 
@@ -97,7 +101,7 @@ def get_kpi_data(
     按「统计日」口径截取去年同期，即截至上一年的同一日。
     人力、价值等无日维度的指标仍按月级精度计算。
     """
-    with get_db() as conn:
+    with (nullcontext(connection_override) if connection_override is not None else get_db()) as conn:
         c = conn.cursor()
         period_context = build_period_context(
             conn,
@@ -230,21 +234,21 @@ def get_kpi_data(
         hr_latest = {}
         for r in c.fetchall():
             ch = r['channel']
-            avg_hc = ((r['start_headcount'] or 0) + (r['end_headcount'] or 0)) / 2.0
+            avg_hc = (r['start_headcount'] + r['end_headcount']) / 2.0 if r['start_headcount'] is not None and r['end_headcount'] is not None else None
             info = hr.setdefault(ch, {'avg_sum': 0.0, 'months': 0, 'month': query_month})
-            info['avg_sum'] += avg_hc
+            info['avg_sum'] += avg_hc or 0
+            info['incomplete'] = info.get('incomplete', False) or avg_hc is None
             info['months'] += 1
             if r['month'] == query_month:
                 hr_latest[ch] = {
                     'start': r['start_headcount'] or 0,
                     'end': r['end_headcount'] or 0,
-                    'active': r['active_headcount'] or 0,
+                    'active': r['active_headcount'],
                     'avg': avg_hc,
                 }
         for ch, info in hr.items():
             info.update(hr_latest.get(ch, {}))
-            if not info.get('avg'):
-                info['avg'] = 0
+            info.setdefault('avg', None)
             if info['months'] > 1:
                 info['avg_sum'] = round(info['avg_sum'], 2)
 
@@ -257,18 +261,19 @@ def get_kpi_data(
         hr_prev = {}; hr_prev_latest = {}
         for r in c.fetchall():
             ch = r['channel']
-            avg_hc = ((r['start_headcount'] or 0) + (r['end_headcount'] or 0)) / 2.0
+            avg_hc = (r['start_headcount'] + r['end_headcount']) / 2.0 if r['start_headcount'] is not None and r['end_headcount'] is not None else None
             info = hr_prev.setdefault(ch, {'avg_sum': 0.0, 'months': 0, 'month': query_month})
-            info['avg_sum'] += avg_hc
+            info['avg_sum'] += avg_hc or 0
+            info['incomplete'] = info.get('incomplete', False) or avg_hc is None
             info['months'] += 1
             if r['month'] == query_month:
                 hr_prev_latest[ch] = {
                     'start': r['start_headcount'] or 0, 'end': r['end_headcount'] or 0,
-                    'active': r['active_headcount'] or 0, 'avg': avg_hc,
+                    'active': r['active_headcount'], 'avg': avg_hc,
                 }
         for ch, info in hr_prev.items():
             info.update(hr_prev_latest.get(ch, {}))
-            if not info.get('avg'): info['avg'] = 0
+            info.setdefault('avg', None)
 
         def _longterm_where_params(query_year: int) -> tuple[str, list[int]]:
             where = 'year = ? AND month BETWEEN ? AND ?'
@@ -317,6 +322,8 @@ def get_kpi_data(
             FROM agg_value_data WHERE year = ? AND month BETWEEN ? AND ? GROUP BY channel
         ''', (year, query_start_month, query_month))
         value = {r['channel']: r['total'] or 0 for r in c.fetchall()}
+        value_available = bool(value)
+        value_jingdai_available = '经代' in value
         # 经代当前没有独立价值数据表，但业务口径要求纳入价值达成率。
         # 在经代价值数据接入前显式返回 0，前端据此展示“经代”行并纳入整体目标口径。
         value.setdefault('经代', 0.0)
@@ -330,12 +337,22 @@ def get_kpi_data(
             tenyear_tf = transform_products['tenyear']
             annuity_jd = jingdai_products['annuity']
             protection_jd = jingdai_products['protection']
+            product_by_channel = {
+                key: _sum_daily_column_by_channel(c, 'agg_org_daily_performance', year, selected_start,
+                                                  transform_daily_cutoff, column)
+                for key, column in (('annuity', 'product_annuity'), ('protection', 'product_protection'),
+                                    ('10year', 'product_10year'))
+            }
         else:
             c.execute('''
                 SELECT channel, SUM(product_annuity) AS a, SUM(product_protection) AS p, SUM(product_10year) AS t
                 FROM agg_org_performance WHERE year = ? AND month BETWEEN ? AND ? GROUP BY channel
             ''', (year, query_start_month, query_month))
             org_product_rows = c.fetchall()
+            product_by_channel = {
+                key: {row['channel']: row[alias] or 0 for row in org_product_rows}
+                for key, alias in (('annuity', 'a'), ('protection', 'p'), ('10year', 't'))
+            }
             annuity_tf = sum((r['a'] or 0) for r in org_product_rows)
             protection_tf = sum((r['p'] or 0) for r in org_product_rows)
             tenyear_tf = sum((r['t'] or 0) for r in org_product_rows)
@@ -383,7 +400,7 @@ def get_kpi_data(
         zhituo = get_zhituo_kpi(conn, year, selected_start, zhituo_end)
         zhituo_prev = get_zhituo_kpi(conn, year - 1, selected_start, zhituo_end)
 
-        return {
+        result = {
             'year': year,
             'month': query_month,
             'data_cutoff': data_cutoff,
@@ -424,6 +441,9 @@ def get_kpi_data(
             'longterm_qj_prev': lt_total_prev,
             'longterm_qj_tf_prev': lt_tf_prev,
             'longterm_qj_jd_prev': lt_jd_prev,
+            'longterm_qj_by_channel': {ch: lt_qj.get(f'转型|{ch}', 0) for ch in ('OTO', '证保', '蚁桥')},
+            'longterm_qj_prev_by_channel': {ch: lt_qj_prev.get(f'转型|{ch}', 0) for ch in ('OTO', '证保', '蚁桥')},
+            'product_by_channel': product_by_channel,
             'annuity_total': round(annuity_tf + annuity_jd, 2),
             'annuity_tf': round(annuity_tf, 2),
             'annuity_jd': round(annuity_jd, 2),
@@ -436,4 +456,21 @@ def get_kpi_data(
             'hr': hr,
             'hr_prev': hr_prev,
             'value': value,
+            'metric_sources': {
+                'value': value_available,
+                'value_jingdai': value_jingdai_available,
+                'performance': bool(data_cutoff['performance'] or data_cutoff['jingdai']),
+                'performance_transform': bool(data_cutoff['performance'] or transform_source_cutoff),
+                'tenyear_jingdai_precision': 'day' if use_daily and daily_payment_available else 'month',
+            },
         }
+        target_payload = None
+        if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='target_config'").fetchone():
+            target_row = c.execute('SELECT payload FROM target_config WHERE year = ?', (year,)).fetchone()
+            if target_row:
+                try:
+                    target_payload = json.loads(target_row['payload'])
+                except (TypeError, ValueError):
+                    pass
+        result['metrics'] = build_dashboard_metrics(result, target_payload)
+        return result

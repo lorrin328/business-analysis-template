@@ -1,5 +1,72 @@
 // kpi-modal-content.js - KPI detail modal content builders
+function getContractModalContent(type, kpi) {
+  const card = kpi.metrics?.version === 1 ? kpi.metrics.cards?.[type] : null;
+  if (!card) return null;
+  const titles = { overall: '期交保费达成率', value: '价值达成率', activity: '长险活动率',
+    annuity: '商保年金达成率', protection: '保障类产品达成率', '10year': '10年期产品达成率',
+    longterm: '长险期交达成率', percapita: '人均保费（转型业务）' };
+  const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
+  const fmt = (value, digits = 1) => value == null || !Number.isFinite(Number(value))
+    ? '—' : Number(value).toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  const rate = metric => metric?.calculable ? fmt(Number(metric.value) * 100, metric.displayDigits ?? 1) + '%' : '—';
+  const yoy = metric => {
+    const item = metric?.yoy;
+    if (item?.value == null) return '—';
+    const value = Number(item.value) * (item.unit === '%' ? 100 : 1);
+    return `${value >= 0 ? '+' : ''}${fmt(value)}${escape(item.unit)}`;
+  };
+  const note = metric => escape(metric?.reason || metric?.warning || '');
+  const tr = cells => '<tr>' + cells.map(value => `<td>${value}</td>`).join('') + '</tr>';
+  let headers, rows, primary;
+  if (type === 'activity') {
+    primary = card;
+    headers = ['口径', '长险活动人力', '月均在职人力', '长险活动率', '同比（百分点）', '说明'];
+    rows = [['转型业务', card], ...Object.entries(card.byChannel || {})].map(([label, metric]) =>
+      tr([escape(label), fmt(metric.numerator), fmt(metric.denominator), rate(metric), yoy(metric), note(metric)]));
+  } else if (type === 'percapita') {
+    primary = card;
+    headers = ['口径', '区间期交保费（万）', '覆盖月数', '月均期交保费（万）', '月均在职人力', '人均保费（万/人）', '同比差额', '说明'];
+    rows = [['转型业务', card], ...Object.entries(card.byChannel || {})].map(([label, metric]) =>
+      tr([escape(label), fmt(metric.periodPremium), fmt(metric.coveredMonths, 0), fmt(metric.numerator),
+          fmt(metric.denominator), metric.calculable ? fmt(metric.value) : '—', yoy(metric), note(metric)]));
+  } else {
+    primary = card.overall;
+    headers = ['口径', '实际保费（万）', '正式目标（万）', '达成率', '同比', '说明'];
+    const scopes = [['整体', 'overall'], ['经代', 'jingdai'], ['转型业务', 'transform'],
+                    ['OTO', 'OTO'], ['证保', '证保'], ['蚁桥', '蚁桥']];
+    rows = scopes.filter(([, scope]) => card[scope]).map(([label, scope]) => {
+      const metric = card[scope];
+      return tr([escape(label), fmt(metric.numerator), fmt(metric.denominator), rate(metric), yoy(metric), note(metric)]);
+    });
+  }
+  const cutoff = primary?.cutoff;
+  let cutoffText = typeof cutoff === 'string' ? cutoff : '';
+  if (cutoff && typeof cutoff === 'object') {
+    cutoffText = [['转型', cutoff.transform], ['经代', cutoff.jingdai]]
+      .filter(([, value]) => value).map(([label, value]) => `${label}截至${cutoff.year}年${value.month}月${value.day}日`).join('；') || cutoff.monthly;
+  }
+  const precision = { day: '日级', month: '月级', mixed: '部分来源按月级回退' }[primary?.precision] || '待确认';
+  const label = kpi.period?.label || `${kpi.year}年所选范围`;
+  return {
+    title: titles[type],
+    body: `<div class="modal-section-title">${escape(label)}</div>
+      <p style="color:var(--text-secondary);">与首页卡片使用同一统计范围和计算结果。${escape(cutoffText)}；${escape(precision)}。</p>
+      <table class="modal-table"><thead>${tr(headers.map(escape)).replaceAll('<td>', '<th>').replaceAll('</td>', '</th>')}</thead>
+        <tbody>${rows.join('')}</tbody></table>
+      <p style="color:var(--text-secondary);">${escape(primary?.definition)}。真实零显示0，缺少来源或必要分母显示“—”，原因见说明列。</p>
+      ${type === 'activity' ? '<p>同比为与上年同期活动率的百分点差（pp），同期为真实零时仍可计算。</p>' : ''}
+      ${type === 'percapita' ? '<p>单日、月中截止及跨月范围均按覆盖自然月数折算；必须具备覆盖月份的完整人力。同比使用同一区间，与上年同期人均保费的绝对差值（万元/人）。</p>' : ''}
+      ${primary?.coverage ? `<p>${escape(primary.coverage)}</p>` : ''}`,
+  };
+}
+
 function getModalContent(type) {
+      const currentKpi = apiData.kpi || {};
+      const contractContent = getContractModalContent(type, currentKpi);
+      if (contractContent) return contractContent;
+      if (!window.ALLOW_LOCAL_FALLBACK) {
+        return { title: '指标详情', body: '<p>当前指标口径数据尚未加载，请刷新页面后查看。</p>' };
+      }
       switch(type) {
         case 'overall': {
           loadTargetData();

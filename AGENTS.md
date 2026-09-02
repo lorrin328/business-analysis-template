@@ -83,6 +83,8 @@ sudo nginx -t && sudo systemctl reload nginx
 
 部署脚本会用 SQLite Online Backup API 将 `/var/lib/business-analysis/business_data.db` 备份到 `/opt/business-analysis-backups/`，同时生成包含 SHA256、`integrity_check` 和 `quick_check` 结果的 `.meta` 文件。
 
+v1.0.146 起先检查容量并在线准备依赖，再持有导入锁、停服、生成最终冻结恢复点。新版本启动前失败自动恢复代码、依赖、配置和冻结库；启动后不自动覆盖数据库，必须先复核新增写入。仅在正式公网、鉴权、静态资源、业务数据和备份验证全部完成后，执行部署输出的 `accept-release --confirm-review-complete`。健康接口通过不等于发布验收完成。独立介质备份不得进入Git或同步的代码目录。
+
 ## Excel 文件说明
 
 | 文件匹配模式 | 用途 | 大小 |

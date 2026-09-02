@@ -106,9 +106,9 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/api-client.js?v=1.0.116"></script>' in html
     assert '<script src="js/auth-ui.js?v=1.0.116"></script>' in html
     assert '<script src="js/export-excel.js?v=1.0.116"></script>' in html
-    assert '<script src="js/upload.js?v=1.0.116"></script>' in html
+    assert '<script src="js/upload.js?v=1.0.146-8becae84ce82"></script>' in html
     assert '<script src="js/target-modal.js?v=1.0.120"></script>' in html
-    assert '<script src="js/kpi-cards.js?v=1.0.142"></script>' in html
+    assert '<script src="js/kpi-cards.js?v=1.0.146-29880f1034df"></script>' in html
     assert '<script src="js/platform-trend.js?v=1.0.116"></script>' in html
     assert '<script src="js/team-analysis.js?v=1.0.124"></script>' in html
     # api-client centralizes fetchJson / adminFetch / apiUrl
@@ -650,7 +650,7 @@ def test_kpi_modal_content_is_outside_html_shell():
     html = read_html()
     modal_content = read_js("kpi-modal-content.js")
 
-    assert '<script src="js/kpi-modal-content.js?v=1.0.116"></script>' in html
+    assert '<script src="js/kpi-modal-content.js?v=1.0.146-a2b35be58cc3"></script>' in html
     assert "function getModalContent(type)" not in html
     assert "function getModalContent(type)" in modal_content
 
@@ -827,7 +827,7 @@ def test_kpi_cards_js_is_runtime_owner_for_kpi_cards():
     kpi_section = html.split('<!-- 机构维度 -->', 1)[0]
 
     assert "function updateKPICards()" not in html
-    assert 'src="js/kpi-cards.js?v=1.0.142"' in html
+    assert 'src="js/kpi-cards.js?v=1.0.146-29880f1034df"' in html
     assert 'onclick="openModal(' not in kpi_section
     for modal_type in ["overall", "value", "activity", "annuity", "protection", "10year", "longterm", "percapita"]:
         assert f'data-kpi-modal="{modal_type}"' in kpi_section
@@ -893,7 +893,9 @@ def test_value_kpi_includes_jingdai_placeholder():
     assert "channels: ['经代', 'OTO', '证保', '蚁桥']" in modal
     assert "价值达成率口径包含经代" in modal
     assert "经代价值数据表尚未接入，经代实绩暂按 0 展示" in modal
-    assert "经代+OTO+证保+蚁桥" in exporter
+    contract = open(os.path.join(ROOT, "backend", "metrics", "dashboard.py"), "r", encoding="utf-8").read()
+    assert "经代+OTO+证保+蚁桥" in contract
+    assert "build_dashboard_metrics(kpi, target_payload)" in exporter
 
 
 def test_structure_modules_are_same_level_with_tables():

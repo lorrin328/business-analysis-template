@@ -41,12 +41,18 @@ from services.import_safety import (
     RawIncrementalWriteError,
     extract_raw_periods,
     write_raw_table_incremental,
+    append_raw_frame,
+    validate_replacement_fields,
+    read_raw_periods,
+    IMPORT_MODES,
 )
 from etl.aggregates.org_zero_streak import ACTIVITY_SOURCE_COLUMNS, extract_org_activity_periods
 from services.aggregate_rebuilder import _read_org_activity_rows, replace_org_activity_from_raw
 from services.raw_table_reader import raw_table_columns
 from services.product_config_service import extract_jingdai_products_to_config
+from etl.aggregates.jingdai import _load_jingdai_product_config
 from validators.data_validator import validate_rows
+from services.customer_fact_refresh import policy_key, refresh_customer_facts
 
 
 AGGREGATE_TABLE_ORDER = [
@@ -227,11 +233,11 @@ def _parse_performance(source: ExcelSource, result: ExcelPipelineResult) -> None
 def _parse_jingdai(source: ExcelSource, result: ExcelPipelineResult) -> None:
     frame = parse_jingdai_excel(source.content)
     result.raw_tables["jingdai"] = frame
-    extract_jingdai_products_to_config(frame)
-
-    jd_rows = aggregate_jingdai(frame)
+    # Parsing must not access or update product settings. Final classification is
+    # calculated with the transaction's configuration when the import is written.
+    jd_rows = aggregate_jingdai(frame, config_map={})
     _require_valid_rows(jd_rows, ["year", "month"], ["year", "month"])
-    jd_daily_rows = aggregate_jingdai_daily(frame)
+    jd_daily_rows = aggregate_jingdai_daily(frame, config_map={})
     jd_pay_period_rows = aggregate_jingdai_payment_period(frame)
     jd_pay_period_daily_rows = aggregate_jingdai_payment_period_daily(frame)
     jd_longterm_rows = aggregate_jingdai_longterm(frame)
@@ -284,7 +290,13 @@ def append_excel_source(result: ExcelPipelineResult, source: ExcelSource) -> Non
     parser = PARSERS.get(source.kind)
     if parser is None:
         raise ValueError(f"Unsupported Excel source kind: {source.kind}")
-    parser(source, result)
+    # A failing aggregate must not leave its raw source in a partial import.
+    parsed = ExcelPipelineResult()
+    parser(source, parsed)
+    result.raw_tables.update(parsed.raw_tables)
+    for table, rows in parsed.rows_by_table.items():
+        _merge_rows(result.rows_by_table, table, rows)
+    result.source_summaries.extend(parsed.source_summaries)
 
 
 def finalize_excel_pipeline_result(result: ExcelPipelineResult) -> ExcelPipelineResult:
@@ -336,44 +348,93 @@ def replace_aggregate_rows(
     return table_counts
 
 
-def replace_raw_tables(conn, result: ExcelPipelineResult, *, incremental: bool) -> dict[str, int]:
+def replace_raw_tables(conn, result: ExcelPipelineResult, *, incremental: bool, import_mode: str = "replace_months") -> dict[str, int]:
     table_counts: dict[str, int] = {}
     for table in RAW_TABLE_ORDER:
         frame = result.raw_tables.get(table)
         if frame is None:
             continue
         if incremental:
-            write_raw_table_incremental(conn, table, frame)
+            count = write_raw_table_incremental(conn, table, frame, mode=import_mode)
         else:
-            frame.to_sql(table, conn, if_exists="replace", index=False)
-        table_counts[table] = len(frame)
+            # Explicit full rebuild only. Native writes preserve the transaction.
+            conn.execute(f'DROP TABLE IF EXISTS "{table}"')
+            append_raw_frame(conn, table, frame)
+            count = len(frame)
+        table_counts[table] = count
     return table_counts
 
 
-def write_excel_pipeline_result(conn, result: ExcelPipelineResult, *, incremental: bool) -> dict[str, int]:
+def write_excel_pipeline_result(conn, result: ExcelPipelineResult, *, incremental: bool, import_mode: str = "replace_months") -> dict[str, int]:
+    if import_mode not in IMPORT_MODES:
+        raise RawIncrementalWriteError("导入模式仅支持完整月替换或明确的补充模式")
+    if import_mode == "supplement" and (not incremental or any(table != "performance" for table in result.raw_tables)):
+        raise RawIncrementalWriteError("补充模式仅接受业绩源；人力、经代和价值源请单独使用完整月替换")
     performance = result.raw_tables.get("performance")
+    if incremental and import_mode == "replace_months":
+        for table, frame in result.raw_tables.items():
+            validate_replacement_fields(conn, table, frame)
+    affected_keys = set()
+    performance_periods = set()
+    if performance is not None and not performance.empty:
+        performance_periods, _ = extract_raw_periods("performance", performance)
+        if incremental and "投保单号" in raw_table_columns(conn, "performance"):
+            old = read_raw_periods(conn, "performance", performance_periods)
+            affected_keys.update(policy_key(value) for value in old["投保单号"])
+        if "投保单号" in performance.columns:
+            affected_keys.update(policy_key(value) for value in performance["投保单号"])
+        affected_keys.discard(None)
     refresh_activity = performance is not None and (not incremental or not performance.empty)
     if refresh_activity:
         if incremental:
             effective_columns = set(raw_table_columns(conn, "performance")) | set(performance.columns)
             activity_columns = [column for column in ACTIVITY_SOURCE_COLUMNS if column in effective_columns]
-            # Validate before any writes. pandas raw-table writes may commit the
-            # caller's transaction, so a newly unavailable business date must
-            # fail here, not during the post-write activity refresh.
+            # Validate source date availability before the transactional write.
             _read_org_activity_rows(conn, source_columns=activity_columns)
             aggregate_org_daily_activity(performance.reindex(columns=activity_columns))
         else:
             aggregate_org_daily_activity(performance)
-    table_counts = replace_aggregate_rows(
-        conn, result, incremental=incremental, include_org_activity=not refresh_activity,
-    )
-    table_counts.update(replace_raw_tables(conn, result, incremental=incremental))
-    if refresh_activity:
-        # The persisted raw schema and replacement scope can differ from the
-        # uploaded frame (including date-column priority changes). Recompute
-        # only the new evidence table from the actual resulting source rows.
-        table_counts["agg_org_daily_activity"] = replace_org_activity_from_raw(conn)
-    return table_counts
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    conn.execute("SAVEPOINT excel_pipeline_write")
+    try:
+        jingdai = result.raw_tables.get("jingdai")
+        if jingdai is not None:
+            extract_jingdai_products_to_config(jingdai, conn=conn)
+        table_counts = replace_raw_tables(conn, result, incremental=incremental, import_mode=import_mode)
+        aggregate_result = result
+        if jingdai is not None:
+            config_map = _load_jingdai_product_config(conn)
+            aggregate_result = ExcelPipelineResult(
+                raw_tables=result.raw_tables, rows_by_table=dict(result.rows_by_table),
+            )
+            aggregate_result.rows_by_table["agg_jingdai"] = aggregate_jingdai(jingdai, config_map=config_map)
+            aggregate_result.rows_by_table["agg_jingdai_daily"] = aggregate_jingdai_daily(jingdai, config_map=config_map)
+        if import_mode == "supplement":
+            from services.aggregate_rebuilder import build_aggregate_rows_from_raw
+            persisted = {
+                table: frame for table in RAW_TABLE_ORDER
+                if not (frame := read_raw_periods(conn, table, performance_periods)).empty
+            }
+            aggregate_result = ExcelPipelineResult(
+                raw_tables=persisted,
+                rows_by_table=build_aggregate_rows_from_raw(persisted, include_org_activity=False),
+            )
+        table_counts.update(replace_aggregate_rows(
+            conn, aggregate_result, incremental=incremental, include_org_activity=not refresh_activity,
+        ))
+        if refresh_activity:
+            table_counts["agg_org_daily_activity"] = replace_org_activity_from_raw(conn)
+        if performance is not None:
+            refreshed = refresh_customer_facts(conn, affected_keys if incremental else None)
+            if not refreshed["skipped"]:
+                table_counts["customer_policy_month_fact"] = refreshed["refreshedRows"]
+        conn.execute("RELEASE SAVEPOINT excel_pipeline_write")
+        return table_counts
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT excel_pipeline_write")
+        conn.execute("RELEASE SAVEPOINT excel_pipeline_write")
+        raise
 
 
 def clear_pipeline_years(conn, years: list[int]) -> None:

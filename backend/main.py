@@ -2,6 +2,10 @@ import hashlib
 import json
 import os
 import sys
+import sqlite3
+from pathlib import Path
+from typing import Literal
+from starlette.concurrency import run_in_threadpool
 from fastapi import Depends, FastAPI, File, Query, Request, UploadFile, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,6 +49,8 @@ from services.excel_pipeline import (
     write_excel_pipeline_result,
 )
 from services.import_safety import RawIncrementalWriteError
+from services.customer_fact_refresh import CustomerFactRefreshError
+from services.import_preview import build_import_manifest, build_import_preview
 from services.health_check import run_health_check
 from services.operation_lock import OperationLockError, operation_lock
 from services.product_config_service import purge_non_jingdai_product_config
@@ -164,7 +170,50 @@ async def require_login_for_api(request: Request, call_next):
 
 @app.get("/api/health")
 def health():
-    return run_health_check()
+    result = run_health_check()
+    return JSONResponse(result, status_code=200 if result.get("status") == "ok" else 503)
+
+
+@app.get("/api/health/live")
+def liveness():
+    return {"status": "ok"}
+
+
+def _read_upload_sources(performance, jingdai, hr, value):
+    sources = []
+    max_size = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    for kind, upload in (("performance", performance), ("jingdai", jingdai), ("hr", hr), ("value", value)):
+        if upload is None or not upload.filename:
+            continue
+        if upload.size is not None and upload.size > max_size:
+            raise HTTPException(status_code=413, detail=f"单文件不能超过 {MAX_UPLOAD_SIZE_MB}MB。")
+        content = upload.file.read(max_size + 1)
+        if len(content) > max_size:
+            raise HTTPException(status_code=413, detail=f"单文件不能超过 {MAX_UPLOAD_SIZE_MB}MB。")
+        sources.append(ExcelSource(kind=kind, filename=upload.filename, content=content))
+    return sources
+
+
+def _preview_uploads(performance, jingdai, hr, value, import_mode, force):
+    from db import connection
+    sources = _read_upload_sources(performance, jingdai, hr, value)
+    uri = Path(connection.DB_PATH).resolve().as_uri() + "?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        return build_import_preview(conn, sources, import_mode=import_mode, force=force)
+    finally:
+        conn.close()
+
+
+@app.post("/api/upload/preview")
+async def preview_upload_files(
+    performance: UploadFile = File(None), jingdai: UploadFile = File(None),
+    hr: UploadFile = File(None), value: UploadFile = File(None),
+    import_mode: Literal["replace_months", "supplement"] = Query("replace_months"),
+    force: bool = Query(False), _user=Depends(require_permission("upload")),
+):
+    return await run_in_threadpool(_preview_uploads, performance, jingdai, hr, value, import_mode, force)
 
 
 @app.post("/api/upload")
@@ -176,12 +225,14 @@ async def upload_files(
     year: int = DEFAULT_YEAR,
     allow_partial: bool = Query(False),
     force: bool = Query(False),
+    import_mode: Literal["replace_months", "supplement"] = Query("replace_months"),
+    preview_manifest: str | None = Query(None),
     _user=Depends(require_permission("upload")),
 ):
     """上传Excel文件并聚合到SQLite"""
     try:
         with operation_lock("excel-import", timeout=1.0):
-            result = await _upload_files_locked(performance, jingdai, hr, value, year, allow_partial, force)
+            result = await run_in_threadpool(_upload_files_locked, performance, jingdai, hr, value, year, allow_partial, force, import_mode, preview_manifest)
     except OperationLockError as exc:
         log_operation("import_report", user=_user, status="failed", detail={"reason": "operation_locked"})
         raise HTTPException(status_code=409, detail="已有导入或重建任务正在执行，请稍后再试。") from exc
@@ -196,6 +247,7 @@ async def upload_files(
         detail={
             "year": year,
             "force": result.get("force"),
+            "import_mode": import_mode,
             "import_id": result.get("import_id"),
             "uploaded": result.get("uploaded", []),
             "errors": result.get("errors", []),
@@ -206,7 +258,7 @@ async def upload_files(
     return result
 
 
-async def _upload_files_locked(
+def _upload_files_locked(
     performance: UploadFile = File(None),
     jingdai: UploadFile = File(None),
     hr: UploadFile = File(None),
@@ -214,25 +266,20 @@ async def _upload_files_locked(
     year: int = DEFAULT_YEAR,
     allow_partial: bool = Query(False),
     force: bool = Query(False),
+    import_mode: str = "replace_months",
+    preview_manifest: str | None = None,
 ):
     """上传Excel文件并聚合到SQLite。调用方必须先获得 operation_lock。"""
-    # 单文件最大 20MB
-    max_size = MAX_UPLOAD_SIZE_MB * 1024 * 1024
-    for f in [performance, jingdai, hr, value]:
-        if f and f.size and f.size > max_size:
-            raise HTTPException(status_code=413, detail=f"文件 {f.filename} 超过 {MAX_UPLOAD_SIZE_MB}MB 限制")
+    sources = _read_upload_sources(performance, jingdai, hr, value)
+    if preview_manifest and preview_manifest != build_import_manifest(sources, import_mode, force):
+        raise HTTPException(status_code=409, detail="所选文件或导入选项已改变，请重新预览后确认。")
     results = {"uploaded": [], "errors": [], "skipped": [], "data_years": set()}
     results["force"] = bool(force)
+    results["import_mode"] = import_mode
     file_hashes = {}  # file_name -> hash
     file_sizes = {}   # file_name -> size
     pipeline_result = ExcelPipelineResult()
     logger.info("import started year=%s force=%s", year, force)
-    with get_db() as conn:
-        purged = purge_non_jingdai_product_config(conn)
-        conn.commit()
-        if purged:
-            logger.info("purged %s non-jingdai product_config rows before import", purged)
-
     upload_specs = [
         ("performance", "转型业务业绩", performance),
         ("jingdai", "经代业务业绩", jingdai),
@@ -240,21 +287,20 @@ async def _upload_files_locked(
         ("value", "价值数据", value),
     ]
     upload_labels = {kind: label for kind, label, _ in upload_specs}
-    for kind, label, upload in upload_specs:
-        if not upload or not upload.filename:
-            continue
+    for source in sources:
+        kind = source.kind
+        label = upload_labels[kind]
         try:
-            content = await upload.read()
+            content = source.content
             file_hash = _hash_bytes(content)
-            if _skip_duplicate_upload(upload.filename, file_hash, kind, results, force=force):
+            if _skip_duplicate_upload(source.filename, file_hash, kind, results, force=force):
                 continue
-            source = ExcelSource(kind=kind, filename=upload.filename, content=content)
             append_excel_source(pipeline_result, source)
-            file_hashes[upload.filename] = file_hash
-            file_sizes[upload.filename] = len(content)
+            file_hashes[source.filename] = file_hash
+            file_sizes[source.filename] = len(content)
         except Exception as e:
-            results["errors"].append(f"{label}: {str(e)}")
-            logger.exception("%s import failed", kind)
+            results["errors"].append(f"{label}解析未通过，请核对文件类型、必要字段和期间；当前数据未改变。")
+            logger.warning("%s import parse failed error_type=%s", kind, type(e).__name__)
 
     if file_hashes:
         try:
@@ -267,8 +313,8 @@ async def _upload_files_locked(
         except Exception as e:
             for kind in upload_labels:
                 if any(summary.startswith(f"{kind}:") for summary in pipeline_result.source_summaries):
-                    results["errors"].append(f"{upload_labels[kind]}: {str(e)}")
-            logger.exception("excel pipeline build failed")
+                    results["errors"].append(f"{upload_labels[kind]}聚合校验未通过，请核对源文件期间和必要字段。")
+            logger.warning("excel pipeline build failed error_type=%s", type(e).__name__)
     else:
         results["data_years"] = [year]
 
@@ -297,7 +343,8 @@ async def _upload_files_locked(
     with get_db() as conn:
         conn.execute('BEGIN IMMEDIATE')
         try:
-            table_row_counts = write_excel_pipeline_result(conn, pipeline_result, incremental=True)
+            purge_non_jingdai_product_config(conn)
+            table_row_counts = write_excel_pipeline_result(conn, pipeline_result, incremental=True, import_mode=import_mode)
 
             # 记录导入历史
             has_errors = len(results["errors"]) > 0
@@ -308,7 +355,7 @@ async def _upload_files_locked(
             import_id = conn.execute('SELECT MAX(id) FROM data_imports').fetchone()[0]
 
             conn.commit()
-        except RawIncrementalWriteError as e:
+        except (RawIncrementalWriteError, CustomerFactRefreshError) as e:
             conn.rollback()
             results["errors"].append(str(e))
             _set_import_status(results, has_written_rows=False)
@@ -333,9 +380,10 @@ async def import_files(
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
     force: bool = Query(False),
+    import_mode: Literal["replace_months", "supplement"] = Query("replace_months"),
     _user=Depends(require_permission("upload")),
 ):
-    return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year, force=force, _user=_user)
+    return await upload_files(performance=performance, jingdai=jingdai, hr=hr, value=value, year=year, allow_partial=False, force=force, import_mode=import_mode, preview_manifest=None, _user=_user)
 
 
 # 静态文件服务 - 生产HTML

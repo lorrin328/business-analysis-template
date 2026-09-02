@@ -548,6 +548,11 @@ def init_db():
             FOREIGN KEY(batch_id) REFERENCES history_import_batches(id)
         )''')
         _migrate(c, "ALTER TABLE customer_policy_snapshot ADD COLUMN customer_import_batch_id INTEGER")
+        c.execute('''CREATE TABLE IF NOT EXISTS customer_policy_key_ambiguity (
+            policy_key TEXT PRIMARY KEY,
+            reason TEXT NOT NULL,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )''')
         c.execute('''CREATE TABLE IF NOT EXISTS customer_import_batches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             imported_by TEXT NOT NULL DEFAULT 'system',
@@ -643,6 +648,14 @@ def init_db():
         c.execute('''
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
             VALUES ('20260831_org_zero_streak', 1, 'Adds daily positive QJ acceptance evidence by business attribution date')
+        ''')
+        c.execute('''
+            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+            VALUES ('20260902_customer_fact_consistency', 1, 'Refreshes customer facts from authoritative raw records using validated indexed policy aliases')
+        ''')
+        c.execute('''
+            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+            VALUES ('20260902_customer_alias_exact_fallback', 1, 'Preserves ambiguous policy identifiers as exact-only matches and reports unmatched coverage')
         ''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS performance (

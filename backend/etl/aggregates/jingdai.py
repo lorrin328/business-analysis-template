@@ -12,7 +12,11 @@ from etl.columns import _pick_col
 from db import get_db
 
 
-def _load_jingdai_product_config() -> dict:
+def _load_jingdai_product_config(conn=None) -> dict:
+    if conn is not None:
+        rows = conn.execute("SELECT product_code, is_annuity, is_protection FROM product_config WHERE business_type = '经代'").fetchall()
+        return {str(r[0]).strip(): {'is_annuity': str(r[1]).upper() == 'Y',
+                                  'is_protection': str(r[2]).upper() == 'Y'} for r in rows}
     try:
         with get_db() as conn:
             rows = conn.execute('''
@@ -31,7 +35,7 @@ def _load_jingdai_product_config() -> dict:
         return {}
 
 
-def aggregate_jingdai(df: pd.DataFrame) -> List[Dict]:
+def aggregate_jingdai(df: pd.DataFrame, *, config_map=None) -> List[Dict]:
     time_col = _pick_col(df, ['时间', '年月'])
     qj_col = _pick_col(df, ['期交保费'])
     gm_col = _pick_col(df, ['承保年化规保', '年化规保', '规模保费'])
@@ -52,7 +56,8 @@ def aggregate_jingdai(df: pd.DataFrame) -> List[Dict]:
     work['_is_annuity'] = False
     work['_is_protection'] = False
     if product_name_col:
-        config_map = _load_jingdai_product_config()
+        if config_map is None:
+            config_map = _load_jingdai_product_config()
         work['_product_key'] = work[product_name_col].astype(str).str.strip()
         work['_is_annuity'] = work['_product_key'].map(
             lambda x: config_map.get(x, {}).get('is_annuity', False)
@@ -78,7 +83,7 @@ def aggregate_jingdai(df: pd.DataFrame) -> List[Dict]:
     return rows
 
 
-def aggregate_jingdai_daily(df: pd.DataFrame) -> List[Dict]:
+def aggregate_jingdai_daily(df: pd.DataFrame, *, config_map=None) -> List[Dict]:
     """按经代基表的时间字段聚合到日，用于经代月度/季度日累计趋势。"""
     time_col = _pick_col(df, ['时间', '年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期'])
     qj_col = _pick_col(df, ['期交保费'])
@@ -100,7 +105,8 @@ def aggregate_jingdai_daily(df: pd.DataFrame) -> List[Dict]:
     work['_is_annuity'] = False
     work['_is_protection'] = False
     if product_name_col:
-        config_map = _load_jingdai_product_config()
+        if config_map is None:
+            config_map = _load_jingdai_product_config()
         work['_product_key'] = work[product_name_col].astype(str).str.strip()
         work['_is_annuity'] = work['_product_key'].map(
             lambda x: config_map.get(x, {}).get('is_annuity', False)

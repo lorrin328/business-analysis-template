@@ -7,9 +7,9 @@
         const year = String((apiData.kpi && apiData.kpi.year) || selectedYear || DEFAULT_DASHBOARD_YEAR);
         const pm = platformMock[year];
         const tm = teamMock[year];
-        if (!pm) return;
+        if (!pm && !apiData.kpi) return;
         const kpi = apiData.kpi;
-        const hasApiKpi = kpi && String(kpi.year) === year && kpi.qj_premium && (kpi.qj_premium.total > 0 || kpi.qj_premium.jingdai > 0);
+        const hasApiKpi = kpi && String(kpi.year) === year && kpi.qj_premium;
         const period = kpi?.period || {};
         const targetMode = period.targetMode || 'year';
         const targetMonthIndex = Math.max(0, Number((period.endDate || '').slice(5, 7) || 1) - 1);
@@ -62,9 +62,10 @@
           return n > 0 ? sum / n : 0;
         }
         function calcRate(actual, target) {
-          if (!target || target <= 0) return 0;
+          if (actual == null || !target || target <= 0) return null;
           return Math.round(actual / target * 1000) / 10;
         }
+        function rateText(rate) { return rate == null ? '—' : rate + '%'; }
         function rateClass(rate) {
           if (rate >= 100) return 'up';
           if (rate >= 80) return 'warning';
@@ -132,7 +133,7 @@
       const 经代达成率 = calcRate(经代实际, 经代目标);
       const 转型达成率 = calcRate(转型实际, 转型目标);
       const qjRateEl = document.getElementById('kpi-qj-rate');
-      if (qjRateEl) qjRateEl.textContent = 整体达成率 + '%';
+      if (qjRateEl) qjRateEl.textContent = rateText(整体达成率);
       const qjSubEl = document.getElementById('kpi-qj-sub');
       if (qjSubEl) {
         const qjPrev = hasApiKpi ? (kpi.qj_premium_prev || {}) : {};
@@ -141,8 +142,8 @@
         const 转型同比 = calcYoy(转型实际, qjPrev.total_transform);
         qjSubEl.innerHTML = `
           <span>整体 <span class="${yoyClass(整体同比)}">同比 ${yoyText(整体同比)}</span></span>
-          <span>经代 <span class="${rateClass(经代达成率)}">${经代达成率}%</span> <span class="${yoyClass(经代同比)}">同比 ${yoyText(经代同比)}</span></span>
-          <span>转型 <span class="${rateClass(转型达成率)}">${转型达成率}%</span> <span class="${yoyClass(转型同比)}">同比 ${yoyText(转型同比)}</span></span>`;
+          <span>经代 <span class="${rateClass(经代达成率)}">${rateText(经代达成率)}</span> <span class="${yoyClass(经代同比)}">同比 ${yoyText(经代同比)}</span></span>
+          <span>转型 <span class="${rateClass(转型达成率)}">${rateText(转型达成率)}</span> <span class="${yoyClass(转型同比)}">同比 ${yoyText(转型同比)}</span></span>`;
       }
 
       // 2. 价值达成率
@@ -155,12 +156,12 @@
         const jingdaiRate = calcRate(actual.jingdai, jingdaiTarget);
         const transformRate = calcRate(actual.transform, transformTarget);
         const valueRateEl = document.getElementById('kpi-value-rate');
-        if (valueRateEl) valueRateEl.textContent = valueRate > 0 ? valueRate + '%' : '-';
+        if (valueRateEl) valueRateEl.textContent = rateText(valueRate);
         const valueSubEl = document.getElementById('kpi-value-sub');
         if (valueSubEl) {
           valueSubEl.innerHTML = `
-            <span>经代 <span class="${rateClass(jingdaiRate)}">${jingdaiRate > 0 ? jingdaiRate + '%' : '-'}</span></span>
-            <span>转型 <span class="${rateClass(transformRate)}">${transformRate > 0 ? transformRate + '%' : '-'}</span></span>`;
+            <span>经代 <span class="${rateClass(jingdaiRate)}">${rateText(jingdaiRate)}</span></span>
+            <span>转型 <span class="${rateClass(transformRate)}">${rateText(transformRate)}</span></span>`;
         }
       } else {
         const valueRateEl = document.getElementById('kpi-value-rate');
@@ -199,7 +200,7 @@
         }
         const activitySubEl = document.getElementById('kpi-activity-sub');
         if (activitySubEl) activitySubEl.innerHTML = (kpiMonth ? `<span>${kpiMonth}月</span>` : '<span>点击查看分模式明细</span>') + yoyStr;
-      } else if (tm) {
+      } else if (window.ALLOW_LOCAL_FALLBACK && tm) {
         // Mock路径：取最新有数据的月份
         const channels = ['OTO','证保','蚁桥'];
         let lastMonthIdx = -1;
@@ -285,7 +286,7 @@
       }
 
       // 7. 长险期交达成率
-      if (hasApiKpi && kpi.longterm_qj !== undefined && kpi.longterm_qj > 0) {
+      if (hasApiKpi && kpi.longterm_qj !== undefined) {
         const ltQj = kpi.longterm_qj || 0;
         const ltTf = kpi.longterm_qj_tf || 0;
         const ltJd = kpi.longterm_qj_jd || 0;
@@ -388,6 +389,46 @@
         if (zhituoPremiumEl) zhituoPremiumEl.textContent = '--';
         if (zhituoSubEl) zhituoSubEl.innerHTML = '<span style="color:var(--text-secondary)">基表尚未提供职拓标识</span>';
       }
+        // The API and Excel share this contract; legacy calculations above support older servers.
+        const contract = hasApiKpi && kpi.metrics?.version === 1 ? kpi.metrics.cards : null;
+        if (contract) {
+          function showMetric(id, metric, money = false) {
+            const el = document.getElementById(id);
+            if (!el || !metric) return;
+            el.textContent = metric.calculable && metric.value != null
+              ? (Number(metric.value) * (money ? 1 : 100)).toFixed(metric.displayDigits ?? 1) + (money ? '万' : '%')
+              : '—';
+            el.title = metric.reason || metric.warning || metric.definition || '';
+          }
+          for (const [code, id, category] of [
+            ['overall', 'qj', 'qjPremium'], ['value', 'value', 'value'],
+            ['annuity', 'annuity', 'shangbao'], ['protection', 'protection', 'baozhang'],
+            ['10year', '10year', 'tenYear'], ['longterm', 'longterm', 'qjPremium']
+          ]) {
+            const card = contract[code];
+            if (!card) continue;
+            // A saved target can refresh before the KPI request; keep that existing target flow working.
+            const target = getPeriodTarget(category, '整体');
+            if (Number(card.overall.denominator || 0) !== Number(target || 0)) continue;
+            showMetric(`kpi-${id}-rate`, card.overall);
+            const sub = document.getElementById(`kpi-${id}-sub`);
+            if (sub && !card.overall.calculable) sub.textContent = card.overall.reason || '当前指标不可计算';
+            else if (sub && card.overall.warning) sub.textContent += ' · ' + card.overall.warning;
+          }
+          showMetric('kpi-activity-rate', contract.activity);
+          const activitySub = document.getElementById('kpi-activity-sub');
+          if (activitySub && contract.activity) {
+            const delta = contract.activity.yoy?.value;
+            activitySub.textContent = contract.activity.calculable
+              ? `${contract.activity.cutoff} · 月度人力` + (delta == null ? '' : ` · 同比 ${delta >= 0 ? '+' : ''}${Number(delta).toFixed(1)}pp`)
+              : contract.activity.reason;
+          }
+          showMetric('kpi-percapita', contract.percapita, true);
+          const percapitaSub = document.getElementById('kpi-percapita-sub');
+          if (percapitaSub && contract.percapita) percapitaSub.textContent = contract.percapita.calculable
+            ? `转型业务 · 区间保费按${contract.percapita.coveredMonths}个覆盖月折算`
+            : contract.percapita.reason;
+        }
         updateTargetTrustState();
       } catch (e) { console.error('updateKPICards error:', e); }
     }

@@ -12,6 +12,7 @@ services:
       APP_ENV: production
       PORT: 45679
       BUSINESS_ANALYSIS_DB: /data/business_data.db
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-}
       MAX_UPLOAD_SIZE_MB: 100
       # Set these in .env or in the deployment platform secret manager.
       # AUTH_ALLOW_PUBLIC_REGISTRATION: "0"

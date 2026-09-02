@@ -1,3 +1,4 @@
+param([int]$Year = (Get-Date).Year, [string]$Database = "")
 $ErrorActionPreference = "Stop"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -28,7 +29,6 @@ Invoke-Checked -Name "Node.js version" -Command {
 Write-Host "== preflight: required files =="
 @(
   "backend\main.py",
-  "backend\business_data.db",
   "deploy\nginx.conf",
   "deploy\systemd.service"
 ) | ForEach-Object {
@@ -37,8 +37,7 @@ Write-Host "== preflight: required files =="
   }
 }
 
-$HtmlEntry = Get-ChildItem -File -Filter "*.html" | Select-Object -First 1
-if (-not $HtmlEntry) {
+if (-not (Test-Path -LiteralPath "经营分析模板.html")) {
   throw "Missing production HTML entry"
 }
 
@@ -61,6 +60,12 @@ Invoke-Checked -Name "uv pip install" -Command {
 Invoke-Checked -Name "pytest" -Command { & $Python -m pytest -q }
 
 Write-Host "== preflight: data quality =="
-Invoke-Checked -Name "data quality audit" -Command { & $Python backend\audit_data_quality.py --year 2026 }
+if ($Database) { $env:BUSINESS_ANALYSIS_DB = (Resolve-Path -LiteralPath $Database).Path }
+$AuditDatabase = if ($env:BUSINESS_ANALYSIS_DB) { $env:BUSINESS_ANALYSIS_DB } else { Join-Path $Root 'backend\business_data.db' }
+if (Test-Path -LiteralPath $AuditDatabase) {
+  Invoke-Checked -Name "data quality audit" -Command { & $Python backend\audit_data_quality.py --year $Year }
+} else {
+  Write-Host 'No business database supplied: code checks complete; business data readiness was not assessed.'
+}
 
 Write-Host "preflight ok"

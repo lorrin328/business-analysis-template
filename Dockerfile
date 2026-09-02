@@ -18,10 +18,12 @@ COPY backend/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r /tmp/requirements.txt
 
-COPY . /app
+COPY backend /app/backend
+COPY js /app/js
+COPY *.html VERSION /app/
 
 RUN mkdir -p /data /app/backend/logs \
-    && chown -R app:app /app /data
+    && chown app:app /data /app/backend/logs
 
 USER app
 WORKDIR /app/backend

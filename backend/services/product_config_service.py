@@ -87,8 +87,8 @@ def purge_non_jingdai_product_config(conn) -> int:
     return cursor.rowcount or 0
 
 
-def extract_jingdai_products_to_config(df):
-    """从经代 DataFrame 中提取年份>=2026的产品名称到 product_config 表。"""
+def extract_jingdai_products_to_config(df, *, conn=None):
+    """提取经代产品；传入连接时由调用方事务统一提交或回滚。"""
     time_col = _pick_col(df, ['时间', '年月'])
     name_col = _pick_col(df, ['产品名称'])
     if not (time_col and name_col):
@@ -102,13 +102,19 @@ def extract_jingdai_products_to_config(df):
         return
 
     products = work[['_product_name']].drop_duplicates()
-    with get_db() as conn:
+    def write_products(connection):
         for _, row in products.iterrows():
             name = row['_product_name']
-            conn.execute('''
+            connection.execute('''
                 INSERT OR IGNORE INTO product_config (product_code, product_name, business_type)
                 VALUES (?, ?, '经代')
             ''', (name, name))
-        normalize_product_config_table(conn)
-        conn.commit()
+        normalize_product_config_table(connection)
+
+    if conn is not None:
+        write_products(conn)
+    else:
+        with get_db() as connection:
+            write_products(connection)
+            connection.commit()
     logger.info("extracted %s jingdai products to product_config (year>=%s)", len(products), DEFAULT_YEAR)

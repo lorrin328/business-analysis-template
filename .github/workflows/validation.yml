@@ -1,0 +1,63 @@
+name: Validate application
+
+on:
+  pull_request:
+  push:
+    branches: [master, 'codex/**']
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install and check dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install pip-audit
+          python -m pip check
+          python -m pip_audit --strict --progress-spinner off
+      - name: Business, permission and failure-path tests
+        env:
+          BUSINESS_ANALYSIS_DB: /tmp/business-analysis-ci.db
+          BUSINESS_ANALYSIS_LOG_DIR: /tmp/business-analysis-ci-logs
+        run: python -m pytest -q
+      - name: Shell syntax and source boundary
+        run: |
+          bash -n deploy/deploy.sh
+          bash -n deploy/recover_targets.sh
+          python scripts/check_release_files.py
+      - name: Build with excluded test probes
+        run: |
+          mkdir -p excel backend/market_analysis_data
+          mkdir -p backend/.venv/lib backend/venv.next/lib
+          echo 'synthetic confidential probe' > excel/ci_do_not_ship.csv
+          echo 'synthetic runtime probe' > backend/market_analysis_data/ci_do_not_ship.py
+          echo 'synthetic dependency probe' > backend/.venv/lib/ci_do_not_ship.py
+          echo 'synthetic candidate dependency probe' > backend/venv.next/lib/ci_do_not_ship.py
+          docker build -t business-analysis:ci .
+      - name: Check actual image files and non-root account
+        run: docker run --rm --entrypoint python -v "$PWD/scripts/verify_image.py:/verify_image.py:ro" business-analysis:ci /verify_image.py
+      - name: Container startup and protected API smoke test
+        run: |
+          docker run -d --name business-analysis-smoke -p 127.0.0.1:45679:45679 -e DEFAULT_ADMIN_PASSWORD='Synthetic-CI-only-2026!' business-analysis:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:45679/api/health > /tmp/health.json; then break; fi
+            sleep 2
+          done
+          python -c "import json; assert json.load(open('/tmp/health.json'))['status']=='ok'"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:45679/api/kpi)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:45679/backend/main.py)" = 404
+      - name: Cleanup container
+        if: always()
+        run: docker rm -f business-analysis-smoke || true

@@ -27,6 +27,9 @@
     label { display:grid; gap:4px; color:var(--muted); font-size:12px; }
     input,select { min-height:36px; padding:6px 9px; border:1px solid #c8d1da; border-radius:5px; background:#fff; }
     .notice { margin-bottom:16px; padding:12px 15px; background:#fff; border-left:4px solid var(--blue); }
+    .coverage-notice { background:#fff8e8; border-left-color:var(--amber); line-height:1.7; }
+    .coverage-notice strong { color:#805600; }
+    .coverage-notice .meta { margin-top:4px; font-size:12px; }
     .kpis { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; margin-bottom:18px; }
     .kpi { min-height:120px; padding:16px; background:#fff; border:1px solid var(--line); border-radius:8px; }
     .kpi-label { color:var(--muted); font-size:12px; }
@@ -108,6 +111,11 @@
     </section>
 
     <div class="notice" id="scopeNotice">新客与老客按所选期间起始日划分；保单状态为客户清单数据截止日的当前状态，不作为13个月或25个月继续率。</div>
+    <div class="notice coverage-notice hidden" id="aliasCoverageNotice" role="status" aria-live="polite">
+      <strong>客户关联覆盖提示</strong>
+      <div id="aliasCoverageMessage"></div>
+      <div class="meta" id="aliasCoverageScope"></div>
+    </div>
     <section class="kpis" id="kpiGrid"></section>
     <nav class="tabs" id="tabs" role="tablist" aria-label="客户分析页签">
       <button class="tab active" data-tab="overview" role="tab" aria-selected="true">经营概览</button>
@@ -121,6 +129,6 @@
     <section id="content"></section>
   </main>
   <section class="access hidden" id="accessDenied">当前账号没有“客户分析”权限，请联系管理员。</section>
-  <script src="/js/customer-analysis.js?v=1.0.127"></script>
+  <script src="/js/customer-analysis.js?v=1.0.146-f5ce7460e94b"></script>
 </body>
 </html>

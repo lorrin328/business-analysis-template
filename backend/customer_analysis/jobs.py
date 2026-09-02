@@ -25,6 +25,7 @@ from customer_analysis.importer import (
 )
 from db.connection import get_db
 from services.operation_lock import OperationLockError, operation_lock
+from services.customer_fact_refresh import policy_key, policy_key_sql, refresh_customer_facts
 
 
 CHUNK_BYTES = 8 * 1024 * 1024
@@ -327,6 +328,15 @@ def _assess_stage(stage: sqlite3.Connection) -> dict[str, int]:
               WHEN import_time=COALESCE((SELECT s.import_time FROM prod.customer_policy_snapshot s WHERE s.policy_no=policies.policy_no),'') THEN 'conflict'
               ELSE 'update' END"""
         )
+        key = policy_key_sql("policy_no")
+        stage.execute(f"CREATE INDEX IF NOT EXISTS ix_staged_policy_key ON policies({key})")
+        stage.execute(
+            f"""UPDATE policies SET action='conflict'
+                WHERE {key} IN (SELECT {key} FROM policies GROUP BY {key} HAVING COUNT(*)>1)
+                   OR EXISTS (SELECT 1 FROM prod.customer_policy_snapshot s
+                              WHERE {policy_key_sql('s.policy_no')}={policy_key_sql('policies.policy_no')}
+                                AND s.policy_no<>policies.policy_no)"""
+        )
         stage.commit()
     finally:
         stage.execute("DETACH DATABASE prod")
@@ -546,14 +556,10 @@ def _commit_prepared_customer_import_unlocked(upload_id: str) -> None:
                          WHERE customer_id IN (SELECT customer_id FROM customer_import_affected_customers))
                    GROUP BY customer_id"""
             )
-            conn.execute(
-                """UPDATE customer_policy_month_fact SET
-                   customer_id=(SELECT s.customer_id FROM customer_policy_snapshot s WHERE s.policy_no=customer_policy_month_fact.policy_no),
-                   underwriting_time=(SELECT s.underwriting_time FROM customer_policy_snapshot s WHERE s.policy_no=customer_policy_month_fact.policy_no),
-                   policy_status=(SELECT s.policy_status FROM customer_policy_snapshot s WHERE s.policy_no=customer_policy_month_fact.policy_no),
-                   termination_reason=(SELECT s.termination_reason FROM customer_policy_snapshot s WHERE s.policy_no=customer_policy_month_fact.policy_no),
-                   status_group=(SELECT s.status_group FROM customer_policy_snapshot s WHERE s.policy_no=customer_policy_month_fact.policy_no),
-                   customer_match=1 WHERE policy_no IN (SELECT policy_no FROM customer_import_affected_policies)"""
+            refresh_customer_facts(
+                conn,
+                (policy_key(row[0]) for row in conn.execute("SELECT policy_no FROM customer_import_affected_policies")),
+                batch_id=int(base["id"]),
             )
             conn.execute(
                 """UPDATE customer_policy_month_fact SET
