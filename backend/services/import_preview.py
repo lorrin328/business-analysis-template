@@ -12,7 +12,7 @@ from etl.normalize import _period_year_month
 from services.excel_pipeline import ExcelSource
 from services.import_safety import (
     IMPORT_MODES, RawIncrementalWriteError, extract_raw_periods, prepare_supplement,
-    raw_period_config, raw_period_predicate, table_columns, validate_replacement_fields,
+    raw_period_config, raw_periods_predicate, table_columns, validate_replacement_fields,
 )
 from services.raw_table_reader import quote_identifier
 
@@ -57,13 +57,9 @@ def _existing_rows(conn, table, periods):
     if not columns:
         return 0
     config = raw_period_config(table, pd.DataFrame(columns=sorted(columns)))
-    clauses, params = [], []
-    for year, month in sorted(periods):
-        clause, values = raw_period_predicate(year, month, config)
-        clauses.append(f"({clause})")
-        params.extend(values)
+    where, params = raw_periods_predicate(periods, config)
     return conn.execute(
-        f"SELECT COUNT(*) FROM {quote_identifier(table)} WHERE {' OR '.join(clauses)}", params,
+        f"SELECT COUNT(*) FROM {quote_identifier(table)} WHERE {where}", params,
     ).fetchone()[0]
 
 
@@ -109,6 +105,9 @@ def build_import_preview(conn, sources: list[ExcelSource], *, import_mode: str =
         try:
             frame = parser(source.content)
             entry["rowCount"] = len(frame)
+            entry["ignoredSummaryRows"] = int(frame.attrs.get("ignored_summary_rows", 0))
+            if entry["ignoredSummaryRows"]:
+                result["warnings"].append(f"{label}末尾的 {entry['ignoredSummaryRows']} 行合计已识别，不计入业务明细和导入行数。")
             missing = [group[0] for group in HEADER_GROUPS[source.kind] if not _pick_col(frame, list(group))]
             if missing:
                 raise RawIncrementalWriteError(f"{label}缺少必要表头：{'、'.join(missing)}。请确认文件放在正确的清单位置，并补齐统计年月及业务字段。")

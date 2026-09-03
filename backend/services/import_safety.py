@@ -116,18 +116,42 @@ def raw_period_predicate(year: int, month: int, cols: tuple[str | None, str | No
     raise RawIncrementalWriteError('现有数据没有可识别的期间字段，不能安全替换历史')
 
 
+def raw_periods_predicate(periods, cols):
+    """Match several periods without normalizing every row once per month.
+
+    Retain raw_period_predicate's legacy numeric-month/year and date semantics.
+    An IN lookup evaluates the expensive defensive date expression once per row.
+    """
+    periods = sorted(set(periods))
+    if not periods:
+        return '0', ()
+    year_col, month_col, date_col = cols
+    if date_col or (month_col and not year_col):
+        expr = compact_period_expr(date_col or month_col)
+        return (f'substr({expr}, 1, 6) IN ({",".join("?" for _ in periods)})',
+                tuple(f'{year:04d}{month:02d}' for year, month in periods))
+    if year_col and month_col:
+        clauses, params = [], []
+        for year in sorted({year for year, _ in periods}):
+            months = [month for y, month in periods if y == year]
+            marks = ','.join('?' for _ in months)
+            expr = compact_period_expr(month_col)
+            clauses.append(f'(CAST({quote_identifier(year_col)} AS INTEGER)=? AND '
+                           f'(CAST({quote_identifier(month_col)} AS INTEGER) IN ({marks}) OR '
+                           f'substr({expr},1,6) IN ({marks})))')
+            params.extend([year, *months, *(f'{year:04d}{month:02d}' for month in months)])
+        return ' OR '.join(clauses), tuple(params)
+    raise RawIncrementalWriteError('现有数据没有可识别的期间字段，不能安全替换历史')
+
+
 def read_raw_periods(conn, table: str, periods: set[tuple[int, int]]) -> pd.DataFrame:
     columns = table_columns(conn, table)
     if not columns or not periods:
         return pd.DataFrame(columns=sorted(columns))
     config = raw_period_config(table, pd.DataFrame(columns=sorted(columns)))
-    clauses, params = [], []
-    for year, month in sorted(periods):
-        clause, values = raw_period_predicate(year, month, config)
-        clauses.append(f'({clause})')
-        params.extend(values)
+    where, params = raw_periods_predicate(periods, config)
     select = ','.join(quote_identifier(column) for column in sorted(columns))
-    return pd.read_sql_query(f'SELECT {select} FROM {quote_identifier(table)} WHERE {" OR ".join(clauses)}', conn, params=params)
+    return pd.read_sql_query(f'SELECT {select} FROM {quote_identifier(table)} WHERE {where}', conn, params=params)
 
 
 def validate_replacement_fields(conn, table: str, df) -> None:
@@ -138,18 +162,16 @@ def validate_replacement_fields(conn, table: str, df) -> None:
         return
     periods, _ = extract_raw_periods(table, df)
     config = raw_period_config(table, pd.DataFrame(columns=sorted(existing)))
-    for year, month in sorted(periods):
-        where, params = raw_period_predicate(year, month, config)
-        for column in missing:
-            enabled = conn.execute(
-                f'SELECT 1 FROM {quote_identifier(table)} WHERE ({where}) AND '
-                f'TRIM(COALESCE(CAST({quote_identifier(column)} AS TEXT),\'\'))<>\'\' LIMIT 1', params,
-            ).fetchone()
-            if enabled:
-                raise RawIncrementalWriteError(
-                    f'{year}年{month}月完整替换缺少已有业务字段“{column}”，已停止导入并保留原数据。'
-                    '请使用字段完整的月度源；仅补充缺失保单时，请明确选择补充模式。'
-                )
+    where, params = raw_periods_predicate(periods, config)
+    expressions = [f'MAX(TRIM(COALESCE(CAST({quote_identifier(column)} AS TEXT),\'\'))<>\'\')'
+                   for column in missing]
+    enabled = conn.execute(f'SELECT {",".join(expressions)} FROM {quote_identifier(table)} WHERE {where}', params).fetchone()
+    blocked = [column for column, present in zip(missing, enabled) if present]
+    if blocked:
+        raise RawIncrementalWriteError(
+            f'所选月份完整替换缺少已有业务字段“{"、".join(blocked)}”，已停止导入并保留原数据。'
+            '请使用字段完整的月度源；仅补充缺失保单时，请明确选择补充模式。'
+        )
 
 
 def _db_value(value):
@@ -277,8 +299,8 @@ def write_raw_table_incremental(conn, table: str, df, *, mode: str = 'replace_mo
     try:
         if mode == 'replace_months' and existing_cols:
             existing_period_cols = raw_period_config(table, pd.DataFrame(columns=sorted(existing_cols)))
-            for year, month in periods:
-                delete_raw_period(conn, table, year, month, existing_period_cols)
+            where, params = raw_periods_predicate(periods, existing_period_cols)
+            conn.execute(f'DELETE FROM {quote_identifier(table)} WHERE {where}', params)
         append_raw_frame(conn, table, selected)
         conn.execute('RELEASE SAVEPOINT raw_incremental_write')
         return len(selected)
