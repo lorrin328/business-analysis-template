@@ -1,4 +1,6 @@
+import hashlib
 import os
+import re
 
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -106,7 +108,9 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/api-client.js?v=1.0.116"></script>' in html
     assert '<script src="js/auth-ui.js?v=1.0.116"></script>' in html
     assert '<script src="js/export-excel.js?v=1.0.116"></script>' in html
-    assert '<script src="js/upload.js?v=1.0.146-8becae84ce82"></script>' in html
+    upload_tag = re.search(r'<script src="js/upload\.js\?v=\d+\.\d+\.\d+-([0-9a-f]{12})"></script>', html)
+    assert upload_tag, 'Upload script must carry a content hash to refresh proxy/browser caches'
+    assert upload_tag.group(1) == hashlib.sha256(read_js('upload.js').encode('utf-8')).hexdigest()[:12]
     assert '<script src="js/target-modal.js?v=1.0.120"></script>' in html
     assert '<script src="js/kpi-cards.js?v=1.0.146-29880f1034df"></script>' in html
     assert '<script src="js/platform-trend.js?v=1.0.116"></script>' in html
