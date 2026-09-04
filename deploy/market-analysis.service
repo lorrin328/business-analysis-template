@@ -8,6 +8,7 @@ StartLimitBurst=2
 [Service]
 Type=oneshot
 Restart=on-failure
+RestartPreventExitStatus=2
 RestartSec=2min
 User=market-ai
 Group=market-analysis
