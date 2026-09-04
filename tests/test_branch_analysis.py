@@ -1,4 +1,6 @@
 import csv
+import hashlib
+import re
 from pathlib import Path
 
 import pytest
@@ -132,6 +134,8 @@ def test_branch_overview_separates_regular_and_referral_counts(auth_db):
     assert data["summary"]["matchedPremiumRate"] == pytest.approx(13 / 14)
     assert len(data["regularBranches"]) == 2
     assert data["regularBranches"][0]["status"] == "持续经营"
+    assert data["regularBranches"][0]["externalSellers"] == 1
+    assert data["regularBranches"][0]["internalAgents"] == 1
     assert data["regularBranches"][1]["status"] == "新增/恢复"
     assert len(data["referralBranches"]) == 1
 
@@ -295,6 +299,12 @@ def test_branch_page_permission_and_static_runtime(auth_db):
     assert "query.set('periodValue', periodValue)" in script.text
     assert "数据截至 ${state.data.meta.performanceCutoff}" in script.text
     assert "lastBranchBusinessDate" in script.text
+    assert "integer(item.internalAgents)" in script.text
+    assert "'券商人员', '太平人员', '活动月'" in script.text
+    assert "券商及太平人员均按出单工号去重" in script.text
+    branch_tag = re.search(r'/js/branch-analysis\.js\?v=\d+\.\d+\.\d+-([0-9a-f]{12})', page.text)
+    assert branch_tag, "网点分析脚本必须携带内容哈希以刷新代理和浏览器缓存"
+    assert branch_tag.group(1) == hashlib.sha256(script.text.encode("utf-8")).hexdigest()[:12]
     assert ROLE_DEFAULT_PERMISSIONS["admin"]["branch_analysis"] is True
     assert ROLE_DEFAULT_PERMISSIONS["senior"]["branch_analysis"] is True
     assert ROLE_DEFAULT_PERMISSIONS["normal"]["branch_analysis"] is False

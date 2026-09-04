@@ -133,11 +133,12 @@
       statusBadge(item.status), esc(item.grade), esc(item.project), esc(item.org || '--'),
       `<span title="${esc(item.branch)}">${esc(item.branch)}</span>`, esc(item.city),
       number(item.premiumWan), `<span class="${changeClass(item.premiumChange)}">${change(item.premiumChange)}</span>`,
-      integer(item.policies), number(item.averageCaseWan), integer(item.externalSellers), integer(item.activeMonths)
+      integer(item.policies), number(item.averageCaseWan), integer(item.externalSellers),
+      integer(item.internalAgents), integer(item.activeMonths)
     ]);
-    return toolbar + panel('147个常规网点经营明细', '按期内正向保单识别活动网点；保费保留冲正后的净额。', table(
-      ['状态', '等级', '项目', '太平机构', '证券网点', '城市', '期交保费(万)', '同比', '件数', '件均(万)', '券商人员', '活动月'],
-      tableRows, [6, 7, 8, 9, 10, 11]
+    return toolbar + panel('147个常规网点经营明细', '按期内正向保单识别活动网点；保费保留冲正后的净额，券商及太平人员均按出单工号去重。', table(
+      ['状态', '等级', '项目', '太平机构', '证券网点', '城市', '期交保费(万)', '同比', '件数', '件均(万)', '券商人员', '太平人员', '活动月'],
+      tableRows, [6, 7, 8, 9, 10, 11, 12]
     ));
   }
 
