@@ -788,6 +788,60 @@ def test_worker_runs_bounded_evidence_repair_before_publication(tmp_path, monkey
     assert "internalBusinessSnapshot" in prompts[1]
 
 
+def test_worker_repairs_analysis_after_verified_fact_alignment(tmp_path, monkeypatch):
+    repository = MarketAnalysisRepository(tmp_path)
+    draft = valid_report()
+    draft["modules"][0]["fact"] = "用于测试的短事实摘要，建议9月复核。"
+    draft["modules"][0]["judgment"] = "建议9月复核相关变化。"
+    repaired = valid_report()
+    prompts = []
+    roles = []
+
+    def fake_invoke(_resolved_bin, prompt, *, model, role, telemetry, **_kwargs):
+        prompts.append(prompt)
+        roles.append(role)
+        telemetry.append({"role": role, "model": model, "status": "success", "elapsedMs": 1000})
+        return copy.deepcopy(draft if len(prompts) == 1 else repaired)
+
+    def fake_verify(report, **_kwargs):
+        verified_at = run_market_research.now_iso()
+        for source in report["sources"]:
+            source["retrievedAt"] = verified_at
+            source["verification"]["verifiedAt"] = verified_at
+        return report
+
+    monkeypatch.setattr(run_market_research, "fetch_internal_snapshot", lambda: {"year": 2026})
+    monkeypatch.setattr(run_market_research.shutil, "which", lambda value: "/usr/local/bin/claude")
+    monkeypatch.setattr(run_market_research, "invoke_claude", fake_invoke)
+    monkeypatch.setattr(run_market_research, "verify_report_sources", fake_verify)
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+    monkeypatch.setenv("MARKET_ANALYSIS_POST_VERIFY_REPAIR_ATTEMPTS", "1")
+
+    result = run_market_research.run_research(repository)
+
+    assert result["reviewStatus"] == "machine_validated"
+    assert len(prompts) == 2
+    assert roles == ["primary", "repair_flash"]
+    assert "unsupported factual tokens" in prompts[1]
+    assert "9月" in prompts[1]
+    assert repository.latest()["reportId"] == result["reportId"]
+    assert repository.repair_checkpoint() is None
+
+
+def test_main_returns_non_retry_exit_for_content_validation(monkeypatch, capsys):
+    monkeypatch.setattr(run_market_research.sys, "argv", ["run_market_research.py"])
+    monkeypatch.setattr(
+        run_market_research,
+        "run_research",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ReportValidationError(["module M10: unsupported factual tokens ['9月']"])
+        ),
+    )
+
+    assert run_market_research.main() == 2
+    assert "unsupported factual tokens" in capsys.readouterr().err
+
+
 def test_worker_allows_second_targeted_repair_for_peer_first_party_evidence(tmp_path, monkeypatch):
     invalid_peer = valid_report()
     for source_id in ("S3", "S7"):
@@ -1139,6 +1193,7 @@ def test_market_analysis_page_is_modular_and_whitelisted():
     assert "renderObservability" in script
     assert "/api/market-analysis/observability?limit=6" in script
     assert "专业成熟度" in script
+    assert "报告未通过发布门禁" in script
     assert "executiveEvidence" in page
     assert "entries.slice(0, 3)" in script
     assert "innerHTML" not in script
@@ -1183,11 +1238,13 @@ def test_market_timer_runs_at_1am_when_three_calendar_days_are_due_and_template_
     assert "NoNewPrivileges=true" in service
     assert "ProtectSystem=strict" in service
     assert "Restart=on-failure" in service
+    assert "RestartPreventExitStatus=2" in service
     assert "StartLimitBurst=2" in service
     assert "tr -d '\\r'" in installer
     assert "ensure_env_value ANTHROPIC_DEFAULT_HAIKU_MODEL 'deepseek-v4-flash-vision-exp'" in installer
     assert "ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL 'deepseek-v4-flash-vision-exp'" in installer
     assert "ensure_env_value MARKET_ANALYSIS_ESCALATION_MODEL 'deepseek-v4-flash-vision-exp'" in installer
+    assert "ensure_env_value MARKET_ANALYSIS_POST_VERIFY_REPAIR_ATTEMPTS '1'" in installer
     assert "ensure_env_value MARKET_ANALYSIS_MIN_QUALITY_SCORE '9.0'" in installer
     assert "apt-get install -y curl ca-certificates nodejs npm" not in installer
     assert "@anthropic-ai/claude-code@latest" in installer
@@ -1202,5 +1259,6 @@ def test_market_timer_runs_at_1am_when_three_calendar_days_are_due_and_template_
     assert "COOLDOWN_SECONDS=300" in trigger
     assert 'LOCK_FILE="$STATE_DIR/trigger.lock"' in trigger
     assert "systemctl start --no-block" in trigger
+    assert '"$SYSTEMCTL_BIN" reset-failed "$SERVICE_NAME"' in scheduler
     assert "NoNewPrivileges=true" in trigger_service
     assert "PathExists=/run/business-analysis-market-trigger/request" in trigger_path

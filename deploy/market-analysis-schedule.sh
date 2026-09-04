@@ -49,5 +49,6 @@ if [ "$SHOULD_RUN" != "1" ]; then
   exit 0
 fi
 
+"$SYSTEMCTL_BIN" reset-failed "$SERVICE_NAME"
 "$SYSTEMCTL_BIN" start --no-block "$SERVICE_NAME"
 echo "已到3个自然日周期，市场研判研究已于凌晨1点启动。"

@@ -435,8 +435,11 @@
     try {
       const status = await api('/api/market-analysis/status');
       const state = status?.state || 'never_run';
+      const validationBlocked = state === 'failed' && Array.isArray(status?.validationErrors) && status.validationErrors.length > 0;
       document.getElementById('runDot').className = `dot ${state}`;
-      document.getElementById('runState').textContent = ({ success: '最近运行成功', running: '研究正在运行', failed: '最近运行失败', never_run: '尚未运行' })[state] || state;
+      document.getElementById('runState').textContent = validationBlocked
+        ? '报告未通过发布门禁'
+        : ({ success: '最近运行成功', running: '研究正在运行', failed: '最近运行失败', never_run: '尚未运行' })[state] || state;
       const planText = modelPlanLabel(status?.modelPlan);
       const scoutText = sourceScoutLabel(status?.sourceScout);
       document.getElementById('runMessage').textContent = `${status?.message || ''}${status?.updatedAt ? ` · ${formatTime(status.updatedAt)}` : ''}${planText ? ` · ${planText}` : ''}${scoutText ? ` · ${scoutText}` : ''}`;

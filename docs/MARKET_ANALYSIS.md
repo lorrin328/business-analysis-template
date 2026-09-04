@@ -66,11 +66,12 @@ MARKET_ANALYSIS_ZHIHU_TIMEOUT_SECONDS=20
 MARKET_ANALYSIS_SOURCE_VERIFY_WORKERS=4
 MARKET_ANALYSIS_REPAIR_MAX_BUDGET_USD=3
 MARKET_ANALYSIS_ESCALATION_MAX_BUDGET_USD=6
+MARKET_ANALYSIS_POST_VERIFY_REPAIR_ATTEMPTS=1
 MARKET_ANALYSIS_MIN_QUALITY_SCORE=9.0
 CLAUDE_CODE_EFFORT_LEVEL=max
 ```
 
-所有模型角色统一使用`deepseek-v4-flash-vision-exp`。来源侦察失败时仍降级到主研链路；首次修复后仍不合格时允许同模型再做一次升级修复，仍失败则不发布。9分质量门槛、独立来源复核和上一期报告保护不变。该模型属于实验版本，需通过运行台账持续观察首次成稿率、修复率、耗时和质量；CLI的`total_cost_usd`仅作为相对观察值，实际扣费以DeepSeek控制台为准。
+所有模型角色统一使用`deepseek-v4-flash-vision-exp`。来源侦察失败时仍降级到主研链路；首次修复后仍不合格时允许同模型再做一次升级修复。独立来源核验将模块事实对齐到原文摘录后，如判断或影响出现新的证据一致性错误，允许额外一次定向修复并重新核验来源；仍失败则不发布。9分质量门槛、独立来源复核和上一期报告保护不变。该模型属于实验版本，需通过运行台账持续观察首次成稿率、修复率、耗时和质量；CLI的`total_cost_usd`仅作为相对观察值，实际扣费以DeepSeek控制台为准。
 
 ## 首次验证与启用
 
@@ -90,7 +91,7 @@ systemctl list-timers market-analysis.timer --all
 3. 宏观和监管有 A 级官方原文，每个同业模块均有公司/协会一手来源；每条来源均有可在 HTML、正文文本、PDF 或内部快照中逐字定位的 50 字内证据锚点；
 4. `/api/market-analysis/latest` 登录后可读，普通用户未授权时返回403；
 5. `/market-analysis.html` 可切换历史期次，桌面和手机无横向溢出；
-6. timer 的下一次检查时间为次日凌晨1点；只有满3个自然日才启动完整研究，失败时 `latest.json` 不被覆盖并在次日凌晨1点重试；
+6. timer 的下一次检查时间为次日凌晨1点；只有满3个自然日才启动完整研究，失败时 `latest.json` 不被覆盖并在次日凌晨1点重新判断是否启动；内容门禁失败不在同一次systemd任务中自动重启；
 7. `qualityAssessment.score` 不低于9.0，页面展示证据、覆盖、滚动分析、行动闭环和运行可靠性五项分值。
 8. `/api/market-analysis/observability?limit=6`登录后可读；页面展示成功周期、运行尝试、首次成稿、运行成功、升级修复、时长、来源贡献和待复核行动。旧报告没有历史运行字段时显示“待积累”，不得补0。
 

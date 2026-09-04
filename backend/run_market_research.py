@@ -1093,8 +1093,13 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
         max_budget = os.getenv("MARKET_ANALYSIS_MAX_BUDGET_USD", "8").strip()
         timeout_seconds = int(os.getenv("MARKET_ANALYSIS_TIMEOUT_SECONDS", "3600"))
         max_repair_attempts = max(1, min(int(os.getenv("MARKET_ANALYSIS_MAX_REPAIR_ATTEMPTS", "2")), 3))
+        max_post_verify_repair_attempts = max(
+            0,
+            min(int(os.getenv("MARKET_ANALYSIS_POST_VERIFY_REPAIR_ATTEMPTS", "1")), 2),
+        )
         checkpoint = repository.repair_checkpoint()
         repair_attempts = 0
+        post_verify_repair_attempts = 0
         if not checkpoint and source_scout_enabled():
             repository.write_status({
                 "state": "running",
@@ -1270,7 +1275,29 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
 
             align_module_facts_to_verified_excerpts(report)
             report["generatedAt"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
-            validate_report(report)
+            try:
+                validate_report(report)
+            except ReportValidationError as final_validation_error:
+                repair_errors = final_validation_error.errors
+                repository.write_repair_checkpoint(stage="repair", report=report, errors=repair_errors)
+                if post_verify_repair_attempts >= max_post_verify_repair_attempts:
+                    raise
+                repair_model, repair_role = repair_model_for_attempt(model_plan, repair_attempts)
+                report = invoke_claude(
+                    resolved_bin,
+                    build_repair_prompt(report, repair_errors, snapshot, ledger, action_history),
+                    model=repair_model,
+                    role=repair_role,
+                    telemetry=model_calls,
+                    max_turns=os.getenv("MARKET_ANALYSIS_REPAIR_MAX_TURNS", "40").strip(),
+                    max_budget=os.getenv("MARKET_ANALYSIS_REPAIR_MAX_BUDGET_USD", "3").strip(),
+                    timeout_seconds=timeout_seconds,
+                )
+                repair_attempts += 1
+                post_verify_repair_attempts += 1
+                report, generated_at = stamp_report_metadata(report, repository, model_plan=model_plan)
+                apply_source_scout_metadata(report, scout_summary)
+                continue
             finished_at = now_iso()
             runtime_assessment = build_runtime_assessment(
                 started_at,
@@ -1436,6 +1463,9 @@ def main() -> int:
             result = run_zhihu_scout_only(repository)
         else:
             result = run_research(repository, dry_run=args.dry_run)
+    except ReportValidationError as exc:
+        print(f"market research failed: {redact(exc)}", file=sys.stderr)
+        return 2
     except Exception as exc:
         print(f"market research failed: {redact(exc)}", file=sys.stderr)
         return 1
