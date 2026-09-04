@@ -304,7 +304,8 @@ def test_branch_page_permission_and_static_runtime(auth_db):
     assert "券商及太平人员均按出单工号去重" in script.text
     branch_tag = re.search(r'/js/branch-analysis\.js\?v=\d+\.\d+\.\d+-([0-9a-f]{12})', page.text)
     assert branch_tag, "网点分析脚本必须携带内容哈希以刷新代理和浏览器缓存"
-    assert branch_tag.group(1) == hashlib.sha256(script.text.encode("utf-8")).hexdigest()[:12]
+    normalized_script = script.text.replace("\r\n", "\n")
+    assert branch_tag.group(1) == hashlib.sha256(normalized_script.encode("utf-8")).hexdigest()[:12]
     assert ROLE_DEFAULT_PERMISSIONS["admin"]["branch_analysis"] is True
     assert ROLE_DEFAULT_PERMISSIONS["senior"]["branch_analysis"] is True
     assert ROLE_DEFAULT_PERMISSIONS["normal"]["branch_analysis"] is False
