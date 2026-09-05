@@ -135,7 +135,7 @@
       // New: org filter, time dim, metric
       if (productFilters.orgs && !productFilters.orgs['all']) {
         const o = Object.keys(productFilters.orgs).filter(k => k !== 'all' && productFilters.orgs[k]);
-        if (o.length > 0) params.set('orgs', o.join(','));
+        params.set('orgs', o.length > 0 ? o.join(',') : '__none__');
       }
       if (productFilters.timeDim && productFilters.timeDim !== 'year') {
         const months = typeof getProductSelectedMonths === 'function'

@@ -1233,7 +1233,10 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
     assert '<script src="js/platform-trend-main.js?v=1.0.124"></script>' in html
-    assert '<script src="js/data-integration.js?v=1.0.124"></script>' in html
+    integration_tag = re.search(r'js/data-integration\.js\?v=\d+\.\d+\.\d+-([0-9a-f]{12})', html)
+    assert integration_tag, "Data integration must carry its content digest"
+    digest = hashlib.sha256(read_js("data-integration.js").encode("utf-8")).hexdigest()[:12]
+    assert integration_tag.group(1) == digest
     assert "Object.keys(platformMock).forEach(year => delete platformMock[year])" in platform_main
     assert "function refreshPlatformChart()" in platform_main
     assert "function switchYear(value)" in platform_main

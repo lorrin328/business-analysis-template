@@ -45,10 +45,12 @@ from services.import_safety import (
     validate_replacement_fields,
     read_raw_periods,
     IMPORT_MODES,
+    raw_period_config, raw_periods_predicate,
 )
 from etl.aggregates.org_zero_streak import ACTIVITY_SOURCE_COLUMNS, extract_org_activity_periods
 from services.aggregate_rebuilder import _read_org_activity_rows, replace_org_activity_from_raw
-from services.raw_table_reader import raw_table_columns
+from services.raw_table_reader import raw_table_columns, quote_identifier
+from etl.normalize import _period_year_month
 from services.product_config_service import extract_jingdai_products_to_config
 from etl.aggregates.jingdai import _load_jingdai_product_config
 from validators.data_validator import validate_rows
@@ -78,13 +80,62 @@ AGGREGATE_TABLE_ORDER = [
 
 RAW_TABLE_ORDER = ["performance", "jingdai", "hr_data", "value_data"]
 
-# These aggregates are filtered subsets of a raw source. A covered month can
-# legitimately produce zero rows after a correction, so incremental imports
-# must clear every covered month before inserting the remaining aggregates.
+# Source coverage drives deletion even when a corrected source produces no rows.
+# Shared tables must retain the other source's business_type partition.
 CONDITIONAL_AGGREGATE_SOURCES = {
-    "agg_zhituo_performance": "performance",
-    "agg_org_daily_activity": "performance",
+    "agg_zhituo_performance": (("performance", None),),
+    "agg_org_daily_activity": (("performance", None),),
+    "agg_daily_performance": (("performance", None),),
+    "agg_org_daily_performance": (("performance", None),),
+    "agg_longterm_qj": (("performance", "转型"), ("jingdai", "经代")),
+    "agg_payment_period": (("performance", "转型"), ("jingdai", "经代")),
+    "agg_payment_period_daily": (("performance", "转型"), ("jingdai", "经代")),
+    "agg_product_daily": (("performance", "转型"), ("jingdai", "经代")),
 }
+
+
+def _monthly_periods(table: str, frame: pd.DataFrame) -> set[tuple[int, int]]:
+    if frame.empty:
+        return set()
+    year_col, month_col, _ = raw_period_config(table, frame)
+    if not month_col:
+        return set()
+    work = _period_year_month(frame, year_col, month_col)
+    return set(map(tuple, work[["_year", "_month"]].drop_duplicates().itertuples(index=False, name=None)))
+
+
+def _read_monthly_source(conn, table: str, periods: set[tuple[int, int]]) -> pd.DataFrame:
+    """Human-resource activity follows the monthly field, not the booking day."""
+    columns = raw_table_columns(conn, table)
+    if not columns or not periods:
+        return pd.DataFrame(columns=columns)
+    year_col, month_col, _ = raw_period_config(table, pd.DataFrame(columns=columns))
+    if not month_col:
+        return pd.DataFrame(columns=columns)
+    where, params = raw_periods_predicate(periods, (year_col, month_col, None))
+    names = ",".join(map(quote_identifier, columns))
+    return pd.read_sql_query(f'SELECT {names} FROM {quote_identifier(table)} WHERE {where}', conn, params=params)
+
+
+def _refresh_hr_from_current_sources(conn, periods: set[tuple[int, int]]) -> dict[str, int]:
+    """Refresh dependent monthly HR totals inside the import savepoint."""
+    if not periods:
+        return {}
+    hr = _read_monthly_source(conn, "hr_data", periods)
+    performance = _read_monthly_source(conn, "performance", periods)
+    rows = aggregate_hr(hr) if not hr.empty else []
+    org_rows = aggregate_org_hr(hr) if not hr.empty else []
+    result = {"agg_hr_data": rows, "agg_org_hr_data": org_rows}
+    if rows and not performance.empty:
+        result["_active_headcount"] = aggregate_active_headcount(performance)
+    if org_rows and not performance.empty:
+        result["_org_active_headcount"] = aggregate_org_active_headcount(performance)
+    _backfill_active_headcount(result)
+    for table in ("agg_hr_data", "agg_org_hr_data"):
+        for year, month in sorted(periods):
+            conn.execute(f'DELETE FROM "{table}" WHERE year=? AND month=?', (int(year), int(month)))
+        replace_rows(conn, table, result[table])
+    return {table: len(result[table]) for table in ("agg_hr_data", "agg_org_hr_data")}
 
 
 @dataclass(frozen=True)
@@ -325,21 +376,31 @@ def replace_aggregate_rows(
         if table == "agg_org_daily_activity" and not include_org_activity:
             continue
         rows = result.rows_by_table.get(table, [])
-        source_table = CONDITIONAL_AGGREGATE_SOURCES.get(table) if incremental else None
-        source_frame = result.raw_tables.get(source_table) if source_table else None
-        if source_frame is not None and not source_frame.empty:
+        sources = CONDITIONAL_AGGREGATE_SOURCES.get(table, ()) if incremental else ()
+        covered = False
+        for source_table, business_type in sources:
+            source_frame = result.raw_tables.get(source_table)
+            if source_frame is None or source_frame.empty:
+                continue
             if table == "agg_org_daily_activity":
                 periods = extract_org_activity_periods(source_frame)
+            elif source_table == "jingdai" and table != "agg_product_daily":
+                # These jingdai aggregates use 时间/年月 even if a date column exists.
+                periods = _monthly_periods(source_table, source_frame)
             else:
-                periods, _period_columns = extract_raw_periods(source_table, source_frame)
+                periods, _ = extract_raw_periods(source_table, source_frame)
             if not periods:
-                raise RawIncrementalWriteError(
-                    f"conditional aggregate {table} has no recognizable source year/month period"
-                )
-            for year, month in periods:
-                conn.execute(f'DELETE FROM "{table}" WHERE year = ? AND month = ?', (year, month))
-            if rows:
-                replace_rows(conn, table, rows)
+                raise RawIncrementalWriteError(f"conditional aggregate {table} has no recognizable source year/month period")
+            for year, month in sorted(periods):
+                sql = f'DELETE FROM "{table}" WHERE year = ? AND month = ?'
+                params = [int(year), int(month)]
+                if business_type is not None:
+                    sql += ' AND business_type = ?'
+                    params.append(business_type)
+                conn.execute(sql, params)
+            covered = True
+        if covered:
+            replace_rows(conn, table, rows)
             table_counts[table] = len(rows)
             continue
         if rows:
@@ -376,11 +437,18 @@ def write_excel_pipeline_result(conn, result: ExcelPipelineResult, *, incrementa
             validate_replacement_fields(conn, table, frame)
     affected_keys = set()
     performance_periods = set()
+    hr_periods = set()
+    hr_source = result.raw_tables.get("hr_data")
+    if hr_source is not None:
+        hr_periods.update(_monthly_periods("hr_data", hr_source))
     if performance is not None and not performance.empty:
         performance_periods, _ = extract_raw_periods("performance", performance)
-        if incremental and "投保单号" in raw_table_columns(conn, "performance"):
+        hr_periods.update(_monthly_periods("performance", performance))
+        if incremental:
             old = read_raw_periods(conn, "performance", performance_periods)
-            affected_keys.update(policy_key(value) for value in old["投保单号"])
+            hr_periods.update(_monthly_periods("performance", old))
+            if "投保单号" in old.columns:
+                affected_keys.update(policy_key(value) for value in old["投保单号"])
         if "投保单号" in performance.columns:
             affected_keys.update(policy_key(value) for value in performance["投保单号"])
         affected_keys.discard(None)
@@ -389,8 +457,15 @@ def write_excel_pipeline_result(conn, result: ExcelPipelineResult, *, incrementa
         if incremental:
             effective_columns = set(raw_table_columns(conn, "performance")) | set(performance.columns)
             activity_columns = [column for column in ACTIVITY_SOURCE_COLUMNS if column in effective_columns]
-            # Validate source date availability before the transactional write.
-            _read_org_activity_rows(conn, source_columns=activity_columns)
+            # Normal imports need only the post-write scan under the savepoint.
+            # A new higher-priority date column can reinterpret every historical
+            # row, so preserve the fail-closed schema-change preflight.
+            existing_columns = set(raw_table_columns(conn, "performance"))
+            date_priority = ("年月日", "入账时间")
+            old_date = next((c for c in date_priority if c in existing_columns), None)
+            new_date = next((c for c in date_priority if c in effective_columns), None)
+            if existing_columns and old_date != new_date:
+                _read_org_activity_rows(conn, source_columns=activity_columns)
             aggregate_org_daily_activity(performance.reindex(columns=activity_columns))
         else:
             aggregate_org_daily_activity(performance)
@@ -423,6 +498,8 @@ def write_excel_pipeline_result(conn, result: ExcelPipelineResult, *, incrementa
         table_counts.update(replace_aggregate_rows(
             conn, aggregate_result, incremental=incremental, include_org_activity=not refresh_activity,
         ))
+        if incremental and (performance is not None or hr_source is not None):
+            table_counts.update(_refresh_hr_from_current_sources(conn, hr_periods))
         if refresh_activity:
             table_counts["agg_org_daily_activity"] = replace_org_activity_from_raw(conn)
         if performance is not None:

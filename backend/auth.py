@@ -306,7 +306,13 @@ def _system_admin_user() -> dict:
     }
 
 
-def get_current_user(authorization: str | None = Header(default=None)) -> dict:
+def get_current_user(
+    authorization: str | None = Header(default=None), request: Request = None,
+) -> dict:
+    if request is not None:
+        cached = getattr(request.state, "authenticated_user", None)
+        if cached is not None:
+            return cached
     if _test_bypass_enabled():
         return _system_admin_user()
     if not authorization or not authorization.startswith("Bearer "):
@@ -318,7 +324,7 @@ def get_current_user(authorization: str | None = Header(default=None)) -> dict:
     with get_db() as conn:
         row = conn.execute(
             """
-            SELECT u.*
+            SELECT u.*, s.expires_at AS session_expires_at
             FROM user_sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.token_hash = ? AND s.revoked_at IS NULL AND u.is_active = 1
@@ -327,12 +333,8 @@ def get_current_user(authorization: str | None = Header(default=None)) -> dict:
         ).fetchone()
         if not row:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
-        session = conn.execute(
-            "SELECT expires_at FROM user_sessions WHERE token_hash = ?",
-            (token_hash,),
-        ).fetchone()
         try:
-            expires = datetime.fromisoformat(session["expires_at"])
+            expires = datetime.fromisoformat(row["session_expires_at"])
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session") from exc
         if expires < _utc_now():

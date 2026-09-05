@@ -1,5 +1,6 @@
 (function () {
   const state = { data: null, tab: 'overview', search: '', grade: '', status: '' };
+  let loadSequence = 0;
   const el = id => document.getElementById(id);
   const user = () => window.getCurrentUser?.() || null;
   const can = key => user()?.role === 'admin' || user()?.permissions?.[key] === true;
@@ -181,27 +182,33 @@
   }
 
   async function load() {
-    const year = el('yearInput').value;
-    const asOf = el('asOfInput').value;
-    const periodType = el('periodType').value;
-    const periodValue = el('periodValue').value;
-    const query = new URLSearchParams();
-    if (year) query.set('year', year);
-    if (asOf) query.set('asOf', asOf);
-    query.set('periodType', periodType);
-    if (periodType !== 'year' && periodValue) query.set('periodValue', periodValue);
-    el('sourceLine').textContent = '正在读取生产数据…';
-    const payload = await window.fetchJson(`/api/branch-analysis/overview?${query}`);
-    state.data = window.unwrapApiResponse(payload);
-    el('yearInput').value = state.data.meta.year;
-    if (!el('asOfInput').value) el('asOfInput').value = state.data.meta.performanceCutoff;
-    el('periodType').value = state.data.meta.periodType;
-    rebuildPeriodOptions(state.data.meta.periodValue);
-    const lastBranchDate = state.data.meta.lastBranchBusinessDate
-      ? `本期证保最后出单 ${state.data.meta.lastBranchBusinessDate}`
-      : '本期暂无证保出单';
-    el('sourceLine').textContent = `数据截至 ${state.data.meta.performanceCutoff} · ${state.data.meta.periodLabel} ${state.data.meta.periodStart} 至 ${state.data.meta.asOf} · ${lastBranchDate} · 同比 ${state.data.meta.previousPeriodStart} 至 ${state.data.meta.previousAsOf} · 参考表批次 ${state.data.meta.referenceBatch?.id || '--'}`;
-    render();
+    const sequence = ++loadSequence;
+    try {
+      const year = el('yearInput').value;
+      const asOf = el('asOfInput').value;
+      const periodType = el('periodType').value;
+      const periodValue = el('periodValue').value;
+      const query = new URLSearchParams();
+      if (year) query.set('year', year);
+      if (asOf) query.set('asOf', asOf);
+      query.set('periodType', periodType);
+      if (periodType !== 'year' && periodValue) query.set('periodValue', periodValue);
+      el('sourceLine').textContent = '正在读取生产数据…';
+      const payload = await window.fetchJson(`/api/branch-analysis/overview?${query}`);
+      if (sequence !== loadSequence) return;
+      state.data = window.unwrapApiResponse(payload);
+      el('yearInput').value = state.data.meta.year;
+      if (!el('asOfInput').value) el('asOfInput').value = state.data.meta.performanceCutoff;
+      el('periodType').value = state.data.meta.periodType;
+      rebuildPeriodOptions(state.data.meta.periodValue);
+      const lastBranchDate = state.data.meta.lastBranchBusinessDate
+        ? `本期证保最后出单 ${state.data.meta.lastBranchBusinessDate}`
+        : '本期暂无证保出单';
+      el('sourceLine').textContent = `数据截至 ${state.data.meta.performanceCutoff} · ${state.data.meta.periodLabel} ${state.data.meta.periodStart} 至 ${state.data.meta.asOf} · ${lastBranchDate} · 同比 ${state.data.meta.previousPeriodStart} 至 ${state.data.meta.previousAsOf} · 参考表批次 ${state.data.meta.referenceBatch?.id || '--'}`;
+      render();
+    } catch (error) {
+      if (sequence === loadSequence) showError(error);
+    }
   }
 
   function bind() {

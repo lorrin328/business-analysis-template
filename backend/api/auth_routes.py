@@ -11,6 +11,7 @@ from auth import (
     default_permissions_for_role,
     authenticate_user,
     get_current_user,
+    get_user_permissions,
     normalize_role,
     public_registration_enabled,
     register_user,
@@ -253,7 +254,8 @@ def update_user(user_id: int, payload: dict = Body(...), admin=Depends(require_a
         elif row["role"] == ROLE_ADMIN:
             permissions = default_permissions_for_role(role)
         else:
-            permissions = default_permissions_for_role(role)
+            permissions = (get_user_permissions(conn, user_id, role)
+                           if role == row["role"] else default_permissions_for_role(role))
             permissions.update(payload.get("permissions") or {})
             permissions["permission_admin"] = False
 
