@@ -1,9 +1,11 @@
 """Repository queries — auto-split from database.py."""
 import json
+import math
 import sqlite3
 from datetime import datetime
 from db.connection import get_db
 from db.schema import init_db
+from validators.target_validator import validate_target_payload
 
 
 def get_target_config(year: int):
@@ -26,9 +28,11 @@ def _flatten_target_payload(year: int, payload: dict, updated_by: str = 'system'
         if target_value is None:
             return
         try:
-            value = float(target_value or 0)
-        except (TypeError, ValueError):
-            value = 0
+            value = float(target_value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("目标必须为有限非负数") from exc
+        if isinstance(target_value, bool) or not math.isfinite(value) or value < 0:
+            raise ValueError("目标必须为有限非负数")
         rows.append({
             'year': int(year),
             'period_type': period_type,
@@ -97,6 +101,9 @@ def get_target_values(year: int, period_type: str | None = None, period_value: i
 
 
 def save_target_config(year: int, payload: dict, updated_by: str = 'system'):
+    validation = validate_target_payload(payload, require_complete=False)
+    if not validation.valid:
+        raise ValueError('; '.join(validation.errors))
     init_db()
     payload = dict(payload)
     payload['year'] = year
@@ -112,7 +119,7 @@ def save_target_config(year: int, payload: dict, updated_by: str = 'system'):
                 updated_at = CURRENT_TIMESTAMP,
                 updated_by = excluded.updated_by
             ''',
-            (year, json.dumps(payload, ensure_ascii=False), updated_by),
+            (year, json.dumps(payload, ensure_ascii=False, allow_nan=False), updated_by),
         )
         save_target_values(conn, year, payload, updated_by)
         conn.commit()

@@ -157,7 +157,9 @@ async def require_login_for_api(request: Request, call_next):
     public_prefixes = ("/api/auth/", "/api/health", "/api/ai/")
     if request.url.path.startswith("/api/") and not request.url.path.startswith(public_prefixes):
         try:
-            get_current_user(request.headers.get("authorization"))
+            request.state.authenticated_user = await run_in_threadpool(
+                get_current_user, request.headers.get("authorization")
+            )
         except HTTPException as exc:
             return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
     response = await call_next(request)

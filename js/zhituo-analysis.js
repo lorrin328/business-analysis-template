@@ -1,5 +1,6 @@
 (function () {
   const state = { data: null, charts: {} };
+  let loadSequence = 0;
   const el = id => document.getElementById(id);
   const user = () => window.getCurrentUser?.() || null;
   const can = key => user()?.role === 'admin' || user()?.permissions?.[key] === true;
@@ -137,10 +138,17 @@
   }
 
   async function load(query = '') {
-    el('sourceLine').textContent = '正在读取最新基表数据…';
-    const payload = await window.fetchJson(`/api/zhituo-analysis/overview${query ? `?${query}` : ''}`);
-    state.data = window.unwrapApiResponse(payload);
-    render();
+    const sequence = ++loadSequence;
+    try {
+      el('sourceLine').classList.remove('error');
+      el('sourceLine').textContent = '正在读取最新基表数据…';
+      const payload = await window.fetchJson(`/api/zhituo-analysis/overview${query ? `?${query}` : ''}`);
+      if (sequence !== loadSequence) return;
+      state.data = window.unwrapApiResponse(payload);
+      render();
+    } catch (error) {
+      if (sequence === loadSequence) showError(error);
+    }
   }
 
   async function applyFilters() {

@@ -658,6 +658,11 @@ def init_db():
             VALUES ('20260902_customer_alias_exact_fallback', 1, 'Preserves ambiguous policy identifiers as exact-only matches and reports unmatched coverage')
         ''')
 
+        c.execute('''
+            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+            VALUES ('20260905_incremental_partition_and_hr_consistency', 1, 'Repairs empty aggregate partitions and synchronizes monthly activity with current HR and performance sources')
+        ''')
+
         c.execute('''CREATE TABLE IF NOT EXISTS performance (
             "年月" TEXT, "业务模式" TEXT, "销售机构名称" TEXT, "产品类型" TEXT,
             "期交保费" REAL DEFAULT 0, "年化规保" REAL DEFAULT 0,
