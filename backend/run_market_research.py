@@ -25,7 +25,7 @@ from market_analysis.quality import (
     reconcile_action_metadata,
 )
 from market_analysis.repository import MarketAnalysisRepository
-from market_analysis.products import PRODUCT_RESEARCH_RULES, validate_product_research
+from market_analysis.products import PRODUCT_RESEARCH_RULES, validate_product_research, omit_unverified_optional_product_facts
 from market_analysis.source_verifier import (
     SourceVerificationError,
     align_module_facts_to_verified_excerpts,
@@ -651,6 +651,10 @@ def _claude_metrics(stdout: str) -> dict:
     return {key: value for key, value in metrics.items() if value is not None}
 
 
+class ModelBudgetExceeded(RuntimeError):
+    """A configured cost cap needs intervention, never an automatic retry."""
+
+
 def invoke_claude(
     resolved_bin: str,
     prompt: str,
@@ -710,6 +714,12 @@ def invoke_claude(
         telemetry.append(event)
     if completed.returncode != 0:
         diagnostic = _claude_failure_diagnostic(completed.stdout, completed.stderr)
+        try:
+            budget_exceeded = json.loads(completed.stdout).get("subtype") == "error_max_budget_usd"
+        except (ValueError, AttributeError):
+            budget_exceeded = False
+        if budget_exceeded:
+            raise ModelBudgetExceeded(f"研究修订达到本阶段调用预算上限，已停止自动重试并保留上期报告。阶段：{role}；预算上限：{max_budget} USD（CLI 估算口径）。")
         raise RuntimeError(f"Claude Code failed with exit {completed.returncode}: {diagnostic}")
     return parse_claude_result(completed.stdout)
 
@@ -1175,10 +1185,18 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
             reconcile_action_metadata(report, action_history)
             reconcile_change_signals(report)
             checkpoint_errors = [str(error) for error in (checkpoint.get("errors") or [])]
+            omit_unverified_optional_product_facts(report)
+            try:
+                validate_product_research(report, required=product_research_required())
+            except ReportValidationError:
+                pass
+            else:
+                checkpoint_errors = [error for error in checkpoint_errors if not error.startswith("product module ")]
+
             pruned_checkpoint_sources = set(prune_redundant_failed_sources(
                 report, "; ".join(checkpoint_errors)
             ))
-            deterministic_only = checkpoint_errors and all(
+            deterministic_only = all(
                 is_deterministic_checkpoint_error(error)
                 or (failed_source_ids(error) and failed_source_ids(error) <= pruned_checkpoint_sources)
                 for error in checkpoint_errors
@@ -1296,6 +1314,7 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
                 continue
 
             align_module_facts_to_verified_excerpts(report)
+            omit_unverified_optional_product_facts(report)
             report["generatedAt"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
             try:
                 validate_report(report)
@@ -1312,8 +1331,8 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
                     model=repair_model,
                     role=repair_role,
                     telemetry=model_calls,
-                    max_turns=os.getenv("MARKET_ANALYSIS_REPAIR_MAX_TURNS", "40").strip(),
-                    max_budget=os.getenv("MARKET_ANALYSIS_REPAIR_MAX_BUDGET_USD", "3").strip(),
+                    max_turns=os.getenv("MARKET_ANALYSIS_REPAIR_MAX_TURNS" if repair_attempts == 0 else "MARKET_ANALYSIS_ESCALATION_MAX_TURNS", "40" if repair_attempts == 0 else "45").strip(),
+                    max_budget=os.getenv("MARKET_ANALYSIS_REPAIR_MAX_BUDGET_USD" if repair_attempts == 0 else "MARKET_ANALYSIS_ESCALATION_MAX_BUDGET_USD", "3" if repair_attempts == 0 else "6").strip(),
                     timeout_seconds=timeout_seconds,
                 )
                 repair_attempts += 1
@@ -1486,7 +1505,7 @@ def main() -> int:
             result = run_zhihu_scout_only(repository)
         else:
             result = run_research(repository, dry_run=args.dry_run)
-    except ReportValidationError as exc:
+    except (ReportValidationError, ModelBudgetExceeded) as exc:
         print(f"market research failed: {redact(exc)}", file=sys.stderr)
         return 2
     except Exception as exc:

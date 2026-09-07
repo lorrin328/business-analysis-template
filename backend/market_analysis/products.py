@@ -93,3 +93,34 @@ def validate_product_research(report: dict, *, required: bool = False) -> None:
             errors.append(f"{label} requires verified name and insurer")
     if errors:
         raise ReportValidationError(errors)
+
+
+def omit_unverified_optional_product_facts(report: dict) -> None:
+    """Verification may replace an excerpt; withhold optional claims it no longer supports."""
+    sources = {s.get("id"): s for s in report.get("sources", []) if isinstance(s, dict)}
+    coverage = report.get("productResearch")
+    if not isinstance(coverage, dict) or not isinstance(coverage.get("gaps"), list):
+        return
+    for module in report.get("modules", []):
+        if module.get("topicCategory") != "product" or not isinstance(module.get("productFacts"), list):
+            continue
+        kept = []
+        for fact in module["productFacts"]:
+            key = fact.get("field") if isinstance(fact, dict) else None
+            refs = fact.get("evidenceIds") if isinstance(fact, dict) else None
+            # Preserve required/malformed claims so the normal validator still rejects them.
+            if key not in PRODUCT_FIELDS or key in {"name", "insurer"} or not isinstance(refs, list) or not refs:
+                kept.append(fact)
+                continue
+            anchors = [sources.get(ref, {}) for ref in refs if isinstance(ref, str)]
+            if len(anchors) != len(refs) or not all((s.get("verification") or {}).get("status") == "verified" for s in anchors):
+                kept.append(fact)
+                continue
+            value = "".join(str(fact.get("value") or "").split())
+            if value and any(value == "".join(str(s.get("excerpt") or "").split()) for s in anchors):
+                kept.append(fact)
+                continue
+            gap = f"{module.get('id')}：{PRODUCT_FIELDS[key]}未通过核验，暂不展示；需补充直接支持该字段的完整官方原文。"
+            if gap not in coverage["gaps"]:
+                coverage["gaps"].append(gap)
+        module["productFacts"] = kept

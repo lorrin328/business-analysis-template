@@ -121,3 +121,29 @@ def test_market_history_async_ui_regressions():
         capture_output=True, text=True, encoding="utf-8", timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+def test_verified_excerpt_change_withholds_optional_claim_without_weakening_identity():
+    from market_analysis.products import omit_unverified_optional_product_facts
+    report = product_report()
+    report['sources'][0]['verification'] = {'status': 'verified'}
+    report['modules'][0]['productFacts'].append({'field': 'saleStatus', 'value': '在售', 'evidenceIds': ['S1']})
+    omit_unverified_optional_product_facts(report)
+    validate_product_research(report, required=True)
+    assert len(report['modules'][0]['productFacts']) == 2
+    assert '销售状态未通过核验' in report['productResearch']['gaps'][0]
+    report['modules'][0]['productFacts'][0]['value'] = '错误产品'
+    omit_unverified_optional_product_facts(report)
+    with pytest.raises(ReportValidationError):
+        validate_product_research(report, required=True)
+
+
+def test_budget_exhaustion_is_readable_and_never_auto_retried(monkeypatch):
+    import json
+    monkeypatch.setattr(run_market_research.subprocess, 'run', lambda *a, **k: subprocess.CompletedProcess([], 1, json.dumps({'subtype': 'error_max_budget_usd'}), ''))
+    with pytest.raises(run_market_research.ModelBudgetExceeded, match='已停止自动重试'):
+        run_market_research.invoke_claude('claude', 'prompt', model='test', max_turns='1', max_budget='3', timeout_seconds=1)
+    monkeypatch.setattr(run_market_research.sys, 'argv', ['run_market_research.py'])
+    def fail(*a, **k):
+        raise run_market_research.ModelBudgetExceeded('budget stopped')
+    monkeypatch.setattr(run_market_research, 'run_research', fail)
+    assert run_market_research.main() == 2
