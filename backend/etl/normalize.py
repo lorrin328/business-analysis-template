@@ -24,14 +24,7 @@ def _year_month_day_from_series(series: pd.Series):
     # Stored history can mix YYYY-MM and full timestamps in the same column.
     # Pandas' default first-value format inference silently drops the other
     # format. Allow per-value parsing only for unambiguous year-first dates.
-    date_text = text.str.replace(r'\s*[-/.年]\s*', '-', regex=True)
-    date_text = date_text.str.replace('月', '-', regex=False).str.replace('日', '', regex=False).str.rstrip('-')
-    year_first = date_text.str.fullmatch(
-        r'\d{4}-\d{1,2}(?:-\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?)?',
-        na=False,
-    )
-    # Preserve fractional seconds: separator normalization above applies only
-    # to the calendar portion, not the optional timestamp portion.
+    # Normalize calendar separators without changing fractional seconds.
     date_text = text.str.replace(r'^(\d{4})\s*[-/.年]\s*(\d{1,2})(?:\s*[-/.月]\s*(\d{1,2})日?)?',
                                  lambda m: f'{m[1]}-{m[2]}' + (f'-{m[3]}' if m[3] else ''), regex=True).str.rstrip('月')
     year_first = date_text.str.fullmatch(
