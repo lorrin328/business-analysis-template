@@ -801,7 +801,10 @@ def test_worker_repairs_analysis_after_verified_fact_alignment(tmp_path, monkeyp
         prompts.append(prompt)
         roles.append(role)
         telemetry.append({"role": role, "model": model, "status": "success", "elapsedMs": 1000})
-        return copy.deepcopy(draft if len(prompts) == 1 else repaired)
+        if len(prompts) == 1:
+            return copy.deepcopy(draft)
+        return {"patches": [{"target": "module", "id": repaired["modules"][0]["id"],
+            "changes": {key: repaired["modules"][0][key] for key in ["fact", "judgment", "impact"]}}]}
 
     def fake_verify(report, **_kwargs):
         verified_at = run_market_research.now_iso()

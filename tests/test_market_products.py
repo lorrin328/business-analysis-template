@@ -147,3 +147,48 @@ def test_budget_exhaustion_is_readable_and_never_auto_retried(monkeypatch):
         raise run_market_research.ModelBudgetExceeded('budget stopped')
     monkeypatch.setattr(run_market_research, 'run_research', fail)
     assert run_market_research.main() == 2
+
+
+def test_targeted_repair_preserves_unrelated_content_and_original():
+    report = product_report()
+    original = copy.deepcopy(report)
+    result = run_market_research.apply_report_patches(report, {'patches': [
+        {'target': 'module', 'id': 'P1', 'changes': {'judgment': '需观察客户需求变化。'}}]})
+    assert report == original
+    assert result['modules'][0]['productFacts'] == original['modules'][0]['productFacts']
+    assert result['sources'] == original['sources']
+    assert result['modules'][0]['judgment'] == '需观察客户需求变化。'
+
+
+@pytest.mark.parametrize('patch', [
+    {'target': 'report', 'id': '', 'changes': {'qualityAssessment': {'score': 10}}},
+    {'target': 'source', 'id': 'S1', 'changes': {'verification': {'status': 'verified'}}},
+    {'target': 'module', 'id': 'missing', 'changes': {'judgment': '不能新增未验证模块'}},
+    {'target': 'module', 'id': 'P1', 'changes': {}},
+])
+def test_targeted_repair_rejects_protected_or_invalid_changes(patch):
+    with pytest.raises(ReportValidationError):
+        run_market_research.apply_report_patches(product_report(), {'patches': [patch]})
+
+
+def test_changed_source_requires_new_independent_verification():
+    report = product_report()
+    report['sources'][0].update(verification={'status': 'verified'}, contentHash='old')
+    result = run_market_research.apply_report_patches(report, {'patches': [
+        {'target': 'source', 'id': 'S1', 'changes': {'excerpt': '新的官方原文'}}]})
+    assert 'verification' not in result['sources'][0]
+    assert 'contentHash' not in result['sources'][0]
+    assert result['sources'][0]['retrievedAt']
+    with pytest.raises(ReportValidationError):
+        validate_product_research(result, required=True)
+
+
+def test_repair_call_requests_patch_schema(monkeypatch):
+    seen = {}
+    def invoke(*args, **kwargs):
+        seen.update(kwargs)
+        return {'patches': [{'target': 'module', 'id': 'P1', 'changes': {'judgment': '测试修订'}}]}
+    monkeypatch.setattr(run_market_research, 'invoke_claude', invoke)
+    result = run_market_research.invoke_report_repair('claude', product_report(), 'prompt', model='test')
+    assert seen['output_schema'] == run_market_research.REPAIR_OUTPUT_SCHEMA
+    assert result['modules'][0]['judgment'] == '测试修订'
