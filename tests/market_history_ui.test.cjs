@@ -24,6 +24,7 @@ function element(tag = 'div') {
 function harness() {
   const elements = new Map([['historySelect', element('select')]]);
   const requests = [];
+  const timers = [];
   const rendered = [];
   const document = {
     getElementById(id) {
@@ -34,6 +35,9 @@ function harness() {
     addEventListener() {}
   };
   const window = {
+    confirm: () => true,
+    clearTimeout() {},
+    setTimeout(callback) { timers.push(callback); return timers.length; },
     authFetch(url) {
       return new Promise((resolve, reject) => requests.push({
         url, reject,
@@ -48,7 +52,7 @@ function harness() {
   const exposed = source.replace('})(window, document);', `
     renderReport = report => rendered.push(report.reportId);
     renderObservability = () => {};
-    window.testApi = { loadReport, loadHistory, refreshAll, formatPercent };
+    window.testApi = { loadReport, loadHistory, refreshAll, formatPercent, loadStatus, runNow };
   })(window, document);`);
   vm.runInContext(exposed, context);
   const select = document.getElementById('historySelect');
@@ -59,7 +63,7 @@ function harness() {
     }
     select.value = id;
   }
-  return { api: window.testApi, requests, rendered, select, choose, document };
+  return { api: window.testApi, requests, rendered, select, choose, document, timers };
 }
 
 async function settle() { await new Promise(resolve => setImmediate(resolve)); }
@@ -121,4 +125,21 @@ test('missing observation percentages stay distinct from a measured zero', () =>
   for (const value of [null, undefined, '', '   ', NaN]) assert.equal(api.formatPercent(value), '待积累');
   assert.equal(api.formatPercent(0), '0%');
   assert.equal(api.formatPercent(0.8), '80%');
+});
+
+
+test('manual start retains queued feedback over old status and polls running state', async () => {
+  const h = harness();
+  h.document.getElementById('runNowButton').classList.contains = () => false;
+  const initial = h.api.loadStatus();
+  h.requests[0].resolve({state: 'success', updatedAt: '2026-09-04T15:00:00+08:00'}); await initial;
+  const run = h.api.runNow(); h.requests[1].resolve({state: 'queued'}); await run;
+  const old = h.api.loadStatus();
+  h.requests[2].resolve({state: 'success', updatedAt: '2026-09-04T15:00:00+08:00'}); await old;
+  assert.equal(h.document.getElementById('runState').textContent, '启动请求已提交');
+  assert.equal(h.document.getElementById('runNowButton').disabled, true);
+  const running = h.api.loadStatus();
+  h.requests[3].resolve({state: 'running', updatedAt: '2026-09-07T15:40:00+08:00'}); await running;
+  assert.equal(h.document.getElementById('runState').textContent, '研究正在运行');
+  assert.ok(h.timers.length >= 3);
 });

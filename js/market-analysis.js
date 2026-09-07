@@ -28,6 +28,14 @@
   let reportRequestSequence = 0;
   let historyRequestSequence = 0;
   let refreshSequence = 0;
+  let statusTimer = null;
+  let pendingRunAt = 0;
+  let lastStatusUpdatedAt = '';
+
+  function scheduleStatus() {
+    window.clearTimeout(statusTimer);
+    statusTimer = window.setTimeout(() => loadStatus(), 10000);
+  }
 
   function node(tag, className, text) {
     const item = document.createElement(tag);
@@ -464,6 +472,21 @@
     try {
       const status = await api('/api/market-analysis/status');
       const state = status?.state || 'never_run';
+      if (pendingRunAt && state !== 'running' && status?.updatedAt === lastStatusUpdatedAt) {
+        if (Date.now() - pendingRunAt < 60000) {
+          scheduleStatus();
+          return;
+        }
+        pendingRunAt = 0;
+        document.getElementById('runState').textContent = '尚未确认启动';
+        document.getElementById('runMessage').textContent = '后台尚未返回新任务状态，请稍后刷新；若持续无变化，请联系管理员检查启动服务。';
+        document.getElementById('runNowButton').disabled = false;
+        document.getElementById('runNowButton').textContent = '立即运行研究';
+        return;
+      }
+      pendingRunAt = 0;
+      lastStatusUpdatedAt = status?.updatedAt;
+      if (state === 'running') scheduleStatus();
       const validationBlocked = state === 'failed' && Array.isArray(status?.validationErrors) && status.validationErrors.length > 0;
       document.getElementById('runDot').className = `dot ${state}`;
       document.getElementById('runState').textContent = validationBlocked
@@ -480,6 +503,7 @@
     } catch (error) {
       document.getElementById('runState').textContent = '状态读取失败';
       document.getElementById('runMessage').textContent = error.message;
+      scheduleStatus();
     }
   }
 
@@ -490,6 +514,8 @@
     button.textContent = '正在提交…';
     try {
       const result = await api('/api/market-analysis/run', { method: 'POST' });
+      pendingRunAt = Date.now();
+      button.textContent = '正在启动研究…';
       document.getElementById('runDot').className = 'dot running';
       document.getElementById('runState').textContent = '启动请求已提交';
       document.getElementById('runMessage').textContent = result?.message || '后台研究任务即将开始';

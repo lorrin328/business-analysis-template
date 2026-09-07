@@ -34,11 +34,17 @@ if [[ "$last" =~ ^[0-9]+$ ]] && [ $((now - last)) -lt "$COOLDOWN_SECONDS" ]; the
   exit 0
 fi
 
+# A never-started unit can be unloaded. reset-failed then exits nonzero even
+# though start would succeed; only reset an actual failed unit.
+if systemctl is-failed --quiet "$UNIT"; then
+  systemctl reset-failed "$UNIT"
+fi
+systemctl start --no-block "$UNIT"
+
+# Do not impose a cooldown when systemd rejected the start request.
 temp_stamp="$(mktemp "$STATE_DIR/.last-trigger.XXXXXX")"
 printf '%s\n' "$now" > "$temp_stamp"
 chmod 0600 "$temp_stamp"
 mv -f -- "$temp_stamp" "$STAMP_FILE"
 
-systemctl reset-failed "$UNIT"
-systemctl start --no-block "$UNIT"
 logger -t business-analysis-market-trigger "manual market research start requested"
