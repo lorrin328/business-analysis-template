@@ -106,7 +106,8 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/format-utils.js"></script>' in html
     assert '<script src="js/month-multi-select.js?v=1.0.120"></script>' in html
     assert '<script src="js/api-client.js?v=1.0.116"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.116"></script>' in html
+    auth_digest = hashlib.sha256(read_js("auth-ui.js").encode("utf-8")).hexdigest()[:12]
+    assert f'<script src="js/auth-ui.js?v=1.0.152-{auth_digest}"></script>' in html
     assert '<script src="js/export-excel.js?v=1.0.116"></script>' in html
     upload_tag = re.search(r'<script src="js/upload\.js\?v=\d+\.\d+\.\d+-([0-9a-f]{12})"></script>', html)
     assert upload_tag, 'Upload script must carry a content hash to refresh proxy/browser caches'
