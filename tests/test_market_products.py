@@ -1,4 +1,6 @@
 import copy
+import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -98,3 +100,24 @@ def test_production_gate_cannot_omit_product_coverage(monkeypatch, tmp_path):
     monkeypatch.setenv("MARKET_ANALYSIS_REQUIRE_PRODUCT_RESEARCH", "1")
     with pytest.raises(ReportValidationError, match="productResearch"):
         run_market_research.validate_draft({}, MarketAnalysisRepository(tmp_path))
+
+
+def test_product_failure_never_overwrites_published_report(monkeypatch, tmp_path):
+    import market_analysis.repository as repository_module
+    repo = repository_module.MarketAnalysisRepository(tmp_path)
+    previous = b'{"reportId":"previous-valid-report"}'
+    (tmp_path / "latest.json").write_bytes(previous)
+    monkeypatch.setenv("MARKET_ANALYSIS_REQUIRE_PRODUCT_RESEARCH", "1")
+    monkeypatch.setattr(repository_module, "validate_report", lambda report: None)
+    with pytest.raises(ReportValidationError, match="productResearch"):
+        repo.publish({"reportId": "market-new"})
+    assert (tmp_path / "latest.json").read_bytes() == previous
+    assert not (tmp_path / "reports").exists()
+
+
+def test_market_history_async_ui_regressions():
+    result = subprocess.run(
+        ["node", "--test", str(Path(__file__).with_name("market_history_ui.test.cjs"))],
+        capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
