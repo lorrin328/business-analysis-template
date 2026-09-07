@@ -140,6 +140,7 @@ ensure_env_value MARKET_ANALYSIS_ESCALATION_MAX_BUDGET_USD '6'
 ensure_env_value MARKET_ANALYSIS_MAX_REPAIR_ATTEMPTS '2'
 ensure_env_value MARKET_ANALYSIS_POST_VERIFY_REPAIR_ATTEMPTS '1'
 ensure_env_value MARKET_ANALYSIS_MIN_QUALITY_SCORE '9.0'
+ensure_env_value MARKET_ANALYSIS_REQUIRE_PRODUCT_RESEARCH '1'
 ensure_env_value MARKET_ANALYSIS_SOURCE_VERIFY_WORKERS '4'
 
 install -o root -g root -m 0644 "$APP_DIR/deploy/market-analysis.service" /etc/systemd/system/market-analysis.service

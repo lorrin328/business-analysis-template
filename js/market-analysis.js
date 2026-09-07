@@ -4,6 +4,7 @@
     macro: '宏观经济',
     regulation: '监管政策',
     peers: '同业动态',
+    products: '寿险产品',
     business_line: '条线判断'
   };
   const CHANGE_LABELS = {
@@ -14,10 +15,19 @@
     expired: '已失效'
   };
   const CONFIDENCE_LABELS = { high: '高置信', medium: '中置信', low: '低置信' };
+  const PRODUCT_FIELDS = {
+    name: '产品名称', insurer: '保险公司', insuranceType: '保险责任类型',
+    benefitMechanism: '利益机制', channel: '适用渠道', saleStatus: '销售状态',
+    paymentTerm: '缴费期间', insurancePeriod: '保险期间',
+    guaranteedBenefits: '合同保证利益', nonGuaranteedBenefits: '非保证利益'
+  };
   const ACTION_STATUS_LABELS = { new: '本期新增', continuing: '持续推进', adjusted: '已调整', completed: '已完成' };
   let currentReport = null;
   let currentSection = 'all';
   let currentObservability = null;
+  let reportRequestSequence = 0;
+  let historyRequestSequence = 0;
+  let refreshSequence = 0;
 
   function node(tag, className, text) {
     const item = document.createElement(tag);
@@ -57,6 +67,7 @@
   }
 
   function formatPercent(value) {
+    if (value == null || (typeof value === 'string' && !value.trim())) return '待积累';
     const number = Number(value);
     return Number.isFinite(number) ? `${Math.round(number * 100)}%` : '待积累';
   }
@@ -289,7 +300,15 @@
   function renderModules(report) {
     const grid = document.getElementById('moduleGrid');
     clear(grid);
-    const modules = (report.modules || []).filter(item => currentSection === 'all' || item.section === currentSection);
+    const modules = (report.modules || []).filter(item => currentSection === 'all'
+      || (currentSection === 'products' ? item.topicCategory === 'product' : item.section === currentSection));
+    if (currentSection === 'products') {
+      const coverage = report.productResearch;
+      const note = !coverage ? '本期为历史报告，尚未按产品专题口径整理。'
+        : coverage.status === 'evidence_gap' ? '本期产品一手证据不足，暂不形成产品判断。'
+        : '产品参数仅展示已核验原文；未核验项不代表没有该责任或权益。非保证利益不等于合同承诺。';
+      grid.appendChild(node('p', 'product-note', [note, ...(coverage?.gaps || [])].join(' ')));
+    }
     modules.forEach(module => {
       const card = node('article', 'module-card');
       card.dataset.section = module.section || '';
@@ -309,6 +328,16 @@
       fields.appendChild(field('对条线的影响', module.impact, 'impact'));
       fields.appendChild(field('继续观察 / 失效条件', module.watchCondition));
       card.appendChild(fields);
+      if (module.topicCategory === 'product') {
+        const productFields = node('div', 'module-fields product-facts');
+        Object.entries(PRODUCT_FIELDS).forEach(([key, label]) => {
+          const fact = (module.productFacts || []).find(item => item.field === key);
+          const box = field(label, fact?.value || '未核验 / 未披露');
+          if (fact) box.appendChild(evidenceChips(fact.evidenceIds, report));
+          productFields.appendChild(box);
+        });
+        card.appendChild(productFields);
+      }
       card.appendChild(evidenceChips(module.evidenceIds, report));
       const history = node('details', 'topic-history');
       const historySummary = node('summary', '', `跨期轨迹 · 自 ${module.history?.since || '本期'} 起`);
@@ -474,8 +503,13 @@
   }
 
   async function loadHistory() {
+    const sequence = ++historyRequestSequence;
     const history = await api('/api/market-analysis/history?limit=36');
+    if (sequence !== historyRequestSequence) return;
     const select = document.getElementById('historySelect');
+    // Read after the request: the user may have selected another report while waiting.
+    const selectedReportId = select.value;
+    const selectedLabel = select.selectedOptions?.[0]?.textContent;
     clear(select);
     const latestOption = node('option', '', '最新一期');
     latestOption.value = '';
@@ -485,26 +519,46 @@
       option.value = item.reportId;
       select.appendChild(option);
     });
+    if (selectedReportId && !(history || []).some(item => item.reportId === selectedReportId)) {
+      // The history list is paginated; absence from its first page does not mean deletion.
+      const retainedOption = node('option', '', selectedLabel || selectedReportId);
+      retainedOption.value = selectedReportId;
+      select.appendChild(retainedOption);
+    }
+    select.value = selectedReportId || '';
   }
 
   async function loadReport(reportId) {
+    const sequence = ++reportRequestSequence;
     const path = reportId ? `/api/market-analysis/reports/${encodeURIComponent(reportId)}` : '/api/market-analysis/latest';
-    const report = await api(path);
-    renderReport(report);
-    renderObservability(currentObservability, report);
-    return report;
+    try {
+      const report = await api(path);
+      if (sequence !== reportRequestSequence) return;
+      renderReport(report);
+      renderObservability(currentObservability, report);
+      return report;
+    } catch (error) {
+      if (sequence === reportRequestSequence) throw error;
+    }
   }
 
   async function refreshAll() {
+    const sequence = ++refreshSequence;
+    const reportSequenceAtStart = reportRequestSequence;
+    let ownedReportSequence = reportSequenceAtStart;
     try {
       const [, , observability] = await Promise.all([
         loadStatus(),
         loadHistory(),
         api('/api/market-analysis/observability?limit=6')
       ]);
+      if (sequence !== refreshSequence) return;
       currentObservability = observability;
+      if (reportSequenceAtStart !== reportRequestSequence) return;
+      ownedReportSequence = reportRequestSequence + 1;
       await loadReport(document.getElementById('historySelect').value);
     } catch (error) {
+      if (sequence !== refreshSequence || ownedReportSequence !== reportRequestSequence) return;
       document.getElementById('reportHeadline').textContent = '市场研判读取失败';
       document.getElementById('reportSummary').textContent = error.message;
     }

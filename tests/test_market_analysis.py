@@ -1176,7 +1176,7 @@ def test_market_analysis_page_is_modular_and_whitelisted():
     dashboard = open(os.path.join(ROOT, "经营分析模板.html"), "r", encoding="utf-8").read()
     nginx = open(os.path.join(ROOT, "deploy", "nginx.conf"), "r", encoding="utf-8").read()
     assert "本期变化信号" in page
-    assert "四层研判模块" in page
+    assert "四层研判与寿险产品" in page
     assert "条线行动提示" in page
     assert "研究质量评分" in page
     assert "本期管理摘要" in page

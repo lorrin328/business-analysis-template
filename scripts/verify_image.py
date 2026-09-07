@@ -6,7 +6,7 @@ from urllib.parse import unquote, urlsplit
 
 PAGES = {
     "经营分析模板.html", "branch-analysis.html", "customer-analysis.html", "honor.html",
-    "market-analysis.html", "personnel-management.html", "scheme-calculator.html",
+    "market-analysis.html", "personnel-management.html",
     "tax-calculator.html", "zhituo-analysis.html",
 }
 FORBIDDEN_PARTS = {".venv", "venv", "__pycache__", "node_modules", "excel", "backups", "market_analysis_data", "logs"}

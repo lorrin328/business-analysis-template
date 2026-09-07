@@ -10,6 +10,7 @@ from pathlib import Path
 from market_analysis.config import data_dir
 from market_analysis.insights import research_observability
 from market_analysis.validator import ReportValidationError, validate_report
+from market_analysis.products import validate_product_research
 
 
 REPORT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,95}$")
@@ -44,6 +45,9 @@ class MarketAnalysisRepository:
 
     def publish(self, report: dict) -> dict:
         validate_report(report)
+        validate_product_research(
+            report, required=os.getenv("MARKET_ANALYSIS_REQUIRE_PRODUCT_RESEARCH", "0").strip() == "1"
+        )
         report_id = str(report["reportId"])
         if not REPORT_ID_PATTERN.fullmatch(report_id):
             raise ValueError("reportId contains unsupported characters")

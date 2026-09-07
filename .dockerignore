@@ -16,7 +16,6 @@ js/**
 !honor.html
 !market-analysis.html
 !personnel-management.html
-!scheme-calculator.html
 !tax-calculator.html
 !zhituo-analysis.html
 # Last-match exclusions protect runtime data under approved directories.
