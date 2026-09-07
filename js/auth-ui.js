@@ -22,8 +22,6 @@
     honor_export: '星钻导出',
     honor_admin: '星钻规则管理',
     honor_upload: '星钻上传',
-    scheme_calculation: '方案计算',
-    scheme_upload: '方案上传',
     branch_analysis: '证保网点分析',
     customer_analysis: '客户分析',
     market_analysis: '市场研判'
@@ -318,7 +316,6 @@
     honor_recalculate: '星钻重算',
     honor_export: '星钻导出',
     honor_view_batch: '星钻批次查看',
-    scheme_upload: '方案上传'
   };
 
   function formatOperationTime(value) {

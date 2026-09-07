@@ -106,7 +106,8 @@ def test_frontend_centralizes_read_api_fetches():
     assert '<script src="js/format-utils.js"></script>' in html
     assert '<script src="js/month-multi-select.js?v=1.0.120"></script>' in html
     assert '<script src="js/api-client.js?v=1.0.116"></script>' in html
-    assert '<script src="js/auth-ui.js?v=1.0.116"></script>' in html
+    auth_digest = hashlib.sha256(read_js("auth-ui.js").encode("utf-8")).hexdigest()[:12]
+    assert f'<script src="js/auth-ui.js?v=1.0.152-{auth_digest}"></script>' in html
     assert '<script src="js/export-excel.js?v=1.0.116"></script>' in html
     upload_tag = re.search(r'<script src="js/upload\.js\?v=\d+\.\d+\.\d+-([0-9a-f]{12})"></script>', html)
     assert upload_tag, 'Upload script must carry a content hash to refresh proxy/browser caches'
@@ -146,8 +147,6 @@ def test_permission_admin_can_manage_admin_role_with_batch_save_and_delete():
     auth_ui = read_js("auth-ui.js")
     assert "team_enhanced: '队伍结构与产能分析'" in auth_ui
     assert "personnel_management: '人员管理'" in auth_ui
-    assert "scheme_calculation: '方案计算'" in auth_ui
-    assert "scheme_upload: '方案上传'" in auth_ui
     assert "const ROLE_OPTIONS = ['normal', 'senior', 'admin']" in auth_ui
     assert "ROLE_OPTIONS.map(role" in auth_ui
     assert "user.role === 'admin' ? 'disabled'" not in auth_ui
@@ -366,7 +365,6 @@ def test_dashboard_toolbar_actions_are_bound_by_runtime_module():
     assert 'data-dashboard-href="/variable-expense.html"' not in header
     assert 'data-dashboard-action="navigate" data-dashboard-href="/branch-analysis"' in header
     assert 'data-dashboard-action="navigate" data-dashboard-href="/honor"' in header
-    assert 'data-dashboard-action="navigate" data-dashboard-href="/scheme-calculator.html"' in header
     assert 'data-dashboard-action="export-excel"' in header
     assert 'data-dashboard-action="open-product-config"' in header
     assert 'data-dashboard-action="open-targets"' in header
@@ -418,8 +416,6 @@ def test_account_auth_replaces_admin_token_prompt():
     assert 'data-dashboard-action="navigate" data-dashboard-href="/branch-analysis"' in html
     assert 'data-permission="honor_view"' in html
     assert 'data-dashboard-action="navigate" data-dashboard-href="/honor"' in html
-    assert 'data-permission="scheme_calculation"' in html
-    assert 'data-dashboard-action="navigate" data-dashboard-href="/scheme-calculator.html"' in html
     assert 'data-permission="upload"' in html
     assert 'data-permission="excel_export"' in html
     assert "/api/auth/${mode}" in auth_ui
@@ -431,7 +427,6 @@ def test_account_auth_replaces_admin_token_prompt():
     assert "新注册账号默认为普通用户" in auth_ui
     assert "honor_view: '星钻联盟查看'" in auth_ui
     assert "honor_recalculate: '星钻重算'" in auth_ui
-    assert "scheme_upload: '方案上传'" in auth_ui
     assert "/api/admin/users" in auth_ui
     assert "function ensureAuthClient()" in auth_ui
     assert "window.setAuthSession = function" in auth_ui
@@ -497,7 +492,7 @@ def test_personnel_management_page_is_admin_only_calculator_runtime():
     assert "DEFAULT_SCENARIOS" in js
     assert "ZB_RATE_DICT" in js
     assert '"personnel_management"' in auth
-    assert '{"permission_admin", "personnel_management", "honor_admin", "honor_upload", "scheme_upload"}' in auth
+    assert '{"permission_admin", "personnel_management", "honor_admin", "honor_upload"}' in auth
     assert '"personnel_management": False' in auth
 
 
@@ -560,37 +555,12 @@ def test_honor_page_is_separate_runtime():
     assert "return Number.isFinite(n) ? `${(n * 100).toFixed(1)}%`" in honor_js
 
 
-def test_scheme_calculator_page_is_separate_runtime():
-    html = read_html()
-    page_path = os.path.join(ROOT, "scheme-calculator.html")
-    with open(page_path, "r", encoding="utf-8") as f:
-        page = f.read()
-    js = read_js("scheme-calculator.js")
-    auth = open(os.path.join(ROOT, "backend", "auth.py"), "r", encoding="utf-8").read()
-    api = open(os.path.join(ROOT, "backend", "api", "scheme.py"), "r", encoding="utf-8").read()
-
-    assert 'data-permission="scheme_calculation" data-dashboard-action="navigate" data-dashboard-href="/scheme-calculator.html">方案复核</button>' in html
-    assert '<script src="/js/scheme-calculator.js?v=1.0.111"></script>' in page
-    assert "方案计算" in page
-    assert "2026年组发政策" in page
-    assert "方案专用上传" in page
-    assert "本模块上传独立于经营数据导入" in page
-    assert 'id="schemeSelector"' in page
-    assert 'id="schemeTrackingFile" data-scheme-upload-input type="file" accept=".xlsx"' in page
-    assert 'data-upload-input' not in page
-    assert '<script src="/js/upload.js' not in page
-    assert "/api/scheme/options" in js
-    assert "/api/scheme/latest?schemeId=" in js
-    assert "/api/scheme/upload" in js
-    assert "hasPermission('scheme_calculation')" in js
-    assert "hasPermission('scheme_upload')" in js
-    assert "function uploadWorkbook()" in js
-    assert "function renderSchemeChoices()" in js
-    assert "schemeTrackingFile" in js
-    assert '"scheme_calculation"' in auth
-    assert '"scheme_upload"' in auth
-    assert "require_permission(\"scheme_calculation\")" in api
-    assert "require_permission(\"scheme_upload\")" in api
+def test_scheme_calculator_has_no_runtime_or_navigation():
+    assert "scheme-calculator" not in read_html()
+    assert "scheme_calculation" not in read_js("auth-ui.js")
+    assert "scheme_upload" not in read_js("auth-ui.js")
+    assert not os.path.exists(os.path.join(ROOT, "scheme-calculator.html"))
+    assert not os.path.exists(os.path.join(ROOT, "js", "scheme-calculator.js"))
 
 
 def test_static_cutoff_starts_empty_until_server_data_arrives():
@@ -1374,11 +1344,9 @@ def test_login_and_honor_tabs_expose_accessible_semantics():
     assert "item.setAttribute('aria-selected', String(selected))" in honor_js
 
 
-def test_honor_metrics_and_scheme_page_expose_decision_hierarchy_and_boundary():
+def test_honor_metrics_expose_decision_hierarchy():
     honor_page = open(os.path.join(ROOT, "honor.html"), "r", encoding="utf-8").read()
     honor_js = read_js("honor.js")
-    scheme_page = open(os.path.join(ROOT, "scheme-calculator.html"), "r", encoding="utf-8").read()
-    scheme_js = read_js("scheme-calculator.js")
 
     assert 'class="metric-groups"' in honor_page
     assert "['会员总数'," in honor_js
@@ -1386,10 +1354,6 @@ def test_honor_metrics_and_scheme_page_expose_decision_hierarchy_and_boundary():
     assert "['本月新入会'," in honor_js
     assert "['本月晋级'," in honor_js
     assert "['本月未达标'," in honor_js
-    assert '<title>方案底稿复核</title>' in scheme_page
-    assert '非最终发放结果' in scheme_page
-    assert '底稿导入、规则测算和结果复核' in scheme_page
-    assert '请先选择方案，并通过“方案专用上传”导入对应底稿' in scheme_js
 
 
 def test_production_static_serving_does_not_expose_repository_root():

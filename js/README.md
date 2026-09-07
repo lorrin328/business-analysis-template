@@ -24,11 +24,6 @@ Current production runtime:
 - `payperiod-chart.js` (loaded in-page before team chart)
 - `team-analysis.js` (loaded in-page before resize/init)
 
-Separate calculator pages:
-
-- `../scheme-calculator.html`
-- `scheme-calculator.js` (scheme chooser, dedicated scheme Excel upload, and scheme result rendering)
-
 Earlier module-migration reference files that are not loaded by `经营分析模板.html` have been archived under `bak/20260524_stability_archive/js_unused/`.
 
 When fixing a production behavior, update `经营分析模板.html` first unless the script is already loaded by the page.

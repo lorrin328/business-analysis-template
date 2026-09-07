@@ -1,1 +1,0 @@
-"""Scheme calculation domain package."""

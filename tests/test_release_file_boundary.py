@@ -71,5 +71,5 @@ def test_image_inspection_rejects_asset_outside_app(image_tree):
 
 
 def test_image_inspection_requires_every_page(image_tree):
-    (image_tree / "scheme-calculator.html").unlink()
-    assert any("Required runtime file missing: scheme-calculator.html" == issue for issue in content_issues(image_tree))
+    (image_tree / "honor.html").unlink()
+    assert any("Required runtime file missing: honor.html" == issue for issue in content_issues(image_tree))

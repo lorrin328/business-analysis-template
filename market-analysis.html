@@ -94,6 +94,8 @@
     .research-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 14px; }
     .research-tab { border: 1px solid var(--line); background: rgba(17,31,50,.75); border-radius: 999px; padding: 8px 14px; cursor: pointer; }
     .research-tab.active { background: #285da9; border-color: #4d88df; }
+    .product-note { grid-column: 1 / -1; color: var(--muted); overflow-wrap: anywhere; }
+    .product-facts { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
     .module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
     .module-card { padding: 18px; display: grid; gap: 14px; position: relative; overflow: hidden; }
     .module-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--blue); }
@@ -143,7 +145,7 @@
     .empty { padding: 38px; text-align: center; color: var(--muted); }
     .hidden { display: none !important; }
     @media (max-width: 1100px) { .hero { grid-template-columns: 1fr; } .quality-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } .signal-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } .brief-grid { grid-template-columns: 1fr; } .observation-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } .actions-grid { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 760px) { .header { align-items: flex-start; padding: 12px 16px; } .brand { display: grid; gap: 2px; } main { padding: 16px; } .module-grid, .source-grid, .actions-grid, .signal-grid, .quality-grid, .observation-grid { grid-template-columns: 1fr; } .module-fields { grid-template-columns: 1fr; } .hero-main { padding: 18px; } }
+    @media (max-width: 760px) { .header { align-items: stretch; flex-direction: column; gap: 10px; padding: 12px 16px; } .brand { display: flex; flex-wrap: wrap; gap: 8px; } .header-actions { flex-wrap: wrap; } .header-actions .btn { white-space: nowrap; } main { padding: 16px; } .module-grid, .source-grid, .actions-grid, .signal-grid, .quality-grid, .observation-grid { grid-template-columns: 1fr; } .module-fields { grid-template-columns: 1fr; } .hero-main { padding: 18px; } }
   </style>
 </head>
 <body>
@@ -193,7 +195,7 @@
       </section>
 
       <section>
-        <div class="section-head"><div><h2>四层研判模块</h2><p>一个模块只回答一个问题；事实、判断、影响与复核条件分开呈现。</p></div></div>
+        <div class="section-head"><div><h2>四层研判与寿险产品</h2><p>产品专题纳入同业动态；合同保证与非保证利益分开核验，缺失资料明确展示。</p></div></div>
         <nav class="research-nav" id="researchNav" aria-label="研究模块筛选"></nav>
         <div class="module-grid" id="moduleGrid"></div>
       </section>
@@ -210,6 +212,6 @@
       </details>
     </div>
   </main>
-  <script src="/js/market-analysis.js?v=v1.0.149"></script>
+  <script src="/js/market-analysis.js?v=1.0.152-ff8f96b8a623"></script>
 </body>
 </html>
