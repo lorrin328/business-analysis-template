@@ -1262,3 +1262,42 @@ def test_market_timer_runs_at_1am_when_three_calendar_days_are_due_and_template_
     assert '"$SYSTEMCTL_BIN" reset-failed "$SERVICE_NAME"' in scheduler
     assert "NoNewPrivileges=true" in trigger_service
     assert "PathExists=/run/business-analysis-market-trigger/request" in trigger_path
+
+@pytest.mark.parametrize('has_provenance', [True, False])
+def test_checkpoint_quality_uses_real_lineage_or_starts_fresh(tmp_path, monkeypatch, has_provenance):
+    repository = MarketAnalysisRepository(tmp_path)
+    prior = [{'role': 'primary', 'model': 'recorded-model', 'status': 'success', 'elapsedMs': 123}]
+    report = valid_report()
+    # Model-authored metadata must not replace worker-owned checkpoint provenance.
+    report['generationModelCalls'] = prior
+    repository.write_repair_checkpoint(stage='verify', report=report, model_calls=prior if has_provenance else [])
+    seen = []
+    invoked = []
+    def fake_invoke(*args, role, telemetry, **kwargs):
+        invoked.append(role)
+        telemetry.append({'role': role, 'model': 'new-model', 'status': 'success', 'elapsedMs': 456})
+        return valid_report()
+    def score(candidate, repo, calls):
+        seen.extend(calls)
+        return {'score': 10, 'checks': []}
+    def verify(candidate, **kwargs):
+        now = run_market_research.now_iso()
+        for source in candidate['sources']:
+            source['retrievedAt'] = now
+            source['verification']['verifiedAt'] = now
+        return candidate
+    monkeypatch.setenv('ANTHROPIC_AUTH_TOKEN', 'test-only-token')
+    monkeypatch.setenv('MARKET_ANALYSIS_MIN_QUALITY_SCORE', '9')
+    monkeypatch.setenv('MARKET_ANALYSIS_SOURCE_SCOUT_ENABLED', '0')
+    monkeypatch.setattr(run_market_research, 'source_scout_enabled', lambda: False)
+    monkeypatch.setattr(run_market_research, 'fetch_internal_snapshot', lambda: {'year': 2026})
+    monkeypatch.setattr(run_market_research.shutil, 'which', lambda _: '/usr/local/bin/claude')
+    monkeypatch.setattr(run_market_research, 'invoke_claude', fake_invoke)
+    monkeypatch.setattr(run_market_research, 'verify_report_sources', verify)
+    monkeypatch.setattr(run_market_research, 'maturity_draft_errors', lambda *a: [])
+    monkeypatch.setattr(run_market_research, 'assess_report_quality', score)
+    result = run_market_research.run_research(repository)
+    assert invoked == ([] if has_provenance else ['primary'])
+    assert [c['model'] for c in seen] == (['recorded-model'] if has_provenance else ['new-model'])
+    assert result['runtimeAssessment']['modelCallCount'] == (0 if has_provenance else 1)
+    assert result['generationModelCalls'] == seen

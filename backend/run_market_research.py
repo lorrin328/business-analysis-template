@@ -1130,6 +1130,16 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
             min(int(os.getenv("MARKET_ANALYSIS_POST_VERIFY_REPAIR_ATTEMPTS", "1")), 2),
         )
         checkpoint = repository.repair_checkpoint()
+        # Use only worker-owned checkpoint telemetry, never model-authored report metadata.
+        prior_model_calls = list((checkpoint or {}).get("modelCalls") or [])
+        if checkpoint and float(os.getenv("MARKET_ANALYSIS_MIN_QUALITY_SCORE", "0") or 0) > 0 and not any(
+            call.get("role") == "primary" and call.get("status") == "success"
+            for call in prior_model_calls if isinstance(call, dict)
+        ):
+            # Legacy checkpoints lost their invocation provenance. Preserve the file,
+            # but perform a fresh research pass instead of an endless repair-only loop.
+            checkpoint = None
+            prior_model_calls = []
         repair_attempts = 0
         post_verify_repair_attempts = 0
         if not checkpoint and source_scout_enabled():
@@ -1243,7 +1253,7 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
                     break
                 except ReportValidationError as validation_error:
                     repair_errors = validation_error.errors
-                    repository.write_repair_checkpoint(stage="repair", report=report, errors=repair_errors)
+                    repository.write_repair_checkpoint(stage="repair", report=report, errors=repair_errors, model_calls=prior_model_calls + model_calls)
                     if repair_attempts >= max_repair_attempts:
                         raise
                     repair_model, repair_role = repair_model_for_attempt(model_plan, repair_attempts)
@@ -1269,7 +1279,7 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
                     report, generated_at = stamp_report_metadata(report, repository, model_plan=model_plan)
                     apply_source_scout_metadata(report, scout_summary)
 
-            repository.write_repair_checkpoint(stage="verify", report=report)
+            repository.write_repair_checkpoint(stage="verify", report=report, model_calls=prior_model_calls + model_calls)
             source_failure: SourceVerificationError | None = None
             for _verification_attempt in range(3):
                 try:
@@ -1286,7 +1296,7 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
 
             if source_failure is not None:
                 repair_errors = [str(source_failure)]
-                repository.write_repair_checkpoint(stage="repair", report=report, errors=repair_errors)
+                repository.write_repair_checkpoint(stage="repair", report=report, errors=repair_errors, model_calls=prior_model_calls + model_calls)
                 if repair_attempts >= max_repair_attempts:
                     raise source_failure
                 repair_model, repair_role = repair_model_for_attempt(model_plan, repair_attempts)
@@ -1321,7 +1331,7 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
                 validate_product_research(report, required=product_research_required())
             except ReportValidationError as final_validation_error:
                 repair_errors = final_validation_error.errors
-                repository.write_repair_checkpoint(stage="repair", report=report, errors=repair_errors)
+                repository.write_repair_checkpoint(stage="repair", report=report, errors=repair_errors, model_calls=prior_model_calls + model_calls)
                 if post_verify_repair_attempts >= max_post_verify_repair_attempts:
                     raise
                 repair_model, repair_role = repair_model_for_attempt(model_plan, repair_attempts)
@@ -1349,7 +1359,8 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
             )
             report["runtimeAssessment"] = runtime_assessment
             report["researchMetrics"] = build_report_metrics(report)
-            report["qualityAssessment"] = assess_report_quality(report, repository, model_calls)
+            report["generationModelCalls"] = prior_model_calls + model_calls
+            report["qualityAssessment"] = assess_report_quality(report, repository, prior_model_calls + model_calls)
             minimum_quality = float(os.getenv("MARKET_ANALYSIS_MIN_QUALITY_SCORE", "0") or 0)
             if report["qualityAssessment"]["score"] < minimum_quality:
                 quality_errors = [
@@ -1359,12 +1370,12 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
                     for row in report["qualityAssessment"]["checks"]
                     if not row["passed"]
                 ]
-                repository.write_repair_checkpoint(stage="repair", report=report, errors=quality_errors)
+                repository.write_repair_checkpoint(stage="repair", report=report, errors=quality_errors, model_calls=prior_model_calls + model_calls)
                 raise ReportValidationError(quality_errors)
             try:
                 repository.publish(report)
             except ReportValidationError as publish_error:
-                repository.write_repair_checkpoint(stage="repair", report=report, errors=publish_error.errors)
+                repository.write_repair_checkpoint(stage="repair", report=report, errors=publish_error.errors, model_calls=prior_model_calls + model_calls)
                 raise
             break
         repository.clear_repair_checkpoint()

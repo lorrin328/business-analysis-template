@@ -207,13 +207,14 @@ class MarketAnalysisRepository:
             return None
         return payload
 
-    def write_repair_checkpoint(self, *, stage: str, report: dict, errors: list[str] | None = None) -> None:
+    def write_repair_checkpoint(self, *, stage: str, report: dict, errors: list[str] | None = None, model_calls: list[dict] | None = None) -> None:
         if stage not in {"repair", "verify"}:
             raise ValueError("unsupported repair checkpoint stage")
         self._atomic_write(self.root / "repair-checkpoint.json", {
             "stage": stage,
             "savedAt": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
             "errors": list(errors or [])[:30],
+            "modelCalls": list(model_calls or []),
             "report": report,
         })
 
