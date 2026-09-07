@@ -17,8 +17,26 @@ def _normalize_channel(value) -> str:
 
 def _year_month_day_from_series(series: pd.Series):
     text = series.astype(str).str.strip()
+    # SQLite REAL affinity can turn an Excel integer period into e.g. 202609.0.
+    # Only strip an all-zero fractional part; never truncate genuine decimals.
+    text = text.str.replace(r'^(\d+)\.0+$', r'\1', regex=True)
     digit_text = text.where(text.str.fullmatch(r'\d+'), '')
-    dt = pd.to_datetime(series.mask(digit_text != ''), errors='coerce')
+    # Stored history can mix YYYY-MM and full timestamps in the same column.
+    # Pandas' default first-value format inference silently drops the other
+    # format. Allow per-value parsing only for unambiguous year-first dates.
+    date_text = text.str.replace(r'\s*[-/.年]\s*', '-', regex=True)
+    date_text = date_text.str.replace('月', '-', regex=False).str.replace('日', '', regex=False).str.rstrip('-')
+    year_first = date_text.str.fullmatch(
+        r'\d{4}-\d{1,2}(?:-\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?)?',
+        na=False,
+    )
+    # Preserve fractional seconds: separator normalization above applies only
+    # to the calendar portion, not the optional timestamp portion.
+    date_text = text.str.replace(r'^(\d{4})\s*[-/.年]\s*(\d{1,2})(?:\s*[-/.月]\s*(\d{1,2})日?)?',
+                                 lambda m: f'{m[1]}-{m[2]}' + (f'-{m[3]}' if m[3] else ''), regex=True).str.rstrip('月')
+    year_first = date_text.str.fullmatch(
+        r'\d{4}-\d{1,2}(?:-\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?)?', na=False)
+    dt = pd.to_datetime(date_text.where(year_first), format='mixed', errors='coerce')
 
     # pandas treats bare numbers like 5 or 202605 as nanoseconds after epoch.
     # In these Excel files they mean month or YYYYMM, so parse them explicitly.
@@ -56,6 +74,7 @@ def _period_year_month(df: pd.DataFrame, year_col: Optional[str], month_col: Opt
     if month_col and month_col in work.columns:
         work['_month'] = work['_month'].fillna(pd.to_numeric(work[month_col], errors='coerce'))
     work = work[work['_year'].notna() & work['_month'].notna()]
+    work = work[(work['_year'] % 1 == 0) & (work['_month'] % 1 == 0)]
     work['_month'] = work['_month'].astype(int)
     work = work[(work['_month'] >= 1) & (work['_month'] <= 12)]
     work['_year'] = work['_year'].astype(int)
