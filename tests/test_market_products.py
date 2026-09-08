@@ -192,3 +192,17 @@ def test_repair_call_requests_patch_schema(monkeypatch):
     result = run_market_research.invoke_report_repair('claude', product_report(), 'prompt', model='test')
     assert seen['output_schema'] == run_market_research.REPAIR_OUTPUT_SCHEMA
     assert result['modules'][0]['judgment'] == '测试修订'
+
+@pytest.mark.parametrize('token,context,expected', [
+    ('0.0946','value0.0945945945945946',True),
+    ('0.0950','value0.0945945945945946',False),
+    ('9.46%','value0.0945945945945946',True),
+    ('9.40%','value0.0945945945945946',False),
+    ('2027年','2026年',False),
+    ('30','29.9',False),
+    ('1.50','1.496',True),
+    ('1.50','1.496亿元',False),
+])
+def test_evidence_decimal_rounding_is_bounded(token, context, expected):
+    from market_analysis.validator import _numeric_token_supported
+    assert _numeric_token_supported(token, context) is expected

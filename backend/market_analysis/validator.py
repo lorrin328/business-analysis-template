@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from difflib import SequenceMatcher
 from urllib.parse import urlparse
 
@@ -70,6 +71,32 @@ def _normalized_text(value: str) -> str:
     return re.sub(r"[^0-9a-z\u4e00-\u9fff.%万亿元年月日]+", "", _text(value).lower())
 
 
+
+def _numeric_token_supported(token: str, context: str) -> bool:
+    if token in context:
+        return True
+    # Only decimal presentation rounding is allowed, never dates or integer counts.
+    match = re.fullmatch(r"(\d+\.\d+)(%?)", token)
+    if not match:
+        return False
+    value, unit = match.groups()
+    precision = len(value.split(".")[1])
+    quantum = Decimal(1).scaleb(-precision)
+    try:
+        expected = Decimal(value)
+        for raw, suffix in re.findall(r"(\d+(?:\.\d+)?)(%|万|亿|元|年|月|日)?", context):
+            if suffix == unit:
+                candidate = Decimal(raw)
+            elif unit == "%" and not suffix and Decimal(raw) <= 1:
+                candidate = Decimal(raw) * 100
+            else:
+                continue
+            if candidate.quantize(quantum, rounding=ROUND_HALF_UP) == expected:
+                return True
+    except InvalidOperation:
+        return False
+    return False
+
 def _fact_supported_by_verified_excerpt(fact: str, evidence_ids: list[str], sources: dict[str, dict]) -> bool:
     normalized_fact = _normalized_text(fact)
     excerpts = [_normalized_text(sources[eid].get("excerpt")) for eid in evidence_ids if eid in sources]
@@ -78,7 +105,7 @@ def _fact_supported_by_verified_excerpt(fact: str, evidence_ids: list[str], sour
         return False
     combined = "".join(excerpts)
     numeric_tokens = re.findall(r"\d+(?:[.,]\d+)*(?:%|万|亿|元|年|月|日)?", normalized_fact)
-    if any(token not in combined for token in numeric_tokens):
+    if any(not _numeric_token_supported(token, combined) for token in numeric_tokens):
         return False
     if any(term in normalized_fact and term not in combined for term in FACT_POLARITY_TERMS):
         return False
@@ -101,7 +128,7 @@ def _unsupported_analysis_tokens(module: dict, sources: dict[str, dict]) -> list
     analysis = _normalized_text(f"{module.get('judgment', '')}{module.get('impact', '')}")
     unsupported: list[str] = []
     for token in re.findall(r"\d+(?:[.,]\d+)*(?:%|万|亿|元|年|月|日)?", analysis):
-        if token not in context and token not in unsupported:
+        if not _numeric_token_supported(token, context) and token not in unsupported:
             unsupported.append(token)
     for term in {"征求意见", "正式发布", "生效", "实施", "废止", "取消", "禁止", "不得", "尚未"}:
         if term in analysis and term not in context and term not in unsupported:
