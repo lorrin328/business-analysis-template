@@ -152,10 +152,10 @@
       background: var(--accent); border-radius: 2px;
     }
 
-    /* KPI Cards - 自适应网格，任意宽度满排 */
+    /* 九项 KPI：宽屏九列，常规屏三列，窄屏两列且末项占满一行 */
     .kpi-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(152px, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: var(--sp-3);
     }
     .kpi-card {
@@ -940,6 +940,13 @@
     }
 
     /* Responsive */
+    @media (min-width: 1560px) {
+      .kpi-grid { grid-template-columns: repeat(9, minmax(0, 1fr)); }
+    }
+    @media (max-width: 600px) {
+      .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .kpi-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+    }
     @media (max-width: 1400px) {
       .upload-grid { grid-template-columns: repeat(3, 1fr); }
     }
@@ -1362,7 +1369,7 @@
       <div class="header-left">
         <div class="logo">太平人寿 <span>经营分析看板</span></div>
         <span class="tag">网电多元条线</span>
-        <span class="tag" style="color: var(--success); border-color: rgba(var(--up-rgb),0.3); background: rgba(var(--up-rgb),0.1);">v1.0.153</span>
+        <span class="tag" style="color: var(--success); border-color: rgba(var(--up-rgb),0.3); background: rgba(var(--up-rgb),0.1);">v1.0.154</span>
       </div>
       <div class="header-right">
         <nav class="primary-nav" aria-label="主要页面">

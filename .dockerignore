@@ -10,6 +10,9 @@ backend/**
 !js/
 js/**
 !js/*.js
+!css/
+css/**
+!css/*.css
 !经营分析模板.html
 !branch-analysis.html
 !customer-analysis.html

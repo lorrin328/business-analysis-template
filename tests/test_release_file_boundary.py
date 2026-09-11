@@ -1,6 +1,7 @@
 """Validate the actual page asset references and reject runtime artifacts."""
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 
 import pytest
@@ -76,3 +77,30 @@ def test_image_inspection_rejects_asset_outside_app(image_tree):
 def test_image_inspection_requires_every_page(image_tree):
     (image_tree / "honor.html").unlink()
     assert any("Required runtime file missing: honor.html" == issue for issue in content_issues(image_tree))
+
+
+def test_docker_context_includes_css_and_excludes_private_files(tmp_path):
+    """Use Docker's real ignore rules, without uploading production files."""
+    docker = shutil.which("docker")
+    if not docker:
+        pytest.skip("Docker is required to verify the actual build context")
+    info = subprocess.run([docker, "info"], capture_output=True, timeout=30)
+    if info.returncode:
+        pytest.skip("Docker daemon is unavailable")
+    context = tmp_path / "context"
+    context.mkdir()
+    shutil.copyfile(ROOT / ".dockerignore", context / ".dockerignore")
+    sheets = context / "css"
+    sheets.mkdir()
+    shutil.copyfile(ROOT / "css/tokens.css", sheets / "tokens.css")
+    for name in ("private.csv", ".env", "theme.sync-conflict.css", "cache.db"):
+        (sheets / name).write_text("synthetic private fixture", encoding="utf-8")
+    (context / "Dockerfile").write_text("FROM scratch\nCOPY css /css\n", encoding="utf-8")
+    output = tmp_path / "export"
+    result = subprocess.run(
+        [docker, "buildx", "build", "--output", f"type=local,dest={output}", str(context)],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (output / "css/tokens.css").read_bytes() == (ROOT / "css/tokens.css").read_bytes()
+    assert sorted(p.name for p in (output / "css").iterdir()) == ["tokens.css"]
