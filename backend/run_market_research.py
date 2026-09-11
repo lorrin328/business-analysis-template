@@ -38,7 +38,7 @@ from market_analysis.zhihu_api import scout_zhihu_sources
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_MARKET_MODEL = "deepseek-v4-flash-vision-exp"
+DEFAULT_MARKET_MODEL = "deepseek-flash"
 SECRET_PATTERN = re.compile(r"(?i)(sk-[A-Za-z0-9_-]{12,}|(?:api[_-]?key|token|secret)\s*[=:]\s*\S+)")
 REPORT_OUTPUT_SCHEMA = {
     "type": "object",
@@ -742,7 +742,7 @@ def invoke_claude(
         "-p",
         "--output-format", "json",
         "--json-schema", json.dumps(output_schema or REPORT_OUTPUT_SCHEMA, ensure_ascii=False, separators=(",", ":")),
-        "--model", model,
+        "--model", "deepseek-flash[1m]" if model == "deepseek-flash" else model,
         "--permission-mode", "dontAsk",
         "--allowedTools", "WebSearch", "WebFetch",
         "--disallowedTools", "Bash", "Edit", "Write", "NotebookEdit", "Task",
