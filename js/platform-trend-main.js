@@ -9,7 +9,7 @@
       month: []
     };
     const selectedSeries = { '经代': true, 'OTO': true, '证保': true, '蚁桥': true };
-    const seriesColors = { '经代': '#8b5cf6', 'OTO': '#3b82f6', '证保': '#10b981', '蚁桥': '#f59e0b' };
+    const seriesColors = { '经代': '#a78bfa', 'OTO': '#4f8cff', '证保': '#34d399', '蚁桥': '#fbbf24' };
     const ORG_LIST_PLATFORM = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
     const selectedPlatformOrgs = {};
     ORG_LIST_PLATFORM.forEach(o => selectedPlatformOrgs[o] = true);
@@ -309,7 +309,7 @@
         ? getSelectedMonthSetTrendData(prevYear, monthList)
         : { labels: [], values: [] };
       if (current.values.length === 0 && prev.values.length === 0) return {
-        title: { text: emptyMessage, left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } },
+        title: { text: emptyMessage, left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
         xAxis: { type: 'category', data: [] },
         yAxis: { type: 'value' },
         series: []
@@ -321,21 +321,21 @@
       const primaryName = hasCurrent ? currentName : prevName;
       const labels = primaryData.labels.slice();
       const seriesList = [
-        { name: primaryName, type: 'line', data: primaryData.values, smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
+        { name: primaryName, type: 'line', data: primaryData.values, smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { width: 3 }, itemStyle: { color: '#4f8cff' } }
       ];
 
       if (hasCurrent && prev.values.length > 0) {
         while (labels.length < prev.labels.length) labels.push(prev.labels[labels.length]);
         const prevValues = labels.map((_, idx) => prev.values[idx] !== undefined ? prev.values[idx] : '-');
-        seriesList.push({ name: prevName, type: 'line', data: prevValues, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
+        seriesList.push({ name: prevName, type: 'line', data: prevValues, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#93a4bd' } });
       }
 
       return {
-        tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
-        legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
+        tooltip: { trigger: 'axis', backgroundColor: '#111a2b', borderColor: '#1e2c46', textStyle: { color: '#eef3fb' } },
+        legend: { data: seriesList.map(s => s.name), textStyle: { color: '#93a4bd' }, bottom: 0 },
         grid: { left: 50, right: 20, top: 20, bottom: 48 },
-        xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8', interval: 'auto' } },
-        yAxis: { type: 'value', name: '累计(万)', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
+        xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#1e2c46' } }, axisLabel: { color: '#93a4bd', interval: 'auto' } },
+        yAxis: { type: 'value', name: '累计(万)', axisLine: { show: false }, splitLine: { lineStyle: { color: '#1e2c46', type: 'dashed' } }, axisLabel: { color: '#93a4bd' } },
         series: seriesList
       };
     }
@@ -345,7 +345,7 @@
       const year = parseInt(selectedYear);
       const prevYear = year - 1;
       const emptyOption = (message) => ({
-        title: { text: message, left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } },
+        title: { text: message, left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
         xAxis: { type: 'category', data: [] },
         yAxis: { type: 'value' },
         series: []
@@ -378,7 +378,7 @@
         });
 
         const seriesList = [
-          { name: year + '年累计', type: 'line', data: currentTotal, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' }, yAxisIndex: 0 }
+          { name: year + '年累计', type: 'line', data: currentTotal, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { width: 3 }, itemStyle: { color: '#4f8cff' }, yAxisIndex: 0 }
         ];
 
         if (platformMock[prevYear]) {
@@ -401,7 +401,7 @@
             return Math.round(sum * 10) / 10;
           });
           seriesList.push(
-            { name: prevYear + '年累计', type: 'line', data: prevTotal, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' }, yAxisIndex: 0 },
+            { name: prevYear + '年累计', type: 'line', data: prevTotal, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#93a4bd' }, yAxisIndex: 0 },
             { name: year + '年单月', type: 'bar', data: currentMonthly, yAxisIndex: 1, itemStyle: { color: 'rgba(59,130,246,0.35)' }, barMaxWidth: 16 },
             { name: prevYear + '年单月', type: 'bar', data: prevMonthly, yAxisIndex: 1, itemStyle: { color: 'rgba(148,163,184,0.3)' }, barMaxWidth: 16 }
           );
@@ -412,13 +412,13 @@
         }
 
         return {
-          tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
-          legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
+          tooltip: { trigger: 'axis', backgroundColor: '#111a2b', borderColor: '#1e2c46', textStyle: { color: '#eef3fb' } },
+          legend: { data: seriesList.map(s => s.name), textStyle: { color: '#93a4bd' }, bottom: 0 },
           grid: { left: 50, right: 20, top: 20, bottom: 50 },
-          xAxis: { type: 'category', data: months, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
+          xAxis: { type: 'category', data: months, axisLine: { lineStyle: { color: '#1e2c46' } }, axisLabel: { color: '#93a4bd' } },
           yAxis: [
-            { type: 'value', name: '累计(万)', position: 'left', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
-            { type: 'value', name: '单月(万)', position: 'right', axisLine: { show: false }, splitLine: { show: false }, axisLabel: { color: '#94a3b8' } }
+            { type: 'value', name: '累计(万)', position: 'left', axisLine: { show: false }, splitLine: { lineStyle: { color: '#1e2c46', type: 'dashed' } }, axisLabel: { color: '#93a4bd' } },
+            { type: 'value', name: '单月(万)', position: 'right', axisLine: { show: false }, splitLine: { show: false }, axisLabel: { color: '#93a4bd' } }
           ],
           series: seriesList
         };

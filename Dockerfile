@@ -20,6 +20,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY backend /app/backend
 COPY js /app/js
+COPY css /app/css
 COPY *.html VERSION /app/
 
 RUN mkdir -p /data /app/backend/logs \

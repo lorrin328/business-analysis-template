@@ -15,10 +15,10 @@
     PREMIUM_TYPES: { qj: '期交保费', gm: '规模保费', zs: '折算保费' },
 
     SERIES_COLORS: {
-      '经代': '#8b5cf6',
-      'OTO': '#3b82f6',
-      '证保': '#10b981',
-      '蚁桥': '#f59e0b',
+      '经代': '#a78bfa',
+      'OTO': '#4f8cff',
+      '证保': '#34d399',
+      '蚁桥': '#fbbf24',
     },
 
     METRIC_NAMES: {

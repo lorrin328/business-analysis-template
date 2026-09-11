@@ -93,7 +93,7 @@
       if (!el) return;
       el.textContent = message || '';
       el.style.display = message ? '' : 'none';
-      el.style.color = kind === 'fallback' ? '#f59e0b' : '#94a3b8';
+      el.style.color = kind === 'fallback' ? '#fbbf24' : '#93a4bd';
       el.style.borderColor = kind === 'fallback' ? 'rgba(245,158,11,0.45)' : 'rgba(148,163,184,0.3)';
       el.style.background = kind === 'fallback' ? 'rgba(245,158,11,0.12)' : 'rgba(148,163,184,0.08)';
     }

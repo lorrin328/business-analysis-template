@@ -5,36 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>经营分析看板</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
-  <script src="js/constants.js"></script>
+  <link rel="stylesheet" href="css/tokens.css?v=1.0.153">
+  <script src="js/constants.js?v=1.0.153-6b01c3610050"></script>
   <script src="js/format-utils.js"></script>
   <script src="js/month-multi-select.js?v=1.0.120"></script>
   <script src="js/api-client.js?v=1.0.116"></script>
-  <script src="js/auth-ui.js?v=1.0.152-7996004767bd"></script>
+  <script src="js/auth-ui.js?v=1.0.153-eaac970bb804"></script>
   <script src="js/export-excel.js?v=1.0.116"></script>
   <script src="js/dashboard-config.js?v=1.0.116"></script>
   <script src="js/upload.js?v=1.0.147-3e9cecc0eda8"></script>
-  <script src="js/target-modal.js?v=1.0.120"></script>
+  <script src="js/target-modal.js?v=1.0.153-ce612293af85"></script>
   <script src="js/dashboard-actions.js?v=1.0.116"></script>
   <script src="js/kpi-cards.js?v=1.0.146-29880f1034df"></script>
   <script src="js/platform-trend.js?v=1.0.116"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    :root {
-      --bg: #0f172a;
-      --bg-card: #1e293b;
-      --bg-hover: #334155;
-      --text: #f1f5f9;
-      --text-secondary: #94a3b8;
-      --accent: #3b82f6;
-      --accent-light: #60a5fa;
-      --success: #10b981;
-      --warning: #f59e0b;
-      --danger: #ef4444;
-      --border: #334155;
-      --gradient-start: #1e3a5f;
-      --gradient-end: #0f172a;
-    }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
@@ -62,27 +47,27 @@
     .logo { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
     .logo span { color: var(--accent-light); }
     .tag {
-      background: rgba(59,130,246,0.15);
+      background: rgba(var(--accent-rgb),0.15);
       color: var(--accent-light);
       padding: 4px 12px;
       border-radius: 20px;
       font-size: 12px;
-      border: 1px solid rgba(59,130,246,0.3);
+      border: 1px solid rgba(var(--accent-rgb),0.3);
     }
     .header-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
     .primary-nav { display: flex; align-items: center; gap: 6px; }
     .primary-nav .chart-btn[aria-current="page"] {
       color: #fff;
-      background: rgba(59,130,246,.28);
-      border-color: rgba(96,165,250,.58);
+      background: rgba(var(--accent-rgb),.28);
+      border-color: rgba(var(--accent-light-rgb),.58);
     }
     .header-recalculate {
       color: #fff;
-      background: rgba(59,130,246,.22);
-      border-color: rgba(96,165,250,.52);
+      background: rgba(var(--accent-rgb),.22);
+      border-color: rgba(var(--accent-light-rgb),.52);
       white-space: nowrap;
     }
-    .header-recalculate:hover { background: rgba(59,130,246,.34); }
+    .header-recalculate:hover { background: rgba(var(--accent-rgb),.34); }
     .header-menu { position: relative; }
     .header-menu > summary {
       list-style: none;
@@ -92,7 +77,7 @@
     }
     .header-menu > summary::-webkit-details-marker { display: none; }
     .header-menu > summary::after { content: '⌄'; margin-left: 6px; color: var(--text-secondary); }
-    .header-menu[open] > summary { border-color: var(--accent); background: rgba(59,130,246,.14); }
+    .header-menu[open] > summary { border-color: var(--accent); background: rgba(var(--accent-rgb),.14); }
     .header-tools {
       position: absolute;
       right: 0;
@@ -102,7 +87,7 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
       padding: 12px;
-      background: #162237;
+      background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 10px;
       box-shadow: 0 18px 45px rgba(0,0,0,.38);
@@ -119,9 +104,9 @@
     .cutoff-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
     .date-display { color: var(--text-secondary); font-size: 14px; white-space: nowrap; }
     .cutoff-select {
-      background: rgba(15,23,42,0.55);
+      background: rgba(var(--bg-rgb),0.55);
       color: var(--text-primary);
-      border: 1px solid rgba(148,163,184,0.35);
+      border: 1px solid rgba(147, 164, 189,0.35);
       border-radius: 6px;
       padding: 5px 8px;
       font-size: 13px;
@@ -133,8 +118,8 @@
       min-height: 32px !important;
       padding: 5px 12px !important;
       color: #eff6ff !important;
-      background: rgba(37,99,235,.32) !important;
-      border-color: rgba(96,165,250,.55) !important;
+      background: rgba(var(--accent-rgb),.32) !important;
+      border-color: rgba(var(--accent-light-rgb),.55) !important;
     }
     .cutoff-note { color: #f59e0b; font-size: 12px; line-height: 1.2; }
 
@@ -146,8 +131,8 @@
       padding: 12px 14px;
       margin-bottom: 16px;
       color: #fde7bd;
-      background: rgba(245,158,11,.10);
-      border: 1px solid rgba(245,158,11,.38);
+      background: rgba(var(--warn-rgb),.10);
+      border: 1px solid rgba(var(--warn-rgb),.38);
       border-radius: 10px;
       line-height: 1.5;
     }
@@ -167,18 +152,18 @@
       background: var(--accent); border-radius: 2px;
     }
 
-    /* KPI Cards - 7 column */
+    /* KPI Cards - 自适应网格，任意宽度满排 */
     .kpi-grid {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(152px, 1fr));
+      gap: var(--sp-3);
     }
     .kpi-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
       padding: 18px 14px;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: border-color var(--t-fast), box-shadow var(--t-fast);
       cursor: pointer;
       position: relative;
       overflow: hidden;
@@ -190,28 +175,20 @@
       align-items: center;
     }
     .kpi-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
       border-color: var(--accent);
+      box-shadow: inset 3px 0 0 var(--accent);
     }
     .kpi-card:focus-visible {
-      outline: 3px solid rgba(96,165,250,.55);
+      outline: 3px solid rgba(var(--accent-light-rgb), .55);
       outline-offset: 2px;
       border-color: var(--accent-light);
+      box-shadow: inset 3px 0 0 var(--accent);
     }
-    .kpi-card::after {
-      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-      opacity: 0; transition: opacity 0.2s;
-    }
-    .kpi-card:hover::after, .kpi-card:focus-visible::after { opacity: 1; }
-    .kpi-card::after { background: var(--accent); }
-    .kpi-card[data-kpi-modal="activity"]::after,
-    .kpi-card[data-kpi-modal="percapita"]::after { background: var(--success); }
     .targets-unverified .kpi-card.target-dependent {
       border-style: dashed;
-      border-color: rgba(245,158,11,.45);
+      border-color: rgba(var(--warn-rgb), .45);
     }
-    .targets-unverified .kpi-card.target-dependent .kpi-big-value { color: var(--warning) !important; font-size: 22px; }
+    .targets-unverified .kpi-card.target-dependent .kpi-big-value { color: var(--warn) !important; font-size: 22px; }
 
     .kpi-top-label {
       font-size: 12px;
@@ -219,8 +196,10 @@
       margin-bottom: 6px;
     }
     .kpi-big-value {
-      font-size: 32px;
+      font-size: 30px;
       font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.2px;
       margin-bottom: 10px;
       font-variant-numeric: tabular-nums;
       line-height: 1.1;
@@ -250,10 +229,10 @@
       right: 8px;
       font-size: 10px;
       color: var(--warning);
-      background: rgba(245,158,11,0.1);
+      background: rgba(var(--warn-rgb),0.1);
       padding: 2px 7px;
       border-radius: 10px;
-      border: 1px solid rgba(245,158,11,0.2);
+      border: 1px solid rgba(var(--warn-rgb),0.2);
     }
 
     /* Modal */
@@ -332,7 +311,7 @@
       color: var(--text-secondary); font-weight: 500;
       background: var(--bg); font-size: 12px;
     }
-    .modal-table tr:hover td { background: rgba(59,130,246,0.05); }
+    .modal-table tr:hover td { background: rgba(var(--accent-rgb),0.05); }
 
     .modal-section-title {
       font-size: 14px; font-weight: 600;
@@ -361,8 +340,8 @@
     .modal-product-config .modal-body { max-height: 70vh; padding: 16px 24px; }
     .product-config-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .product-config-table th, .product-config-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
-    .product-config-table th { background: rgba(30,41,59,0.5); font-weight: 600; position: sticky; top: 0; }
-    .product-config-table tr:hover td { background: rgba(59,130,246,0.05); }
+    .product-config-table th { background: rgba(var(--panel-rgb),0.5); font-weight: 600; position: sticky; top: 0; }
+    .product-config-table tr:hover td { background: rgba(var(--accent-rgb),0.05); }
     .product-config-table select { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 13px; cursor: pointer; }
     .product-config-table select:focus { border-color: var(--accent); outline: none; }
     .product-config-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
@@ -375,7 +354,7 @@
     }
     .target-toolbar {
       display: flex; align-items: center; justify-content: space-between; gap: 14px;
-      padding: 12px 18px; background: rgba(15,23,42,0.86);
+      padding: 12px 18px; background: rgba(var(--bg-rgb),0.86);
       border-bottom: 1px solid var(--border);
     }
     .target-toolbar-main, .target-toolbar-actions {
@@ -394,15 +373,15 @@
     }
     .target-save-state {
       padding: 4px 8px; border-radius: 999px;
-      background: rgba(148,163,184,0.12);
+      background: rgba(147, 164, 189,0.12);
     }
-    .target-save-state.dirty { color: #fbbf24; background: rgba(245,158,11,0.14); }
-    .target-save-state.saving { color: var(--accent-light); background: rgba(59,130,246,0.14); }
-    .target-save-state.error { color: var(--danger); background: rgba(239,68,68,0.14); }
+    .target-save-state.dirty { color: #fbbf24; background: rgba(var(--warn-rgb),0.14); }
+    .target-save-state.saving { color: var(--accent-light); background: rgba(var(--accent-rgb),0.14); }
+    .target-save-state.error { color: var(--danger); background: rgba(var(--down-rgb),0.14); }
     .target-switchbar {
       display: flex; justify-content: space-between; gap: 12px;
       padding: 10px 18px;
-      background: rgba(30,41,59,0.72);
+      background: rgba(var(--panel-rgb),0.72);
       border-bottom: 1px solid var(--border);
     }
     .target-section-tabs, .target-period-tabs {
@@ -430,14 +409,14 @@
     }
     .target-summary-strip span {
       padding: 4px 8px; border: 1px solid var(--border);
-      border-radius: 999px; background: rgba(15,23,42,0.44);
+      border-radius: 999px; background: rgba(var(--bg-rgb),0.44);
     }
     .target-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .target-card {
       background: var(--bg); border-radius: 8px; border: 1px solid var(--border); overflow: hidden;
     }
     .target-card-header {
-      padding: 10px 14px; background: rgba(15,23,42,0.88);
+      padding: 10px 14px; background: rgba(var(--bg-rgb),0.88);
       border-bottom: 1px solid var(--border); font-weight: 600; font-size: 13px;
       color: var(--text); display: flex; align-items: center; justify-content: space-between; gap: 12px;
     }
@@ -457,7 +436,7 @@
       overflow: auto;
       border: 1px solid var(--border);
       border-radius: 8px;
-      background: rgba(15,23,42,0.36);
+      background: rgba(var(--bg-rgb),0.36);
     }
     .target-table-wrap-wide { max-height: 58vh; }
     .target-table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -468,7 +447,7 @@
       white-space: nowrap;
     }
     .target-table td { color: var(--text); }
-    .target-table tr:hover td { background: rgba(59,130,246,0.06); }
+    .target-table tr:hover td { background: rgba(var(--accent-rgb),0.06); }
     .target-table tr.sub td:first-child { padding-left: 20px; color: var(--text-secondary); }
     .target-total-cell { color: var(--text-secondary) !important; text-align: right !important; white-space: nowrap; }
     input.target-input {
@@ -477,15 +456,15 @@
       font-size: 12px; text-align: right;
     }
     input.target-input:focus {
-      outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+      outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb),0.2);
     }
     input.target-input-sm { width: 68px; padding: 5px 6px; font-size: 11px; }
     .target-balance {
       display: inline-flex; min-width: 48px; justify-content: center;
       padding: 3px 7px; border-radius: 999px; font-size: 11px; white-space: nowrap;
     }
-    .target-balance.ok { color: var(--success); background: rgba(16,185,129,0.12); }
-    .target-balance.warn { color: #fbbf24; background: rgba(245,158,11,0.13); }
+    .target-balance.ok { color: var(--success); background: rgba(var(--up-rgb),0.12); }
+    .target-balance.warn { color: #fbbf24; background: rgba(var(--warn-rgb),0.13); }
     .target-actions {
       display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end;
       padding-top: 12px; border-top: 1px solid var(--border);
@@ -541,9 +520,10 @@
     }
     .chart-actions { display: flex; gap: 8px; }
     .chart-btn {
-      background: var(--bg-hover); border: 1px solid var(--border);
-      color: var(--text-secondary); padding: 4px 12px;
-      border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.2s;
+      background: transparent; border: 1px solid var(--line);
+      color: var(--text-2); padding: 5px 14px;
+      border-radius: var(--r-pill); font-size: 12px; cursor: pointer;
+      transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
     }
     .chart-btn:hover, .chart-btn.active {
       background: var(--accent); color: white; border-color: var(--accent);
@@ -555,7 +535,7 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       overflow: hidden;
-      background: rgba(15, 23, 42, 0.25);
+      background: rgba(var(--bg-rgb), 0.25);
     }
     .structure-table {
       width: 100%;
@@ -572,11 +552,11 @@
     }
     .structure-table th {
       color: var(--text-secondary);
-      background: rgba(15, 23, 42, 0.75);
+      background: rgba(var(--bg-rgb), 0.75);
       font-weight: 600;
     }
     .structure-table tr:last-child td { border-bottom: none; }
-    .structure-table tr:hover td { background: rgba(59,130,246,0.05); }
+    .structure-table tr:hover td { background: rgba(var(--accent-rgb),0.05); }
     .structure-table .num { text-align: right; font-variant-numeric: tabular-nums; }
     .structure-table .primary-text { color: var(--text); font-weight: 600; }
     .structure-table .muted { color: var(--text-secondary); }
@@ -595,7 +575,7 @@
       padding: 10px 12px;
       border: 1px solid var(--border);
       border-radius: 8px;
-      background: rgba(15, 23, 42, 0.42);
+      background: rgba(var(--bg-rgb), 0.42);
     }
     .structure-average-filter-group {
       display: flex;
@@ -643,12 +623,12 @@
     #payPeriodAverageTable .total-cell {
       color: var(--accent-light);
       font-weight: 700;
-      background: rgba(59,130,246,0.06);
+      background: rgba(var(--accent-rgb),0.06);
     }
     #payPeriodAverageTable tfoot td {
-      border-top: 2px solid rgba(96, 165, 250, 0.42);
+      border-top: 2px solid rgba(var(--accent-light-rgb), 0.42);
       border-bottom: none;
-      background: rgba(30, 64, 175, 0.18);
+      background: rgba(var(--accent-rgb), 0.18);
       font-weight: 700;
     }
     #payPeriodAverageTable tfoot .summary-scope {
@@ -657,7 +637,7 @@
       font-weight: 600;
     }
     #payPeriodAverageTable tr.mode-start:not(:first-child) td {
-      border-top: 2px solid rgba(96, 165, 250, 0.28);
+      border-top: 2px solid rgba(var(--accent-light-rgb), 0.28);
     }
     .pay-period-mode-badge {
       display: inline-flex;
@@ -667,8 +647,8 @@
       padding: 2px 7px;
       border-radius: 999px;
       color: #bfdbfe;
-      background: rgba(59, 130, 246, 0.12);
-      border: 1px solid rgba(96, 165, 250, 0.24);
+      background: rgba(var(--accent-rgb), 0.12);
+      border: 1px solid rgba(var(--accent-light-rgb), 0.24);
       font-weight: 600;
     }
     .pay-period-average-value {
@@ -684,7 +664,7 @@
     }
     .team-insight-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
     .team-insight-card {
-      background: rgba(15, 23, 42, 0.38);
+      background: rgba(var(--bg-rgb), 0.38);
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 14px;
@@ -747,7 +727,7 @@
     .team-analysis-tile {
       border: 1px solid var(--border);
       border-radius: 8px;
-      background: rgba(15, 23, 42, 0.28);
+      background: rgba(var(--bg-rgb), 0.28);
       padding: 12px;
     }
     .team-analysis-tile-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
@@ -757,9 +737,9 @@
       margin-top: 8px;
       padding: 2px 8px;
       border-radius: 999px;
-      border: 1px solid rgba(245, 158, 11, 0.35);
+      border: 1px solid rgba(var(--warn-rgb), 0.35);
       color: #fbbf24;
-      background: rgba(245, 158, 11, 0.1);
+      background: rgba(var(--warn-rgb), 0.1);
       font-size: 11px;
     }
 
@@ -777,20 +757,21 @@
     }
     .upload-card:hover {
       border-color: var(--accent);
-      box-shadow: 0 4px 16px rgba(59,130,246,0.1);
+      box-shadow: 0 4px 16px rgba(var(--accent-rgb),0.1);
     }
     .upload-card.has-file {
       border-color: var(--success);
-      background: linear-gradient(135deg, rgba(16,185,129,0.05), var(--bg-card));
+      background: linear-gradient(135deg, rgba(var(--up-rgb),0.05), var(--bg-card));
     }
     .upload-icon {
       width: 48px; height: 48px; margin: 0 auto 12px;
-      background: var(--bg-hover); border-radius: 12px;
+      background: var(--panel-raise); border-radius: var(--r-lg);
       display: flex; align-items: center; justify-content: center;
-      font-size: 22px; transition: all 0.2s;
+      color: var(--text-2); transition: background var(--t-fast), color var(--t-fast);
     }
-    .upload-card:hover .upload-icon { background: var(--accent); transform: scale(1.05); }
-    .upload-card.has-file .upload-icon { background: rgba(16,185,129,0.2); }
+    .upload-icon svg { width: 24px; height: 24px; }
+    .upload-card:hover .upload-icon { background: var(--accent); color: #fff; }
+    .upload-card.has-file .upload-icon { background: rgba(var(--up-rgb), 0.16); color: var(--up); }
     .upload-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
     .upload-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; }
     .upload-btn {
@@ -801,20 +782,20 @@
     .upload-btn:hover { background: var(--accent); border-style: solid; border-color: var(--accent); }
     .file-info {
       margin-top: 10px; padding: 6px 10px;
-      background: rgba(16,185,129,0.1); border-radius: 6px;
+      background: rgba(var(--up-rgb),0.1); border-radius: 6px;
       font-size: 11px; color: var(--success); display: none;
     }
     .upload-card.has-file .file-info { display: block; }
     .upload-card.has-file .upload-btn {
-      background: rgba(16,185,129,0.15); border-color: var(--success); color: var(--success);
+      background: rgba(var(--up-rgb),0.15); border-color: var(--success); color: var(--success);
     }
     input[type="file"] { display: none; }
 
     .upload-mandatory {
       position: absolute; top: 8px; right: 8px;
       font-size: 10px; color: var(--danger);
-      background: rgba(239,68,68,0.1); padding: 1px 6px;
-      border-radius: 4px; border: 1px solid rgba(239,68,68,0.2);
+      background: rgba(var(--down-rgb),0.1); padding: 1px 6px;
+      border-radius: 4px; border: 1px solid rgba(var(--down-rgb),0.2);
     }
 
     .upload-options {
@@ -898,7 +879,7 @@
       padding: 9px 10px;
       border: 1px solid var(--border);
       border-radius: 8px;
-      background: rgba(15, 23, 42, 0.48);
+      background: rgba(var(--bg-rgb), 0.48);
     }
     .month-multi-select[hidden] { display: none !important; }
     .month-preset-row,
@@ -914,9 +895,9 @@
       min-height: 28px;
       padding: 4px 9px;
       border: 1px solid var(--border);
-      border-radius: 6px;
-      background: var(--bg);
-      color: var(--text-secondary);
+      border-radius: var(--r-pill);
+      background: transparent;
+      color: var(--text-2);
       font-size: 12px;
     }
     .month-preset-btn { cursor: pointer; }
@@ -924,7 +905,7 @@
     .month-preset-btn.active {
       border-color: var(--accent);
       color: var(--accent-light);
-      background: rgba(59, 130, 246, 0.14);
+      background: rgba(var(--accent-rgb), 0.14);
     }
     .month-check-label {
       display: inline-flex;
@@ -937,7 +918,7 @@
     .month-check-label.active {
       border-color: var(--accent);
       color: var(--accent-light);
-      background: rgba(59, 130, 246, 0.14);
+      background: rgba(var(--accent-rgb), 0.14);
     }
     .month-check-label.disabled,
     .month-preset-btn:disabled {
@@ -960,7 +941,6 @@
 
     /* Responsive */
     @media (max-width: 1400px) {
-      .kpi-grid { grid-template-columns: repeat(4, 1fr); }
       .upload-grid { grid-template-columns: repeat(3, 1fr); }
     }
     @media (max-width: 1200px) {
@@ -971,7 +951,6 @@
       .team-insight-layout { grid-template-columns: 1fr; }
     }
     @media (max-width: 768px) {
-      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
       .upload-grid { grid-template-columns: 1fr; }
       .container { padding: 16px; }
       .header { padding: 12px 16px; }
@@ -1041,7 +1020,6 @@
 
       /* KPI 卡片 */
       .kpi-grid {
-        grid-template-columns: repeat(2, 1fr);
         gap: 10px;
       }
       .kpi-card {
@@ -1254,22 +1232,22 @@
       display: flex; align-items: center; gap: 4px;
       font-size: 12px; color: var(--text);
       cursor: pointer;
-      padding: 3px 8px; border-radius: 4px;
-      background: var(--bg); border: 1px solid var(--border);
-      transition: all 0.2s;
+      padding: 4px 12px; border-radius: var(--r-pill);
+      background: transparent; border: 1px solid var(--line);
+      transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast);
     }
     .org-filter-checks label:hover { border-color: var(--accent); }
     .org-filter-checks label.active {
-      background: rgba(59,130,246,0.15); border-color: var(--accent); color: var(--accent-light);
+      background: rgba(var(--accent-rgb),0.15); border-color: var(--accent); color: var(--accent-light);
     }
     .org-filter-checks input { display: none; }
     .org-dim-btns {
       display: flex; gap: 6px;
     }
     .org-dim-btns button {
-      padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border);
-      background: var(--bg); color: var(--text-secondary); font-size: 12px;
-      cursor: pointer; transition: all 0.2s;
+      padding: 4px 14px; border-radius: var(--r-pill); border: 1px solid var(--line);
+      background: transparent; color: var(--text-2); font-size: 12px;
+      cursor: pointer; transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
     }
     .org-dim-btns button.active, .org-dim-btns button:hover {
       background: var(--accent); color: white; border-color: var(--accent);
@@ -1299,7 +1277,7 @@
       background: var(--bg-card);
     }
     .org-table th:first-child { background: var(--bg); z-index: 4; }
-    .org-table tr:hover td { background: rgba(59,130,246,0.05); }
+    .org-table tr:hover td { background: rgba(var(--accent-rgb),0.05); }
     .org-table tr.total-row td {
       font-weight: 600; background: var(--bg-hover);
       border-top: 2px solid var(--border);
@@ -1319,7 +1297,7 @@
     .auth-gate {
       position: fixed; inset: 0; z-index: 500;
       display: flex; align-items: center; justify-content: center;
-      background: radial-gradient(circle at 30% 20%, rgba(59,130,246,0.18), transparent 34%), rgba(15,23,42,0.96);
+      background: radial-gradient(circle at 30% 20%, rgba(var(--accent-rgb),0.18), transparent 34%), rgba(var(--bg-rgb),0.96);
       padding: 24px;
     }
     .auth-panel {
@@ -1384,7 +1362,7 @@
       <div class="header-left">
         <div class="logo">太平人寿 <span>经营分析看板</span></div>
         <span class="tag">网电多元条线</span>
-        <span class="tag" style="color: var(--success); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1);">v1.0.152</span>
+        <span class="tag" style="color: var(--success); border-color: rgba(var(--up-rgb),0.3); background: rgba(var(--up-rgb),0.1);">v1.0.153</span>
       </div>
       <div class="header-right">
         <nav class="primary-nav" aria-label="主要页面">
@@ -1445,7 +1423,7 @@
         <!-- 1. 整体达成率（期交保费） -->
         <div class="kpi-card target-dependent" data-kpi-modal="overall" role="button" tabindex="0" aria-label="查看期交保费达成率详情">
           <div class="kpi-top-label">期交保费达成率</div>
-          <div class="kpi-big-value" id="kpi-qj-rate" style="color: var(--accent-light);">--</div>
+          <div class="kpi-big-value" id="kpi-qj-rate">--</div>
           <div class="kpi-bottom-meta" id="kpi-qj-sub"></div>
         </div>
 
@@ -1453,56 +1431,56 @@
         <div class="kpi-card target-dependent" data-kpi-modal="value" role="button" tabindex="0" aria-label="查看价值达成率详情">
           <div class="kpi-upload-badge">需上传</div>
           <div class="kpi-top-label">价值达成率</div>
-          <div class="kpi-big-value" id="kpi-value-rate" style="color: var(--success);">--</div>
+          <div class="kpi-big-value" id="kpi-value-rate">--</div>
           <div class="kpi-bottom-meta" id="kpi-value-sub"></div>
         </div>
 
         <!-- 3. 长险活动率 -->
         <div class="kpi-card" data-kpi-modal="activity" role="button" tabindex="0" aria-label="查看长险活动率详情">
           <div class="kpi-top-label">长险活动率</div>
-          <div class="kpi-big-value" id="kpi-activity-rate" style="color: var(--warning);">--</div>
+          <div class="kpi-big-value" id="kpi-activity-rate">--</div>
           <div class="kpi-bottom-meta" id="kpi-activity-sub"></div>
         </div>
 
         <!-- 4. 商保年金 -->
         <div class="kpi-card target-dependent" data-kpi-modal="annuity" role="button" tabindex="0" aria-label="查看商保年金达成率详情">
           <div class="kpi-top-label">商保年金达成率</div>
-          <div class="kpi-big-value" id="kpi-annuity-rate" style="color: #8b5cf6;">--</div>
+          <div class="kpi-big-value" id="kpi-annuity-rate">--</div>
           <div class="kpi-bottom-meta" id="kpi-annuity-sub"></div>
         </div>
 
         <!-- 5. 保障类产品 -->
         <div class="kpi-card target-dependent" data-kpi-modal="protection" role="button" tabindex="0" aria-label="查看保障类产品达成率详情">
           <div class="kpi-top-label">保障类产品达成率</div>
-          <div class="kpi-big-value" id="kpi-protection-rate" style="color: #ec4899;">--</div>
+          <div class="kpi-big-value" id="kpi-protection-rate">--</div>
           <div class="kpi-bottom-meta" id="kpi-protection-sub"></div>
         </div>
 
         <!-- 6. 10年期产品 -->
         <div class="kpi-card target-dependent" data-kpi-modal="10year" role="button" tabindex="0" aria-label="查看10年期产品达成率详情">
           <div class="kpi-top-label">10年期产品达成率</div>
-          <div class="kpi-big-value" id="kpi-10year-rate" style="color: #06b6d4;">--</div>
+          <div class="kpi-big-value" id="kpi-10year-rate">--</div>
           <div class="kpi-bottom-meta" id="kpi-10year-sub"></div>
         </div>
 
         <!-- 7. 长险期交达成率 -->
         <div class="kpi-card target-dependent" data-kpi-modal="longterm" role="button" tabindex="0" aria-label="查看长险期交达成率详情">
           <div class="kpi-top-label">长险期交达成率</div>
-          <div class="kpi-big-value" id="kpi-longterm-rate" style="color: #3b82f6;">--</div>
+          <div class="kpi-big-value" id="kpi-longterm-rate">--</div>
           <div class="kpi-bottom-meta" id="kpi-longterm-sub"></div>
         </div>
 
         <!-- 8. 人均保费（转型业务） -->
         <div class="kpi-card" data-kpi-modal="percapita" role="button" tabindex="0" aria-label="查看人均保费详情">
           <div class="kpi-top-label">人均保费 <span style="font-size:10px;color:var(--text-secondary);">(月均)</span></div>
-          <div class="kpi-big-value" id="kpi-percapita" style="color: #f97316;">--</div>
+          <div class="kpi-big-value" id="kpi-percapita">--</div>
           <div class="kpi-bottom-meta" id="kpi-percapita-sub"></div>
         </div>
 
         <!-- 9. 职拓业务业绩 -->
         <div class="kpi-card" data-kpi-modal="zhituo" data-kpi-href="/zhituo-analysis" data-kpi-permission="team_enhanced" role="button" tabindex="0" aria-label="打开职拓业务分析">
           <div class="kpi-top-label">职拓业务业绩</div>
-          <div class="kpi-big-value" id="kpi-zhituo-premium" style="color: #22d3ee;">--</div>
+          <div class="kpi-big-value" id="kpi-zhituo-premium">--</div>
           <div class="kpi-bottom-meta" id="kpi-zhituo-sub"></div>
         </div>
       </div>
@@ -1862,7 +1840,7 @@
       <div class="upload-grid">
         <div class="upload-card" data-upload-input="file1">
           <div class="upload-mandatory">按需选择</div>
-          <div class="upload-icon">👥</div>
+          <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.9-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="16.5" cy="9" r="2.4"/><path d="M15.5 14.2c2.3.3 4.1 1.9 4.7 4.8"/></svg></div>
           <div class="upload-title">转型队伍清单</div>
           <div class="upload-desc">人员信息、组织架构</div>
           <button class="upload-btn">选择文件</button>
@@ -1872,7 +1850,7 @@
 
         <div class="upload-card" data-upload-input="file2">
           <div class="upload-mandatory">按需选择</div>
-          <div class="upload-icon">📋</div>
+          <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5V3.2h6v1.3"/><path d="M8.5 10h7M8.5 13.5h7M8.5 17h4.5"/></svg></div>
           <div class="upload-title">转型业务清单</div>
           <div class="upload-desc">保费、保单明细</div>
           <button class="upload-btn">选择文件</button>
@@ -1882,7 +1860,7 @@
 
         <div class="upload-card" data-upload-input="file3">
           <div class="upload-mandatory">按需选择</div>
-          <div class="upload-icon">🤝</div>
+          <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 8.5 3.5 12 7 15.5"/><path d="M17 8.5 20.5 12 17 15.5"/><path d="M9.5 12h5"/><circle cx="12" cy="12" r="9.2"/></svg></div>
           <div class="upload-title">经代业务清单</div>
           <div class="upload-desc">经代渠道业务数据</div>
           <button class="upload-btn">选择文件</button>
@@ -1892,7 +1870,7 @@
 
         <div class="upload-card" data-upload-input="file4">
           <div class="upload-mandatory">按需选择</div>
-          <div class="upload-icon">💎</div>
+          <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5h10l3.5 5L12 20.5 3.5 8.5 7 3.5z"/><path d="M3.5 8.5h17M12 20.5 8.8 8.5 12 3.5l3.2 5L12 20.5z"/></svg></div>
           <div class="upload-title">价值清单</div>
           <div class="upload-desc">价值保费、价值率数据</div>
           <button class="upload-btn">选择文件</button>
@@ -1986,27 +1964,27 @@
 
     // ========== 机构维度 KPI ==========
     // Organization analysis lives in js/org-analysis.js
-    // KPI detail modal content lives in js/kpi-modal-content.js?v=1.0.146-a2b35be58cc3
+    // KPI detail modal content lives in js/kpi-modal-content.js?v=1.0.153-db2b8afd691f
     // Local fallback seed data lives in js/seed-data.js
   </script>
-  <script src="js/kpi-modal-content.js?v=1.0.146-a2b35be58cc3"></script>
+  <script src="js/kpi-modal-content.js?v=1.0.153-db2b8afd691f"></script>
   <script>
     // API integration lives in js/data-integration.js
   </script>
   <script src="js/org-analysis.js?v=1.0.145-5509055c"></script>
   <script src="js/seed-data.js?v=1.0.116"></script>
   <script src="js/platform-seed-data.js?v=1.0.116"></script>
-  <script src="js/data-integration.js?v=1.0.150-6aa2c3e14068"></script>
-  <script src="js/platform-trend-main.js?v=1.0.124"></script>
+  <script src="js/data-integration.js?v=1.0.153-c77b2dbed044"></script>
+  <script src="js/platform-trend-main.js?v=1.0.153-03cec4d93c01"></script>
   <script>
   </script>
-  <script src="js/product-analysis.js?v=1.0.116"></script>
+  <script src="js/product-analysis.js?v=1.0.153-a54906b62cf8"></script>
   <script>
   </script>
-  <script src="js/payperiod-chart.js?v=1.0.120"></script>
+  <script src="js/payperiod-chart.js?v=1.0.153-933566650eac"></script>
   <script>
   </script>
-  <script src="js/team-analysis.js?v=1.0.124"></script>
+  <script src="js/team-analysis.js?v=1.0.153-7a5fbb5181bf"></script>
   <script>
     // ---------- Resize ----------
     window.addEventListener('resize', () => {

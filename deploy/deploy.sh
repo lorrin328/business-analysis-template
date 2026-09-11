@@ -225,6 +225,7 @@ rsync -a --delete \
   --exclude='deploy/.webhook_env' \
   --exclude='*.xlsx' \
   --exclude='*.db' \
+  --exclude='*.sync-conflict-*' \
   "$SRC_DIR/" "$APP_DIR/"
 
 if [ "$REUSE_EXISTING_VENV" = "0" ]; then

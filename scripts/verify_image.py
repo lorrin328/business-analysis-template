@@ -43,6 +43,7 @@ def content_issues(root: Path) -> list[str]:
         allowed = (
             (len(rel.parts) == 1 and (path.name in PAGES or path.name == "VERSION"))
             or (rel.parts[0] == "js" and len(rel.parts) == 2 and path.suffix == ".js")
+            or (rel.parts[0] == "css" and len(rel.parts) == 2 and path.suffix == ".css")
             or (rel.parts[0] == "backend" and (path.suffix == ".py" or rel.as_posix() == "backend/requirements.txt"))
         )
         forbidden = (
@@ -70,7 +71,7 @@ def main():
     if os.getuid() == 0:
         raise SystemExit("Container must run as an unprivileged account")
     issues = content_issues(root)
-    for rel in (".", "backend", "js", "backend/main.py"):
+    for rel in (".", "backend", "js", "css", "backend/main.py"):
         if os.access(root / rel, os.W_OK):
             issues.append("Runtime account can modify source: " + rel)
     if issues:

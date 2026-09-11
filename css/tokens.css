@@ -1,0 +1,65 @@
+/* ============================================================
+   太平人寿经营分析看板 · 全站设计令牌（v1.0.153 起）
+   单一事实来源：新页面/组件只允许引用本文件的变量。
+   下方 alias 区为兼容旧类名的映射层，子页面并入前请勿删除。
+   ============================================================ */
+:root {
+  color-scheme: dark;
+
+  /* 背景：近黑深海军蓝，三层递进 */
+  --bg: #0a0f1c;            /* 页面底 */
+  --panel: #111a2b;         /* 卡片 */
+  --panel-raise: #18243a;   /* 悬浮 / 输入 / hover */
+  --line: #1e2c46;          /* 1px hairline 分隔 */
+
+  /* 文字：靠明度阶梯，不靠颜色 */
+  --text: #eef3fb;
+  --text-2: #93a4bd;        /* 次级 */
+  --text-3: #5c6b84;        /* 弱化 */
+
+  /* 唯一主色 + 语义色纪律 */
+  --accent: #4f8cff;        /* 交互 / 选中 */
+  --accent-light: #7da9ff;  /* 主色高光 */
+  --live: #22d3ee;          /* 实时 / 活跃 */
+  --up: #34d399;            /* 正向 */
+  --warn: #fbbf24;          /* 警示 */
+  --down: #f87171;          /* 风险 */
+
+  /* RGB 通道（供 rgba(var(--xxx-rgb), α) 使用） */
+  --bg-rgb: 10, 15, 28;
+  --panel-rgb: 17, 26, 43;
+  --accent-rgb: 79, 140, 255;
+  --accent-light-rgb: 125, 169, 255;
+  --up-rgb: 52, 211, 153;
+  --warn-rgb: 251, 191, 36;
+  --down-rgb: 248, 113, 113;
+
+  /* 标尺 */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 12px;
+  --r-pill: 999px;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px;
+  --t-fast: .15s ease;
+
+  /* ---------- 兼容旧类名的 alias 层（勿在新代码中使用） ---------- */
+  --bg-card: var(--panel);
+  --bg-hover: var(--panel-raise);
+  --border: var(--line);
+  --text-primary: var(--text);        /* 修复旧代码引用未定义变量的问题 */
+  --text-secondary: var(--text-2);
+  --success: var(--up);
+  --warning: var(--warn);
+  --danger: var(--down);
+  --gradient-start: #16233c;
+  --gradient-end: var(--bg);
+}
+
+/* 尊重系统减弱动效设置 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

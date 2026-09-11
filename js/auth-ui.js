@@ -360,7 +360,7 @@
         </tr>
       `).join('');
       body.innerHTML = `
-        <div class="chart-note" style="margin-bottom:10px;color:#94a3b8;font-size:12px;">
+        <div class="chart-note" style="margin-bottom:10px;color:#93a4bd;font-size:12px;">
           记录用户注册、登录、重置密码、导入报表、设置目标、导出Excel、参数设置和权限管理等关键动作，时间按北京时间展示，按发生时间倒序排列。
         </div>
         <div class="structure-table-wrapper">
@@ -419,7 +419,7 @@
         </table>
       </div>
       <div class="permission-footer">
-        <div class="chart-note" style="color:#94a3b8;font-size:12px;">管理员账号拥有全部权限；密码只支持重置，不展示原密码。修改多个用户后，点击右侧按钮统一保存。</div>
+        <div class="chart-note" style="color:#93a4bd;font-size:12px;">管理员账号拥有全部权限；密码只支持重置，不展示原密码。修改多个用户后，点击右侧按钮统一保存。</div>
         <button class="chart-btn auth-primary permission-save-all-btn" data-action="save-all-users">统一保存</button>
       </div>
     `;

@@ -46,11 +46,11 @@
       const data = type === 'count' ? payPeriodData.count : payPeriodData.premium;
       if (!data || data.length === 0) {
         return {
-          title: { text: '暂无交期结构数据', left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } },
+          title: { text: '暂无交期结构数据', left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
           series: [{ type: 'pie', data: [], radius: ['40%', '70%'], center: ['35%', '50%'] }]
         };
       }
-      const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+      const colors = ['#4f8cff', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#22d3ee'];
       return {
         tooltip: { trigger: 'item', formatter: '{b}: {c}' + (type === 'count' ? '件' : '万') + ' ({d}%)' },
         series: [{

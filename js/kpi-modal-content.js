@@ -189,16 +189,16 @@ function getModalContent(type) {
             initChart: () => {
               const chart = echarts.init(document.getElementById('modalChart'));
               chart.setOption({
-                tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
-                legend: { data: ['OTO', '证保', '蚁桥', '经代'], textStyle: { color: '#94a3b8' }, bottom: 0 },
+                tooltip: { trigger: 'axis', backgroundColor: '#111a2b', borderColor: '#1e2c46', textStyle: { color: '#eef3fb' } },
+                legend: { data: ['OTO', '证保', '蚁桥', '经代'], textStyle: { color: '#93a4bd' }, bottom: 0 },
                 grid: { left: 50, right: 20, top: 10, bottom: 30 },
-                xAxis: { type: 'category', data: monthLabels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
-                yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: monthLabels, axisLine: { lineStyle: { color: '#1e2c46' } }, axisLabel: { color: '#93a4bd' } },
+                yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#1e2c46', type: 'dashed' } }, axisLabel: { color: '#93a4bd' } },
                 series: [
-                  { name: 'OTO', type: 'bar', stack: 'total', data: chartData.OTO, itemStyle: { color: '#3b82f6' } },
-                  { name: '证保', type: 'bar', stack: 'total', data: chartData.证保, itemStyle: { color: '#10b981' } },
-                  { name: '蚁桥', type: 'bar', stack: 'total', data: chartData.蚁桥, itemStyle: { color: '#f59e0b' } },
-                  { name: '经代', type: 'bar', stack: 'total', data: chartData.经代, itemStyle: { color: '#8b5cf6' } }
+                  { name: 'OTO', type: 'bar', stack: 'total', data: chartData.OTO, itemStyle: { color: '#4f8cff' } },
+                  { name: '证保', type: 'bar', stack: 'total', data: chartData.证保, itemStyle: { color: '#34d399' } },
+                  { name: '蚁桥', type: 'bar', stack: 'total', data: chartData.蚁桥, itemStyle: { color: '#fbbf24' } },
+                  { name: '经代', type: 'bar', stack: 'total', data: chartData.经代, itemStyle: { color: '#a78bfa' } }
                 ]
               });
             }
@@ -297,16 +297,16 @@ function getModalContent(type) {
             initChart: () => {
               const chart = echarts.init(document.getElementById('modalChart'));
               chart.setOption({
-                tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
-                legend: { data: ['OTO', '证保', '蚁桥', '经代'], textStyle: { color: '#94a3b8' }, bottom: 0 },
+                tooltip: { trigger: 'axis', backgroundColor: '#111a2b', borderColor: '#1e2c46', textStyle: { color: '#eef3fb' } },
+                legend: { data: ['OTO', '证保', '蚁桥', '经代'], textStyle: { color: '#93a4bd' }, bottom: 0 },
                 grid: { left: 50, right: 20, top: 10, bottom: 30 },
-                xAxis: { type: 'category', data: valueLabels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
-                yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: valueLabels, axisLine: { lineStyle: { color: '#1e2c46' } }, axisLabel: { color: '#93a4bd' } },
+                yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#1e2c46', type: 'dashed' } }, axisLabel: { color: '#93a4bd' } },
                 series: [
-                  { name: 'OTO', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly.OTO[i]||0), itemStyle: { color: '#3b82f6' }, areaStyle: { opacity: 0.1 } },
-                  { name: '证保', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly['证保'][i]||0), itemStyle: { color: '#10b981' }, areaStyle: { opacity: 0.1 } },
-                  { name: '蚁桥', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly['蚁桥'][i]||0), itemStyle: { color: '#f59e0b' }, areaStyle: { opacity: 0.1 } },
-                  { name: '经代', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly['经代'][i]||0), itemStyle: { color: '#8b5cf6' }, areaStyle: { opacity: 0.1 } }
+                  { name: 'OTO', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly.OTO[i]||0), itemStyle: { color: '#4f8cff' }, areaStyle: { opacity: 0.1 } },
+                  { name: '证保', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly['证保'][i]||0), itemStyle: { color: '#34d399' }, areaStyle: { opacity: 0.1 } },
+                  { name: '蚁桥', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly['蚁桥'][i]||0), itemStyle: { color: '#fbbf24' }, areaStyle: { opacity: 0.1 } },
+                  { name: '经代', type: 'line', smooth: true, data: valueLabels.map((_,i)=>valueMonthly['经代'][i]||0), itemStyle: { color: '#a78bfa' }, areaStyle: { opacity: 0.1 } }
                 ]
               });
             }
@@ -522,15 +522,15 @@ function getModalContent(type) {
             initChart: () => {
               const chart = echarts.init(document.getElementById('modalChart'));
               chart.setOption({
-                tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' } },
-                legend: { data: ['OTO', '证保', '蚁桥'], textStyle: { color: '#94a3b8' }, bottom: 0 },
+                tooltip: { trigger: 'axis', backgroundColor: '#111a2b', borderColor: '#1e2c46', textStyle: { color: '#eef3fb' } },
+                legend: { data: ['OTO', '证保', '蚁桥'], textStyle: { color: '#93a4bd' }, bottom: 0 },
                 grid: { left: 50, right: 20, top: 10, bottom: 30 },
-                xAxis: { type: 'category', data: chartLabels, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
-                yAxis: { type: 'value', name: '万', axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: chartLabels, axisLine: { lineStyle: { color: '#1e2c46' } }, axisLabel: { color: '#93a4bd' } },
+                yAxis: { type: 'value', name: '万', axisLine: { show: false }, splitLine: { lineStyle: { color: '#1e2c46', type: 'dashed' } }, axisLabel: { color: '#93a4bd' } },
                 series: [
-                  { name: 'OTO', type: 'line', smooth: true, data: chartSeries.OTO, itemStyle: { color: '#3b82f6' }, areaStyle: { opacity: 0.1 } },
-                  { name: '证保', type: 'line', smooth: true, data: chartSeries.证保, itemStyle: { color: '#10b981' }, areaStyle: { opacity: 0.1 } },
-                  { name: '蚁桥', type: 'line', smooth: true, data: chartSeries.蚁桥, itemStyle: { color: '#f59e0b' }, areaStyle: { opacity: 0.1 } }
+                  { name: 'OTO', type: 'line', smooth: true, data: chartSeries.OTO, itemStyle: { color: '#4f8cff' }, areaStyle: { opacity: 0.1 } },
+                  { name: '证保', type: 'line', smooth: true, data: chartSeries.证保, itemStyle: { color: '#34d399' }, areaStyle: { opacity: 0.1 } },
+                  { name: '蚁桥', type: 'line', smooth: true, data: chartSeries.蚁桥, itemStyle: { color: '#fbbf24' }, areaStyle: { opacity: 0.1 } }
                 ]
               });
             }

@@ -35,6 +35,9 @@ def image_tree(tmp_path):
     for script in (ROOT / "js").glob("*.js"):
         if "sync-conflict" not in script.name:
             shutil.copyfile(script, tmp_path / "js" / script.name)
+    (tmp_path / "css").mkdir()
+    for sheet in (ROOT / "css").glob("*.css"):
+        shutil.copyfile(sheet, tmp_path / "css" / sheet.name)
     (tmp_path / "backend").mkdir()
     (tmp_path / "backend/main.py").write_text("# synthetic module", encoding="utf-8")
     (tmp_path / "backend/requirements.txt").write_text("", encoding="utf-8")

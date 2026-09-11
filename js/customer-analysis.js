@@ -12,7 +12,7 @@
   const rate = (value, digits = 1) => value == null ? '--' : `${(Number(value) * 100).toFixed(digits)}%`;
   const chartText = '#465668';
   const chartMuted = '#7b8794';
-  const colors = { new: '#2f80ed', existing: '#8b5cf6', active: '#138a63', surrender: '#c33b32' };
+  const colors = { new: '#2f80ed', existing: '#a78bfa', active: '#138a63', surrender: '#c33b32' };
   const windowLabels = { first_month: '首现月', twelve_months: '首现后12个月', calendar_year: '首现当年度' };
 
   function requireAccess() {
@@ -306,7 +306,7 @@
     const holdingChart = (id, rows, color) => initChart(id, { tooltip:{ trigger:'axis' }, grid:{ left:55,right:20,top:15,bottom:45 }, xAxis:{ type:'category',data:rows.map(x => x.band),axisLabel:{ color:chartMuted,interval:0 },axisLine:{ lineStyle:{ color:'#c8d1da' } } }, yAxis:{ type:'value',...axisBase() }, series:[{ type:'bar',data:rows.map(x => x.customers),itemStyle:{ color },label:{ show:true,position:'top',color:chartText } }] });
     holdingChart('policyCountChart', holdings.policyCountBands, '#2f80ed');
     holdingChart('activeCountChart', holdings.activePolicyCountBands, '#138a63');
-    holdingChart('repeatIntervalChart', holdings.firstRepeatIntervalBands, '#8b5cf6');
+    holdingChart('repeatIntervalChart', holdings.firstRepeatIntervalBands, '#a78bfa');
     initChart('customerTrend', { tooltip, legend:{ data:['新客客户','老客客户'],textStyle:{ color:chartMuted } }, grid:{ left:60,right:20,top:50,bottom:35 }, xAxis:{ type:'category',data:labels,...axisBase() }, yAxis:{ type:'value',name:'人',...axisBase() }, series:[
       { name:'新客客户',type:'line',smooth:true,data:monthly.map(x => x.new?.customers || 0),itemStyle:{ color:colors.new } },
       { name:'老客客户',type:'line',smooth:true,data:monthly.map(x => x.existing?.customers || 0),itemStyle:{ color:colors.existing } }

@@ -626,24 +626,24 @@
       if (currentTeamDim === 'year') {
         const currentData = getTeamAggregated(year, metric);
         const seriesList = [
-          { name: year + '年', type: 'line', data: currentData, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
+          { name: year + '年', type: 'line', data: currentData, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { width: 3 }, itemStyle: { color: '#4f8cff' } }
         ];
         if (teamMock[prevYear]) {
           const prevData = getTeamAggregated(prevYear, metric);
-          seriesList.push({ name: prevYear + '年', type: 'line', data: prevData, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
+          seriesList.push({ name: prevYear + '年', type: 'line', data: prevData, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#93a4bd' } });
         }
         return {
-          tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' },
+          tooltip: { trigger: 'axis', backgroundColor: '#111a2b', borderColor: '#1e2c46', textStyle: { color: '#eef3fb' },
             formatter: params => {
               let s = params[0].name + '<br/>';
               params.forEach(p => { if (p.value !== null && p.value !== undefined) s += `${p.marker} ${p.seriesName}: ${p.value}${unit}<br/>`; });
               return s;
             }
           },
-          legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
+          legend: { data: seriesList.map(s => s.name), textStyle: { color: '#93a4bd' }, bottom: 0 },
           grid: { left: 50, right: 20, top: 20, bottom: 40 },
-          xAxis: { type: 'category', data: months, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
-          yAxis: { type: 'value', name: unit, axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8', formatter: isPercent ? '{value}%' : '{value}' } },
+          xAxis: { type: 'category', data: months, axisLine: { lineStyle: { color: '#1e2c46' } }, axisLabel: { color: '#93a4bd' } },
+          yAxis: { type: 'value', name: unit, axisLine: { show: false }, splitLine: { lineStyle: { color: '#1e2c46', type: 'dashed' } }, axisLabel: { color: '#93a4bd', formatter: isPercent ? '{value}%' : '{value}' } },
           series: seriesList
         };
       }
@@ -656,27 +656,27 @@
       const currentData = selectedIndexes.map(index => currentFull[index]);
 
       const seriesList = [
-        { name: year + '年' + periodText, type: 'line', data: currentData, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { width: 3 }, itemStyle: { color: '#3b82f6' } }
+        { name: year + '年' + periodText, type: 'line', data: currentData, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { width: 3 }, itemStyle: { color: '#4f8cff' } }
       ];
 
       if (teamMock[prevYear]) {
         const prevFull = getTeamAggregated(prevYear, metric);
         const prevData = selectedIndexes.map(index => prevFull[index]);
-        seriesList.push({ name: prevYear + '年' + periodText, type: 'line', data: prevData, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#94a3b8' } });
+        seriesList.push({ name: prevYear + '年' + periodText, type: 'line', data: prevData, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#93a4bd' } });
       }
 
       return {
-        tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: '#334155', textStyle: { color: '#f1f5f9' },
+        tooltip: { trigger: 'axis', backgroundColor: '#111a2b', borderColor: '#1e2c46', textStyle: { color: '#eef3fb' },
           formatter: params => {
             let s = params[0].name + '<br/>';
             params.forEach(p => { if (p.value !== null && p.value !== undefined) s += `${p.marker} ${p.seriesName}: ${p.value}${unit}<br/>`; });
             return s;
           }
         },
-        legend: { data: seriesList.map(s => s.name), textStyle: { color: '#94a3b8' }, bottom: 0 },
+        legend: { data: seriesList.map(s => s.name), textStyle: { color: '#93a4bd' }, bottom: 0 },
         grid: { left: 50, right: 20, top: 20, bottom: 40 },
-        xAxis: { type: 'category', data: selectedMonthNames, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
-        yAxis: { type: 'value', name: unit, axisLine: { show: false }, splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }, axisLabel: { color: '#94a3b8', formatter: isPercent ? '{value}%' : '{value}' } },
+        xAxis: { type: 'category', data: selectedMonthNames, axisLine: { lineStyle: { color: '#1e2c46' } }, axisLabel: { color: '#93a4bd' } },
+        yAxis: { type: 'value', name: unit, axisLine: { show: false }, splitLine: { lineStyle: { color: '#1e2c46', type: 'dashed' } }, axisLabel: { color: '#93a4bd', formatter: isPercent ? '{value}%' : '{value}' } },
         series: seriesList
       };
     }

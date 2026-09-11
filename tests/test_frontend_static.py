@@ -18,6 +18,17 @@ def read_js(filename: str) -> str:
         return f.read()
 
 
+def assert_script_tag(html: str, filename: str) -> None:
+    """Script tags must carry the current content digest (version-agnostic)."""
+    digest = hashlib.sha256(read_js(filename).encode("utf-8")).hexdigest()[:12]
+    pat = re.compile(
+        r'<script src="js/' + re.escape(filename) + r'\?v=\d+\.\d+\.\d+-([0-9a-f]{12})"></script>'
+    )
+    m = pat.search(html)
+    assert m, f"{filename} must carry a versioned content-hash script tag"
+    assert m.group(1) == digest, f"{filename} script tag digest mismatch"
+
+
 def test_activity_yoy_uses_percentage_point_gap():
     kpi = read_js("kpi-cards.js")
     assert "活动率 / 活动率Prev - 1" not in kpi
@@ -102,20 +113,19 @@ def test_frontend_centralizes_read_api_fetches():
     html = read_html()
     api_client = read_js("api-client.js")
     # Shared runtime modules are loaded in HTML head
-    assert '<script src="js/constants.js"></script>' in html
+    assert_script_tag(html, "constants.js")
     assert '<script src="js/format-utils.js"></script>' in html
     assert '<script src="js/month-multi-select.js?v=1.0.120"></script>' in html
     assert '<script src="js/api-client.js?v=1.0.116"></script>' in html
-    auth_digest = hashlib.sha256(read_js("auth-ui.js").encode("utf-8")).hexdigest()[:12]
-    assert f'<script src="js/auth-ui.js?v=1.0.152-{auth_digest}"></script>' in html
+    assert_script_tag(html, "auth-ui.js")
     assert '<script src="js/export-excel.js?v=1.0.116"></script>' in html
     upload_tag = re.search(r'<script src="js/upload\.js\?v=\d+\.\d+\.\d+-([0-9a-f]{12})"></script>', html)
     assert upload_tag, 'Upload script must carry a content hash to refresh proxy/browser caches'
     assert upload_tag.group(1) == hashlib.sha256(read_js('upload.js').encode('utf-8')).hexdigest()[:12]
-    assert '<script src="js/target-modal.js?v=1.0.120"></script>' in html
+    assert_script_tag(html, "target-modal.js")
     assert '<script src="js/kpi-cards.js?v=1.0.146-29880f1034df"></script>' in html
     assert '<script src="js/platform-trend.js?v=1.0.116"></script>' in html
-    assert '<script src="js/team-analysis.js?v=1.0.124"></script>' in html
+    assert_script_tag(html, "team-analysis.js")
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
     assert "async function fetchJson(path" not in html
@@ -624,7 +634,7 @@ def test_kpi_modal_content_is_outside_html_shell():
     html = read_html()
     modal_content = read_js("kpi-modal-content.js")
 
-    assert '<script src="js/kpi-modal-content.js?v=1.0.146-a2b35be58cc3"></script>' in html
+    assert_script_tag(html, "kpi-modal-content.js")
     assert "function getModalContent(type)" not in html
     assert "function getModalContent(type)" in modal_content
 
@@ -1202,7 +1212,7 @@ def test_platform_trend_main_is_loaded_at_runtime_boundary():
 
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" not in html
     assert "const platformChart = echarts.init(document.getElementById('platformChart'))" in platform_main
-    assert '<script src="js/platform-trend-main.js?v=1.0.124"></script>' in html
+    assert_script_tag(html, "platform-trend-main.js")
     integration_tag = re.search(r'js/data-integration\.js\?v=\d+\.\d+\.\d+-([0-9a-f]{12})', html)
     assert integration_tag, "Data integration must carry its content digest"
     digest = hashlib.sha256(read_js("data-integration.js").encode("utf-8")).hexdigest()[:12]

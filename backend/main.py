@@ -393,6 +393,9 @@ if os.path.exists(os.path.join(static_dir, '经营分析模板.html')):
     js_dir = os.path.join(static_dir, 'js')
     if os.path.isdir(js_dir):
         app.mount("/js", StaticFiles(directory=js_dir), name="js")
+    css_dir = os.path.join(static_dir, 'css')
+    if os.path.isdir(css_dir):
+        app.mount("/css", StaticFiles(directory=css_dir), name="css")
 
     @app.get("/")
     def index():

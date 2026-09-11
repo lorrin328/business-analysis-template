@@ -33,15 +33,15 @@
 
     function createDefaultTargetData(year) {
       const categories = [
-        { key: 'qjPremium', name: '期交保费', color: '#3b82f6',
+        { key: 'qjPremium', name: '期交保费', color: '#4f8cff',
           yearTargets: [10500,4800,5700,2500,2200,1000] },
-        { key: 'value', name: '价值保费', color: '#8b5cf6',
+        { key: 'value', name: '价值保费', color: '#a78bfa',
           yearTargets: [8200,3600,4600,2000,1800,800] },
-        { key: 'shangbao', name: '商保年金', color: '#10b981',
+        { key: 'shangbao', name: '商保年金', color: '#34d399',
           yearTargets: [3500,1500,2000,900,700,400] },
-        { key: 'baozhang', name: '保障类产品', color: '#f59e0b',
+        { key: 'baozhang', name: '保障类产品', color: '#fbbf24',
           yearTargets: [4200,1800,2400,1000,900,500] },
-        { key: 'tenYear', name: '10年期产品', color: '#ef4444',
+        { key: 'tenYear', name: '10年期产品', color: '#f87171',
           yearTargets: [2800,1200,1600,700,600,300] }
       ];
       const data = { year: parseInt(year), categories: {}, orgTargets: {} };

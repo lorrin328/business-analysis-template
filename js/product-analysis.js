@@ -6,16 +6,16 @@
       const data = productData[type] || [];
       if (data.length === 0) {
         return {
-          title: { text: '暂无产品结构数据', left: 'center', top: 'middle', textStyle: { color: '#94a3b8', fontSize: 14, fontWeight: 400 } },
+          title: { text: '暂无产品结构数据', left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
           series: []
         };
       }
       return {
         tooltip: {
           trigger: 'item',
-          backgroundColor: '#1e293b',
-          borderColor: '#334155',
-          textStyle: { color: '#f1f5f9' },
+          backgroundColor: '#111a2b',
+          borderColor: '#1e2c46',
+          textStyle: { color: '#eef3fb' },
           formatter: '{b}: {c}万 ({d}%)'
         },
         legend: {
@@ -25,20 +25,20 @@
           bottom: 4,
           width: '86%',
           height: 44,
-          textStyle: { color: '#94a3b8', fontSize: 10 },
+          textStyle: { color: '#93a4bd', fontSize: 10 },
           itemWidth: 9,
           itemHeight: 9,
           itemGap: 10,
-          pageIconColor: '#60a5fa',
+          pageIconColor: '#7da9ff',
           pageIconInactiveColor: '#475569',
-          pageTextStyle: { color: '#94a3b8' }
+          pageTextStyle: { color: '#93a4bd' }
         },
         series: [{
           type: 'pie',
           radius: ['36%', '62%'],
           center: ['50%', '42%'],
           avoidLabelOverlap: true,
-          itemStyle: { borderRadius: 6, borderColor: '#1e293b', borderWidth: 2 },
+          itemStyle: { borderRadius: 6, borderColor: '#111a2b', borderWidth: 2 },
           label: { show: false },
           emphasis: {
             label: {
@@ -51,7 +51,7 @@
             }
           },
           data,
-          color: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4']
+          color: ['#4f8cff', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#22d3ee']
         }]
       };
     }
