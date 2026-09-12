@@ -502,7 +502,10 @@ def test_personnel_management_page_is_admin_only_calculator_runtime():
     assert "DEFAULT_SCENARIOS" in js
     assert "ZB_RATE_DICT" in js
     assert '"personnel_management"' in auth
-    assert '{"permission_admin", "personnel_management", "honor_admin", "honor_upload"}' in auth
+    from auth import ROLE_DEFAULT_PERMISSIONS, ROLE_SENIOR
+    assert all(ROLE_DEFAULT_PERMISSIONS[ROLE_SENIOR][key] is False for key in (
+        "permission_admin", "personnel_management", "honor_admin", "honor_upload", "ai_raw_data",
+    ))
     assert '"personnel_management": False' in auth
 
 

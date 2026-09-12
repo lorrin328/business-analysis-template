@@ -43,12 +43,13 @@ MODULE_KEYS = [
     "branch_analysis",
     "customer_analysis",
     "market_analysis",
+    "ai_raw_data",
 ]
 
 ROLE_DEFAULT_PERMISSIONS = {
     ROLE_ADMIN: {key: True for key in MODULE_KEYS},
     ROLE_SENIOR: {
-        key: key not in {"permission_admin", "personnel_management", "honor_admin", "honor_upload"}
+        key: key not in {"permission_admin", "personnel_management", "honor_admin", "honor_upload", "ai_raw_data"}
         for key in MODULE_KEYS
     },
     ROLE_NORMAL: {
@@ -75,6 +76,7 @@ ROLE_DEFAULT_PERMISSIONS = {
         "branch_analysis": False,
         "customer_analysis": False,
         "market_analysis": False,
+        "ai_raw_data": False,
     },
 }
 

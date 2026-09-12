@@ -25,6 +25,7 @@ from db.repositories.target import get_target_config
 from db.repositories.team_enhanced import get_team_enhanced_analysis
 from services.audit_log import log_operation
 from services.response import response_meta, success_response
+from services.ai_raw_data import ImportChangedError, list_raw_datasets, read_raw_page
 
 router = APIRouter(prefix="/api/ai", tags=["ai-readonly"])
 
@@ -337,6 +338,62 @@ def ai_dashboard_snapshot(
     )
 
 
+def _require_raw_permission(user: dict) -> None:
+    # Existing aggregate-only service tokens must not acquire policy-level access.
+    if user.get("role") != ROLE_ADMIN and user.get("permissions", {}).get("ai_raw_data") is not True:
+        raise HTTPException(status_code=403, detail="AI原始明细读取权限未开通")
+
+
+def _raw_meta():
+    return response_meta(
+        metric="ai-raw-data", data_source="Daily-import SQLite source tables",
+        access="ai-readonly", unit="source",
+        definitions={
+            "scope": "四类日常导入表当前已存储的明细与字段，不是Excel文件或历次导入归档",
+            "values": "保留SQLite字段名、数值、文本和null，不换算万元，不补零",
+            "pagination": "按行游标分页；批量读取期间避免导入、重建或切换数据库，数据变化后从首页重读",
+            "latestImportId": "最近已落库日常导入记录ID（success/partial），不是业务截止日或完整数据库快照版本",
+        },
+    )
+
+
+@router.get("/raw-datasets")
+def ai_raw_datasets(user=Depends(require_ai_readonly)):
+    _require_raw_permission(user)
+    data = list_raw_datasets()
+    _log_ai("ai_raw_datasets_read", user, {})
+    return success_response(data, meta=_raw_meta())
+
+
+@router.get("/raw-data/{dataset}")
+def ai_raw_data(
+    dataset: str,
+    limit: int = Query(200, ge=1, le=1000),
+    afterRowId: int = Query(0, ge=0, le=9223372036854775807),
+    columns: list[str] | None = Query(None),
+    filters: str | None = Header(None, alias="X-AI-Filters", max_length=8000),
+    expectedImportId: int | None = Query(None, ge=0, le=9223372036854775807),
+    user=Depends(require_ai_readonly),
+):
+    _require_raw_permission(user)
+    try:
+        data = read_raw_page(
+            dataset, limit=limit, after_row_id=afterRowId, columns=columns,
+            filters=filters, expected_import_id=expectedImportId,
+        )
+    except ImportChangedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _log_ai("ai_raw_data_read", user, {
+        "dataset": dataset, "limit": limit, "returnedRows": data["returnedRows"],
+        "fieldCount": len(data["columns"]), "filtered": filters is not None,
+    })
+    return success_response(data, meta=_raw_meta())
+
+
 @router.get("/openapi.json")
 def ai_openapi(request: Request):
     public_base = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
@@ -352,7 +409,7 @@ def ai_openapi(request: Request):
         "info": {
             "title": "Business Analysis AI Readonly API",
             "version": get_semver(),
-            "description": "Read-only KPI dashboard interface for external AI assistants.",
+            "description": "Read-only dashboard and daily-import source data. Raw endpoints require an account with ai_raw_data permission; aggregate service tokens cannot read raw data.",
         },
         "servers": [{"url": base_url}],
         "components": {
@@ -371,6 +428,40 @@ def ai_openapi(request: Request):
         },
         "security": [{"AIAccountBasic": []}, {"AIReadonlyToken": []}],
         "paths": {
+            "/api/ai/raw-datasets": {"get": {
+                "operationId": "listDailyImportDatasets",
+                "summary": "List the four daily-import datasets and all stored source columns",
+                "responses": {"200": {"description": "Dataset availability, column names and SQLite types"},
+                              "401": {"description": "Authentication required"},
+                              "403": {"description": "ai_raw_data permission required"}},
+            }},
+            "/api/ai/raw-data/{dataset}": {"get": {
+                "operationId": "readDailyImportRows",
+                "summary": "Read every stored source field using bounded cursor pages",
+                "description": "Defaults to all columns and all periods. Preserve source units and nulls. Repeat with nextAfterRowId until hasMore=false. Keep columns/filters fixed across pages and pass latestImportId as expectedImportId; restart on 409. Avoid concurrent imports/rebuilds during bulk reads. Requires an account with ai_raw_data permission.",
+                "parameters": [
+                    {"name": "dataset", "in": "path", "required": True,
+                     "schema": {"type": "string", "enum": ["performance", "jingdai", "hr_data", "value_data"]}},
+                    {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 200, "minimum": 1, "maximum": 1000}},
+                    {"name": "afterRowId", "in": "query", "schema": {"type": "integer", "default": 0, "minimum": 0, "maximum": 9223372036854775807}},
+                    {"name": "columns", "in": "query", "style": "form", "explode": True,
+                     "description": "Optional repeated query parameter; omit to return every stored column.",
+                     "schema": {"type": "array", "items": {"type": "string"}}},
+                    {"name": "X-AI-Filters", "in": "header", "schema": {"type": "string", "maxLength": 8000},
+                     "description": "ASCII-escaped JSON object of exact source-column matches combined with AND (maximum 20). Encode Chinese keys/values with JSON Unicode escapes, e.g. json.dumps(filters, ensure_ascii=True). Values: string, finite number, or null for IS NULL. Keep filter values out of URLs and access logs."},
+                    {"name": "expectedImportId", "in": "query", "schema": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+                     "description": "latestImportId from the first page. Detects newly applied daily imports (success/partial); not an immutable database snapshot."},
+                ],
+                "responses": {
+                    "200": {"description": "data contains dataset, columns, rows, returnedRows, limit, afterRowId, hasMore, nextAfterRowId and latestImportId; meta explains units and scope"},
+                    "400": {"description": "Invalid source column or filter"},
+                    "401": {"description": "Authentication required"},
+                    "403": {"description": "ai_raw_data permission required"},
+                    "404": {"description": "Unknown or not imported dataset"},
+                    "409": {"description": "Imported data changed; restart pagination"},
+                    "422": {"description": "Invalid query parameter"},
+                },
+            }},
             "/api/ai/dashboard-snapshot": {
                 "get": {
                     "summary": "Read dashboard KPI and organization snapshot",

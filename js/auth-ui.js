@@ -24,7 +24,8 @@
     honor_upload: '星钻上传',
     branch_analysis: '证保网点分析',
     customer_analysis: '客户分析',
-    market_analysis: '市场研判'
+    market_analysis: '市场研判',
+    ai_raw_data: 'AI原始明细读取'
   };
   const ROLE_LABELS = { admin: '管理员组', senior: '高级用户组', normal: '普通用户组' };
   const ROLE_OPTIONS = ['normal', 'senior', 'admin'];
