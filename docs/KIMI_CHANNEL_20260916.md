@@ -11,3 +11,14 @@
 - 安装脚本检测受保护配置中的Kimi密钥后选择Kimi各阶段；未配置Kimi的旧安装仍可使用DeepSeek。通用ANTHROPIC配置保留DeepSeek兼容来源，项目worker显式隔离Kimi配置。
 
 本地95项相关测试通过；已在Ubuntu以market-ai账号实际调用Kimi，返回OK，CC报告contextWindow=262144。后续部署与备用演练结果补录。未对整期报告或256K/1M满载作成功承诺。
+
+## 生产验收
+
+2026-09-16 22:17部署完成，代码提交cc5345f，恢复点`/opt/business-analysis-backups/kimi-routing-20260916-221723`，受保护凭据变更前备份另存于`/opt/business-analysis-backups/kimi-config-20260916-220730`。
+
+- market-ai实际CC短调用成功，Kimi返回OK，报告contextWindow=262144。
+- 正式worker结构化输出路径实际Kimi调用通过。
+- 受控模拟Kimi不可用后，正式路由实际调用DeepSeek并成功返回结构化结果；遥测记录fallbackFrom=k3-256k。
+- 实际研究各阶段modelPlan均为k3-256k，fallback为deepseek-flash；当前报告及运行状态哈希不变。
+- 本机FastAPI/正式公网HTTPS健康、市场HTML及静态资源精确比对、未登录接口401、已鉴权公网业务快照200均通过。
+- 95项相关测试通过。未重新生成整期市场研究；未做上下文满载测试。普通CC通用配置仍保留DeepSeek兼容配置，项目worker使用独立Kimi主路由。
