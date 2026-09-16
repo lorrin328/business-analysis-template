@@ -16,6 +16,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.request import Request, urlopen
 
+from market_analysis.model_router import ProviderUnavailable, provider_environment, provider_name, availability_failure
 from market_analysis.config import CHANGE_KEYS
 from market_analysis.insights import build_report_metrics, build_runtime_assessment
 from market_analysis.quality import (
@@ -380,7 +381,7 @@ Required JSON contract:
   "title":"...",
   "generatedAt":"ISO-8601 with timezone",
   "period":{{"start":"YYYY-MM-DD","end":"YYYY-MM-DD"}},
-  "model":{{"provider":"DeepSeek","name":"{DEFAULT_MARKET_MODEL}"}},
+  "model":{{"provider":"{provider_name(resolve_model_plan()['primary'])}","name":"{resolve_model_plan()['primary']}"}},
   "reviewStatus":"machine_validated",
   "coverage":{{"queryCount":0,"sourceCount":0,"officialSourceCount":0,"wechatSourceCount":0,"limitations":["..."]}},
   "executiveSummary":{{"headline":"...","summary":"...","evidenceIds":["S1"]}},
@@ -515,7 +516,8 @@ def resolve_model_plan() -> dict[str, str]:
     escalation = os.getenv("MARKET_ANALYSIS_ESCALATION_MODEL", "").strip() or primary
     scout = os.getenv("MARKET_ANALYSIS_SOURCE_SCOUT_MODEL", "").strip() or repair
     return {
-        "strategy": "single_flash_vision_all_roles",
+        "strategy": "kimi_primary_deepseek_fallback" if primary == "k3-256k" else "single_flash_all_roles",
+        "fallback": "deepseek-flash" if primary == "k3-256k" else None,
         "scout": scout,
         "primary": primary,
         "repair": repair,
@@ -725,7 +727,44 @@ class ModelBudgetExceeded(RuntimeError):
     """A configured cost cap needs intervention, never an automatic retry."""
 
 
-def invoke_claude(
+def invoke_claude(resolved_bin: str, prompt: str, *, model: str, role: str = "primary",
+                  telemetry: list[dict] | None = None, max_turns: str, max_budget: str,
+                  timeout_seconds: int, output_schema: dict | None = None) -> dict:
+    events = telemetry if telemetry is not None else []
+    start_index = len(events)
+    started = time.monotonic()
+    kwargs = dict(role=role, telemetry=events, max_turns=max_turns,
+                  max_budget=max_budget, output_schema=output_schema)
+    primary_timeout = timeout_seconds
+    if model == "k3-256k":
+        primary_timeout = max(1, min(int(os.getenv("MARKET_ANALYSIS_KIMI_TIMEOUT_SECONDS", "900")), timeout_seconds // 2))
+    try:
+        return _invoke_claude_once(resolved_bin, prompt, model=model,
+                                  timeout_seconds=primary_timeout, **kwargs)
+    except (ProviderUnavailable, subprocess.TimeoutExpired):
+        if model != "k3-256k":
+            raise
+        if len(events) == start_index:
+            events.append({"role": role, "model": model, "provider": "Kimi Code",
+                           "status": "unavailable", "elapsedMs": round((time.monotonic() - started) * 1000)})
+        remaining = timeout_seconds - int(time.monotonic() - started)
+        spent = sum(float(event.get("cliEstimatedCostUsd") or 0) for event in events[start_index:])
+        budget_left = float(max_budget) - spent
+        if budget_left <= 0:
+            raise ModelBudgetExceeded("主通道调用已达到本阶段预算上限，未发起备用调用。")
+        if remaining <= 0:
+            raise ProviderUnavailable("主通道超时且本阶段时间已用尽，未发起备用调用。")
+        kwargs["max_budget"] = str(round(budget_left, 6))
+        fallback_index = len(events)
+        try:
+            return _invoke_claude_once(resolved_bin, prompt, model="deepseek-flash",
+                                      timeout_seconds=remaining, **kwargs)
+        finally:
+            for event in events[fallback_index:]:
+                event["fallbackFrom"] = model
+
+
+def _invoke_claude_once(
     resolved_bin: str,
     prompt: str,
     *,
@@ -743,6 +782,7 @@ def invoke_claude(
         "--output-format", "json",
         "--json-schema", json.dumps(output_schema or REPORT_OUTPUT_SCHEMA, ensure_ascii=False, separators=(",", ":")),
         "--model", "deepseek-flash[1m]" if model == "deepseek-flash" else model,
+        "--setting-sources", "",
         "--permission-mode", "dontAsk",
         "--allowedTools", "WebSearch", "WebFetch",
         "--disallowedTools", "Bash", "Edit", "Write", "NotebookEdit", "Task",
@@ -762,13 +802,14 @@ def invoke_claude(
             timeout=timeout_seconds,
             check=False,
             input=prompt,
-            env=os.environ.copy(),
+            env=provider_environment(model),
         )
     except subprocess.TimeoutExpired:
         if telemetry is not None:
             telemetry.append({
                 "role": role,
                 "model": model,
+                "provider": provider_name(model),
                 "status": "timeout",
                 "elapsedMs": round((time.monotonic() - started) * 1000),
             })
@@ -776,13 +817,19 @@ def invoke_claude(
     event = {
         "role": role,
         "model": model,
+        "provider": provider_name(model),
         "status": "success" if completed.returncode == 0 else "failed",
         "elapsedMs": round((time.monotonic() - started) * 1000),
         **_claude_metrics(completed.stdout),
     }
     if telemetry is not None:
         telemetry.append(event)
-    if completed.returncode != 0:
+    try:
+        envelope_error = bool(json.loads(completed.stdout).get("is_error"))
+    except (ValueError, AttributeError):
+        envelope_error = False
+    if completed.returncode != 0 or envelope_error:
+        event["status"] = "failed"
         diagnostic = _claude_failure_diagnostic(completed.stdout, completed.stderr)
         try:
             budget_exceeded = json.loads(completed.stdout).get("subtype") == "error_max_budget_usd"
@@ -790,6 +837,8 @@ def invoke_claude(
             budget_exceeded = False
         if budget_exceeded:
             raise ModelBudgetExceeded(f"研究修订达到本阶段调用预算上限，已停止自动重试并保留上期报告。阶段：{role}；预算上限：{max_budget} USD（CLI 估算口径）。")
+        if availability_failure(completed.stdout, completed.stderr):
+            raise ProviderUnavailable(f"{provider_name(model)} channel unavailable: {diagnostic}")
         raise RuntimeError(f"Claude Code failed with exit {completed.returncode}: {diagnostic}")
     return parse_claude_result(completed.stdout)
 
@@ -828,8 +877,9 @@ def stamp_report_metadata(
     report["generatedAt"] = generated_at.isoformat(timespec="seconds")
     report["period"] = {"start": period_start, "end": generated_at.date().isoformat()}
     report["model"] = {
-        "provider": "DeepSeek",
+        "provider": provider_name(model_plan["primary"]),
         "name": model_plan["primary"],
+        "fallback": model_plan.get("fallback"),
         "strategy": model_plan["strategy"],
         "scout": model_plan["scout"],
         "primary": model_plan["primary"],
@@ -1188,7 +1238,7 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
         resolved_bin = shutil.which(claude_bin)
         if not resolved_bin:
             raise RuntimeError("Claude Code CLI is not installed or not on PATH")
-        if not os.getenv("ANTHROPIC_AUTH_TOKEN", "").strip():
+        if not any(os.getenv(key, "").strip() for key in ("ANTHROPIC_AUTH_TOKEN", "KIMI_CODE_API_KEY", "DEEPSEEK_AUTH_TOKEN")):
             raise RuntimeError("ANTHROPIC_AUTH_TOKEN is not configured")
 
         max_turns = os.getenv("MARKET_ANALYSIS_MAX_TURNS", "80").strip()
@@ -1434,6 +1484,11 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
             report["runtimeAssessment"] = runtime_assessment
             report["researchMetrics"] = build_report_metrics(report)
             report["generationModelCalls"] = prior_model_calls + model_calls
+            primary_calls = [call for call in report["generationModelCalls"] if call.get("role") == "primary" and call.get("status") == "success"]
+            if primary_calls:
+                actual = primary_calls[-1]["model"]
+                report["model"].update(name=actual, provider=provider_name(actual), configuredPrimary=model_plan["primary"])
+
             report["qualityAssessment"] = assess_report_quality(report, repository, prior_model_calls + model_calls)
             minimum_quality = float(os.getenv("MARKET_ANALYSIS_MIN_QUALITY_SCORE", "0") or 0)
             if report["qualityAssessment"]["score"] < minimum_quality:
@@ -1529,7 +1584,7 @@ def run_source_scout_only(repository: MarketAnalysisRepository) -> dict:
     resolved_bin = shutil.which(claude_bin)
     if not resolved_bin:
         raise RuntimeError("Claude Code CLI is not installed or not on PATH")
-    if not os.getenv("ANTHROPIC_AUTH_TOKEN", "").strip():
+    if not any(os.getenv(key, "").strip() for key in ("ANTHROPIC_AUTH_TOKEN", "KIMI_CODE_API_KEY", "DEEPSEEK_AUTH_TOKEN")):
         raise RuntimeError("ANTHROPIC_AUTH_TOKEN is not configured")
     telemetry: list[dict] = []
     evidence, summary = run_source_scout(

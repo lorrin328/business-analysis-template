@@ -122,12 +122,20 @@ ensure_env_value ANTHROPIC_DEFAULT_HAIKU_MODEL 'deepseek-flash'
 ensure_env_value CLAUDE_CODE_SUBAGENT_MODEL 'deepseek-flash'
 ensure_env_value CLAUDE_CODE_AUTO_COMPACT_WINDOW '786432'
 ensure_env_value CLAUDE_CODE_DISABLE_1M_CONTEXT '0'
-ensure_env_value MARKET_ANALYSIS_MODEL 'deepseek-flash'
-ensure_env_value MARKET_ANALYSIS_PRIMARY_MODEL 'deepseek-flash'
-ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL 'deepseek-flash'
-ensure_env_value MARKET_ANALYSIS_ESCALATION_MODEL 'deepseek-flash'
+# Routing is isolated in each worker subprocess; generic Anthropic config remains
+# the existing DeepSeek credential source for backward-compatible fallback.
+if tr -d '\r' < "$MARKET_ENV_FILE" | grep -Eq '^KIMI_CODE_API_KEY=[^[:space:]]+$'; then
+  ROUTED_MODEL='k3-256k'
+else
+  ROUTED_MODEL='deepseek-flash'
+fi
+ensure_env_value MARKET_ANALYSIS_MODEL "$ROUTED_MODEL"
+ensure_env_value MARKET_ANALYSIS_PRIMARY_MODEL "$ROUTED_MODEL"
+ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL "$ROUTED_MODEL"
+ensure_env_value MARKET_ANALYSIS_ESCALATION_MODEL "$ROUTED_MODEL"
 ensure_env_value MARKET_ANALYSIS_SOURCE_SCOUT_ENABLED '1'
-ensure_env_value MARKET_ANALYSIS_SOURCE_SCOUT_MODEL 'deepseek-flash'
+ensure_env_value MARKET_ANALYSIS_SOURCE_SCOUT_MODEL "$ROUTED_MODEL"
+ensure_env_value MARKET_ANALYSIS_KIMI_TIMEOUT_SECONDS '900'
 ensure_env_value MARKET_ANALYSIS_SOURCE_SCOUT_MAX_TURNS '25'
 ensure_env_value MARKET_ANALYSIS_SOURCE_SCOUT_MAX_BUDGET_USD '3.2'
 ensure_env_value MARKET_ANALYSIS_SOURCE_SCOUT_TIMEOUT_SECONDS '900'
@@ -163,7 +171,7 @@ has_env_value() {
   tr -d '\r' < "$MARKET_ENV_FILE" | grep -Eq "^${1}=[^[:space:]]+$"
 }
 
-if has_env_value ANTHROPIC_AUTH_TOKEN && has_env_value AI_READONLY_TOKEN; then
+if { has_env_value ANTHROPIC_AUTH_TOKEN || has_env_value KIMI_CODE_API_KEY || has_env_value DEEPSEEK_AUTH_TOKEN; } && has_env_value AI_READONLY_TOKEN; then
   systemctl enable --now market-analysis.timer
   echo "市场研判定时器已启用：每天凌晨1点检查，到期后每3个自然日运行一次。"
 else

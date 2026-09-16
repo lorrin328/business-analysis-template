@@ -1,5 +1,9 @@
 # 项目上下文
 
+## 2026-09-16 Kimi Code主通道
+
+本项目市场研究配置为Kimi Code k3-256k（262144上下文）优先，DeepSeek deepseek-flash（1M）仅在调用不可用时备用。密钥隔离于Ubuntu受保护配置，不写Git。调用记录保存实际provider/model及fallbackFrom。预算/内容门禁不会触发跨通道重试。见`docs/KIMI_CHANNEL_20260916.md`。
+
 ## 当前主应用：v1.0.155（2026-09-12，已accepted）
 
 四类日常Excel字段目录和全字段分页API已部署，支持选列、请求头精确筛选及导入变化检查，管理员或显式授权 `ai_raw_data` 的账号可读，原汇总Token不扩权。代码提交 `38d8ecd`，Windows888项通过/3项跳过、GitHub Linux891项通过，镜像发布成功。Ubuntu保留库与聚合，49张业务表逐行哈希一致，四类表公网首尾分页全部字段与SQL一致；线上业绩原始表38列、5,159,244行。独立跨盘副本完整性及哈希通过，已accepted；未进行登录后浏览器交互。详见 `docs/RELEASE_REVIEW_v1.0.155.md`。本轮未导入最新Excel，原始表不等于整本Excel或历次导入归档。

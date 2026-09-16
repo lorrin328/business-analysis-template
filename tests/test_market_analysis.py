@@ -936,7 +936,7 @@ def test_worker_repairs_unprunable_source_in_same_run_with_flash(tmp_path, monke
     assert "source S3 failed independent verification" in prompts[1]
     status = repository.status()
     assert [call["role"] for call in status["modelCalls"]] == ["primary", "repair_flash"]
-    assert status["modelPlan"]["strategy"] == "single_flash_vision_all_roles"
+    assert status["modelPlan"]["strategy"] == "single_flash_all_roles"
 
 
 def test_private_repair_checkpoint_is_resumable_and_clearable(tmp_path):
@@ -1238,9 +1238,9 @@ def test_market_timer_runs_at_1am_when_three_calendar_days_are_due_and_template_
     assert "ensure_env_value CLAUDE_CODE_AUTO_COMPACT_WINDOW '786432'" in installer
     assert "ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-flash" in env_template
     assert "CLAUDE_CODE_SUBAGENT_MODEL=deepseek-flash" in env_template
-    assert "MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-flash" in env_template
-    assert "MARKET_ANALYSIS_REPAIR_MODEL=deepseek-flash" in env_template
-    assert "MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-flash" in env_template
+    assert "MARKET_ANALYSIS_PRIMARY_MODEL=k3-256k" in env_template
+    assert "MARKET_ANALYSIS_REPAIR_MODEL=k3-256k" in env_template
+    assert "MARKET_ANALYSIS_ESCALATION_MODEL=k3-256k" in env_template
     assert "MARKET_ANALYSIS_MIN_QUALITY_SCORE=9.0" in env_template
     assert "NoNewPrivileges=true" in service
     assert "ProtectSystem=strict" in service
@@ -1249,8 +1249,8 @@ def test_market_timer_runs_at_1am_when_three_calendar_days_are_due_and_template_
     assert "StartLimitBurst=2" in service
     assert "tr -d '\\r'" in installer
     assert "ensure_env_value ANTHROPIC_DEFAULT_HAIKU_MODEL 'deepseek-flash'" in installer
-    assert "ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL 'deepseek-flash'" in installer
-    assert "ensure_env_value MARKET_ANALYSIS_ESCALATION_MODEL 'deepseek-flash'" in installer
+    assert 'ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL "$ROUTED_MODEL"' in installer
+    assert 'ensure_env_value MARKET_ANALYSIS_ESCALATION_MODEL "$ROUTED_MODEL"' in installer
     assert "ensure_env_value MARKET_ANALYSIS_POST_VERIFY_REPAIR_ATTEMPTS '1'" in installer
     assert "ensure_env_value MARKET_ANALYSIS_MIN_QUALITY_SCORE '9.0'" in installer
     assert "apt-get install -y curl ca-certificates nodejs npm" not in installer

@@ -10,6 +10,8 @@ FIRST_PARTY_TYPES = {"official", "company", "official_wechat", "association"}
 RUNTIME_CALL_FIELDS = (
     "role",
     "model",
+    "provider",
+    "fallbackFrom",
     "status",
     "elapsedMs",
     "numTurns",
