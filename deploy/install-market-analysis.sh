@@ -173,7 +173,7 @@ has_env_value() {
 
 if { has_env_value ANTHROPIC_AUTH_TOKEN || has_env_value KIMI_CODE_API_KEY || has_env_value DEEPSEEK_AUTH_TOKEN; } && has_env_value AI_READONLY_TOKEN; then
   systemctl enable --now market-analysis.timer
-  echo "市场研判定时器已启用：每天凌晨1点检查，到期后每3个自然日运行一次。"
+  echo "市场研判定时器已启用：每天凌晨1点检查，到期后每5个自然日运行一次。"
 else
   systemctl disable --now market-analysis.timer 2>/dev/null || true
   echo "市场研判服务已安装，但因凭据尚未安全配置，定时器未启用。"

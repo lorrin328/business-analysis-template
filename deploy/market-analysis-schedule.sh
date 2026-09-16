@@ -40,15 +40,15 @@ generated_at = datetime.fromisoformat(str(report["generatedAt"]).replace("Z", "+
 if generated_at.tzinfo is None:
     raise ValueError("latest report generatedAt must include a timezone")
 report_date = generated_at.astimezone(ZoneInfo("Asia/Shanghai")).date()
-print("1" if today >= report_date + timedelta(days=3) else "0")
+print("1" if today >= report_date + timedelta(days=5) else "0")
 PY
 )
 
 if [ "$SHOULD_RUN" != "1" ]; then
-  echo "距上次成功报告尚未满3个自然日，本次凌晨1点检查不启动研究。"
+  echo "距上次成功报告尚未满5个自然日，本次凌晨1点检查不启动研究。"
   exit 0
 fi
 
 "$SYSTEMCTL_BIN" reset-failed "$SERVICE_NAME"
 "$SYSTEMCTL_BIN" start --no-block "$SERVICE_NAME"
-echo "已到3个自然日周期，市场研判研究已于凌晨1点启动。"
+echo "已到5个自然日周期，市场研判研究已于凌晨1点启动。"

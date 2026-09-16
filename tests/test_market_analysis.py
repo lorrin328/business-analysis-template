@@ -1207,7 +1207,7 @@ def test_market_analysis_page_is_modular_and_whitelisted():
     assert "api('/api/market-analysis/run', { method: 'POST' })" in script
 
 
-def test_market_timer_runs_at_1am_when_three_calendar_days_are_due_and_template_has_no_secret():
+def test_market_timer_runs_at_1am_when_five_calendar_days_are_due_and_template_has_no_secret():
     timer = open(os.path.join(ROOT, "deploy", "market-analysis.timer"), "r", encoding="utf-8").read()
     env_template = open(os.path.join(ROOT, "deploy", "market-analysis.env.example"), "r", encoding="utf-8").read()
     service = open(os.path.join(ROOT, "deploy", "market-analysis.service"), "r", encoding="utf-8").read()
@@ -1226,7 +1226,7 @@ def test_market_timer_runs_at_1am_when_three_calendar_days_are_due_and_template_
     assert "ExecStart=/usr/local/sbin/business-analysis-market-schedule" in scheduled_service
     assert "NoNewPrivileges=true" in scheduled_service
     assert "ReadOnlyPaths=/var/lib/business-analysis-market" in scheduled_service
-    assert 'timedelta(days=3)' in scheduler
+    assert 'timedelta(days=5)' in scheduler
     assert 'ZoneInfo("Asia/Shanghai")' in scheduler
     assert 'SYSTEMCTL_BIN="${MARKET_ANALYSIS_SYSTEMCTL:-/usr/bin/systemctl}"' in scheduler
     assert '"$SYSTEMCTL_BIN" start --no-block "$SERVICE_NAME"' in scheduler
