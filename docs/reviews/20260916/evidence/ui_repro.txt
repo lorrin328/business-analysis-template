@@ -1,0 +1,4 @@
+{"test":"zero_actual_target_omission","withStreak":false,"syntheticInputs":{"A":{"target":100,"actual":50},"B":{"target":100,"actual":0,"previousActual":0}},"expected":{"target":200,"actual":50,"rate":"25.0%"},"observed":{"totalTarget":"100","totalActual":"50","totalRate":"50.0%","organizationTarget":"100","organizationRate":"50.0%"}}
+{"test":"zero_actual_target_omission","withStreak":true,"syntheticInputs":{"A":{"target":100,"actual":50},"B":{"target":100,"actual":0,"previousActual":0}},"expected":{"target":200,"actual":50,"rate":"25.0%"},"observed":{"totalTarget":"100","totalActual":"50","totalRate":"50.0%","organizationTarget":"100","organizationRate":"50.0%"}}
+{"test":"product_out_of_order_response","selected":"B","completionOrder":["B","A"],"observedResult":"A"}
+{"test":"payperiod_out_of_order_response","selected":"B","completionOrder":["B","A"],"observedResult":"A"}

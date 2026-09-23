@@ -1,5 +1,5 @@
 (function () {
-  const state = { data: null, cohortData: null, tab: 'overview', charts: [], importFiles: [], importPreview: null, importBatches: [], importMessage: '', importBusy: false };
+  const state = { data: null, overviewKey: null, cohortData: null, tab: 'overview', charts: [], importFiles: [], importPreview: null, importBatches: [], importMessage: '', importBusy: false };
   let loadSequence = 0;
   const el = id => document.getElementById(id);
   const user = () => window.getCurrentUser?.() || null;
@@ -375,13 +375,20 @@
     const sequence = ++loadSequence;
     try {
       const query = analysisQuery();
+      const queryKey = query.toString();
+      state.data = null;
+      state.overviewKey = null;
+      el('kpiGrid').innerHTML = '';
       renderAliasCoverage(null);
       el('sourceLine').textContent = '正在读取生产数据…';
+      render();
       const payload = await window.fetchJson(`/api/customer-analysis/overview?${query}`);
       if (sequence !== loadSequence) return;
       state.data = window.unwrapApiResponse(payload);
+      state.overviewKey = queryKey;
       syncOptions(state.data.meta);
       setOverviewContext();
+      el('filterState').textContent = '当前结果对应已应用筛选';
       render();
     } catch (error) {
       if (sequence === loadSequence) showError(error);
@@ -395,6 +402,7 @@
       query.set('observationWindow', el('observationWindow').value);
       if (el('productInput').value) query.set('product', el('productInput').value);
       state.cohortData = null;
+      el('kpiGrid').innerHTML = '';
       el('sourceLine').textContent = '正在读取新客经营数据…';
       render();
       const payload = await window.fetchJson(`/api/customer-analysis/new-customer-cohort?${query}`);
@@ -404,6 +412,7 @@
       const meta = state.cohortData.meta;
       el('sourceLine').textContent = `${meta.periodLabel}新客 · ${windowLabels[meta.observationWindow]} · 数据截止 ${String(meta.sourceCutoff).slice(0, 10)} · 导入批次 ${meta.batchId}`;
       el('scopeNotice').textContent = '新客身份按系统最早承保日期确定；产品、保费和再次承保只统计OTO、证保、蚁桥可追踪业绩。业务、机构、长险和产品筛选作用于观察窗口内的业绩保单。';
+      el('filterState').textContent = '当前结果对应已应用筛选';
       render();
     } catch (error) {
       if (sequence === loadSequence) showError(error);
@@ -533,15 +542,21 @@
   }
 
   function showError(error) {
+    state.data = null;
+    state.overviewKey = null;
+    state.cohortData = null;
     clearCharts();
     renderAliasCoverage(null);
+    el('kpiGrid').innerHTML = '';
     el('sourceLine').textContent = '读取失败';
+    el('filterState').textContent = '当前筛选读取失败，无可展示结果';
     el('content').innerHTML = `<div class="panel empty">${esc(error.message)}</div>`;
   }
 
   function bind() {
     el('backBtn').addEventListener('click', () => { window.location.href = '/'; });
     el('refreshBtn').addEventListener('click', () => (state.tab === 'cohort' ? loadCohort() : loadOverview()).catch(showError));
+    document.querySelector('.filters').addEventListener('change', () => { el('filterState').textContent = '筛选已修改，请点击应用'; });
     el('periodType').addEventListener('change', () => rebuildPeriodOptions());
     el('tabs').addEventListener('click', event => {
       const button = event.target.closest('[data-tab]');
@@ -558,7 +573,7 @@
         el('sourceLine').textContent = '客户清单增量导入';
         el('scopeNotice').textContent = '此入口只导入客户与保单状态清单，不导入业绩金额；正式写入前必须先通过预检。';
         loadImportBatches().then(() => { if (state.tab === 'import') render(); }).catch(error => { if (state.tab === 'import') showError(error); });
-      } else if (!state.data) {
+      } else if (!state.data || state.overviewKey !== analysisQuery().toString()) {
         loadOverview().catch(showError);
       } else {
         setOverviewContext();

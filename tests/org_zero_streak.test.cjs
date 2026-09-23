@@ -127,7 +127,7 @@ test('兼容旧API和缺失月快照，不把缺失数据当0，也不回退到�
   assert.ok(monthRows.every(row => row.cells.at(-1) === '—'));
 });
 
-test('只为挂零保留的零行不改变原保费、目标或同比汇总', () => {
+test('零业绩正式目标仍进入目标汇总，挂零快照不改变结果', () => {
   const payload = data();
   payload.perf = {'上海|OTO': {qj_premium: 100}};
   payload.perf_prev = {'上海|OTO': {qj_premium: 80}, '湖北|OTO': {qj_premium: 20}};
@@ -141,9 +141,25 @@ test('只为挂零保留的零行不改变原保费、目标或同比汇总', ()
   delete without.zeroStreak;
   const withoutStreak = tableRows(harness(without, targets).render());
   assert.deepEqual(withStreak.map(row => row.cells.slice(0, -1)), withoutStreak.map(row => row.cells.slice(0, -1)));
-  assert.equal(withStreak.at(-1).cells[1], '250');
+  assert.equal(withStreak.at(-1).cells[1], '1,249');
   assert.equal(withStreak.at(-1).cells[2], '100');
+  assert.equal(withStreak.at(-1).cells[3], '8.0%');
   assert.equal(withStreak.at(-1).cells[4], '0.0%');
+});
+
+test('有目标零业绩项目纳入达成率分母', () => {
+  const payload = data();
+  payload.perf = {'上海|OTO': {qj_premium: 50}};
+  const targets = {
+    '上海|OTO': {qjPremium: {year: 100}},
+    '上海|证保': {qjPremium: {year: 100}},
+  };
+  const rows = tableRows(harness(payload, targets).render('orgExpanded = true'));
+  const subtotal = rows.find(row => row.cells[0] === '上海' && row.cells[1] === '小计');
+  assert.equal(subtotal.cells[2], '200');
+  assert.equal(subtotal.cells[3], '50');
+  assert.equal(subtotal.cells[4], '25.0%');
+  assert.ok(rows.some(row => row.cells[0] === '上海' && row.cells[1] === '证保'));
 });
 
 test('接口口径、截止日和异常说明均转义，不向页面注入HTML或属性', () => {
@@ -185,7 +201,9 @@ test('业务小计固定在合计前，跨机构重算达成率和同比，展�
     '湖北|OTO': {qjPremium: {year: 900}, value: {year: 80}, tenYear: {year: 160}, shangbao: {year: 240}, baozhang: {year: 320}},
   };
   const h = harness(payload, targets);
-  const rows = tableRows(h.render());
+  const html = h.render();
+  const rows = tableRows(html);
+  assert.match(html, /本期期交按业务拆分：OTO小计 400\.0万、证保小计 50\.0万、蚁桥小计 -10\.0万/);
   assert.deepEqual(rows.slice(-4).map(r => r.cells[0]), ['OTO小计', '证保小计', '蚁桥小计', '合计']);
   assert.deepEqual(rows.at(-4).cells, ['OTO小计','1,000','400','40.0%','0.0%','100','40','40.0%','+100.0%','1,000','320','32.0%','200','80','40.0%','300','120','40.0%','400','160','40.0%','—']);
   assert.equal(rows.at(-2).cells[2], '-10');

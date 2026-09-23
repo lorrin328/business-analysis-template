@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>证保网点分析</title>
+  <link rel="stylesheet" href="/css/analysis-common.css?v=20260923">
   <style>
     :root {
       --navy:#10213b; --navy-2:#18385f; --blue:#2f80ed; --cyan:#20b9d4;
@@ -86,6 +87,7 @@
       <div>
         <h1>网点经营驾驶舱</h1>
         <div class="subtitle" id="sourceLine">正在读取生产数据…</div>
+        <div class="filter-state" id="filterState" role="status">正在应用筛选</div>
       </div>
       <div class="filters">
         <label>年份<input id="yearInput" type="number" min="2020" max="2100" value="2026"></label>
@@ -115,6 +117,6 @@
   </main>
 
   <section class="access hidden" id="accessDenied">当前账号没有“证保网点分析”权限，请联系管理员。</section>
-  <script src="/js/branch-analysis.js?v=1.0.150-535d9d97e987"></script>
+  <script src="/js/branch-analysis.js?v=1.0.156-be2567d207af"></script>
 </body>
 </html>

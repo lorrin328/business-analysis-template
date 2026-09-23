@@ -1,0 +1,10 @@
+M1_same_policy_cross_channel: {"aggregate": [{"qj_premium": 1.0, "standard_premium": 1.0, "policy_count": 2}], "raw": [{"qj_premium": 1.0, "standard_premium": 1.0, "policy_count": 1}]}
+M2_ONLY_conflict_or_text_term: {"shortterm4281_shared": false, "shortterm4281_etl": [{"year": 2026, "month": 9, "day": 1, "business_type": "转型", "channel": "OTO", "org": "上海", "qj_premium": 1.0}], "text5years_longterm": [{"year": 2026, "month": 9, "day": 1, "business_type": "转型", "channel": "OTO", "org": "上海", "qj_premium": 1.0}], "text5years_active": []}
+M3_full_import_month_only: {"preview_canImport": true, "preview_errors": [], "daily_rows": [{"year": 2026, "month": 9, "day": 1, "qj_premium": 1.0}], "activity_rows": [{"year": 2026, "month": 9, "day": 0, "uncertain": 1}]}
+M4_gross_vs_net_activity: {"net_premium": 0, "legacy_activity": [{"year": 2026, "month": 9, "channel": "OTO", "active_headcount": 1}], "enhanced_activity_rule": false}
+M5_jingdai_record_count: [{"year": 2026, "month": 9, "day": 10, "business_type": "经代", "channel": "经代", "org": "", "product_category": "SYNTHETIC", "product_name": "SYNTHETIC", "qj_premium": 0.0, "gm_premium": 0.0, "count": 2}]
+M6_invalid_numeric: {"raw_amount": "1,000", "aggregated": [{"year": 2026, "month": 9, "channel": "OTO", "qj_premium": 0.0, "gm_premium": 0.0, "zs_premium": 1.0}], "validation": {"valid": true, "errors": [], "warnings": []}}
+M7_top20_mix_truncation: {"source_total": 21, "returned_total": 20.0, "returned_rows": 20, "other_bucket": false}
+M8_no_daily_payment_fallback: {"tenyear_jd": 7.0, "precision": "month", "card_warning": "经代10年期交期日表不可用，按月级数据回退"}
+M8_only_transform_daily_suppresses_jd_fallback: {"tenyear_jd": 0, "precision": "day", "card_warning": null}
+DONE: synthetic evidence only; no production connection.

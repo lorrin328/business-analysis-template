@@ -296,3 +296,27 @@ def fetch_table(table: str, batch_id: int, limit: int = 500) -> list[dict[str, A
             (batch_id, max(1, min(int(limit or 500), 5000))),
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def fetch_export_table(table: str, batch_id: int) -> tuple[list[dict[str, Any]], int]:
+    """Read an entire allowed batch table and verify its export row count."""
+    allowed = {
+        "honor_person_month", "honor_person_summary", "honor_org_summary",
+        "honor_exceptions", "honor_field_audit_results", "honor_quarter_rewards",
+    }
+    if table not in allowed:
+        raise ValueError(f"Unsupported honor table: {table}")
+    with get_db() as conn:
+        conn.execute("BEGIN")
+        expected = int(conn.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE batch_id = ?", (batch_id,)
+        ).fetchone()[0])
+        cursor = conn.execute(
+            f"SELECT * FROM {table} WHERE batch_id = ? ORDER BY id", (batch_id,)
+        )
+        rows: list[dict[str, Any]] = []
+        while page := cursor.fetchmany(1000):
+            rows.extend(dict(row) for row in page)
+        if len(rows) != expected:
+            raise RuntimeError(f"Honor export row count mismatch: {table}")
+        return rows, expected

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>客户分析</title>
+  <link rel="stylesheet" href="/css/analysis-common.css?v=20260923">
   <style>
     :root {
       --navy:#10213b; --navy-2:#18385f; --blue:#2f80ed; --green:#138a63; --amber:#a56600;
@@ -96,6 +97,7 @@
       <div>
         <h1>客户经营分析</h1>
         <div class="subtitle" id="sourceLine">正在读取生产数据…</div>
+        <div class="filter-state" id="filterState" role="status">正在应用筛选</div>
       </div>
       <div class="filters">
         <label>年份<select id="yearInput"><option value="2026">2026</option></select></label>
@@ -129,6 +131,6 @@
     <section id="content"></section>
   </main>
   <section class="access hidden" id="accessDenied">当前账号没有“客户分析”权限，请联系管理员。</section>
-  <script src="/js/customer-analysis.js?v=1.0.153-59d745211d67"></script>
+  <script src="/js/customer-analysis.js?v=1.0.156-0676aab4c530"></script>
 </body>
 </html>

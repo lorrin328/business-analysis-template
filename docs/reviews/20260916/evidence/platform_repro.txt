@@ -1,0 +1,8 @@
+HONOR: synthetic source=5001; returned=5000
+EXCEL: synthetic label='=1+1'; cell data_type='f'
+DIAGNOSTICS: ratio=90; actual status=OK
+DIAGNOSTICS: ratio=70; actual status=WARN
+DIAGNOSTICS: actual note=ratio=长险期交/期交保费×100。ratio>95正常，80-95需关注，<80异常。
+AUTH: AUTH_TEST_BYPASS=1; APP_ENV='production'; bypass=False
+AUTH: AUTH_TEST_BYPASS=1; APP_ENV='staging'; bypass=True
+AUTH: AUTH_TEST_BYPASS=1; APP_ENV=''; bypass=True

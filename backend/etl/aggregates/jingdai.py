@@ -46,7 +46,7 @@ def aggregate_jingdai(df: pd.DataFrame, *, config_map=None) -> List[Dict]:
         raise ValueError(f"无法识别经代必要列。当前列: {list(df.columns)}")
 
     work = _period_year_month(df, None, time_col)
-    work['_qj'] = _to_number(work[qj_col])
+    work['_qj'] = _to_number(work[qj_col], required=True)
     work['_gm'] = _to_number(work[gm_col])
     if pay_col:
         weights = work[pay_col].map(_fee_weight)
@@ -94,7 +94,7 @@ def aggregate_jingdai_daily(df: pd.DataFrame, *, config_map=None) -> List[Dict]:
     if not all([time_col, qj_col, gm_col]):
         raise ValueError(f"无法识别经代日聚合必要列。当前列: {list(df.columns)}")
 
-    work = _period_year_month(df, None, None, time_col)
+    work = _period_year_month(df, None, None, time_col, require_day=True)
     work['_qj'] = _to_number(work[qj_col])
     work['_gm'] = _to_number(work[gm_col])
     if pay_col:

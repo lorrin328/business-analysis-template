@@ -432,7 +432,22 @@
       card.appendChild(meta);
       grid.appendChild(card);
     });
-    document.getElementById('sourceSummary').textContent = `展开证据与来源（${(report.sources || []).length}）`;
+    const leads = Array.isArray(report.wechatLeads) ? report.wechatLeads : [];
+    leads.forEach(lead => {
+      const card = node('article', 'source-card');
+      card.appendChild(node('strong', '', `公众号参考 · ${lead.title || '待核验线索'}`));
+      card.appendChild(node('p', '', `采集信息：${lead.claim || ''}`));
+      const label = { supported: '交叉支持', partial: '部分支持', conflicting: '存在冲突', unresolved: '待交叉核验' }[lead.status] || '待交叉核验';
+      card.appendChild(node('p', '', `${label}（分析判断）：${lead.assessment || '保留为研究参考，尚无充分证据形成结论。'}`));
+      card.appendChild(node('p', 'source-meta', `${lead.publisher || '主体待核验'} · ${lead.accessNote || ''}${(lead.evidenceIds || []).length ? ` · 比对证据 ${(lead.evidenceIds || []).join('、')}` : ''}`));
+      if (/^https:\/\/mp\.weixin\.qq\.com\/s(?:\/|\?|$)/i.test(lead.url || '')) {
+        const link = node('a', '', '查看公众号线索原址');
+        link.href = lead.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+        card.appendChild(link);
+      }
+      grid.appendChild(card);
+    });
+    document.getElementById('sourceSummary').textContent = `展开证据与来源（${(report.sources || []).length}项证据${leads.length ? `，${leads.length}项公众号参考` : ''}）`;
     const limitations = [...(report.limitations || []), ...((report.coverage || {}).limitations || [])].filter(Boolean);
     document.getElementById('limitations').textContent = limitations.length ? `研究边界：${limitations.join('；')}` : '';
   }

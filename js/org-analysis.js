@@ -7,18 +7,24 @@
       month: []
     };
     let orgExpanded = false;
+    let orgRequestSequence = 0;
 
     const ORG_LIST = ['上海','湖北','四川','辽宁','山东','广东','福建','浙江','河南','北京'];
     const CHANNEL_LIST = ['OTO','证保','蚁桥'];
 
     async function fetchOrgKpiData(year) {
+      const sequence = ++orgRequestSequence;
       try {
         const params = new URLSearchParams({ year: String(year) });
         if (typeof window.appendDashboardRange === 'function') window.appendDashboardRange(params);
-        orgKpiData = unwrapApiResponse(await fetchJson(`/api/org-analysis?${params.toString()}`));
+        const response = unwrapApiResponse(await fetchJson(`/api/org-analysis?${params.toString()}`));
+        if (sequence !== orgRequestSequence) return;
+        orgKpiData = response;
         renderOrgMonthFilter();
         renderOrgTable();
       } catch (e) {
+        if (sequence !== orgRequestSequence) return;
+        orgKpiData = null;
         console.error('fetchOrgKpiData error:', e);
         document.getElementById('orgTableWrapper').innerHTML =
           '<div class="org-empty">机构数据加载失败，请确认已上传含机构信息的业绩清单</div>';
@@ -240,6 +246,7 @@
     }
 
     function getOrgTarget(org, channel, metric, dim, idx) {
+      if (typeof targetDataSource !== 'undefined' && targetDataSource !== 'server') return 0;
       const targetMode = orgKpiData?.period?.targetMode || 'year';
       if (targetMode === 'none') return 0;
       const metricMap = {
@@ -292,6 +299,10 @@
     function fmtOrgNum(n) {
       if (n === 0 || n == null) return '-';
       return Math.round(n).toLocaleString('zh-CN');
+    }
+
+    function fmtOrgGap(n) {
+      return Number(n).toLocaleString('zh-CN', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     }
 
     function escapeOrgText(value) {
@@ -427,20 +438,21 @@
           // 本年或去年同期任一方有数据，都要进入同比分母，避免上一年有业绩、今年为0的行被漏算。
           const zeroStreak = zeroStreakSnapshot?.projects?.[`${org}|${ch}`] || null;
           const hasMetricData = !(qjActual === 0 && valueActual === 0 && longtermActual === 0 && p10Actual === 0 && annuityActual === 0 && protectionActual === 0 && qjPrev === 0 && valuePrev === 0);
-          if (!hasMetricData && (!zeroStreak || zeroStreak.status === 'not_observed')) {
+          // 正式目标即使尚未出单也要进入分母；无目标、无业绩的行只用于挂零追踪。
+          const qjTarget = getOrgTarget(org, ch, 'qj', dim, periodIdx);
+          const valueTarget = getOrgTarget(org, ch, 'value', dim, periodIdx);
+          const longtermTarget = getOrgTarget(org, ch, 'longterm', dim, periodIdx);
+          const p10Target = getOrgTarget(org, ch, '10year', dim, periodIdx);
+          const annuityTarget = getOrgTarget(org, ch, 'annuity', dim, periodIdx);
+          const protectionTarget = getOrgTarget(org, ch, 'protection', dim, periodIdx);
+          const hasApplicableTarget = [qjTarget, valueTarget, longtermTarget, p10Target, annuityTarget, protectionTarget]
+            .some(target => Number(target) > 0);
+          if (!hasMetricData && !hasApplicableTarget && (!zeroStreak || zeroStreak.status === 'not_observed')) {
             return;
           }
 
-          // 仅为挂零追踪保留的行不改变既有指标的目标汇总口径。
-          const qjTarget = hasMetricData ? getOrgTarget(org, ch, 'qj', dim, periodIdx) : 0;
-          const valueTarget = hasMetricData ? getOrgTarget(org, ch, 'value', dim, periodIdx) : 0;
-          const longtermTarget = hasMetricData ? getOrgTarget(org, ch, 'longterm', dim, periodIdx) : 0;
-          const p10Target = hasMetricData ? getOrgTarget(org, ch, '10year', dim, periodIdx) : 0;
-          const annuityTarget = hasMetricData ? getOrgTarget(org, ch, 'annuity', dim, periodIdx) : 0;
-          const protectionTarget = hasMetricData ? getOrgTarget(org, ch, 'protection', dim, periodIdx) : 0;
-
           rows.push({
-            org, channel: ch, zeroStreak, streakOnly: !hasMetricData,
+            org, channel: ch, zeroStreak, streakOnly: !hasMetricData && !hasApplicableTarget,
             qjTarget, qjActual, qjRate: calcOrgRate(qjActual, qjTarget), qjYoy: calcOrgYoy(qjActual, qjPrev),
             valueTarget, valueActual, valueRate: calcOrgRate(valueActual, valueTarget), valueYoy: calcOrgYoy(valueActual, valuePrev),
             longtermTarget, longtermActual, longtermRate: calcOrgRate(longtermActual, longtermTarget),
@@ -518,8 +530,17 @@
       const periodLabel = globalRangeActive
         ? (orgKpiData?.period?.label || '自定义区间')
         : dim === 'year' ? '年度' : `${selectedMonths.join('、')}月`;
+      const targetGap = totalRow.qjTarget > 0 ? Math.max(0, totalRow.qjTarget - totalRow.qjActual) : null;
+      const gapOrgs = displayRows.filter(row => row.isOrgSummary || row.isSubtotal)
+        .filter(row => row.qjTarget > 0)
+        .map(row => ({ org: row.org, gap: Math.max(0, row.qjTarget - row.qjActual) }))
+        .filter(row => row.gap > 0)
+        .sort((a, b) => b.gap - a.gap).slice(0, 3);
+      const channelBreakdown = displayRows.filter(row => row.isChannelSubtotal)
+        .map(row => `${escapeOrgText(row.org)} ${fmtOrgGap(row.qjActual)}万`).join('、');
       const html = `
         ${orgZeroStreakNote(zeroStreakSnapshot)}
+        <div class="org-action-summary" role="status">当前范围：${escapeOrgText(periodLabel)} · ${selectedOrgs.includes('all') ? '全部机构' : escapeOrgText(orgs.join('、'))}；期交目标缺口：${targetGap == null ? '正式目标未配置' : `${fmtOrgGap(targetGap)}万`}。${gapOrgs.length ? `缺口前三：${gapOrgs.map(row => `${escapeOrgText(row.org)} ${fmtOrgGap(row.gap)}万`).join('、')}。` : ''}本期期交按业务拆分：${channelBreakdown}</div>
         <table class="org-table">
           <thead>
             <tr>

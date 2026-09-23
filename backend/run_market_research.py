@@ -36,6 +36,8 @@ from market_analysis.source_verifier import (
 )
 from market_analysis.validator import ReportValidationError, validate_report
 from market_analysis.zhihu_api import scout_zhihu_sources
+from market_analysis import hermes
+from market_analysis.wechat_leads import retain_leads, apply_lead_reviews
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -48,6 +50,10 @@ REPORT_OUTPUT_SCHEMA = {
         "coverage", "executiveSummary", "changeSignals", "modules", "actions", "sources", "limitations",
     ],
     "properties": {
+        "wechatLeadReviews": {"type": "array", "items": {"type": "object",
+            "required": ["leadId", "status", "assessment", "evidenceIds"],
+            "properties": {"leadId": {"type": "string"}, "status": {"enum": ["supported", "partial", "conflicting", "unresolved"]},
+                "assessment": {"type": "string"}, "evidenceIds": {"type": "array", "items": {"type": "string"}}}}},
         "productResearch": {
             "type": "object", "required": ["status", "moduleIds", "searchedThemes", "gaps"],
             "properties": {
@@ -108,6 +114,7 @@ EVIDENCE_SCOUT_SCHEMA = {
     "type": "object",
     "required": ["queryCount", "candidates", "limitations", "wechatGaps"],
     "properties": {
+        "wechatLeads": {"type": "array", "items": {"type": "object"}},
         "queryCount": {"type": "integer", "minimum": 8},
         "candidates": {
             "type": "array",
@@ -154,7 +161,7 @@ def apply_report_patches(report: dict, result: dict) -> dict:
         "module": {"topicKey", "section", "title", "question", "fact", "judgment", "impact", "watchCondition", "confidence", "evidenceIds", "history", "topicCategory", "productFacts"},
         "source": {"title", "publisher", "url", "sourceType", "sourceLevel", "publishedAt", "excerpt"},
         "action": {"status", "previousReportId", "priority", "title", "action", "progress", "acceptanceMetric", "nextReviewAt", "owner", "cadence", "trigger", "evidenceIds"},
-        "report": {"executiveSummary", "changeSignals", "coverage", "productResearch", "limitations", "wechatGaps"},
+        "report": {"executiveSummary", "changeSignals", "coverage", "productResearch", "limitations", "wechatGaps", "wechatLeadReviews"},
     }
     collections = {"module": ("modules", "id"), "source": ("sources", "id"), "action": ("actions", "actionKey")}
     touched = set()
@@ -323,6 +330,7 @@ Evidence-scout rules:
 
 Candidate sourceType must be one of official|company|official_wechat|association|research|media. section must be macro|regulation|peers|business_line.
 Reserve at least three of the query themes for life-insurance products: participating products and dividend disclosures, pension/annuity products, and named insurers' product terms or launch/withdrawal notices. Prefer official product documents and retain exact product-name and insurer-name anchors. Do not infer current sale status from old launch news.
+Retain inaccessible or non-official WeChat information as wechatLeads rather than discarding it: title, publisher, url (empty if unknown), claim (only obtained material), materialType=body|snippet|repost|unknown, accessNote. Access failure is not evidence of falsity. These leads are research input, not independently verified sources; cross-check with primary and independent sources, and distinguish author opinion from fact.
 <scout_context>{context}</scout_context>
 """
 
@@ -373,6 +381,7 @@ Hard publication rules:
 18. Every action must reuse the authoritative actionKey when the same management task continues. Include status=new|continuing|adjusted|completed, previousReportId, progress, acceptanceMetric and nextReviewAt. Never claim completed without internal evidence. nextReviewAt must be within 31 days after period.end.
 19. At least 80% of watchCondition values must contain an observable threshold, date, event or directional trigger. Do not use vague wording such as “持续关注” by itself.
 20. Use $wechat-official-source-research for official WeChat evidence. A source may be labelled official_wechat only when the public direct mp.weixin.qq.com article exposes its title, account identity and body. Never use search summaries, reposts, account home pages, login/CAPTCHA pages or inaccessible articles. When a public article is unavailable, use a same-institution official website mirror under its actual source type and disclose the WeChat gap.
+21. The user's project-specific policy retains WeChat information for cross-comparison. Rule 20 governs verified sources, NOT whether a lead may inform research. sourceScoutSummary.wechatLeads includes collected snippets, views and original-access gaps. Do not dismiss them because the direct fetch failed or the account is non-official. Search for primary or independent corroboration; repeated reposts are not independent support. Return wechatLeadReviews with leadId, status=supported|partial|conflicting|unresolved, assessment (what matches, conflicts or remains uncertain), evidenceIds referring to real supporting/comparison sources. supported requires a primary A/B source. Treat comparisons as analysis, never claim inaccessible original text was verified. Unresolved material remains visible as a reference signal and can motivate monitoring; do not promote it to a confirmed factual assertion or guaranteed product parameter.
 
 Required JSON contract:
 {{
@@ -644,6 +653,12 @@ def apply_source_scout_metadata(report: dict, scout: dict | None) -> None:
     )
     if note not in limitations:
         limitations.append(note)
+    leads = scout.get("wechatLeads") or []
+    report["wechatLeads"] = leads
+    if leads:
+        lead_note = f"保留{len(leads)}项公众号参考线索供交叉比对；原文未核验不代表信息错误，正式事实与参考观点分层展示。"
+        if lead_note not in limitations:
+            limitations.append(lead_note)
     zhihu = scout.get("zhihu") if isinstance(scout.get("zhihu"), dict) else {}
     if zhihu.get("enabled"):
         zhihu_note = (
@@ -665,6 +680,20 @@ def run_source_scout(
     timeout_seconds: int,
 ) -> tuple[list[dict], dict]:
     """Use Flash for broad discovery, then admit only independently verified evidence."""
+    hermes_payload = {"queryCount": 0, "candidates": [], "limitations": [], "wechatGaps": []}
+    hermes_summary = {"enabled": hermes.enabled(), "status": "disabled"}
+    if hermes.enabled():
+        try:
+            hermes_payload = hermes.discover(timeout_seconds=min(
+                timeout_seconds, int(os.getenv("MARKET_ANALYSIS_HERMES_TIMEOUT_SECONDS", "180"))))
+            hermes_summary["status"] = "success"
+        except hermes.HermesError as exc:
+            hermes_summary.update(status="degraded", reason=str(exc))
+            hermes_payload["limitations"] = ["Hermes公开资料采集失败，继续原有来源侦察与证据校验。"]
+    hermes_candidates = normalize_scout_candidates(hermes_payload)
+    for index, row in enumerate(hermes_candidates):
+        row.update(id=f"H{index + 1}", discoveryChannel="hermes")
+    hermes_summary["candidateCount"] = len(hermes_candidates)
     zhihu_candidates, zhihu_summary = scout_zhihu_sources(ledger)
     flash_status = "success"
     try:
@@ -680,18 +709,21 @@ def run_source_scout(
             output_schema=EVIDENCE_SCOUT_SCHEMA,
         )
     except Exception as exc:
-        if not zhihu_candidates:
+        if not zhihu_candidates and not hermes_candidates and not hermes_payload.get("wechatLeads"):
             raise
         flash_status = "degraded"
         payload = {
             "queryCount": 0,
             "candidates": [],
-            "limitations": [f"Flash来源侦察失败，已降级使用知乎官方API候选：{redact(exc)}"],
+            "limitations": [f"主来源侦察失败，已降级使用辅助采集候选：{redact(exc)}"],
             "wechatGaps": [],
         }
-    candidates = normalize_scout_candidates(payload) + zhihu_candidates
+    payload["queryCount"] = int(payload.get("queryCount") or 0) + hermes_payload["queryCount"]
+    for field in ("limitations", "wechatGaps"):
+        payload[field] = list(payload.get(field) or []) + hermes_payload[field]
+    candidates = normalize_scout_candidates(payload) + zhihu_candidates + hermes_candidates
     verified, rejected = verify_source_candidates(candidates)
-    return evidence_pack_for_prompt(verified), source_scout_summary(
+    summary = source_scout_summary(
         payload,
         candidates,
         verified,
@@ -699,6 +731,11 @@ def run_source_scout(
         zhihu=zhihu_summary,
         flash_status=flash_status,
     )
+    hermes_summary["verifiedCount"] = sum(row.get("discoveryChannel") == "hermes" for row in verified)
+    summary["hermes"] = hermes_summary
+    summary["wechatLeads"] = retain_leads(
+        list(payload.get("wechatLeads") or []) + list(hermes_payload.get("wechatLeads") or []), candidates, rejected)
+    return evidence_pack_for_prompt(verified), summary
 
 
 def _claude_metrics(stdout: str) -> dict:
@@ -1447,6 +1484,7 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
                 continue
 
             align_module_facts_to_verified_excerpts(report)
+            apply_lead_reviews(report, report.get("wechatLeads") or [])
             omit_unverified_optional_product_facts(report)
             report["generatedAt"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
             try:

@@ -1,5 +1,13 @@
 # AGENTS.md
 
+## 公开资料采集协作（2026-09-22）
+
+本项目辅助采集微信公众号等公开资料使用Hermes，不再调用旧OpenClaw协作桥。
+入口、凭据位置说明、后台集成及实际部署状态见 `docs/HERMES_RESEARCH.md`。
+Hermes结果只作为待独立核验的候选，不发送内部经营快照或客户明细。
+公众号访问受限或独立读取失败不等于信息错误；保留已采集片段、观点和出处作为参考线索，继续交叉比对。
+正式证据与公众号参考分层展示，比对结果区分交叉支持、部分支持、存在冲突、待核验；不得因抓取失败一律丢弃，也不把未读全文说成已核验。
+
 This file provides guidance to Codex (Codex.ai/code) and OpenClaw for safe deployment.
 
 ## 项目概述

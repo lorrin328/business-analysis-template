@@ -25,7 +25,7 @@ def aggregate_transform_longterm(df: pd.DataFrame) -> List[Dict]:
         return []
 
     time_col = date_col or month_col
-    work = _period_year_month(df, year_col, month_col if not date_col else None, time_col if date_col else None)
+    work = _period_year_month(df, year_col, month_col if not date_col else None, time_col if date_col else None, require_day=True)
     work['_channel'] = work[channel_col].map(_normalize_channel)
     work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
@@ -89,7 +89,7 @@ def aggregate_jingdai_longterm(df: pd.DataFrame) -> List[Dict]:
     if not all([time_col, qj_col]):
         return []
 
-    work = _period_year_month(df, None, time_col)
+    work = _period_year_month(df, None, time_col, require_day=True)
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
     work['_qj'] = _to_number(work[qj_col])
     # 长险：排除 (期交 且 缴费年限=1)；若无缴费年限列则不过滤

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>经营分析看板</title>
+  <link rel="stylesheet" href="/css/analysis-common.css?v=20260923">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <link rel="stylesheet" href="css/tokens.css?v=1.0.153">
   <script src="js/constants.js?v=1.0.153-6b01c3610050"></script>
@@ -1369,7 +1370,7 @@
       <div class="header-left">
         <div class="logo">太平人寿 <span>经营分析看板</span></div>
         <span class="tag">网电多元条线</span>
-        <span class="tag" style="color: var(--success); border-color: rgba(var(--up-rgb),0.3); background: rgba(var(--up-rgb),0.1);">v1.0.155</span>
+        <span class="tag" style="color: var(--success); border-color: rgba(var(--up-rgb),0.3); background: rgba(var(--up-rgb),0.1);">v1.0.156</span>
       </div>
       <div class="header-right">
         <nav class="primary-nav" aria-label="主要页面">
@@ -1601,9 +1602,10 @@
             <span class="chart-title">产品结构</span>
             <div class="chart-actions" id="productPieTypeBtns">
               <button class="chart-btn active" data-product-pie-type="premium">保费</button>
-              <button class="chart-btn" data-product-pie-type="count">件数</button>
+              <button class="chart-btn" data-product-pie-type="count">件数/记录数</button>
             </div>
           </div>
+          <div class="chart-scope" id="productAppliedScope" role="status">正在读取产品结构范围…</div>
           <div class="chart-controls">
             <div class="control-row">
               <span class="control-label">业务来源</span>
@@ -1978,14 +1980,14 @@
   <script>
     // API integration lives in js/data-integration.js
   </script>
-  <script src="js/org-analysis.js?v=1.0.145-5509055c"></script>
+  <script src="js/org-analysis.js?v=1.0.156-baea24aa7a8a"></script>
   <script src="js/seed-data.js?v=1.0.116"></script>
   <script src="js/platform-seed-data.js?v=1.0.116"></script>
-  <script src="js/data-integration.js?v=1.0.153-c77b2dbed044"></script>
+  <script src="js/data-integration.js?v=1.0.156-a0664c39242f"></script>
   <script src="js/platform-trend-main.js?v=1.0.153-03cec4d93c01"></script>
   <script>
   </script>
-  <script src="js/product-analysis.js?v=1.0.153-a54906b62cf8"></script>
+  <script src="js/product-analysis.js?v=1.0.156-fd51c02a2e9f"></script>
   <script>
   </script>
   <script src="js/payperiod-chart.js?v=1.0.153-933566650eac"></script>

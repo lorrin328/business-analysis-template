@@ -52,7 +52,7 @@ function harness() {
   const exposed = source.replace('})(window, document);', `
     renderReport = report => rendered.push(report.reportId);
     renderObservability = () => {};
-    window.testApi = { loadReport, loadHistory, refreshAll, formatPercent, loadStatus, runNow };
+    window.testApi = { loadReport, loadHistory, refreshAll, formatPercent, loadStatus, runNow, renderSources };
   })(window, document);`);
   vm.runInContext(exposed, context);
   const select = document.getElementById('historySelect');
@@ -67,6 +67,16 @@ function harness() {
 }
 
 async function settle() { await new Promise(resolve => setImmediate(resolve)); }
+
+test('WeChat references are visible and counted separately from verified evidence', () => {
+  const h = harness();
+  h.api.renderSources({ sources: [], wechatLeads: [{title: '<untrusted title>', claim: '作者观点', publisher: '行业号',
+    status: 'conflicting', assessment: '不同口径仍需比对', evidenceIds: ['S1'], url: 'https://mp.weixin.qq.com/s/example'}] });
+  assert.equal(h.document.getElementById('sourceSummary').textContent, '展开证据与来源（0项证据，1项公众号参考）');
+  const card = h.document.getElementById('sourceGrid').children[0];
+  assert.equal(card.children[0].textContent, '公众号参考 · <untrusted title>');
+  assert.match(card.children[2].textContent, /存在冲突（分析判断）/);
+});
 
 test('later historical selection wins when the older request finishes last', async () => {
   const h = harness();

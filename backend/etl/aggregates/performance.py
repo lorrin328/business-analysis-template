@@ -25,7 +25,7 @@ def aggregate_performance(df: pd.DataFrame) -> List[Dict]:
     work = _period_year_month(df, year_col, month_col)
     work['_channel'] = work[channel_col].map(_normalize_channel)
     work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
-    work['_qj'] = _to_number(work[qj_col])
+    work['_qj'] = _to_number(work[qj_col], required=True)
     work['_gm'] = _to_number(work[gm_col]) if gm_col else 0
     work['_zs'] = _to_number(work[zs_col]) if zs_col else 0
 
@@ -59,7 +59,7 @@ def aggregate_daily_performance(df: pd.DataFrame) -> List[Dict]:
     if not all([time_col, channel_col, qj_col]):
         raise ValueError(f"无法识别日常业绩必要列（日期/年月、业务模式、期交保费）。当前列: {list(df.columns)}")
 
-    work = _period_year_month(df, year_col, month_col if not date_col else None, time_col if date_col else None)
+    work = _period_year_month(df, year_col, month_col if not date_col else None, time_col if date_col else None, require_day=True)
     work['_channel'] = work[channel_col].map(_normalize_channel)
     work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
     work['_qj'] = _to_number(work[qj_col])

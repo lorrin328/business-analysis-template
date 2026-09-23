@@ -15,6 +15,9 @@ def provider_name(model: str) -> str:
 
 def provider_environment(model: str) -> dict[str, str]:
     env = os.environ.copy()
+    # Hermes credentials are never needed by any model CLI, including custom routes.
+    env.pop('MARKET_ANALYSIS_HERMES_API_KEY', None)
+    env.pop('MARKET_ANALYSIS_HERMES_KEY_FILE', None)
     if model == 'k3-256k':
         token = env.get('KIMI_CODE_API_KEY', '').strip()
         if not token:
@@ -30,7 +33,8 @@ def provider_environment(model: str) -> dict[str, str]:
     else:
         return env  # Existing custom model configurations keep their explicit endpoint.
     for key in ['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN',
-                'KIMI_CODE_API_KEY', 'DEEPSEEK_AUTH_TOKEN', 'AI_READONLY_TOKEN', 'ZHIHU_ACCESS_SECRET']:
+                'KIMI_CODE_API_KEY', 'DEEPSEEK_AUTH_TOKEN', 'AI_READONLY_TOKEN', 'ZHIHU_ACCESS_SECRET',
+                'MARKET_ANALYSIS_HERMES_API_KEY', 'MARKET_ANALYSIS_HERMES_KEY_FILE']:
         env.pop(key, None)
     selector = 'deepseek-flash[1m]' if model.startswith('deepseek-flash') else model
     env.update(ANTHROPIC_BASE_URL=endpoint, ANTHROPIC_API_KEY=token,

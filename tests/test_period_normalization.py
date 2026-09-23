@@ -2,7 +2,8 @@
 import sqlite3
 import pandas as pd
 import pytest
-from etl.normalize import _period_year_month
+from etl.normalize import NumericSourceError, _period_year_month, _to_number
+from etl.aggregates.performance import aggregate_daily_performance, aggregate_performance
 from services.excel_pipeline import _refresh_hr_from_current_sources
 
 @pytest.mark.parametrize('reverse', [False, True])
@@ -23,6 +24,24 @@ def test_integral_numeric_periods_never_become_epoch(value):
 @pytest.mark.parametrize('value', [9.5, '9.5', '202609.5', '2026-13-01', 'invalid'])
 def test_invalid_periods_are_not_truncated(value):
     assert _period_year_month(pd.DataFrame({'年': [2026], '年月': [value]}), '年', '年月').empty
+
+
+def test_month_only_source_keeps_month_total_without_fabricating_daily_rows():
+    frame = pd.DataFrame({
+        '年': [2026, 2026], '年月': ['2026-09', '2026-09-02'],
+        '业务模式': ['OTO', 'OTO'], '期交保费': [10000, 5000],
+    })
+    assert aggregate_performance(frame)[0]['qj_premium'] == 1.5
+    assert aggregate_daily_performance(frame) == []
+
+
+def test_amount_parser_distinguishes_valid_zero_thousands_and_invalid_text():
+    parsed = _to_number(pd.Series(['0', '1,000', None], name='期交保费'))
+    assert parsed.tolist() == [0, 1000, 0]
+    with pytest.raises(NumericSourceError, match='1个非法数值'):
+        _to_number(pd.Series(['1,00'], name='期交保费'))
+    with pytest.raises(NumericSourceError, match='1个必填缺失'):
+        _to_number(pd.Series([None], name='期交保费'), required=True)
 
 @pytest.mark.parametrize('numeric', [False, True])
 def test_refresh_activity_with_historical_sqlite_formats(numeric):

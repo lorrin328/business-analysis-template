@@ -51,6 +51,18 @@ def test_preview_is_read_only_and_returns_only_counts_and_periods(auth_db):
     assert "old-customer" not in text
 
 
+def test_preview_blocks_malformed_amount_and_warns_month_only_precision(auth_db):
+    with read_only_connection() as conn:
+        bad = build_import_preview(conn, [workbook(rows=[{
+            "年月": "202608", "业务模式": "OTO", "期交保费": "1,00",
+        }])])
+        monthly = build_import_preview(conn, [workbook()])
+    assert bad["canImport"] is False
+    assert "期交保费存在1个非法数值" in bad["errors"][0]
+    assert monthly["canImport"] is True
+    assert any("仅生成月级结果" in warning for warning in monthly["warnings"])
+
+
 def test_preview_blocks_replacement_missing_enabled_business_field(auth_db):
     from db import get_db
     with get_db() as conn:

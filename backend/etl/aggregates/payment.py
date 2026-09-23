@@ -29,7 +29,7 @@ def _aggregate_payment_period(df: pd.DataFrame, *, daily: bool) -> List[Dict]:
         raise ValueError(f"无法识别交期结构必要列。当前列: {list(df.columns)}")
 
     time_col = date_col or month_col
-    work = _period_year_month(df, year_col, month_col if not date_col else None, time_col if date_col else None)
+    work = _period_year_month(df, year_col, month_col if not date_col else None, time_col if date_col else None, require_day=daily)
     work['_channel'] = work[channel_col].map(_normalize_channel)
     work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
@@ -87,7 +87,7 @@ def _aggregate_jingdai_payment_period(df: pd.DataFrame, *, daily: bool) -> List[
     if not all([time_col, qj_col, pay_col]):
         raise ValueError(f"无法识别经代交期结构必要列。当前列: {list(df.columns)}")
 
-    work = _period_year_month(df, None, time_col)
+    work = _period_year_month(df, None, time_col, require_day=daily)
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
     work['_qj'] = _to_number(work[qj_col])
     work['_gm'] = _to_number(work[gm_col]) if gm_col else 0

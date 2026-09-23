@@ -1,0 +1,30 @@
+/* Shared analysis-page reading and state rules. Page palettes remain local. */
+:is(.kpi-value, .kpi-big-value, .num, td, th, .meta) {
+  font-variant-numeric: tabular-nums;
+}
+
+:is(button, input, select, a, [role="button"]):focus-visible {
+  outline: 2px solid var(--accent, var(--blue, #4f8cff));
+  outline-offset: 2px;
+}
+
+:is(.filter-state, .chart-scope, .org-action-summary) {
+  display: block;
+  padding: 7px 11px;
+  border: 1px solid var(--line, #dfe5eb);
+  border-radius: 6px;
+  background: var(--panel, var(--white, #fff));
+  color: var(--text-2, var(--muted, #697586));
+  font-size: 12px;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.filter-state { margin-top: 6px; }
+.chart-scope { margin: 0 14px 10px; }
+.org-action-summary { margin: 0 0 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}

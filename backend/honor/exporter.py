@@ -8,7 +8,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from .repository import fetch_summary, fetch_table
+from .repository import fetch_export_table, fetch_summary
 
 HEADER_FILL = PatternFill("solid", fgColor="1F4E78")
 WHITE_FONT = Font(color="FFFFFF", bold=True)
@@ -36,8 +36,12 @@ def build_honor_export_workbook(batch_id: int) -> bytes:
         ("异常清单", "honor_exceptions"),
         ("字段审计", "honor_field_audit_results"),
     ]
+    audit_rows = []
     for title, table in sheets:
-        _write_table(wb.create_sheet(title), fetch_table(table, batch_id, limit=5000))
+        rows, expected = fetch_export_table(table, batch_id)
+        _write_table(wb.create_sheet(title), rows)
+        audit_rows.append([title, expected, len(rows), "一致" if expected == len(rows) else "不一致"])
+    _write_rows(wb.create_sheet("导出校验"), ["工作表", "应导行数", "实导行数", "结果"], audit_rows)
 
     rule_ws = wb.create_sheet("规则口径")
     _write_rows(

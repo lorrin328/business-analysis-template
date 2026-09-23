@@ -193,6 +193,9 @@
       if (asOf) query.set('asOf', asOf);
       query.set('periodType', periodType);
       if (periodType !== 'year' && periodValue) query.set('periodValue', periodValue);
+      state.data = null;
+      el('kpiGrid').innerHTML = '';
+      el('content').innerHTML = '<div class="panel empty">正在读取当前筛选范围…</div>';
       el('sourceLine').textContent = '正在读取生产数据…';
       const payload = await window.fetchJson(`/api/branch-analysis/overview?${query}`);
       if (sequence !== loadSequence) return;
@@ -205,6 +208,7 @@
         ? `本期证保最后出单 ${state.data.meta.lastBranchBusinessDate}`
         : '本期暂无证保出单';
       el('sourceLine').textContent = `数据截至 ${state.data.meta.performanceCutoff} · ${state.data.meta.periodLabel} ${state.data.meta.periodStart} 至 ${state.data.meta.asOf} · ${lastBranchDate} · 同比 ${state.data.meta.previousPeriodStart} 至 ${state.data.meta.previousAsOf} · 参考表批次 ${state.data.meta.referenceBatch?.id || '--'}`;
+      el('filterState').textContent = '当前结果对应已应用筛选';
       render();
     } catch (error) {
       if (sequence === loadSequence) showError(error);
@@ -214,6 +218,7 @@
   function bind() {
     el('backBtn').addEventListener('click', () => { window.location.href = '/'; });
     el('refreshBtn').addEventListener('click', () => load().catch(showError));
+    document.querySelector('.filters').addEventListener('change', () => { el('filterState').textContent = '筛选已修改，请点击应用'; });
     el('periodType').addEventListener('change', () => rebuildPeriodOptions());
     el('asOfInput').addEventListener('change', () => rebuildPeriodOptions(el('periodValue').value));
     el('yearInput').addEventListener('change', () => {
@@ -237,7 +242,10 @@
   }
 
   function showError(error) {
+    state.data = null;
+    el('kpiGrid').innerHTML = '';
     el('sourceLine').textContent = '读取失败';
+    el('filterState').textContent = '当前筛选读取失败，无可展示结果';
     el('content').innerHTML = `<div class="panel empty">${esc(error.message)}</div>`;
   }
 

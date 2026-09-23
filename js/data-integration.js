@@ -535,6 +535,7 @@
       const data = mergeProductRows(rows, mixedSources);
       productData.premium = data.premium;
       productData.count = data.count;
+      productData.countBasis = productFilters.transform && productFilters.jingdai ? 'mixed' : productFilters.jingdai ? 'record' : 'policy';
       if (typeof renderProductTopTable === 'function') renderProductTopTable([]);
       return productData.premium.length > 0 || productData.count.length > 0;
     }
@@ -547,17 +548,27 @@
         return applyProductFallback(selectedYear || DEFAULT_DASHBOARD_YEAR);
       }
       productData.premium = product.premium;
-      productData.count = Array.isArray(product.count) && product.count.length > 0 ? product.count : product.premium;
+      productData.count = Array.isArray(product.count) ? product.count : [];
+      productData.countBasis = product.countBasis || 'policy';
       if (typeof renderProductTopTable === 'function') renderProductTopTable(product.topProducts || []);
       return true;
     }
 
+    let productRequestSequence = 0;
     async function fetchProductData(year) {
+      const sequence = ++productRequestSequence;
+      const scope = document.getElementById('productAppliedScope');
+      if (scope) scope.textContent = '正在读取当前产品筛选…';
       try {
-        apiData.product = unwrapApiResponse(await fetchJson(buildProductQuery(year), { method: 'GET' }));
+        const response = unwrapApiResponse(await fetchJson(buildProductQuery(year), { method: 'GET' }));
+        if (sequence !== productRequestSequence) return false;
+        apiData.product = response;
+        if (scope) scope.textContent = `已应用：${response.period?.label || `${year}年`} · ${productFilters.transform && productFilters.jingdai ? '转型＋经代' : productFilters.jingdai ? '经代' : '转型'}`;
         return updateProductDataFromApi();
       } catch (e) {
+        if (sequence !== productRequestSequence) return false;
         console.error('fetchProductData error:', e);
+        if (scope) scope.textContent = ALLOW_LOCAL_FALLBACK ? '服务读取失败 · 开发环境本地示例数据' : '读取失败：当前筛选无可用结果';
         return applyProductFallback(year);
       }
     }
@@ -590,7 +601,9 @@
     }
 
     async function refreshProductChart() {
+      const sequence = productRequestSequence + 1;
       await fetchProductData(selectedYear || DEFAULT_DASHBOARD_YEAR);
+      if (sequence !== productRequestSequence) return;
       productChart.setOption(getPieOption(currentPieType), true);
     }
 

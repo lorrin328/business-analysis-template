@@ -49,7 +49,7 @@ def aggregate_zhituo_performance(df: pd.DataFrame) -> List[Dict]:
     if not all([flag_col, month_col, channel_col, qj_col]):
         return []
 
-    work = _period_year_month(df, year_col, month_col if not date_col else None, date_col)
+    work = _period_year_month(df, year_col, month_col if not date_col else None, date_col, require_day=True)
     work = work[_is_zhituo(work[flag_col])]
     if work.empty:
         return []

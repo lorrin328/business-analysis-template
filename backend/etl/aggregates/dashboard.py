@@ -94,7 +94,7 @@ def aggregate_transform_product_daily(df: pd.DataFrame) -> List[Dict]:
     if not all([month_col, channel_col, qj_col]):
         return []
 
-    work = _period_year_month(df, year_col, month_col if not date_col else None, date_col)
+    work = _period_year_month(df, year_col, month_col if not date_col else None, date_col, require_day=True)
     work["_channel"] = work[channel_col].map(_normalize_channel)
     work = work[work["_channel"].isin(TRANSFORM_CHANNELS)]
     if work.empty:
@@ -119,7 +119,7 @@ def aggregate_jingdai_product_daily(df: pd.DataFrame) -> List[Dict]:
     if not all([month_col, product_col, qj_col]):
         return []
 
-    work = _period_year_month(df, year_col, month_col if not date_col else None, date_col)
+    work = _period_year_month(df, year_col, month_col if not date_col else None, date_col, require_day=True)
     if work.empty:
         return []
     work["_channel"] = "经代"

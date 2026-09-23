@@ -140,6 +140,10 @@
   async function load(query = '') {
     const sequence = ++loadSequence;
     try {
+      state.data = null;
+      el('kpiGrid').innerHTML = '';
+      Object.values(state.charts).forEach(chart => chart.clear());
+      ['orgTable', 'staffTable', 'productTable'].forEach(id => { el(id).innerHTML = ''; });
       el('sourceLine').classList.remove('error');
       el('sourceLine').textContent = '正在读取最新基表数据…';
       const payload = await window.fetchJson(`/api/zhituo-analysis/overview${query ? `?${query}` : ''}`);
@@ -176,10 +180,19 @@
     el('backBtn').addEventListener('click', () => { window.location.href = '/'; });
     el('applyBtn').addEventListener('click', () => applyFilters().catch(showError));
     el('resetBtn').addEventListener('click', selectAll);
+    el('pageMain').addEventListener('change', event => {
+      if (event.target.matches('.filter-panel input[type="checkbox"]')) {
+        el('filterMessage').textContent = '筛选已修改，点击“应用筛选”刷新。';
+      }
+    });
     window.addEventListener('resize', () => Object.values(state.charts).forEach(item => item.resize()));
   }
 
   function showError(error) {
+    state.data = null;
+    el('kpiGrid').innerHTML = '';
+    Object.values(state.charts).forEach(chart => chart.clear());
+    ['orgTable', 'staffTable', 'productTable'].forEach(id => { el(id).innerHTML = ''; });
     el('sourceLine').textContent = `读取失败：${error.message || error}`;
     el('sourceLine').classList.add('error');
   }

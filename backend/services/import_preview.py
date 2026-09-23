@@ -8,7 +8,7 @@ import pandas as pd
 
 from etl.parser import parse_hr_excel, parse_jingdai_excel, parse_performance_excel, parse_value_excel
 from etl.columns import _pick_col
-from etl.normalize import _period_year_month
+from etl.normalize import NumericSourceError, _period_year_month, validate_source_numbers
 from services.excel_pipeline import ExcelSource
 from services.import_safety import (
     IMPORT_MODES, RawIncrementalWriteError, extract_raw_periods, prepare_supplement,
@@ -111,12 +111,19 @@ def build_import_preview(conn, sources: list[ExcelSource], *, import_mode: str =
             missing = [group[0] for group in HEADER_GROUPS[source.kind] if not _pick_col(frame, list(group))]
             if missing:
                 raise RawIncrementalWriteError(f"{label}缺少必要表头：{'、'.join(missing)}。请确认文件放在正确的清单位置，并补齐统计年月及业务字段。")
+            validate_source_numbers(source.kind, frame)
             periods, config = extract_raw_periods(table, frame)
             year_col, month_col, date_col = config
             valid = _period_year_month(frame, year_col, month_col if not date_col else None, date_col)
             if not periods or len(valid) != len(frame) or any(not 2000 <= year <= 2100 for year, _ in periods):
                 raise RawIncrementalWriteError(f"{label}存在空数据或无法识别的统计年月，请补齐有效期间后重新预览。")
             entry["periods"] = [f"{year:04d}-{month:02d}" for year, month in sorted(periods)]
+            if source.kind in {"performance", "jingdai"}:
+                precise = _period_year_month(frame, year_col, month_col if not date_col else None, date_col, require_day=True)
+                if len(precise) < len(frame):
+                    result["warnings"].append(
+                        f"{label}有{len(frame) - len(precise)}行无法用于日级聚合（含同月精度不一致）；涉及月份仅生成月级结果，不展示为日级业绩。"
+                    )
             all_years.update(year for year, _ in periods)
             entry["existingRows"] = _existing_rows(conn, table, periods)
             duplicate = bool(has_imports and not force and conn.execute(
@@ -137,6 +144,9 @@ def build_import_preview(conn, sources: list[ExcelSource], *, import_mode: str =
         except RawIncrementalWriteError as exc:
             result["errors"].append(str(exc))
             entry["coverageLabel"] = "校验未通过，不会导入"
+        except NumericSourceError as exc:
+            result["errors"].append(f"{label}{exc}")
+            entry["coverageLabel"] = "金额或人力字段校验未通过，不会导入"
         except Exception:
             # Parser errors may contain cells or column values. Never echo them.
             result["errors"].append(f"{label}无法完成预览，请确认 Excel 格式、表头与期间字段；当前数据未改变。")

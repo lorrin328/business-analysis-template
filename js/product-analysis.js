@@ -4,9 +4,9 @@
 
     function getPieOption(type) {
       const data = productData[type] || [];
-      if (data.length === 0) {
+      if (data.length === 0 || (type === 'count' && productData.countBasis === 'mixed')) {
         return {
-          title: { text: '暂无产品结构数据', left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
+          title: { text: type === 'count' && productData.countBasis === 'mixed' ? '件数与记录数口径不同，请单选来源' : type === 'count' ? '件数或记录数不可用' : '暂无产品结构数据', left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
           series: []
         };
       }
@@ -16,7 +16,12 @@
           backgroundColor: '#111a2b',
           borderColor: '#1e2c46',
           textStyle: { color: '#eef3fb' },
-          formatter: '{b}: {c}万 ({d}%)'
+          formatter: params => {
+            const basis = productData.countBasis || 'policy';
+            const unit = type === 'premium' ? '万元'
+              : basis === 'record' || (basis === 'mixed' && String(params.name).startsWith('经代-')) ? '条记录' : '件';
+            return `${params.name}: ${params.value}${unit} (${params.percent}%)`;
+          }
         },
         legend: {
           type: 'scroll',

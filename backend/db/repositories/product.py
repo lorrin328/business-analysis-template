@@ -546,6 +546,7 @@ def get_product_structure(
                 'dimension': dimension,
                 'premium': [{'name': r['label'], 'value': round(r['premium'], 2)} for r in rows if round(r['premium'], 2) != 0],
                 'count': [{'name': r['label'], 'value': int(r['count'])} for r in rows if int(r['count']) != 0],
+                'countBasis': 'mixed' if include_transform and include_jingdai else 'record' if include_jingdai else 'policy',
                 'topProducts': top_products,
                 'jingdaiOrgs': get_jingdai_orgs(year),
             }

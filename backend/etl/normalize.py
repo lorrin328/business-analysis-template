@@ -1,11 +1,42 @@
 """Data normalization utilities."""
 from typing import List, Optional
 
+import numpy as np
 import pandas as pd
 
 
-def _to_number(series: pd.Series) -> pd.Series:
-    return pd.to_numeric(series, errors='coerce').fillna(0)
+class NumericSourceError(ValueError):
+    """Safe import error with a field name and counts, but no source cell values."""
+
+
+def _to_number(series: pd.Series, *, required: bool = False) -> pd.Series:
+    """Parse amounts without converting malformed source cells into business zero."""
+    text = series.astype("string").str.strip()
+    present = text.notna() & text.ne("")
+    thousands = text.str.fullmatch(r"[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?", na=False)
+    cleaned = text.where(~thousands, text.str.replace(",", "", regex=False))
+    parsed = pd.to_numeric(cleaned, errors="coerce")
+    invalid = present & (parsed.isna() | ~pd.Series(np.isfinite(parsed.fillna(0)), index=series.index))
+    missing = ~present
+    if invalid.any() or (required and missing.any()):
+        field = str(series.name or "金额字段")
+        raise NumericSourceError(f"{field}存在{int(invalid.sum())}个非法数值、{int(missing.sum()) if required else 0}个必填缺失；请在导入前修正。")
+    return parsed.fillna(0)
+
+
+def validate_source_numbers(kind: str, frame: pd.DataFrame) -> None:
+    """Use the same numeric parser in read-only preview and committed ETL."""
+    fields = {
+        "performance": [(('期交保费',), True), (('年化规保', '规模保费', '规保'), False),
+                        (('折算保费',), False), (('承保件数',), False)],
+        "jingdai": [(('期交保费',), True), (('承保年化规保', '年化规保', '规模保费'), True)],
+        "hr": [(('月初在职人力',), True), (('月末在职人力',), True)],
+        "value": [(('价值',), True)],
+    }
+    for names, required in fields.get(kind, []):
+        column = next((name for name in names if name in frame.columns), None)
+        if column:
+            _to_number(frame[column], required=required)
 
 
 from config.business_lines import CHANNEL_MAP
@@ -43,10 +74,13 @@ def _year_month_day_from_series(series: pd.Series):
     yyyymmdd = digit_text.str.fullmatch(r'\d{8}', na=False)
     if yyyymmdd.any():
         dt = dt.mask(yyyymmdd, pd.to_datetime(text.where(yyyymmdd), format='%Y%m%d', errors='coerce'))
-    return dt.dt.year, dt.dt.month, dt.dt.day
+    explicit_day = digit_text.str.fullmatch(r'\d{8}', na=False) | date_text.str.match(
+        r'^\d{4}-\d{1,2}-\d{1,2}(?:$|[ T])', na=False
+    )
+    return dt.dt.year, dt.dt.month, dt.dt.day.where(explicit_day)
 
 
-def _period_year_month(df: pd.DataFrame, year_col: Optional[str], month_col: Optional[str], date_col: Optional[str] = None):
+def _period_year_month(df: pd.DataFrame, year_col: Optional[str], month_col: Optional[str], date_col: Optional[str] = None, *, require_day: bool = False):
     work = df.copy()
     if date_col and date_col in work.columns:
         y, m, d = _year_month_day_from_series(work[date_col])
@@ -57,11 +91,11 @@ def _period_year_month(df: pd.DataFrame, year_col: Optional[str], month_col: Opt
         y, m, d = _year_month_day_from_series(work[month_col])
         work['_year'] = y
         work['_month'] = m
-        work['_day'] = d.fillna(1)
+        work['_day'] = d if require_day else d.fillna(1)
     else:
         work['_year'] = pd.NA
         work['_month'] = pd.NA
-        work['_day'] = 1
+        work['_day'] = pd.NA if require_day else 1
     if year_col and year_col in work.columns:
         work['_year'] = work['_year'].fillna(pd.to_numeric(work[year_col], errors='coerce'))
     if month_col and month_col in work.columns:
@@ -71,6 +105,14 @@ def _period_year_month(df: pd.DataFrame, year_col: Optional[str], month_col: Opt
     work['_month'] = work['_month'].astype(int)
     work = work[(work['_month'] >= 1) & (work['_month'] <= 12)]
     work['_year'] = work['_year'].astype(int)
+    if require_day:
+        # One month-level row makes its entire source month unsuitable for daily reads.
+        uncertain = work.loc[work['_day'].isna(), ['_year', '_month']].drop_duplicates()
+        if not uncertain.empty:
+            uncertain_keys = set(zip(uncertain['_year'], uncertain['_month']))
+            work = work[[(_year, _month) not in uncertain_keys
+                         for _year, _month in zip(work['_year'], work['_month'])]]
+        work = work[work['_day'].notna()]
     work['_day'] = work['_day'].fillna(1).astype(int)
     return work
 

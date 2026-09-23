@@ -50,7 +50,7 @@ from services.import_safety import (
 from etl.aggregates.org_zero_streak import ACTIVITY_SOURCE_COLUMNS, extract_org_activity_periods
 from services.aggregate_rebuilder import _read_org_activity_rows, replace_org_activity_from_raw
 from services.raw_table_reader import raw_table_columns, quote_identifier
-from etl.normalize import _period_year_month
+from etl.normalize import _period_year_month, validate_source_numbers
 from services.product_config_service import extract_jingdai_products_to_config
 from etl.aggregates.jingdai import _load_jingdai_product_config
 from validators.data_validator import validate_rows
@@ -249,6 +249,7 @@ def _backfill_active_headcount(rows_by_table: dict[str, list[dict]]) -> None:
 
 def _parse_performance(source: ExcelSource, result: ExcelPipelineResult) -> None:
     frame = parse_performance_excel(source.content)
+    validate_source_numbers("performance", frame)
     result.raw_tables["performance"] = frame
 
     perf_rows = aggregate_performance(frame)
@@ -283,6 +284,7 @@ def _parse_performance(source: ExcelSource, result: ExcelPipelineResult) -> None
 
 def _parse_jingdai(source: ExcelSource, result: ExcelPipelineResult) -> None:
     frame = parse_jingdai_excel(source.content)
+    validate_source_numbers("jingdai", frame)
     result.raw_tables["jingdai"] = frame
     # Parsing must not access or update product settings. Final classification is
     # calculated with the transaction's configuration when the import is written.
@@ -309,6 +311,7 @@ def _parse_jingdai(source: ExcelSource, result: ExcelPipelineResult) -> None:
 
 def _parse_hr(source: ExcelSource, result: ExcelPipelineResult) -> None:
     frame = parse_hr_excel(source.content)
+    validate_source_numbers("hr", frame)
     result.raw_tables["hr_data"] = frame
     hr_rows = aggregate_hr(frame)
     org_hr_rows = aggregate_org_hr(frame)
@@ -319,6 +322,7 @@ def _parse_hr(source: ExcelSource, result: ExcelPipelineResult) -> None:
 
 def _parse_value(source: ExcelSource, result: ExcelPipelineResult) -> None:
     frame = parse_value_excel(source.content)
+    validate_source_numbers("value", frame)
     result.raw_tables["value_data"] = frame
     value_rows = aggregate_value(frame)
     org_value_rows = aggregate_org_value(frame)

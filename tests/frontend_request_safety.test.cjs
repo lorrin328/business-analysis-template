@@ -12,12 +12,29 @@ test('empty product organization selection is explicit and differs from all', ()
  c.productFilters.orgs={all:true,A:true};assert.equal(new URL(c.buildProductQuery(2026),'https://test').searchParams.has('orgs'),false);
  c.productFilters.orgs={all:false,A:true};assert.equal(new URL(c.buildProductQuery(2026),'https://test').searchParams.get('orgs'),'A');
 });
+test('missing product count remains unavailable instead of copying premium', () => {
+ const code=extract(read('data-integration'),'    function updateProductDataFromApi()', '    let productRequestSequence =');
+ const productData={};
+ const c=context(code,{apiData:{product:{premium:[{name:'合成产品',value:12.5}],count:[],countBasis:'policy'}},productData,
+   renderProductJingdaiOrgs(){},renderProductTopTable(){},selectedYear:2026,DEFAULT_DASHBOARD_YEAR:2026,applyProductFallback(){throw Error('unexpected fallback');}});
+ assert.equal(c.updateProductDataFromApi(),true);
+ assert.equal(productData.premium[0].value,12.5);
+ assert.deepEqual(Array.from(productData.count),[]);
+});
+test('mixed policy and agency record counts do not form one pie', () => {
+ const code=extract(read('product-analysis'),'    function getPieOption(type)', '    let currentPieType =');
+ const productData={premium:[{name:'转型-产品',value:12},{name:'经代-产品',value:8}],count:[{name:'转型-产品',value:2},{name:'经代-产品',value:4}],countBasis:'mixed'};
+ const c=context(code,{productData});
+ assert.equal(c.getPieOption('premium').series.length,1);
+ assert.equal(c.getPieOption('count').series.length,0);
+ assert.match(c.getPieOption('count').title.text,/口径不同/);
+});
 for (const name of ['zhituo-analysis','branch-analysis','customer-analysis']) {
  test(`${name}: late success and late errors cannot overwrite newest query`, async () => {
   const source=read(name), isCustomer=name==='customer-analysis';
   const code=extract(source,isCustomer?'  async function loadOverview()':'  async function load(',isCustomer?'  async function loadCohort()':name==='zhituo-analysis'?'  async function applyFilters(':'  function bind()');
   const pending=[], errors=[], rendered=[];const nodes={};
-  const c=context('let loadSequence=0;\n'+code,{URLSearchParams,state:{},el:id=>nodes[id]||=( {value:'2026',classList:{remove(){}},textContent:''}),analysisQuery:()=>'',renderAliasCoverage(){},syncOptions(){},setOverviewContext(){},rebuildPeriodOptions(){},window:{fetchJson:()=>{const d=deferred();pending.push(d);return d.promise;},unwrapApiResponse:x=>x},showError:e=>errors.push(e.message),render(){rendered.push(c.state.data.id);}});
+  const c=context('let loadSequence=0;\n'+code,{URLSearchParams,state:{charts:{}},el:id=>nodes[id]||=( {value:'2026',classList:{remove(){}},textContent:''}),analysisQuery:()=>'',renderAliasCoverage(){},syncOptions(){},setOverviewContext(){},rebuildPeriodOptions(){},window:{fetchJson:()=>{const d=deferred();pending.push(d);return d.promise;},unwrapApiResponse:x=>x},showError:e=>errors.push(e.message),render(){if(c.state.data) rendered.push(c.state.data.id);}});
   const load=()=>isCustomer?c.loadOverview():c.load();
   const a=load(),b=load();pending[1].resolve({id:'new',meta:{year:2026}});await b;pending[0].resolve({id:'old',meta:{year:2025}});await a;assert.equal(c.state.data.id,'new');assert.deepEqual(rendered,['new']);
   const d=load(),e=load();pending[3].resolve({id:'newer',meta:{year:2026}});await e;pending[2].reject(Error('old failure'));await d;assert.deepEqual(errors,[]);

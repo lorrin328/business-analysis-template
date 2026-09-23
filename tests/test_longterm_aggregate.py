@@ -19,6 +19,7 @@ def test_transform_longterm_accepts_one_year_above_term_label():
                 {
                     "年": 2026,
                     "年月": "202605",
+                    "年月日": "2026-05-01",
                     "业务模式": "OTO",
                     "销售机构名称": "上海",
                     "长短险": "一年期以上",
@@ -29,6 +30,7 @@ def test_transform_longterm_accepts_one_year_above_term_label():
                 {
                     "年": 2026,
                     "年月": "202605",
+                    "年月日": "2026-05-01",
                     "业务模式": "OTO",
                     "销售机构名称": "上海",
                     "长短险": "一年期",
@@ -39,6 +41,7 @@ def test_transform_longterm_accepts_one_year_above_term_label():
                 {
                     "年": 2026,
                     "年月": "202605",
+                    "年月日": "2026-05-01",
                     "业务模式": "OTO",
                     "销售机构名称": "上海",
                     "长短险": "一年期",

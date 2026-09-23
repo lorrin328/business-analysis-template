@@ -44,7 +44,7 @@ def aggregate_org_daily_performance(df: pd.DataFrame) -> List[Dict]:
     if not all([time_col, channel_col, org_col, qj_col]):
         raise ValueError(f"无法识别机构日常业绩必要列。当前列: {list(df.columns)}")
 
-    work = _period_year_month(df, year_col, month_col if not date_col else None, time_col if date_col else None)
+    work = _period_year_month(df, year_col, month_col if not date_col else None, time_col if date_col else None, require_day=True)
     work['_channel'] = work[channel_col].map(_normalize_channel)
     work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知')
