@@ -219,10 +219,12 @@ def init_db():
             password_hash TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'normal',
             is_active INTEGER NOT NULL DEFAULT 1,
+            activation_pending INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_login_at TIMESTAMP
         )''')
+        _migrate(c, "ALTER TABLE users ADD COLUMN activation_pending INTEGER NOT NULL DEFAULT 0")
 
         c.execute('''CREATE TABLE IF NOT EXISTS user_sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -263,6 +265,10 @@ def init_db():
             requires_aggregate_rebuild INTEGER NOT NULL DEFAULT 0,
             note TEXT DEFAULT ''
         )''')
+        c.execute('''
+            INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
+            VALUES ('20260923_account_activation', 0, 'Self-registered accounts require administrator activation')
+        ''')
         c.execute('''
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
             VALUES ('20260524_aggregate_rebuild_from_raw', 1, 'Adds raw SQLite aggregate rebuild path')

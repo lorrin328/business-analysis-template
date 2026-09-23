@@ -117,10 +117,10 @@
     const registerBtn = document.getElementById('authRegisterBtn');
     if (subtitle) {
       if (authMode === 'register') {
-        subtitle.textContent = '填写用户名和密码完成注册。新注册账号默认为普通用户。';
+        subtitle.textContent = '注册后需等待管理员激活，激活后才能登录。';
       } else {
         subtitle.textContent = authConfig.allowPublicRegistration
-          ? '请登录或注册后进入系统。新注册账号默认为普通用户。'
+          ? '请登录或注册。新注册账号需由管理员激活。'
           : '请登录后进入系统。账号由管理员开通。';
       }
     }
@@ -178,6 +178,13 @@
       const payload = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(payload.detail || payload.message || '认证失败');
       const data = window.unwrapApiResponse(payload);
+      if (mode === 'register') {
+        document.getElementById('authPassword').value = '';
+        document.getElementById('authConfirmPassword').value = '';
+        switchAuthMode('login');
+        setAuthMessage('注册成功，请等待管理员激活后登录');
+        return;
+      }
       window.setAuthSession(data.token, data.user);
       window.currentUser = data.user;
       hideAuthGate();
@@ -380,14 +387,19 @@
 
   function renderPermissionAdmin(container) {
     const currentUser = getUser();
-    const rows = adminUsersCache.map(user => {
+    const pendingCount = adminUsersCache.filter(user => user.accountStatus === 'pending').length;
+    const rows = [...adminUsersCache].sort((a, b) => (b.accountStatus === 'pending') - (a.accountStatus === 'pending')).map(user => {
       const isCurrentUser = currentUser?.id === user.id;
+      const statusLabel = { pending: '待激活', active: '已启用', disabled: '已停用' }[user.accountStatus] || '未知';
+      const statusAction = user.accountStatus === 'active' ? '停用' : (user.accountStatus === 'pending' ? '激活' : '重新启用');
       const roleOptions = ROLE_OPTIONS.map(role => (
         `<option value="${role}" ${user.role === role ? 'selected' : ''}>${ROLE_LABELS[role]}</option>`
       )).join('');
       return `
       <tr data-user-id="${user.id}">
         <td><input class="permission-input" data-field="username" value="${escapeHtml(user.username)}" ${isCurrentUser ? 'disabled' : ''}></td>
+        <td>${statusLabel}</td>
+        <td>${escapeHtml(user.createdAt || '-')}</td>
         <td>
           <select class="permission-input" data-field="role" ${isCurrentUser ? 'disabled' : ''}>
             ${roleOptions}
@@ -400,12 +412,13 @@
             return `<label><input type="checkbox" data-module="${key}" ${user.permissions?.[key] ? 'checked' : ''} ${locked ? 'disabled' : ''}>${MODULE_LABELS[key]}</label>`;
           }).join('')}
         </td>
-        <td class="permission-action-cell"><button class="chart-btn permission-delete-btn" data-action="delete-user" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}" ${isCurrentUser ? 'disabled' : ''}>删除</button></td>
+        <td class="permission-action-cell"><button class="chart-btn" data-action="toggle-user" data-user-id="${user.id}" data-active="${user.accountStatus !== 'active'}" ${isCurrentUser ? 'disabled' : ''}>${statusAction}</button> <button class="chart-btn permission-delete-btn" data-action="delete-user" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}" ${isCurrentUser ? 'disabled' : ''}>删除</button></td>
       </tr>
     `;
     }).join('');
     container.innerHTML = `
       <div class="permission-toolbar">
+        <span>待激活 ${pendingCount} 人</span>
         <input class="permission-input" id="newUserName" placeholder="新用户名">
         <input class="permission-input" id="newUserPassword" type="password" placeholder="初始密码">
         <select class="permission-input" id="newUserRole">
@@ -415,12 +428,12 @@
       </div>
       <div class="structure-table-wrapper">
         <table class="structure-table permission-table">
-          <thead><tr><th>用户名</th><th>用户组</th><th>重置密码</th><th>模块权限</th><th>操作</th></tr></thead>
+          <thead><tr><th>用户名</th><th>状态</th><th>注册时间</th><th>用户组</th><th>重置密码</th><th>模块权限</th><th>操作</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
       <div class="permission-footer">
-        <div class="chart-note" style="color:#93a4bd;font-size:12px;">管理员账号拥有全部权限；密码只支持重置，不展示原密码。修改多个用户后，点击右侧按钮统一保存。</div>
+        <div class="chart-note" style="color:#93a4bd;font-size:12px;">管理员账号拥有全部权限；密码只支持重置，不展示原密码。修改用户组或权限后请先统一保存，再激活账户。</div>
         <button class="chart-btn auth-primary permission-save-all-btn" data-action="save-all-users">统一保存</button>
       </div>
     `;
@@ -430,11 +443,28 @@
   function bindPermissionAdminActions(container) {
     container.querySelector('[data-action="create-user"]')?.addEventListener('click', createPermissionUser);
     container.querySelector('[data-action="save-all-users"]')?.addEventListener('click', saveAllUserPermissions);
+    container.querySelectorAll('[data-action="toggle-user"]').forEach(button => {
+      button.addEventListener('click', () => setUserActive(button.dataset.userId, button.dataset.active === 'true'));
+    });
     container.querySelectorAll('[data-action="delete-user"]').forEach(button => {
       button.addEventListener('click', () => {
         deletePermissionUser(button.dataset.userId, button.dataset.username || '');
       });
     });
+  }
+
+  async function setUserActive(userId, isActive) {
+    const resp = await window.authFetch(window.apiUrl(`/api/admin/users/${userId}`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive })
+    });
+    if (!resp.ok) {
+      const payload = await resp.json().catch(() => ({}));
+      alert(payload.detail || '账户状态修改失败');
+      return;
+    }
+    await openPermissionAdmin();
   }
 
   async function createPermissionUser() {

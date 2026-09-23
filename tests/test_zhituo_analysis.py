@@ -124,19 +124,15 @@ def test_zhituo_api_wraps_repository_result(monkeypatch):
     assert response["meta"]["metric"] == "zhituo-analysis"
 
 
-def test_zhituo_api_requires_team_enhanced_permission(auth_db):
+def test_zhituo_api_requires_team_enhanced_permission(auth_db, approved_user):
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
     from main import app
 
     client = TestClient(app)
-    registered = client.post(
-        "/api/auth/register",
-        json={"username": "kpi_only", "password": "normal-pass-123"},
-    )
-    assert registered.status_code == 200
-    user_id = registered.json()["data"]["user"]["id"]
-    user_token = registered.json()["data"]["token"]
+    user = approved_user(client, "kpi_only", "normal-pass-123")
+    user_id = user["user"]["id"]
+    user_token = user["token"]
 
     admin_login = client.post(
         "/api/auth/login",

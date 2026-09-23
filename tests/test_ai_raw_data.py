@@ -132,14 +132,13 @@ def test_import_change_invalidates_expected_id(raw_db, status):
     assert response.status_code == 409
 
 
-def test_raw_permission_is_explicit_and_audited(raw_db, monkeypatch):
+def test_raw_permission_is_explicit_and_audited(raw_db, monkeypatch, approved_user):
     monkeypatch.setenv("AI_READONLY_TOKEN", "aggregate-test-token")
     client = TestClient(app)
     for path in ("/api/ai/raw-datasets", "/api/ai/raw-data/performance"):
         assert client.get(path).status_code == 401
         assert client.get(path, headers={"Authorization": "Bearer aggregate-test-token"}).status_code == 403
-    registered = client.post("/api/auth/register", json={"username": "rawreader", "password": "test-pass-123"})
-    user_id = registered.json()["data"]["user"]["id"]
+    user_id = approved_user(client, "rawreader", "test-pass-123")["user"]["id"]
     headers = _headers("rawreader", "test-pass-123")
     assert client.get("/api/ai/raw-data/performance", headers=headers).status_code == 403
     with get_db() as conn:

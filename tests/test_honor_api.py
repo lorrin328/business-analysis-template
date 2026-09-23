@@ -24,10 +24,9 @@ def test_honor_api_requires_login(auth_db):
     assert client.get("/api/honor/summary?year=2026").status_code == 401
 
 
-def test_normal_user_can_view_but_not_recalculate(auth_db):
+def test_normal_user_can_view_but_not_recalculate(auth_db, approved_user):
     client = TestClient(app)
-    registered = client.post("/api/auth/register", json={"username": "honor_normal", "password": "normal-pass-123"})
-    token = registered.json()["data"]["token"]
+    token = approved_user(client, "honor_normal", "normal-pass-123")["token"]
     assert client.get("/api/honor/summary?year=2026", headers=_headers(token)).status_code in {200, 404}
     assert client.post("/api/honor/recalculate", json={"year": 2026, "month": 5}, headers=_headers(token)).status_code == 403
     assert client.get("/api/honor/field-audit", headers=_headers(token)).status_code == 403

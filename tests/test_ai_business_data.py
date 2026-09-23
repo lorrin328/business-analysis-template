@@ -59,15 +59,14 @@ def test_business_page_and_analysis_match_sqlite(auth_db):
     assert "metrics" in context.json()["data"]
 
 
-def test_business_access_needs_detail_and_module_permission(auth_db, monkeypatch):
+def test_business_access_needs_detail_and_module_permission(auth_db, monkeypatch, approved_user):
     monkeypatch.setenv("AI_READONLY_TOKEN", "aggregate-only-test-token")
     client = TestClient(app)
     service = {"Authorization": "Bearer aggregate-only-test-token"}
     assert client.get("/api/ai/business-datasets", headers=service).status_code == 403
     assert client.get("/api/ai/analyze/target_values", headers=service).status_code == 403
     assert client.get("/api/ai/market-reports", headers=service).status_code == 403
-    registered = client.post("/api/auth/register", json={"username": "analyst", "password": "test-pass-123"})
-    user_id = registered.json()["data"]["user"]["id"]
+    user_id = approved_user(client, "analyst", "test-pass-123")["user"]["id"]
     headers = _headers("analyst", "test-pass-123")
     assert client.get("/api/ai/business-data/target_values", headers=headers).status_code == 403
     with get_db() as conn:

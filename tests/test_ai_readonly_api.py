@@ -75,16 +75,12 @@ def test_ai_api_accepts_existing_account_session(auth_db, monkeypatch):
     assert resp.status_code == 200
 
 
-def test_ai_api_enforces_account_module_permission(auth_db, monkeypatch):
+def test_ai_api_enforces_account_module_permission(auth_db, monkeypatch, approved_user):
     from db import get_db
 
     monkeypatch.delenv("AI_READONLY_TOKEN", raising=False)
     client = TestClient(app)
-    registered = client.post(
-        "/api/auth/register",
-        json={"username": "ai_limited", "password": "normal-pass-123"},
-    )
-    user_id = registered.json()["data"]["user"]["id"]
+    user_id = approved_user(client, "ai_limited", "normal-pass-123")["user"]["id"]
     with get_db() as conn:
         conn.execute(
             "UPDATE user_module_permissions SET allowed = 0 WHERE user_id = ? AND module_key = 'org'",

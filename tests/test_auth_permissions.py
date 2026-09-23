@@ -54,8 +54,10 @@ def test_register_creates_normal_user_with_restricted_permissions(auth_db):
     resp = client.post("/api/auth/register", json={"username": "normal_user", "password": "normal-pass-123"})
     assert resp.status_code == 200
     data = resp.json()["data"]
-    token = data["token"]
+    assert "token" not in data
     user = data["user"]
+    assert user["accountStatus"] == "pending"
+    assert client.post("/api/auth/login", json={"username": "normal_user", "password": "normal-pass-123"}).status_code == 403
     assert user["role"] == "normal"
     assert user["permissions"]["kpi"] is True
     assert user["permissions"]["team_enhanced"] is True
@@ -67,6 +69,10 @@ def test_register_creates_normal_user_with_restricted_permissions(auth_db):
     assert user["permissions"]["personnel_management"] is False
     assert user["permissions"]["recalculate"] is True
 
+    admin = _login(client)
+    activated = client.patch(f"/api/admin/users/{user['id']}", headers=_auth_headers(admin["token"]), json={"isActive": True})
+    assert activated.status_code == 200
+    token = _login(client, "normal_user", "normal-pass-123")["token"]
     headers = _auth_headers(token)
     assert client.post("/api/upload", headers=headers).status_code == 403
     assert client.get("/api/product-config", headers=headers).status_code == 403
@@ -101,6 +107,8 @@ def test_public_registration_can_be_explicitly_enabled_in_production(auth_db, mo
     assert resp.status_code == 200
     user = resp.json()["data"]["user"]
     assert user["role"] == "normal"
+    assert user["accountStatus"] == "pending"
+    assert "token" not in resp.json()["data"]
     assert user["permissions"]["permission_admin"] is False
     assert user["permissions"]["upload"] is False
 
@@ -146,17 +154,15 @@ def test_admin_operation_logs_capture_login_register_and_permission_changes(auth
     assert "permission_admin" in actions
     assert all("created_at_utc" in row for row in log_rows)
 
-    normal_token = registered.json()["data"]["token"]
-    assert client.get("/api/auth/me", headers=_auth_headers(normal_token)).status_code == 401
-    assert client.get("/api/admin/operation-logs", headers=_auth_headers(normal_token)).status_code == 401
+    assert "token" not in registered.json()["data"]
+    assert client.post("/api/auth/login", json={"username": "log_user", "password": "normal-pass-456"}).status_code == 403
 
 
-def test_password_reset_revokes_existing_sessions(auth_db):
+def test_password_reset_revokes_existing_sessions(auth_db, approved_user):
     client = TestClient(app)
     admin = _login(client)
     admin_headers = _auth_headers(admin["token"])
-    registered = client.post("/api/auth/register", json={"username": "reset_user", "password": "normal-pass-123"})
-    user = registered.json()["data"]
+    user = approved_user(client, "reset_user", "normal-pass-123")
 
     reset = client.patch(
         f"/api/admin/users/{user['user']['id']}",
@@ -192,12 +198,11 @@ def test_login_rate_limit_blocks_repeated_failures(auth_db, monkeypatch):
         auth_routes._login_locks.clear()
 
 
-def test_legacy_read_routes_enforce_module_permissions(auth_db):
+def test_legacy_read_routes_enforce_module_permissions(auth_db, approved_user):
     from db import get_db
 
     client = TestClient(app)
-    registered = client.post("/api/auth/register", json={"username": "legacy_user", "password": "normal-pass-123"})
-    user = registered.json()["data"]
+    user = approved_user(client, "legacy_user", "normal-pass-123")
     with get_db() as conn:
         conn.execute(
             """

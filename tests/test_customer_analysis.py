@@ -107,7 +107,7 @@ def test_customer_analysis_business_metrics_and_status_boundary(auth_db):
     assert sum(item["customers"] for item in holdings["activePolicyCountBands"]) == 3
 
 
-def test_customer_analysis_month_segment_and_permission(auth_db):
+def test_customer_analysis_month_segment_and_permission(auth_db, approved_user):
     _seed_customer_analysis()
     client = TestClient(app)
     admin = _login(client)
@@ -122,9 +122,7 @@ def test_customer_analysis_month_segment_and_permission(auth_db):
     assert data["summary"]["newQjPremiumWan"] == 3
     assert data["summary"]["existingQjPremiumWan"] == 5
 
-    registered = client.post("/api/auth/register", json={"username": "customer_normal", "password": "normal-pass-123"})
-    assert registered.status_code == 200
-    normal = registered.json()["data"]
+    normal = approved_user(client, "customer_normal", "normal-pass-123")
     assert normal["user"]["permissions"]["customer_analysis"] is False
     assert client.get("/api/customer-analysis/overview", headers=_headers(normal["token"])).status_code == 403
     assert client.get("/api/customer-analysis/new-customer-cohort", headers=_headers(normal["token"])).status_code == 403
@@ -582,11 +580,11 @@ def test_customer_xlsx_is_streamed_and_prepared_in_background(auth_db):
     assert preview["sourceRows"] == 1
 
 
-def test_customer_import_requires_upload_permission(auth_db):
+def test_customer_import_requires_upload_permission(auth_db, approved_user):
     client = TestClient(app)
     admin = _login(client)
-    registered = client.post("/api/auth/register", json={"username": "customer_reader", "password": "normal-pass-123"})
-    user_id = registered.json()["data"]["user"]["id"]
+    user = approved_user(client, "customer_reader", "normal-pass-123")
+    user_id = user["user"]["id"]
     update = client.patch(
         f"/api/admin/users/{user_id}", headers=_headers(admin["token"]),
         json={"username": "customer_reader", "role": "normal", "permissions": {"customer_analysis": True}},

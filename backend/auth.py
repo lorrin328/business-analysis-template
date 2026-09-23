@@ -204,6 +204,7 @@ def serialize_user(conn, row) -> dict:
         "role": role,
         "roleLabel": {"admin": "管理员组", "senior": "高级用户组", "normal": "普通用户组"}.get(role, role),
         "isActive": bool(row["is_active"]),
+        "accountStatus": "pending" if row["activation_pending"] else ("active" if row["is_active"] else "disabled"),
         "permissions": permissions,
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
@@ -253,6 +254,16 @@ def authenticate_user(username: str, password: str) -> dict | None:
     return user
 
 
+def has_pending_credentials(username: str, password: str) -> bool:
+    """Identify a pending account only after its password has been verified."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT password_salt, password_hash FROM users WHERE username = ? AND activation_pending = 1 AND is_active = 0",
+            ((username or "").strip(),),
+        ).fetchone()
+        return bool(row and _verify_password(password or "", row["password_salt"], row["password_hash"]))
+
+
 def register_user(username: str, password: str) -> dict:
     if not public_registration_enabled():
         raise HTTPException(status_code=403, detail="当前环境已关闭自助注册，请联系管理员开通账号")
@@ -264,8 +275,8 @@ def register_user(username: str, password: str) -> dict:
         try:
             cur = conn.execute(
                 """
-                INSERT INTO users (username, password_salt, password_hash, role, is_active)
-                VALUES (?, ?, ?, ?, 1)
+                INSERT INTO users (username, password_salt, password_hash, role, is_active, activation_pending)
+                VALUES (?, ?, ?, ?, 0, 1)
                 """,
                 (username, salt, password_hash, ROLE_NORMAL),
             )
@@ -275,12 +286,9 @@ def register_user(username: str, password: str) -> dict:
             raise
         user_id = cur.lastrowid
         set_user_permissions(conn, user_id, default_permissions_for_role(ROLE_NORMAL))
-        token, expires_at = create_session(conn, user_id)
         conn.commit()
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         user = serialize_user(conn, row)
-        user["token"] = token
-        user["expiresAt"] = expires_at
     from services.audit_log import log_operation
 
     log_operation("register", user=user, target_user_id=user["id"], target_username=user["username"])

@@ -434,7 +434,8 @@ def test_account_auth_replaces_admin_token_prompt():
     assert "switchAuthMode('register')" in auth_ui
     assert "authConfirmPassword" in auth_ui
     assert "authSubmitRegisterBtn" in auth_ui
-    assert "新注册账号默认为普通用户" in auth_ui
+    assert "注册后需等待管理员激活" in auth_ui
+    assert "注册成功，请等待管理员激活后登录" in auth_ui
     assert "honor_view: '星钻联盟查看'" in auth_ui
     assert "honor_recalculate: '星钻重算'" in auth_ui
     assert "/api/admin/users" in auth_ui

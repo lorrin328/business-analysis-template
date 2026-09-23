@@ -11,6 +11,7 @@ from auth import (
     default_permissions_for_role,
     authenticate_user,
     get_current_user,
+    has_pending_credentials,
     get_user_permissions,
     normalize_role,
     public_registration_enabled,
@@ -93,13 +94,16 @@ def login(request: Request, payload: dict = Body(...)):
         )
     user = authenticate_user(username, payload.get("password", ""))
     if not user:
-        retry_after = _record_login_failure(attempt_key)
+        pending = has_pending_credentials(username, payload.get("password", ""))
         log_operation(
             "login",
             status="failed",
             target_username=str(username or "")[:64],
-            detail={"reason": "invalid_credentials"},
+            detail={"reason": "pending_activation" if pending else "invalid_credentials"},
         )
+        if pending:
+            raise HTTPException(status_code=403, detail="账户尚未激活，请联系管理员")
+        retry_after = _record_login_failure(attempt_key)
         if retry_after:
             raise HTTPException(
                 status_code=429,
@@ -116,9 +120,7 @@ def login(request: Request, payload: dict = Body(...)):
 @router.post("/register")
 def register(payload: dict = Body(...)):
     user = register_user(payload.get("username", ""), payload.get("password", ""))
-    token = user.pop("token")
-    expires_at = user.pop("expiresAt")
-    return success_response({"token": token, "expiresAt": expires_at, "user": user})
+    return success_response({"user": user, "activationRequired": True})
 
 
 @router.get("/config")
@@ -168,6 +170,8 @@ def operation_logs(
             "logs": list_operation_logs(limit=limit, action=action, username=username),
             "actions": [
                 "register",
+                "account_activate",
+                "account_disable",
                 "login",
                 "password_reset",
                 "import_report",
@@ -242,6 +246,8 @@ def update_user(user_id: int, payload: dict = Body(...), admin=Depends(require_a
         username = payload.get("username")
         role = normalize_role(payload.get("role") or row["role"])
         is_active = payload.get("isActive")
+        if is_active is not None and not isinstance(is_active, bool):
+            raise HTTPException(status_code=400, detail="账户启用状态必须为布尔值")
         projected_active = bool(row["is_active"]) if is_active is None else bool(is_active)
         removing_active_admin = row["role"] == ROLE_ADMIN and bool(row["is_active"]) and (
             role != ROLE_ADMIN or not projected_active
@@ -265,7 +271,15 @@ def update_user(user_id: int, payload: dict = Body(...), admin=Depends(require_a
         if is_active is not None:
             if row["role"] == ROLE_ADMIN and row["id"] == admin["id"] and not bool(is_active):
                 raise HTTPException(status_code=400, detail="不能停用当前管理员账号")
-            conn.execute("UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (1 if is_active else 0, user_id))
+            conn.execute(
+                "UPDATE users SET is_active = ?, activation_pending = CASE WHEN ? THEN 0 ELSE activation_pending END, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (1 if is_active else 0, 1 if is_active else 0, user_id),
+            )
+            if not is_active:
+                conn.execute(
+                    "UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL",
+                    (user_id,),
+                )
 
         new_password = payload.get("password")
         if new_password:
@@ -302,6 +316,12 @@ def update_user(user_id: int, payload: dict = Body(...), admin=Depends(require_a
         target_username=data["username"],
         detail={"operation": "update_user", "role": data["role"], "isActive": data["isActive"]},
     )
+    if is_active is True and not bool(row["is_active"]):
+        log_operation("account_activate", user=admin, target_user_id=user_id,
+                      target_username=data["username"], detail={"previousStatus": "pending" if row["activation_pending"] else "disabled"})
+    elif is_active is False and bool(row["is_active"]):
+        log_operation("account_disable", user=admin, target_user_id=user_id,
+                      target_username=data["username"])
     return success_response(data)
 
 

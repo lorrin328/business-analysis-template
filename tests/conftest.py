@@ -24,3 +24,27 @@ def auth_db(tmp_path, monkeypatch):
     init_db()
     yield
     monkeypatch.setenv("AUTH_TEST_BYPASS", "1")
+
+
+@pytest.fixture()
+def approved_user():
+    """Exercise the real registration, administrator approval, and login path."""
+    def create(client, username, password):
+        registered = client.post("/api/auth/register", json={"username": username, "password": password})
+        assert registered.status_code == 200
+        user_id = registered.json()["data"]["user"]["id"]
+        admin = client.post("/api/auth/login", json={
+            "username": "admin", "password": "Test-only-admin-2026!",
+        })
+        assert admin.status_code == 200
+        activated = client.patch(
+            f"/api/admin/users/{user_id}",
+            headers={"Authorization": "Bearer " + admin.json()["data"]["token"]},
+            json={"isActive": True},
+        )
+        assert activated.status_code == 200
+        login = client.post("/api/auth/login", json={"username": username, "password": password})
+        assert login.status_code == 200
+        return login.json()["data"]
+
+    return create

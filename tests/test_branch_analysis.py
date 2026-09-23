@@ -285,7 +285,7 @@ def test_reference_import_is_transactional_and_count_guarded(auth_db, tmp_path: 
         import_reference_csv(source)
 
 
-def test_branch_page_permission_and_static_runtime(auth_db):
+def test_branch_page_permission_and_static_runtime(auth_db, approved_user):
     client = TestClient(app)
     page = client.get("/branch-analysis")
     assert page.status_code == 200
@@ -310,9 +310,7 @@ def test_branch_page_permission_and_static_runtime(auth_db):
     assert ROLE_DEFAULT_PERMISSIONS["senior"]["branch_analysis"] is True
     assert ROLE_DEFAULT_PERMISSIONS["normal"]["branch_analysis"] is False
 
-    registered = client.post("/api/auth/register", json={"username": "branch_normal", "password": "normal-pass-123"})
-    assert registered.status_code == 200
-    user = registered.json()["data"]
+    user = approved_user(client, "branch_normal", "normal-pass-123")
     assert user["user"]["permissions"]["branch_analysis"] is False
     assert client.get(
         "/api/branch-analysis/overview",
