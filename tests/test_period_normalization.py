@@ -2,7 +2,7 @@
 import sqlite3
 import pandas as pd
 import pytest
-from etl.normalize import NumericSourceError, _period_year_month, _to_number
+from etl.normalize import NumericSourceError, _period_year_month, _to_number, validate_source_numbers
 from etl.aggregates.performance import aggregate_daily_performance, aggregate_performance
 from services.excel_pipeline import _refresh_hr_from_current_sources
 
@@ -42,6 +42,12 @@ def test_amount_parser_distinguishes_valid_zero_thousands_and_invalid_text():
         _to_number(pd.Series(['1,00'], name='期交保费'))
     with pytest.raises(NumericSourceError, match='1个必填缺失'):
         _to_number(pd.Series([None], name='期交保费'), required=True)
+
+
+def test_performance_blank_qj_is_valid_but_nonempty_malformed_amount_is_not():
+    validate_source_numbers('performance', pd.DataFrame({'期交保费': [None, '0', '1,000']}))
+    with pytest.raises(NumericSourceError, match='1个非法数值'):
+        validate_source_numbers('performance', pd.DataFrame({'期交保费': [None, '1,00']}))
 
 @pytest.mark.parametrize('numeric', [False, True])
 def test_refresh_activity_with_historical_sqlite_formats(numeric):

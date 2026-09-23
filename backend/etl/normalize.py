@@ -27,7 +27,8 @@ def _to_number(series: pd.Series, *, required: bool = False) -> pd.Series:
 def validate_source_numbers(kind: str, frame: pd.DataFrame) -> None:
     """Use the same numeric parser in read-only preview and committed ETL."""
     fields = {
-        "performance": [(('期交保费',), True), (('年化规保', '规模保费', '规保'), False),
+        # 单趸交保单可合法缺少期交保费；只拒绝非空非法数值。
+        "performance": [(('期交保费',), False), (('年化规保', '规模保费', '规保'), False),
                         (('折算保费',), False), (('承保件数',), False)],
         "jingdai": [(('期交保费',), True), (('承保年化规保', '年化规保', '规模保费'), True)],
         "hr": [(('月初在职人力',), True), (('月末在职人力',), True)],

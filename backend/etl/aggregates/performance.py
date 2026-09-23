@@ -25,7 +25,7 @@ def aggregate_performance(df: pd.DataFrame) -> List[Dict]:
     work = _period_year_month(df, year_col, month_col)
     work['_channel'] = work[channel_col].map(_normalize_channel)
     work = work[work['_channel'].isin(TRANSFORM_CHANNELS)]
-    work['_qj'] = _to_number(work[qj_col], required=True)
+    work['_qj'] = _to_number(work[qj_col])
     work['_gm'] = _to_number(work[gm_col]) if gm_col else 0
     work['_zs'] = _to_number(work[zs_col]) if zs_col else 0
 
