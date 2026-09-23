@@ -2,7 +2,7 @@
 
 ## 一、定位
 
-本接口用于让 ChatGPT、自定义 GPT 或其他外部 AI 工具读取经营分析看板数据。除原有汇总接口外，新增四类日常导入原始明细的授权读取。接口只读，不允许导入 Excel、重新计算、设置目标、参数设置或权限管理。
+本接口用于让 ChatGPT、自定义 GPT 或其他外部 AI 工具读取经营分析看板数据。除原有汇总接口和四类日常导入原始明细外，现支持业务表目录、授权分页读取、受控分组统计、项目口径说明和已发布市场研判报告。接口只读，不允许导入 Excel、重新计算、设置目标、参数设置或权限管理。
 
 2026-09-12：原始明细能力已随v1.0.155部署并通过公网验收，下列新增地址已可使用。管理员可直接读取，其他账号需开通“AI原始明细读取”。
 
@@ -59,6 +59,11 @@ Authorization: Bearer <AI_READONLY_TOKEN>
 | `GET /api/ai/org-summary` | 返回机构摘要，可选机构明细 | 否 |
 | `GET /api/ai/team-summary` | 返回队伍结构与产能分析结果 | 否 |
 | `GET /api/ai/metric-definitions` | 返回指标定义和展示约束 | 否 |
+| `GET /api/ai/project-context` | 返回业务线、项目范围、指标口径与分析提示 | 否 |
+| `GET /api/ai/business-datasets` | 列出当前账号可读的全部已登记业务数据集和实时字段 | 否 |
+| `GET /api/ai/business-data/{dataset}` | 按游标分页读取已登记业务表，可选列与范围/集合筛选 | 否 |
+| `GET /api/ai/analyze/{dataset}` | 按最多三个字段分组，做计数、合计、均值、最小/最大值统计 | 否 |
+| `GET /api/ai/market-reports`、`/market-reports/{report_id}` | 列出和读取已发布市场研判报告 | 否 |
 | `GET /api/ai/raw-datasets` | 列出四类日常导入表是否可用、全部字段名称和数据库类型 | 否 |
 | `GET /api/ai/raw-data/{dataset}` | 分页读取全部原始字段，可选列及精确筛选 | 否 |
 | `GET /api/ai/openapi.json` | 返回 AI 只读 OpenAPI 描述 | 否 |
@@ -66,7 +71,7 @@ Authorization: Bearer <AI_READONLY_TOKEN>
 ## 五、安全边界
 
 1. 账号认证只复用身份和读取权限，不向AI开放任何写接口。
-2. 普通账号只能读取其已有模块权限允许的数据；管理员账号可读取全部AI只读接口。新增明细接口需要独立的 `ai_raw_data`（AI原始明细读取）权限，高级和普通账号默认关闭，管理员可在权限管理中勾选授权。原有 `AI_READONLY_TOKEN` 只保留汇总能力，不能读取明细；已授权账号的 Basic 或登录会话可读取明细。
+2. 普通账号只能读取其已有模块权限允许的数据；管理员账号可读取全部AI只读接口。业务表目录、分页和分组统计都需要独立的 `ai_raw_data`（AI原始明细读取）权限，同时需要对应模块的读取权限；已发布市场报告还需 `market_analysis` 权限。高级和普通账号的 `ai_raw_data` 默认关闭，管理员可在权限管理中勾选授权。原有 `AI_READONLY_TOKEN` 只保留汇总和口径能力，不能读取明细、市场报告或使用分组统计；已授权账号的 Basic 或登录会话可读取。
 3. 不开放任何 `POST`、`PUT`、`DELETE` 业务写接口。
 4. 不开放 SQLite 直连和任意 SQL 查询。
 5. 不返回用户密码、会话、权限配置等账号管理数据。
@@ -125,7 +130,7 @@ GET /api/ai/dashboard-snapshot?year=2026
 
 默认导入按上传数据覆盖的完整月份替换旧明细，保留其他月份，并非保存历次上传的每个版本。原始API返回当前SQLite值，不再额外修改字段名、换算万元或将null补成零。不得把原始金额与看板万元直接混用。
 
-本次只开放上述四张表，不包含客户清单、独立历史业绩表、目标、账号、权限、会话或其他数据库表。四张表自身含有的历史月份会全部可读，不自动限定当前年。
+原 `/raw-data` 接口仍只开放上述四张表；新的 `/business-data` 接口还覆盖当前 SQLite 中明确登记的 KPI/机构/产品/交期/队伍/职拓聚合、目标、产品配置、荣誉、网点、历史对账与客户业务表。`/business-datasets` 以实时 schema 返回实际可用性和列名。账号、会话、权限、操作日志、数据库迁移、导入文件路径及临时分期库不属于业务数据开放范围；未入库的 Excel 内容也无法通过接口读取。市场研判报告存于独立受管文件目录，通过 `/market-reports` 读取。
 
 ### 调用步骤
 
@@ -141,3 +146,13 @@ GET /api/ai/dashboard-snapshot?year=2026
 分页读取的是每次请求的数据库视图，不是跨请求冻结快照。`expectedImportId` 可以检测新增已落库日常导入（success/partial），变化返回409并要求从首页重读；它不能检测所有离线重建、手工修改或数据库切换。完整批量读取期间应避免这些变更。`latestImportId` 是导入记录ID，`meta.updatedAt` 是响应时间，均不能作为业务截止日。业务期间以原始日期字段为准。
 
 访问审计记录账号、数据集、返回行数及是否筛选，不写入原始行、筛选值或凭据。
+
+## 九、完整业务数据与分析调用
+
+1. 先调用 `/api/ai/project-context` 和 `/api/ai/business-datasets`，确认项目口径、可用表、实际字段和所需模块权限。目录仅显示当前账号有权限读取的已登记业务表。
+2. 用 `/api/ai/business-data/target_values?limit=200` 等地址分页读取。返回 `hasMore`、`nextAfterRowId` 和 `latestImportId`；分页规则与四类原始表一致。`expectedImportId` 只能发现日常导入变化，其他模块写入或离线重建期间应重新开始读取。
+3. 用 `/api/ai/analyze/target_values?groupBy=business_line&measure=target_value&aggregation=sum` 做受控统计。`groupBy` 可重复传入，最多三个；`aggregation` 支持 `count/sum/avg/min/max`；`limit` 最多500，`truncated=true` 时结果不完整，须缩小筛选范围。`sum/avg` 仅接受 SQLite 数值列。单次业务表查询超过15秒会被中断并返回503，可增加期间等筛选后重试。
+4. `X-AI-Filters` 为 ASCII JSON 对象。字段值可直接表示精确匹配，或使用单一操作符：`{"year":{"gte":2025}}`、`{"year":{"lte":2026}}`、`{"business_line":{"in":["OTO","证保"]}}`、`{"org":{"isNull":false}}`。多个字段按 AND 组合；`in` 最多50项。使用 JSON Unicode 转义编码中文头值，不把筛选值放 URL 或审计日志。
+5. 通用分组统计保持原表数值和单位，仅用于探索。正式达成率、同比、活动率、人均等经营结论应优先调用既有看板接口，并结合 `/metric-definitions`、`/project-context` 核对期间、截止日、分母、目标版本和精度。空值不按零处理，也不把原始表与聚合表直接相加。
+
+上述功能已完成本地代码和自动化验证；生产可用状态以本次 GitHub 发布和 Ubuntu 公网验收记录为准。
