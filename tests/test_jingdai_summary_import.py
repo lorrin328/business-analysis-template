@@ -50,3 +50,31 @@ def test_total_inside_detail_is_not_automatically_removed():
     data = source([{'时间': '合计', '期交保费': 100}, DETAIL])
     with sqlite3.connect(':memory:') as conn:
         assert not build_import_preview(conn, [data])['canImport']
+
+
+@pytest.mark.parametrize('column', ['当前缴别大类', '当前缴别小类', '缴费年限范围',
+                                   '保障期限', '业务类型', '产品大类', '经代机构', '中介公司'])
+def test_month_replacement_cannot_erase_existing_jingdai_dimensions(column):
+    from services.import_safety import append_raw_frame, validate_replacement_fields, RawIncrementalWriteError
+    with sqlite3.connect(':memory:') as conn:
+        append_raw_frame(conn, 'jingdai', pd.DataFrame([dict(DETAIL, **{column: '已知维度'})]))
+        replacement = pd.DataFrame([DETAIL]).drop(columns=[column], errors='ignore')
+        with pytest.raises(RawIncrementalWriteError, match=column):
+            validate_replacement_fields(conn, 'jingdai', replacement)
+        # A missing field in an unrelated month does not block import.
+        replacement['时间'] = '2026-08-01'
+        validate_replacement_fields(conn, 'jingdai', replacement)
+
+
+def test_expanded_jingdai_columns_survive_raw_storage_without_changing_totals(auth_db):
+    from services.import_safety import append_raw_frame
+    new_columns = {'当前缴别小类': '年交', '保障期限': 99, '业务类型': '线上', '产品大类': '普通寿险'}
+    data = source([dict(DETAIL, **new_columns), {'时间': '合计', '期交保费': 100, '承保年化规保': 100}])
+    result = build_excel_pipeline_result([data])
+    with sqlite3.connect(':memory:') as conn:
+        append_raw_frame(conn, 'jingdai', pd.DataFrame([DETAIL]))
+        conn.execute('DELETE FROM jingdai')
+        append_raw_frame(conn, 'jingdai', result.raw_tables['jingdai'])
+        row = conn.execute('SELECT "当前缴别小类", "保障期限", "业务类型", "产品大类" FROM jingdai').fetchone()
+        assert row == ('年交', '99.0', '线上', '普通寿险')
+    assert sum(row['qj_premium'] for row in result.rows_by_table['agg_jingdai']) == .01

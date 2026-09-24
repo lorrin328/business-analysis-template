@@ -93,7 +93,8 @@ def _skip_duplicate_upload(file_name: str, file_hash: str, label: str, results: 
     return True
 
 
-MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
+# Match the existing Compose limit; expanded historical workbooks exceed 20 MiB.
+MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "100"))
 
 
 def _set_import_status(results: dict, *, has_written_rows: bool):

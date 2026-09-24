@@ -68,3 +68,25 @@ def test_missing_health_database_is_not_created(tmp_path, monkeypatch):
     monkeypatch.setattr(health_check, "DB_PATH", str(path))
     assert health_check.run_health_check()["status"] == "error"
     assert not path.exists()
+
+
+def test_expanded_jingdai_upload_passes_default_size_gate():
+    from main import _read_upload_sources
+    from starlette.datastructures import UploadFile
+    # Expanded 2022-2026 extract is larger than the former 20 MiB default.
+    content = b'x' * 21_374_657
+    upload = UploadFile(io.BytesIO(content), filename='synthetic.xlsx', size=len(content))
+    assert _read_upload_sources(None, upload, None, None)[0].content == content
+
+
+@pytest.mark.parametrize('declared_size', [None, 1024 * 1024 + 1])
+def test_upload_size_override_still_rejects_oversize_stream(monkeypatch, declared_size):
+    import main
+    from fastapi import HTTPException
+    from starlette.datastructures import UploadFile
+    monkeypatch.setattr(main, 'MAX_UPLOAD_SIZE_MB', 1)
+    upload = UploadFile(io.BytesIO(b'x' * (1024 * 1024 + 1)),
+                        filename='synthetic.xlsx', size=declared_size)
+    with pytest.raises(HTTPException) as error:
+        main._read_upload_sources(None, upload, None, None)
+    assert error.value.status_code == 413
