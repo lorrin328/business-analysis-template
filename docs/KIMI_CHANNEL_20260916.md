@@ -1,5 +1,7 @@
 # Kimi Code主通道与DeepSeek备用（2026-09-16）
 
+> **已被取代（2026-09-27，v1.0.160）**：市场研判主通道改为阿里百炼 `qwen3.8-max`、思考深度 `high`，见 [BAILIAN_QWEN38_MAX_20260927.md](BAILIAN_QWEN38_MAX_20260927.md)。本文所述 Kimi 主通道与 DeepSeek 备用路由在代码中完整保留为向后兼容；生产尚未切换前仍是现行运行配置，本文的凭据隔离与「仅一次备用调用」原则同样适用于新通道。
+
 用户授权本项目使用Kimi Code k3-256k为主力，无法调用时路由至DeepSeek。官方说明：https://www.kimi.com/code/docs/en/third-party-tools/claude-code.html
 
 - Kimi：固定官方Anthropic兼容地址`https://api.kimi.com/coding/`，模型`k3-256k`，上下文/压缩窗口262144。

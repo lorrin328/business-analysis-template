@@ -1,4 +1,14 @@
 # 2026-09-07 v1.0.151 活动人数归零修复
+## 2026-09-27 市场研判切换百炼 qwen3.8-max，并治理工作区基线与同步冲突副本
+
+- 用户要求三项：以 GitHub 为准取消本地落后基线、删除全部 sync-conflict、把市场研判模型改为阿里百炼 qwen3.8-max 且思考深度 high。
+- 基线治理：`git fetch` 后确认 GitHub master 为 `8315ed0`（v1.0.159），本地 HEAD 为 `453889a`（v1.0.157）。重置前用 `git diff origin/master` 逐文件核对，确认 `backend/main.py`、`import_safety.py` 及两份测试与 GitHub 完全一致，三份 ai-context 文档与经代复核稿的本地版本是被最终版取代的早期草稿；两份独有的产品分析规划稿先另存到 `.tmp/preserve-planning-20260927`。清除 `.git/description` 只读属性后硬重置，VERSION 变为 v1.0.159，工作区仅剩两份未跟踪规划稿。
+- 冲突副本治理：143 个 `sync-conflict` 文件全部未被 Git 跟踪（`.gitignore` 第 38 行忽略 `_external_materials/`，`pyproject.toml` 也以 `--ignore-glob` 排除）。先确认其中 30 个孤本实为 2026-09-11 主动隔离到 `_external_materials/sync-conflict-isolated-20260911/` 的历史副本且该目录内无其他文件，再镜像到暂存区、压缩归档到仓库外并校验条目数 143、解压体积 92.9 MB 一致，随后逐个删除文件并移除空隔离目录，最终残留 0 个文件、0 个目录；`_external_materials` 下的人管模块与荣誉方案 PDF 保留。
+- 模型切换：新增百炼通道于 `backend/market_analysis/model_router.py`，`run_market_research.py` 的默认模型、模型计划策略、跨供应商判定与凭据存在性检查同步改造，部署模板、安装脚本、凭据配置脚本与市场研判页标签一并更新。核对官方文档确认端点形式、qwen3.8-max 在 Anthropic 兼容支持列表内、1M 上下文与思考模式下 983,616 输入上限，以及 effort 合法档位为 xhigh/medium/low 且 high 映射为 xhigh。
+- 回归：Python 950 项通过、3 项跳过（基线 938 项，净增 12 项），Node 57 项通过，路由测试由 10 项增至 25 项，`bash -n` 与 `node --check` 通过，`.sh` 保持纯 LF。本地版本置 v1.0.160，CHANGELOG、README、MARKET_ANALYSIS 与 KIMI 通道说明已同步，新增 `docs/BAILIAN_QWEN38_MAX_20260927.md`。
+- 边界：未用真实百炼 Key 联调，未推送 GitHub，未构建镜像，未部署 Ubuntu；生产仍为 v1.0.159 且仍走 Kimi 通道。顺手修正 `docs/MARKET_ANALYSIS.md` 中滞留的「3 个自然日」调度描述（代码、测试与 README 均为 5 个自然日），该文档此前仍写 `deepseek-v4-flash-vision-exp`，属既有文档漂移。
+- 本地测试环境曾损坏：根 `.venv` 的 uv 引导指向缺失解释器，`backend/.venv` 缺 `annotated_types`，`.pytest_cache` 存在只读文件。已在 backend 虚拟环境补装 `annotated_types` 与 `httpx`、清除缓存只读属性后完成回归；注意 backend 虚拟环境的 fastapi 为 0.115.0，低于 `backend/requirements.txt` 要求的 0.141.1，正式发布前应按 `scripts/preflight.ps1` 用 uv 重建根 `.venv` 复跑。
+
 
 ## 2026-09-24 v1.0.159同步、部署与四文件导入完成
 

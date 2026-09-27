@@ -22,10 +22,10 @@ if ! command -v openssl >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "请输入已经轮换、未在聊天或日志中出现的新 DeepSeek API Key。"
-IFS= read -r -s -p "DeepSeek API Key: " DEEPSEEK_TOKEN
+echo "请输入已经轮换、未在聊天或日志中出现的新阿里百炼 API Key（sk- 开头）。"
+IFS= read -r -s -p "百炼 API Key: " BAILIAN_TOKEN
 echo
-if [ -z "${DEEPSEEK_TOKEN//[[:space:]]/}" ]; then
+if [ -z "${BAILIAN_TOKEN//[[:space:]]/}" ]; then
   echo "ERROR: API Key 不能为空。" >&2
   exit 1
 fi
@@ -37,7 +37,7 @@ cleanup() {
   for path in "${TEMP_FILES[@]:-}"; do
     [ -n "$path" ] && rm -f -- "$path"
   done
-  unset DEEPSEEK_TOKEN AI_READONLY_TOKEN
+  unset BAILIAN_TOKEN AI_READONLY_TOKEN
 }
 trap cleanup EXIT
 
@@ -71,11 +71,11 @@ replace_env_value() {
   : > "$temp"
 }
 
-replace_env_value "$MARKET_ENV_FILE" ANTHROPIC_AUTH_TOKEN "$DEEPSEEK_TOKEN" root "$MARKET_GROUP" 0640
+replace_env_value "$MARKET_ENV_FILE" DASHSCOPE_API_KEY "$BAILIAN_TOKEN" root "$MARKET_GROUP" 0640
 replace_env_value "$MARKET_ENV_FILE" AI_READONLY_TOKEN "$AI_READONLY_TOKEN" root "$MARKET_GROUP" 0640
 replace_env_value "$AI_ENV_FILE" AI_READONLY_TOKEN "$AI_READONLY_TOKEN" root root 0600
 
-unset DEEPSEEK_TOKEN AI_READONLY_TOKEN
+unset BAILIAN_TOKEN AI_READONLY_TOKEN
 systemctl disable --now market-analysis.timer 2>/dev/null || true
 systemctl restart business-analysis.service
 
@@ -93,8 +93,7 @@ if [ "$APP_READY" -ne 1 ]; then
   exit 1
 fi
 
-systemctl reset-failed market-analysis.service
-systemctl start --no-block market-analysis.service
-systemctl enable --now market-analysis.timer
-
-echo "凭据已在服务器本机安全写入；主应用已重启，凌晨1点定时器已启用，首次研究已开始。"
+# Apply the matching model route before the timer is re-enabled. In particular, an
+# existing DeepSeek base URL must never be paired with the new Bailian credential.
+bash "$APP_DIR/deploy/install-market-analysis.sh" --skip-cli-install
+echo "凭据已在服务器本机安全写入；主应用已重启，凌晨1点定时器已启用。"

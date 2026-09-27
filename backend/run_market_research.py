@@ -16,7 +16,10 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from market_analysis.model_router import ProviderUnavailable, provider_environment, provider_name, availability_failure
+from market_analysis.model_router import (
+    ProviderUnavailable, availability_failure, availability_fallback, is_bailian,
+    provider_environment, provider_name, reasoning_effort,
+)
 from market_analysis.config import CHANGE_KEYS
 from market_analysis.insights import build_report_metrics, build_runtime_assessment
 from market_analysis.quality import (
@@ -41,7 +44,7 @@ from market_analysis.wechat_leads import retain_leads, apply_lead_reviews
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_MARKET_MODEL = "deepseek-flash"
+DEFAULT_MARKET_MODEL = "qwen3.8-max"
 SECRET_PATTERN = re.compile(r"(?i)(sk-[A-Za-z0-9_-]{12,}|(?:api[_-]?key|token|secret)\s*[=:]\s*\S+)")
 REPORT_OUTPUT_SCHEMA = {
     "type": "object",
@@ -524,9 +527,16 @@ def resolve_model_plan() -> dict[str, str]:
     repair = os.getenv("MARKET_ANALYSIS_REPAIR_MODEL", DEFAULT_MARKET_MODEL).strip() or DEFAULT_MARKET_MODEL
     escalation = os.getenv("MARKET_ANALYSIS_ESCALATION_MODEL", "").strip() or primary
     scout = os.getenv("MARKET_ANALYSIS_SOURCE_SCOUT_MODEL", "").strip() or repair
+    if is_bailian(primary):
+        strategy = "bailian_qwen38_max_all_roles"
+    elif primary == "k3-256k":
+        strategy = "kimi_primary_deepseek_fallback"
+    else:
+        strategy = "single_flash_all_roles"
     return {
-        "strategy": "kimi_primary_deepseek_fallback" if primary == "k3-256k" else "single_flash_all_roles",
-        "fallback": "deepseek-flash" if primary == "k3-256k" else None,
+        "strategy": strategy,
+        "fallback": availability_fallback(primary),
+        "reasoningEffort": reasoning_effort() if is_bailian(primary) else None,
         "scout": scout,
         "primary": primary,
         "repair": repair,
@@ -772,17 +782,19 @@ def invoke_claude(resolved_bin: str, prompt: str, *, model: str, role: str = "pr
     started = time.monotonic()
     kwargs = dict(role=role, telemetry=events, max_turns=max_turns,
                   max_budget=max_budget, output_schema=output_schema)
+    fallback_model = availability_fallback(model)
     primary_timeout = timeout_seconds
-    if model == "k3-256k":
+    if fallback_model:
+        # 仅当存在备用通道时才预留半段时间；单供应商路由用完整阶段超时。
         primary_timeout = max(1, min(int(os.getenv("MARKET_ANALYSIS_KIMI_TIMEOUT_SECONDS", "900")), timeout_seconds // 2))
     try:
         return _invoke_claude_once(resolved_bin, prompt, model=model,
                                   timeout_seconds=primary_timeout, **kwargs)
     except (ProviderUnavailable, subprocess.TimeoutExpired):
-        if model != "k3-256k":
+        if not fallback_model:
             raise
         if len(events) == start_index:
-            events.append({"role": role, "model": model, "provider": "Kimi Code",
+            events.append({"role": role, "model": model, "provider": provider_name(model),
                            "status": "unavailable", "elapsedMs": round((time.monotonic() - started) * 1000)})
         remaining = timeout_seconds - int(time.monotonic() - started)
         spent = sum(float(event.get("cliEstimatedCostUsd") or 0) for event in events[start_index:])
@@ -794,7 +806,7 @@ def invoke_claude(resolved_bin: str, prompt: str, *, model: str, role: str = "pr
         kwargs["max_budget"] = str(round(budget_left, 6))
         fallback_index = len(events)
         try:
-            return _invoke_claude_once(resolved_bin, prompt, model="deepseek-flash",
+            return _invoke_claude_once(resolved_bin, prompt, model=fallback_model,
                                       timeout_seconds=remaining, **kwargs)
         finally:
             for event in events[fallback_index:]:
@@ -918,6 +930,7 @@ def stamp_report_metadata(
         "name": model_plan["primary"],
         "fallback": model_plan.get("fallback"),
         "strategy": model_plan["strategy"],
+        "reasoningEffort": model_plan.get("reasoningEffort"),
         "scout": model_plan["scout"],
         "primary": model_plan["primary"],
         "repair": model_plan["repair"],
@@ -1275,8 +1288,11 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
         resolved_bin = shutil.which(claude_bin)
         if not resolved_bin:
             raise RuntimeError("Claude Code CLI is not installed or not on PATH")
-        if not any(os.getenv(key, "").strip() for key in ("ANTHROPIC_AUTH_TOKEN", "KIMI_CODE_API_KEY", "DEEPSEEK_AUTH_TOKEN")):
-            raise RuntimeError("ANTHROPIC_AUTH_TOKEN is not configured")
+        if not any(os.getenv(key, "").strip() for key in ("ANTHROPIC_AUTH_TOKEN", "DASHSCOPE_API_KEY", "BAILIAN_API_KEY", "MARKET_ANALYSIS_BAILIAN_API_KEY", "KIMI_CODE_API_KEY", "DEEPSEEK_AUTH_TOKEN")):
+            raise RuntimeError(
+                "No model provider credential is configured: set DASHSCOPE_API_KEY for 百炼 qwen3.8-max, "
+                "or KIMI_CODE_API_KEY / DEEPSEEK_AUTH_TOKEN / ANTHROPIC_AUTH_TOKEN for the legacy routes."
+            )
 
         max_turns = os.getenv("MARKET_ANALYSIS_MAX_TURNS", "80").strip()
         max_budget = os.getenv("MARKET_ANALYSIS_MAX_BUDGET_USD", "8").strip()
@@ -1622,8 +1638,11 @@ def run_source_scout_only(repository: MarketAnalysisRepository) -> dict:
     resolved_bin = shutil.which(claude_bin)
     if not resolved_bin:
         raise RuntimeError("Claude Code CLI is not installed or not on PATH")
-    if not any(os.getenv(key, "").strip() for key in ("ANTHROPIC_AUTH_TOKEN", "KIMI_CODE_API_KEY", "DEEPSEEK_AUTH_TOKEN")):
-        raise RuntimeError("ANTHROPIC_AUTH_TOKEN is not configured")
+    if not any(os.getenv(key, "").strip() for key in ("ANTHROPIC_AUTH_TOKEN", "DASHSCOPE_API_KEY", "BAILIAN_API_KEY", "MARKET_ANALYSIS_BAILIAN_API_KEY", "KIMI_CODE_API_KEY", "DEEPSEEK_AUTH_TOKEN")):
+        raise RuntimeError(
+            "No model provider credential is configured: set DASHSCOPE_API_KEY for 百炼 qwen3.8-max, "
+            "or KIMI_CODE_API_KEY / DEEPSEEK_AUTH_TOKEN / ANTHROPIC_AUTH_TOKEN for the legacy routes."
+        )
     telemetry: list[dict] = []
     evidence, summary = run_source_scout(
         resolved_bin,

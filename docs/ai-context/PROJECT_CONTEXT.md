@@ -1,4 +1,12 @@
 # 项目上下文
+## 2026-09-27 市场研判模型切换为阿里百炼 qwen3.8-max（本地完成，未发布）
+
+按用户要求，市场研判子系统的来源侦察、主研、首次修复和升级修复四个角色统一改为阿里百炼 `qwen3.8-max`，思考深度固定 `high`（百炼将该模型的 `high` 映射为最高档 `xhigh`，合法档位实为 xhigh/medium/low）。端点为 `https://dashscope.aliyuncs.com/apps/anthropic`，程序自动剥除结尾 `/v1`，避免 Claude Code 模型发现拼出 `/v1/v1/models` 而 404；上下文 1,000,000、压缩窗口沿用已验证的 786432。改为单供应商路由，通道不可用时直接失败并保留上一期报告，不静默改换供应商；预算、轮数、格式与内容门禁仍不触发跨通道重试。凭据擦除清单加入 `DASHSCOPE_API_KEY`/`BAILIAN_API_KEY`/`MARKET_ANALYSIS_BAILIAN_API_KEY`，且仅当未显式指定百炼端点、环境 `ANTHROPIC_BASE_URL` 主机确属 `aliyuncs.com` 时才复用通用 `ANTHROPIC_AUTH_TOKEN`。Kimi 与 DeepSeek 分支保留为向后兼容，历史报告与运行台账的 provider 字段不回写。不改变数据库结构、聚合口径或导入数据，无需新增聚合迁移。
+
+验证：Python 950 项通过、3 项平台相关跳过（v1.0.159 基线为 938 项，本次净增 12 项），Node 57 项通过；`tests/test_market_model_router.py` 由 10 项增至 25 项；`bash -n` 与 `node --check` 通过；`.sh` 保持纯 LF。**未用真实百炼 API Key 发起过任何实际调用**，因此真实握手、effort 映射效果、JSON Schema 成稿率与 1M 上下文表现均未验证；未推送 GitHub、未构建镜像、未部署，生产仍为 v1.0.159 且仍走 Kimi 通道。本地版本已置 v1.0.160。参数依据、未验证边界与上线前必做步骤见 `../BAILIAN_QWEN38_MAX_20260927.md`。
+
+同日按用户指示完成两项工作区治理：本工作区 Git 基线由 v1.0.157 硬重置到 GitHub `8315ed0`（v1.0.159），重置前已逐文件确认本地未提交改动或与 GitHub 完全一致、或为已被最终版取代的早期草稿，两份独有的产品分析规划稿已另存且仍为未跟踪状态；143 个 `sync-conflict` 副本全部删除，删除前已压缩归档到仓库外 `business-analysis-template-local-backups/sync-conflict-archive-20260927.zip`（143 项、原始 92.9 MB、压缩 13.2 MB），并校验压缩包条目数与解压体积一致。原「本工作区 Git 基线落后、不得直接部署」的接管提示自本次重置后不再适用。
+
 
 ## 2026-09-24 v1.0.159及四份日常Excel已上线
 

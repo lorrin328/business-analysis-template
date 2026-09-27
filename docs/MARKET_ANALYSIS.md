@@ -2,11 +2,11 @@
 
 ## 结论
 
-生产运行采用 Claude Code CLI 直接连接 DeepSeek 官方 Anthropic 兼容端点。来源侦察、主研、首次修复、升级修复及Claude轻量子任务统一使用实验模型`deepseek-v4-flash-vision-exp`；程序仍在主研前并发淘汰不可达、正文不符和公众号主体不明的候选。服务器不依赖 CC Switch；模型配置由 `/etc/business-analysis-market/market-analysis.env` 管理。
+生产运行采用 Claude Code CLI 连接阿里百炼（Model Studio）的 Anthropic 兼容端点。来源侦察、主研、首次修复、升级修复及Claude轻量子任务统一使用 `qwen3.8-max`（1,000,000 tokens 上下文，思考深度 `high`；百炼将该模型的 `high` 映射为最高档 `xhigh`）；程序仍在主研前并发淘汰不可达、正文不符和公众号主体不明的候选。百炼通道为单供应商路由，通道不可用时直接失败并保留上一期有效报告，不静默改换供应商。服务器不依赖 CC Switch；模型配置由 `/etc/business-analysis-market/market-analysis.env` 管理。参数依据、凭据隔离与未验证边界见 [BAILIAN_QWEN38_MAX_20260927.md](BAILIAN_QWEN38_MAX_20260927.md)。
 
 Web 服务不直接调用模型。独立 `market-analysis.service` 每次完成多源搜索、历史归并、结构化输出和证据校验，只有通过门禁的 JSON 才会替换 `latest.json`；失败时网页继续显示上一期有效报告。
 
-管理员也可在市场研判页点击“立即运行研究”。页面只提交后台请求，不等待模型运行完成。定时器每天北京时间凌晨1点检查一次；只有距上次成功报告已满3个自然日才启动研究。手动任务成功后，以该报告日期重新计算后续三个自然日周期。
+管理员也可在市场研判页点击“立即运行研究”。页面只提交后台请求，不等待模型运行完成。定时器每天北京时间凌晨1点检查一次；只有距上次成功报告已满5个自然日才启动研究。手动任务成功后，以该报告日期重新计算后续五个自然日周期。
 
 ## 首次安装
 
@@ -28,7 +28,7 @@ sudo bash deploy/install-market-analysis.sh
 
 至少安全写入：
 
-- `ANTHROPIC_AUTH_TOKEN`：已轮换且未在聊天、日志和仓库出现的新 DeepSeek Key；
+- `DASHSCOPE_API_KEY`：已轮换且未在聊天、日志和仓库出现的百炼 API Key（`sk-` 开头）；研究进程会将其单独传给百炼，不要把同一密钥写入旧通道共用的 `ANTHROPIC_AUTH_TOKEN`；
 - `AI_READONLY_TOKEN`：与主应用一致、已轮换的聚合经营快照只读 Token。
 - `ZHIHU_ACCESS_SECRET`：知乎数据开放平台的 Access Secret；只允许写入本受保护文件，不进入命令参数、Git或日志。
 
@@ -43,18 +43,22 @@ sudo bash /opt/business-analysis/deploy/configure-zhihu-api.sh
 固定模型配置：
 
 ```text
-ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
-ANTHROPIC_MODEL=deepseek-v4-flash-vision-exp
-ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4-flash-vision-exp
-ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-flash-vision-exp
-ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash-vision-exp
-CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash-vision-exp
-MARKET_ANALYSIS_MODEL=deepseek-v4-flash-vision-exp
-MARKET_ANALYSIS_PRIMARY_MODEL=deepseek-v4-flash-vision-exp
-MARKET_ANALYSIS_REPAIR_MODEL=deepseek-v4-flash-vision-exp
-MARKET_ANALYSIS_ESCALATION_MODEL=deepseek-v4-flash-vision-exp
+# 端点只能到 /apps/anthropic，不得追加 /v1
+BAILIAN_ANTHROPIC_BASE_URL=https://dashscope.aliyuncs.com/apps/anthropic
+ANTHROPIC_BASE_URL=https://dashscope.aliyuncs.com/apps/anthropic
+ANTHROPIC_MODEL=qwen3.8-max
+ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3.8-max
+ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3.8-max
+ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8-max
+CLAUDE_CODE_SUBAGENT_MODEL=qwen3.8-max
+CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000
+MARKET_ANALYSIS_MODEL=qwen3.8-max
+MARKET_ANALYSIS_PRIMARY_MODEL=qwen3.8-max
+MARKET_ANALYSIS_REPAIR_MODEL=qwen3.8-max
+MARKET_ANALYSIS_ESCALATION_MODEL=qwen3.8-max
 MARKET_ANALYSIS_SOURCE_SCOUT_ENABLED=1
-MARKET_ANALYSIS_SOURCE_SCOUT_MODEL=deepseek-v4-flash-vision-exp
+MARKET_ANALYSIS_SOURCE_SCOUT_MODEL=qwen3.8-max
+MARKET_ANALYSIS_REASONING_EFFORT=high
 MARKET_ANALYSIS_SOURCE_SCOUT_MAX_TURNS=25
 MARKET_ANALYSIS_SOURCE_SCOUT_MAX_BUDGET_USD=3.2
 MARKET_ANALYSIS_SOURCE_SCOUT_TIMEOUT_SECONDS=900
@@ -68,10 +72,10 @@ MARKET_ANALYSIS_REPAIR_MAX_BUDGET_USD=3
 MARKET_ANALYSIS_ESCALATION_MAX_BUDGET_USD=6
 MARKET_ANALYSIS_POST_VERIFY_REPAIR_ATTEMPTS=1
 MARKET_ANALYSIS_MIN_QUALITY_SCORE=9.0
-CLAUDE_CODE_EFFORT_LEVEL=max
+CLAUDE_CODE_EFFORT_LEVEL=high
 ```
 
-所有模型角色统一使用`deepseek-v4-flash-vision-exp`。来源侦察失败时仍降级到主研链路；首次修复后仍不合格时允许同模型再做一次升级修复。独立来源核验将模块事实对齐到原文摘录后，如判断或影响出现新的证据一致性错误，允许额外一次定向修复并重新核验来源；仍失败则不发布。9分质量门槛、独立来源复核和上一期报告保护不变。该模型属于实验版本，需通过运行台账持续观察首次成稿率、修复率、耗时和质量；CLI的`total_cost_usd`仅作为相对观察值，实际扣费以DeepSeek控制台为准。
+所有模型角色统一使用阿里百炼 `qwen3.8-max`。来源侦察失败时仍降级到主研链路；首次修复后仍不合格时允许同模型再做一次升级修复。独立来源核验将模块事实对齐到原文摘录后，如判断或影响出现新的证据一致性错误，允许额外一次定向修复并重新核验来源；仍失败则不发布。9分质量门槛、独立来源复核和上一期报告保护不变。百炼通道不做跨供应商自动改换，通道不可用即失败并保留上一期报告。换用新模型后必须通过运行台账重新观察首次成稿率、修复率、耗时和质量，不得沿用 Kimi 或 DeepSeek 通道的历史指标；CLI的`total_cost_usd`仅作为相对观察值，实际扣费以百炼控制台为准。
 
 ## 首次验证与启用
 
@@ -91,7 +95,7 @@ systemctl list-timers market-analysis.timer --all
 3. 宏观和监管有 A 级官方原文，每个同业模块均有公司/协会一手来源；每条来源均有可在 HTML、正文文本、PDF 或内部快照中逐字定位的 50 字内证据锚点；
 4. `/api/market-analysis/latest` 登录后可读，普通用户未授权时返回403；
 5. `/market-analysis.html` 可切换历史期次，桌面和手机无横向溢出；
-6. timer 的下一次检查时间为次日凌晨1点；只有满3个自然日才启动完整研究，失败时 `latest.json` 不被覆盖并在次日凌晨1点重新判断是否启动；内容门禁失败不在同一次systemd任务中自动重启；
+6. timer 的下一次检查时间为次日凌晨1点；只有满5个自然日才启动完整研究，失败时 `latest.json` 不被覆盖并在次日凌晨1点重新判断是否启动；内容门禁失败不在同一次systemd任务中自动重启；
 7. `qualityAssessment.score` 不低于9.0，页面展示证据、覆盖、滚动分析、行动闭环和运行可靠性五项分值。
 8. `/api/market-analysis/observability?limit=6`登录后可读；页面展示成功周期、运行尝试、首次成稿、运行成功、升级修复、时长、来源贡献和待复核行动。旧报告没有历史运行字段时显示“待积累”，不得补0。
 
@@ -125,7 +129,7 @@ systemctl list-timers market-analysis.timer --all
 sudo -u market-ai -g market-analysis bash -lc 'set -a; source /etc/business-analysis-market/market-analysis.env; set +a; cd /opt/business-analysis/backend; ./venv/bin/python run_market_research.py --source-scout-only'
 ```
 
-只验证知乎官方API与公开原文复核，不调用DeepSeek、不发布报告也不修改运行状态：
+只验证知乎官方API与公开原文复核，不调用百炼模型、不发布报告也不修改运行状态：
 
 ```bash
 sudo -u market-ai -g market-analysis bash -lc 'set -a; source /etc/business-analysis-market/market-analysis.env; set +a; cd /opt/business-analysis/backend; ./venv/bin/python run_market_research.py --zhihu-scout-only'
@@ -148,7 +152,7 @@ journalctl -u market-analysis.service --since '7 days ago' --no-pager
 sudo systemctl start market-analysis.service
 ```
 
-`market-analysis.timer` 每天凌晨1点唤醒 `market-analysis-scheduled.service`。调度器只读取最近成功报告的北京时间日期：日期间隔不足3天时正常退出，不调用模型；满3天时启动固定的 `market-analysis.service`。服务器凌晨1点关机时，`Persistent=true` 会在恢复开机后补做到期检查。
+`market-analysis.timer` 每天北京时间凌晨1点唤醒 `market-analysis-scheduled.service`。调度器只读取最近成功报告的北京时间日期：日期间隔不足5天时正常退出，不调用模型；满5天时启动固定的 `market-analysis.service`。定时器不补跑错过的凌晨1点，服务器当时关机则在次日凌晨1点再检查；管理员仍可手动启动研究。
 
 失败后优先查看journal中的校验错误。6小时内的修复检查点会复用已完成研究，来源元数据和变化信号映射类错误会先由程序确定性修复，不再次调用模型；结构或证据不合格时由统一模型定向修复，仍失败再执行一次升级修复。同一进程遇到无法安全剔除的坏源时直接进入该修复链，不再先等待systemd重启。同业事实缺少一手依据时允许换成另一项有真实公司/协会来源支持的近期动作，但不得把媒体来源改标为一手证据。
 
@@ -167,7 +171,7 @@ TLS 验证不得使用 `-k`、关闭证书校验或把任意站点加入例外�
 
 ## 模型切换
 
-模型切换应同时更新Claude默认模型、来源侦察、主研、首次修复和升级修复配置；修改后至少验证Anthropic接口、固定JSON Schema和dry-run模型计划。生产变更不依赖CC Switch；如另行安装CC Switch/其CLI，只作为管理员辅助工具，不能成为timer的必需运行链路。
+模型切换应同时更新Claude默认模型、来源侦察、主研、首次修复和升级修复配置；修改后至少验证Anthropic兼容接口、固定JSON Schema和dry-run模型计划。切换供应商时还必须同步核对：端点是否为不含 `/v1` 的形式、思考深度参数在该模型的合法档位与别名映射、上下文与压缩窗口、以及凭据擦除清单是否覆盖新供应商的 Key。生产变更不依赖CC Switch；如另行安装CC Switch/其CLI，只作为管理员辅助工具，不能成为timer的必需运行链路。历次通道变更见 `CC_MODEL_UPDATE_20260911.md`、`KIMI_CHANNEL_20260916.md` 与 `BAILIAN_QWEN38_MAX_20260927.md`。
 
 ## 回滚
 
@@ -187,4 +191,4 @@ sudo systemctl disable --now market-analysis.timer
 
 产品页展示名称、公司、责任类型、利益机制、渠道、销售状态、缴费期间、保险期间、合同保证利益、非保证利益。每个已展示事实均引用同模块的一手来源；名称和公司必须可在原文定位，其他参数必须保留完整证据片段（含否定、符号与条件）。未核验字段显示“未核验 / 未披露”。不以预定利率、保额增长或红利实现率代替客户IRR，不从旧上市公告推断当前在售。缺少现金流、精算或费用资料时不补造IRR、NBV、CSM等。
 
-草稿、独立抓取完成后、写入报告前均检查产品合同。验证失败进入既有定向修复流程，仍失败保留上一期有效报告。模型型号、三天调度、9分门槛和业务数据库权限不变。
+草稿、独立抓取完成后、写入报告前均检查产品合同。验证失败进入既有定向修复流程，仍失败保留上一期有效报告。五天调度、9分门槛和业务数据库权限不变；模型已切换为百炼 `qwen3.8-max`。
