@@ -542,19 +542,24 @@ def test_claude_result_parser_and_secret_redaction():
     assert "sk-example-secret-value" not in redact("token=sk-example-secret-value")
 
 
-def test_model_plan_uses_flash_vision_for_all_roles(monkeypatch):
+def test_model_plan_uses_bailian_qwen38_max_for_all_roles(monkeypatch):
     for key in (
         "MARKET_ANALYSIS_MODEL", "MARKET_ANALYSIS_PRIMARY_MODEL",
         "MARKET_ANALYSIS_REPAIR_MODEL", "MARKET_ANALYSIS_ESCALATION_MODEL",
+        "MARKET_ANALYSIS_SOURCE_SCOUT_MODEL", "MARKET_ANALYSIS_REASONING_EFFORT",
     ):
         monkeypatch.delenv(key, raising=False)
     plan = resolve_model_plan()
-    assert plan["primary"] == "deepseek-flash"
-    assert plan["scout"] == "deepseek-flash"
-    assert plan["repair"] == "deepseek-flash"
-    assert plan["escalation"] == "deepseek-flash"
-    assert repair_model_for_attempt(plan, 0) == ("deepseek-flash", "repair_flash")
-    assert repair_model_for_attempt(plan, 1) == ("deepseek-flash", "repair_escalation")
+    assert plan["primary"] == "qwen3.8-max"
+    assert plan["scout"] == "qwen3.8-max"
+    assert plan["repair"] == "qwen3.8-max"
+    assert plan["escalation"] == "qwen3.8-max"
+    assert plan["strategy"] == "bailian_qwen38_max_all_roles"
+    # 单供应商路由：不得在不可用时静默改换到其他供应商。
+    assert plan["fallback"] is None
+    assert plan["reasoningEffort"] == "high"
+    assert repair_model_for_attempt(plan, 0) == ("qwen3.8-max", "repair_flash")
+    assert repair_model_for_attempt(plan, 1) == ("qwen3.8-max", "repair_escalation")
     monkeypatch.setenv("MARKET_ANALYSIS_SOURCE_SCOUT_TIMEOUT_SECONDS", "99999")
     assert run_market_research.source_scout_timeout_seconds(3600) == 3600
     monkeypatch.setenv("MARKET_ANALYSIS_SOURCE_SCOUT_TIMEOUT_SECONDS", "invalid")
@@ -569,8 +574,8 @@ def test_dry_run_reports_model_plan_without_overwriting_runtime_status(tmp_path,
 
     result = run_market_research.run_research(repository, dry_run=True)
 
-    assert result["modelPlan"]["primary"] == "deepseek-flash"
-    assert result["modelPlan"]["repair"] == "deepseek-flash"
+    assert result["modelPlan"]["primary"] == "qwen3.8-max"
+    assert result["modelPlan"]["repair"] == "qwen3.8-max"
     assert repository.status() == previous_status
 
 
@@ -716,6 +721,7 @@ def test_worker_passes_private_context_over_stdin_and_restricts_tools(tmp_path, 
     monkeypatch.setattr(run_market_research.subprocess, "run", fake_run)
     monkeypatch.setattr(run_market_research, "verify_report_sources", fake_verify)
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-only-bailian-key")
 
     result = run_market_research.run_research(MarketAnalysisRepository(tmp_path))
     assert result["reviewStatus"] == "machine_validated"
@@ -778,11 +784,12 @@ def test_worker_runs_bounded_evidence_repair_before_publication(tmp_path, monkey
     monkeypatch.setattr(run_market_research.subprocess, "run", fake_run)
     monkeypatch.setattr(run_market_research, "verify_report_sources", fake_verify)
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-only-bailian-key")
 
     result = run_market_research.run_research(MarketAnalysisRepository(tmp_path))
     assert result["reviewStatus"] == "machine_validated"
     assert len(prompts) == 2
-    assert models == ["deepseek-flash[1m]", "deepseek-flash[1m]"]
+    assert models == ["qwen3.8-max", "qwen3.8-max"]
     assert "validationErrors" in prompts[1]
     assert "Regulation modules must cite" in prompts[1]
     assert "internalBusinessSnapshot" in prompts[1]
@@ -879,13 +886,14 @@ def test_worker_allows_second_targeted_repair_for_peer_first_party_evidence(tmp_
     monkeypatch.setattr(run_market_research.subprocess, "run", fake_run)
     monkeypatch.setattr(run_market_research, "verify_report_sources", fake_verify)
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-only-bailian-key")
     monkeypatch.setenv("MARKET_ANALYSIS_MAX_REPAIR_ATTEMPTS", "2")
 
     result = run_market_research.run_research(MarketAnalysisRepository(tmp_path))
 
     assert result["reviewStatus"] == "machine_validated"
     assert len(prompts) == 3
-    assert models == ["deepseek-flash[1m]", "deepseek-flash[1m]", "deepseek-flash[1m]"]
+    assert models == ["qwen3.8-max", "qwen3.8-max", "qwen3.8-max"]
     assert "section peers requires A/B-level first-party evidence" in prompts[1]
     assert "authoritativeTopicLedger" in prompts[1]
     assert "replace that peer module" in prompts[1]
@@ -926,17 +934,18 @@ def test_worker_repairs_unprunable_source_in_same_run_with_flash(tmp_path, monke
     monkeypatch.setattr(run_market_research.subprocess, "run", fake_run)
     monkeypatch.setattr(run_market_research, "verify_report_sources", fake_verify)
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-only-token")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-only-bailian-key")
 
     repository = MarketAnalysisRepository(tmp_path)
     result = run_market_research.run_research(repository)
 
     assert result["reviewStatus"] == "machine_validated"
     assert verification_calls == 2
-    assert models == ["deepseek-flash[1m]", "deepseek-flash[1m]"]
+    assert models == ["qwen3.8-max", "qwen3.8-max"]
     assert "source S3 failed independent verification" in prompts[1]
     status = repository.status()
     assert [call["role"] for call in status["modelCalls"]] == ["primary", "repair_flash"]
-    assert status["modelPlan"]["strategy"] == "single_flash_all_roles"
+    assert status["modelPlan"]["strategy"] == "bailian_qwen38_max_all_roles"
 
 
 def test_private_repair_checkpoint_is_resumable_and_clearable(tmp_path):
@@ -1232,15 +1241,22 @@ def test_market_timer_runs_at_1am_when_five_calendar_days_are_due_and_template_h
     assert '"$SYSTEMCTL_BIN" start --no-block "$SERVICE_NAME"' in scheduler
     assert "ANTHROPIC_AUTH_TOKEN=\n" in env_template
     assert "AI_READONLY_TOKEN=\n" in env_template
-    assert "ANTHROPIC_MODEL=deepseek-flash[1m]" in env_template
+    assert "ANTHROPIC_MODEL=qwen3.8-max" in env_template
     assert "CLAUDE_CODE_AUTO_COMPACT_WINDOW=786432" in env_template
+    assert "CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000" in env_template
     assert "CLAUDE_CODE_DISABLE_1M_CONTEXT=0" in env_template
     assert "ensure_env_value CLAUDE_CODE_AUTO_COMPACT_WINDOW '786432'" in installer
-    assert "ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-flash" in env_template
-    assert "CLAUDE_CODE_SUBAGENT_MODEL=deepseek-flash" in env_template
-    assert "MARKET_ANALYSIS_PRIMARY_MODEL=k3-256k" in env_template
-    assert "MARKET_ANALYSIS_REPAIR_MODEL=k3-256k" in env_template
-    assert "MARKET_ANALYSIS_ESCALATION_MODEL=k3-256k" in env_template
+    # 百炼端点不得以 /v1 结尾，否则模型发现会拼出 /v1/v1/models 并 404。
+    assert "BAILIAN_ANTHROPIC_BASE_URL=https://dashscope.aliyuncs.com/apps/anthropic" in env_template
+    assert "/apps/anthropic/v1" not in env_template
+    assert "DASHSCOPE_API_KEY=\n" in env_template
+    assert "MARKET_ANALYSIS_REASONING_EFFORT=high" in env_template
+    assert "CLAUDE_CODE_EFFORT_LEVEL=high" in env_template
+    assert "ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8-max" in env_template
+    assert "CLAUDE_CODE_SUBAGENT_MODEL=qwen3.8-max" in env_template
+    assert "MARKET_ANALYSIS_PRIMARY_MODEL=qwen3.8-max" in env_template
+    assert "MARKET_ANALYSIS_REPAIR_MODEL=qwen3.8-max" in env_template
+    assert "MARKET_ANALYSIS_ESCALATION_MODEL=qwen3.8-max" in env_template
     assert "MARKET_ANALYSIS_MIN_QUALITY_SCORE=9.0" in env_template
     assert "NoNewPrivileges=true" in service
     assert "ProtectSystem=strict" in service
@@ -1248,7 +1264,13 @@ def test_market_timer_runs_at_1am_when_five_calendar_days_are_due_and_template_h
     assert "RestartPreventExitStatus=2" in service
     assert "StartLimitBurst=2" in service
     assert "tr -d '\\r'" in installer
-    assert "ensure_env_value ANTHROPIC_DEFAULT_HAIKU_MODEL 'deepseek-flash'" in installer
+    assert "ensure_env_value ANTHROPIC_DEFAULT_HAIKU_MODEL 'qwen3.8-max'" in installer
+    assert "ensure_env_value MARKET_ANALYSIS_REASONING_EFFORT 'high'" in installer
+    assert "ensure_env_value CLAUDE_CODE_EFFORT_LEVEL 'high'" in installer
+    assert "ensure_env_value CLAUDE_CODE_MAX_CONTEXT_TOKENS '1000000'" in installer
+    assert "ROUTED_MODEL='qwen3.8-max'" in installer
+    assert "has_env_value DASHSCOPE_API_KEY" in installer
+    assert "replace_env_value \"$MARKET_ENV_FILE\" DASHSCOPE_API_KEY" in configurator
     assert 'ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL "$ROUTED_MODEL"' in installer
     assert 'ensure_env_value MARKET_ANALYSIS_ESCALATION_MODEL "$ROUTED_MODEL"' in installer
     assert "ensure_env_value MARKET_ANALYSIS_POST_VERIFY_REPAIR_ATTEMPTS '1'" in installer

@@ -1,5 +1,17 @@
 # 更新日志
 
+## v1.0.160 更新说明（2026-09-27）
+
+- 市场研判模型统一切换为阿里百炼（Model Studio）`qwen3.8-max`，思考深度固定 `high`；来源侦察、主研、首次修复、升级修复四个角色同模型。
+- 接入百炼 Anthropic 兼容端点 `https://dashscope.aliyuncs.com/apps/anthropic`，程序自动剥除结尾 `/v1`，避免 Claude Code 模型发现拼出 `/v1/v1/models` 而 404。
+- 上下文按 1,000,000 tokens 配置，压缩窗口沿用生产已验证的 786432；不再依赖模型名 `[1m]` 后缀开启长上下文。
+- 百炼通道为单供应商路由：不可用时直接失败并保留上一期有效报告，不静默改换供应商；预算、轮数、格式与内容门禁仍不触发跨通道重试。
+- 凭据隔离扩展到 `DASHSCOPE_API_KEY`/`BAILIAN_API_KEY`；仅当环境端点确属 `aliyuncs.com` 时才允许复用通用 `ANTHROPIC_AUTH_TOKEN`，不把其他供应商凭据发往百炼。
+- 将百炼 `AccessDenied`、`Arrearage`、`Flow control`、`Throttling` 识别为通道不可用，不误判为内容失败。
+- 保留 Kimi `k3-256k` 与 DeepSeek `deepseek-flash` 路由作为向后兼容；历史报告与运行台账的 provider 字段不回写。
+- 市场研判页模型组合标签追加“· 思考深度 high”，并正确显示 Qwen3.8-Max。
+- 仅完成本地回归（950 项 Python 通过/3 项跳过、57 项 Node 通过）；未用真实百炼 Key 联调、未推送 GitHub、未部署生产。参数依据与上线步骤见 `docs/BAILIAN_QWEN38_MAX_20260927.md`。
+
 ## v1.0.159 更新说明（2026-09-24）
 
 - 经代历史Excel扩展后超过原20 MiB限制，后端默认单文件上限提升到100 MiB，保留环境变量覆盖与大小校验。

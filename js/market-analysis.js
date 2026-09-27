@@ -56,6 +56,8 @@
 
   function shortModelName(value) {
     const name = String(value || '').toLowerCase();
+    if (name.includes('qwen3.8-max')) return 'Qwen3.8-Max';
+    if (name.includes('k3-256k')) return 'Kimi';
     if (name.includes('flash')) return 'Flash';
     if (name.includes('pro')) return 'Pro';
     return value || '—';
@@ -64,7 +66,8 @@
   function modelPlanLabel(plan) {
     if (!plan?.primary) return '';
     const scout = plan.scout ? `${shortModelName(plan.scout)}侦察 / ` : '';
-    return `模型组合 ${scout}${shortModelName(plan.primary)}主研 / ${shortModelName(plan.repair)}修复 / ${shortModelName(plan.escalation)}升级`;
+    const effort = plan.reasoningEffort ? ` · 思考深度 ${plan.reasoningEffort}` : '';
+    return `模型组合 ${scout}${shortModelName(plan.primary)}主研 / ${shortModelName(plan.repair)}修复 / ${shortModelName(plan.escalation)}升级${effort}`;
   }
 
   function sourceScoutLabel(scout) {
