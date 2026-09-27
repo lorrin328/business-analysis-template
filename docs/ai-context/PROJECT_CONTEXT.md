@@ -1,4 +1,10 @@
 # 项目上下文
+## 2026-09-27 v1.0.160 已部署，百炼切换待密钥验收
+
+PR #30 已合并到 GitHub `master`，Ubuntu 已从合并提交 `892b3fd` 的可信归档保库部署 v1.0.160。正式公网 HTTPS、鉴权、静态文件、业务数据与冻结备份均已验证；生产经营看板正常。市场研究服务端尚无百炼专用 Key，当前仍保留原 Kimi 路由；为避免凌晨任务运行旧模型，`market-analysis.timer` 暂时停用。待用户在 Ubuntu 隐藏输入提示中录入新建的百炼 Key 后，配置脚本会切换四个研究角色并启用北京时间每日 01:00 调度。真实百炼调用与完整研究尚未验收，发布恢复点尚未标记 accepted。现状与完成条件见 `../RELEASE_REVIEW_v1.0.160.md`。
+
+以下 v1.0.160「本地完成，未发布」一节记录的是部署前状态，不代表当前生产状态。
+
 ## 2026-09-27 市场研判模型切换为阿里百炼 qwen3.8-max（本地完成，未发布）
 
 按用户要求，市场研判子系统的来源侦察、主研、首次修复和升级修复四个角色统一改为阿里百炼 `qwen3.8-max`，思考深度固定 `high`（百炼将该模型的 `high` 映射为最高档 `xhigh`，合法档位实为 xhigh/medium/low）。端点为 `https://dashscope.aliyuncs.com/apps/anthropic`，程序自动剥除结尾 `/v1`，避免 Claude Code 模型发现拼出 `/v1/v1/models` 而 404；上下文 1,000,000、压缩窗口沿用已验证的 786432。改为单供应商路由，通道不可用时直接失败并保留上一期报告，不静默改换供应商；预算、轮数、格式与内容门禁仍不触发跨通道重试。凭据擦除清单加入 `DASHSCOPE_API_KEY`/`BAILIAN_API_KEY`/`MARKET_ANALYSIS_BAILIAN_API_KEY`，且仅当未显式指定百炼端点、环境 `ANTHROPIC_BASE_URL` 主机确属 `aliyuncs.com` 时才复用通用 `ANTHROPIC_AUTH_TOKEN`。Kimi 与 DeepSeek 分支保留为向后兼容，历史报告与运行台账的 provider 字段不回写。不改变数据库结构、聚合口径或导入数据，无需新增聚合迁移。
