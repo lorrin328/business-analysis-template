@@ -72,7 +72,6 @@ replace_env_value() {
 }
 
 replace_env_value "$MARKET_ENV_FILE" DASHSCOPE_API_KEY "$BAILIAN_TOKEN" root "$MARKET_GROUP" 0640
-replace_env_value "$MARKET_ENV_FILE" ANTHROPIC_AUTH_TOKEN "$BAILIAN_TOKEN" root "$MARKET_GROUP" 0640
 replace_env_value "$MARKET_ENV_FILE" AI_READONLY_TOKEN "$AI_READONLY_TOKEN" root "$MARKET_GROUP" 0640
 replace_env_value "$AI_ENV_FILE" AI_READONLY_TOKEN "$AI_READONLY_TOKEN" root root 0600
 
@@ -94,8 +93,7 @@ if [ "$APP_READY" -ne 1 ]; then
   exit 1
 fi
 
-systemctl reset-failed market-analysis.service
-systemctl start --no-block market-analysis.service
-systemctl enable --now market-analysis.timer
-
-echo "凭据已在服务器本机安全写入；主应用已重启，凌晨1点定时器已启用，首次研究已开始。"
+# Apply the matching model route before the timer is re-enabled. In particular, an
+# existing DeepSeek base URL must never be paired with the new Bailian credential.
+bash "$APP_DIR/deploy/install-market-analysis.sh" --skip-cli-install
+echo "凭据已在服务器本机安全写入；主应用已重启，凌晨1点定时器已启用。"

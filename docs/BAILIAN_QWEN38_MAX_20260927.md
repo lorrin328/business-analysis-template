@@ -26,7 +26,7 @@
 | `backend/run_market_research.py` | `DEFAULT_MARKET_MODEL` 改为 `qwen3.8-max`；`resolve_model_plan()` 输出 `bailian_qwen38_max_all_roles` 与 `reasoningEffort`；`invoke_claude()` 由硬编码 `k3-256k` 改为按 `availability_fallback()` 判定，单供应商通道使用完整阶段超时且不改换供应商；失败事件的 provider 改为动态取值；报告 `model` 增加 `reasoningEffort`；两处凭据存在性检查纳入百炼 Key |
 | `deploy/market-analysis.env.example` | 百炼端点与 `BAILIAN_ANTHROPIC_BASE_URL`、`DASHSCOPE_API_KEY`/`BAILIAN_API_KEY`、四角色统一 `qwen3.8-max`、`CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000`、`MARKET_ANALYSIS_REASONING_EFFORT=high`、`CLAUDE_CODE_EFFORT_LEVEL` 由 `max` 改为 `high` |
 | `deploy/install-market-analysis.sh` | 路由探测优先百炼 Key（其次 Kimi、最后 DeepSeek）；写入 `BAILIAN_ANTHROPIC_BASE_URL`、思考深度与 1M 上下文；定时器凭据门槛纳入 `DASHSCOPE_API_KEY`/`BAILIAN_API_KEY` |
-| `deploy/configure-market-analysis.sh` | 交互提示改为「百炼 API Key」，变量改名 `BAILIAN_TOKEN`，同时写入 `DASHSCOPE_API_KEY` 与 `ANTHROPIC_AUTH_TOKEN`；仍为无回显读取、临时文件清零、退出即 unset |
+| `deploy/configure-market-analysis.sh` | 交互提示改为「百炼 API Key」，变量改名 `BAILIAN_TOKEN`，仅写入 `DASHSCOPE_API_KEY`，避免旧 DeepSeek 路由读取通用 Token；健康检查通过后同步模型路由并启用凌晨1点定时器，不立即启动研究 |
 | `js/market-analysis.js` | `shortModelName()` 识别 `qwen3.8-max` 与 `k3-256k`；`modelPlanLabel()` 追加「· 思考深度 high」 |
 
 ## 凭据隔离
@@ -63,8 +63,8 @@
 
 ## 上线前必做
 
-1. 在服务器受保护环境文件写入百炼 API Key：`sudo bash deploy/configure-market-analysis.sh`。
-2. 执行 `sudo bash deploy/install-market-analysis.sh`，确认路由探测结果为 `qwen3.8-max`、思考深度为 `high`。
+1. 在服务器先执行 `sudo bash deploy/install-market-analysis.sh` 确认市场服务已安装，再执行 `sudo bash deploy/configure-market-analysis.sh` 交互写入百炼 API Key；配置脚本会同步模型路由并启用凌晨1点定时器，不立即启动研究。
+2. 检查受保护配置的模型字段、定时器下一次触发时间和服务状态，确认路由为 `qwen3.8-max`、思考深度为 `high`。
 3. 先跑只读验证 `run_market_research.py --source-scout-only`，确认真实握手、鉴权与工具可用；该模式不发布报告、不覆盖历史、不改运行状态。
 4. 再跑 `--dry-run`，核对模型计划四角色均为 `qwen3.8-max`、`reasoningEffort=high`、`fallback=null`。
 5. 通过后手动触发一次完整研究，核对成稿、9 分门禁、来源独立核验，以及市场研判页显示「模型组合 Qwen3.8-Max… · 思考深度 high」。

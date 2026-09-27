@@ -121,7 +121,11 @@ def provider_environment(model: str) -> dict[str, str]:
     elif model in {'deepseek-flash', 'deepseek-flash[1m]'}:
         token = env.get('DEEPSEEK_AUTH_TOKEN', '').strip()
         if not token and env.get('ANTHROPIC_BASE_URL', 'https://api.deepseek.com/anthropic').rstrip('/') == 'https://api.deepseek.com/anthropic':
-            token = env.get('ANTHROPIC_AUTH_TOKEN', '').strip()
+            generic_token = env.get('ANTHROPIC_AUTH_TOKEN', '').strip()
+            if generic_token and generic_token not in {
+                (env.get(key) or '').strip() for key in BAILIAN_CREDENTIAL_KEYS
+            }:
+                token = generic_token
         if not token:
             raise ProviderUnavailable('DeepSeek credential is not configured')
         endpoint, compact, context = 'https://api.deepseek.com/anthropic', '786432', '1000000'

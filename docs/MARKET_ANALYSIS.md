@@ -28,7 +28,7 @@ sudo bash deploy/install-market-analysis.sh
 
 至少安全写入：
 
-- `DASHSCOPE_API_KEY`：已轮换且未在聊天、日志和仓库出现的百炼 API Key（`sk-` 开头）；`ANTHROPIC_AUTH_TOKEN` 写入同值以兼容旧配置；
+- `DASHSCOPE_API_KEY`：已轮换且未在聊天、日志和仓库出现的百炼 API Key（`sk-` 开头）；研究进程会将其单独传给百炼，不要把同一密钥写入旧通道共用的 `ANTHROPIC_AUTH_TOKEN`；
 - `AI_READONLY_TOKEN`：与主应用一致、已轮换的聚合经营快照只读 Token。
 - `ZHIHU_ACCESS_SECRET`：知乎数据开放平台的 Access Secret；只允许写入本受保护文件，不进入命令参数、Git或日志。
 
@@ -152,7 +152,7 @@ journalctl -u market-analysis.service --since '7 days ago' --no-pager
 sudo systemctl start market-analysis.service
 ```
 
-`market-analysis.timer` 每天凌晨1点唤醒 `market-analysis-scheduled.service`。调度器只读取最近成功报告的北京时间日期：日期间隔不足5天时正常退出，不调用模型；满5天时启动固定的 `market-analysis.service`。服务器凌晨1点关机时，`Persistent=true` 会在恢复开机后补做到期检查。
+`market-analysis.timer` 每天北京时间凌晨1点唤醒 `market-analysis-scheduled.service`。调度器只读取最近成功报告的北京时间日期：日期间隔不足5天时正常退出，不调用模型；满5天时启动固定的 `market-analysis.service`。定时器不补跑错过的凌晨1点，服务器当时关机则在次日凌晨1点再检查；管理员仍可手动启动研究。
 
 失败后优先查看journal中的校验错误。6小时内的修复检查点会复用已完成研究，来源元数据和变化信号映射类错误会先由程序确定性修复，不再次调用模型；结构或证据不合格时由统一模型定向修复，仍失败再执行一次升级修复。同一进程遇到无法安全剔除的坏源时直接进入该修复链，不再先等待systemd重启。同业事实缺少一手依据时允许换成另一项有真实公司/协会来源支持的近期动作，但不得把媒体来源改标为一手证据。
 

@@ -1227,11 +1227,11 @@ def test_market_timer_runs_at_1am_when_five_calendar_days_are_due_and_template_h
     trigger = open(os.path.join(ROOT, "deploy", "market-analysis-trigger.sh"), "r", encoding="utf-8").read()
     trigger_service = open(os.path.join(ROOT, "deploy", "market-analysis-manual.service"), "r", encoding="utf-8").read()
     trigger_path = open(os.path.join(ROOT, "deploy", "market-analysis-manual.path"), "r", encoding="utf-8").read()
-    assert "OnCalendar=*-*-* 01:00:00" in timer
-    assert "AccuracySec=1min" in timer
+    assert "OnCalendar=*-*-* 01:00:00 Asia/Shanghai" in timer
+    assert "AccuracySec=1s" in timer
     assert "RandomizedDelaySec=0" in timer
     assert "Unit=market-analysis-scheduled.service" in timer
-    assert "Persistent=true" in timer
+    assert "Persistent=false" in timer
     assert "ExecStart=/usr/local/sbin/business-analysis-market-schedule" in scheduled_service
     assert "NoNewPrivileges=true" in scheduled_service
     assert "ReadOnlyPaths=/var/lib/business-analysis-market" in scheduled_service
@@ -1280,7 +1280,9 @@ def test_market_timer_runs_at_1am_when_five_calendar_days_are_due_and_template_h
     assert "set +x" in configurator
     assert "read -r -s" in configurator
     assert "openssl rand -hex 32" in configurator
-    assert configurator.index("/api/health") < configurator.index("systemctl start --no-block market-analysis.service")
+    assert 'replace_env_value "$MARKET_ENV_FILE" ANTHROPIC_AUTH_TOKEN' not in configurator
+    assert configurator.index("/api/health") < configurator.index('install-market-analysis.sh" --skip-cli-install')
+    assert "systemctl start --no-block market-analysis.service" not in configurator
     assert "market-analysis-manual.path" in installer
     assert "market-analysis-scheduled.service" in installer
     assert "business-analysis-market-schedule" in installer

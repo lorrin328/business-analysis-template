@@ -1288,7 +1288,7 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
         resolved_bin = shutil.which(claude_bin)
         if not resolved_bin:
             raise RuntimeError("Claude Code CLI is not installed or not on PATH")
-        if not any(os.getenv(key, "").strip() for key in ("ANTHROPIC_AUTH_TOKEN", "DASHSCOPE_API_KEY", "BAILIAN_API_KEY", "KIMI_CODE_API_KEY", "DEEPSEEK_AUTH_TOKEN")):
+        if not any(os.getenv(key, "").strip() for key in ("ANTHROPIC_AUTH_TOKEN", "DASHSCOPE_API_KEY", "BAILIAN_API_KEY", "MARKET_ANALYSIS_BAILIAN_API_KEY", "KIMI_CODE_API_KEY", "DEEPSEEK_AUTH_TOKEN")):
             raise RuntimeError(
                 "No model provider credential is configured: set DASHSCOPE_API_KEY for 百炼 qwen3.8-max, "
                 "or KIMI_CODE_API_KEY / DEEPSEEK_AUTH_TOKEN / ANTHROPIC_AUTH_TOKEN for the legacy routes."
@@ -1638,7 +1638,7 @@ def run_source_scout_only(repository: MarketAnalysisRepository) -> dict:
     resolved_bin = shutil.which(claude_bin)
     if not resolved_bin:
         raise RuntimeError("Claude Code CLI is not installed or not on PATH")
-    if not any(os.getenv(key, "").strip() for key in ("ANTHROPIC_AUTH_TOKEN", "DASHSCOPE_API_KEY", "BAILIAN_API_KEY", "KIMI_CODE_API_KEY", "DEEPSEEK_AUTH_TOKEN")):
+    if not any(os.getenv(key, "").strip() for key in ("ANTHROPIC_AUTH_TOKEN", "DASHSCOPE_API_KEY", "BAILIAN_API_KEY", "MARKET_ANALYSIS_BAILIAN_API_KEY", "KIMI_CODE_API_KEY", "DEEPSEEK_AUTH_TOKEN")):
         raise RuntimeError(
             "No model provider credential is configured: set DASHSCOPE_API_KEY for 百炼 qwen3.8-max, "
             "or KIMI_CODE_API_KEY / DEEPSEEK_AUTH_TOKEN / ANTHROPIC_AUTH_TOKEN for the legacy routes."

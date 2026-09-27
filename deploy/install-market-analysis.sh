@@ -124,7 +124,9 @@ ensure_env_value CLAUDE_CODE_AUTO_COMPACT_WINDOW '786432'
 ensure_env_value CLAUDE_CODE_MAX_CONTEXT_TOKENS '1000000'
 ensure_env_value CLAUDE_CODE_DISABLE_1M_CONTEXT '0'
 # base_url must stop at /apps/anthropic; a trailing /v1 makes Claude Code request /v1/v1/models.
-ensure_env_value BAILIAN_ANTHROPIC_BASE_URL 'https://dashscope.aliyuncs.com/apps/anthropic'
+if ! tr -d '\r' < "$MARKET_ENV_FILE" | grep -Eq '^BAILIAN_ANTHROPIC_BASE_URL=[^[:space:]]+$'; then
+  ensure_env_value BAILIAN_ANTHROPIC_BASE_URL 'https://dashscope.aliyuncs.com/apps/anthropic'
+fi
 # 思考深度固定 high；百炼将 qwen3.8-max 的 high 映射为最高档 xhigh。
 ensure_env_value MARKET_ANALYSIS_REASONING_EFFORT 'high'
 ensure_env_value CLAUDE_CODE_EFFORT_LEVEL 'high'
@@ -179,7 +181,7 @@ has_env_value() {
   tr -d '\r' < "$MARKET_ENV_FILE" | grep -Eq "^${1}=[^[:space:]]+$"
 }
 
-if { has_env_value ANTHROPIC_AUTH_TOKEN || has_env_value DASHSCOPE_API_KEY || has_env_value BAILIAN_API_KEY || has_env_value KIMI_CODE_API_KEY || has_env_value DEEPSEEK_AUTH_TOKEN; } && has_env_value AI_READONLY_TOKEN; then
+if { has_env_value ANTHROPIC_AUTH_TOKEN || has_env_value DASHSCOPE_API_KEY || has_env_value BAILIAN_API_KEY || has_env_value MARKET_ANALYSIS_BAILIAN_API_KEY || has_env_value KIMI_CODE_API_KEY || has_env_value DEEPSEEK_AUTH_TOKEN; } && has_env_value AI_READONLY_TOKEN; then
   systemctl enable --now market-analysis.timer
   echo "市场研判定时器已启用：每天凌晨1点检查，到期后每5个自然日运行一次。"
 else

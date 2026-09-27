@@ -48,6 +48,14 @@ def test_credentials_models_context_and_process_environment_are_isolated():
     assert os.environ == before
 
 
+def test_legacy_deepseek_route_does_not_send_bailian_key(monkeypatch):
+    monkeypatch.delenv('DEEPSEEK_AUTH_TOKEN', raising=False)
+    monkeypatch.setenv('ANTHROPIC_BASE_URL', 'https://api.deepseek.com/anthropic')
+    monkeypatch.setenv('ANTHROPIC_AUTH_TOKEN', 'sk-bailian-test-only')
+    with pytest.raises(ProviderUnavailable, match='DeepSeek credential'):
+        provider_environment('deepseek-flash')
+
+
 def test_success_does_not_invoke_fallback(monkeypatch):
     calls = []
     monkeypatch.setattr(w.subprocess, 'run', lambda *a, **k: calls.append(k['env']['ANTHROPIC_BASE_URL']) or outcome())

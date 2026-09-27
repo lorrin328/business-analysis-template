@@ -2,10 +2,10 @@
 Description=Check due life-insurance market research at 01:00 every day
 
 [Timer]
-OnCalendar=*-*-* 01:00:00
-AccuracySec=1min
+OnCalendar=*-*-* 01:00:00 Asia/Shanghai
+AccuracySec=1s
 RandomizedDelaySec=0
-Persistent=true
+Persistent=false
 Unit=market-analysis-scheduled.service
 
 [Install]
