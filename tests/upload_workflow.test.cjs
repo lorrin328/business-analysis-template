@@ -203,7 +203,10 @@ test('preview timeout releases a never-settling fetch and preserves selected fil
   const pending = h.window.previewUpload();
   assert.equal(h.elements.get('resetUploadButton').disabled, false);
   assert.equal(h.elements.get('resetUploadButton').textContent, '取消预览');
-  h.advance(120000);
+  h.advance(90000);
+  assert.match(h.elements.get('uploadStatus').textContent, /仍在解析和核对已有月份/);
+  assert.equal(h.requests[0].options.signal.aborted, false);
+  h.advance(210000);
   await pending;
   assert.match(h.elements.get('uploadStatus').textContent, /预览等待.*尚未提交导入/);
   assert.equal(h.elements.get('previewUploadButton').disabled, false);
@@ -217,6 +220,21 @@ test('preview timeout releases a never-settling fetch and preserves selected fil
   assert.equal(h.storage.size, 0);
 });
 
+test('a preview taking longer than two minutes can still complete', async () => {
+  const h = harness();
+  h.select(3);
+  const slow = deferred();
+  h.responses.push(() => slow.promise);
+  const pending = h.window.previewUpload();
+  h.advance(121000);
+  assert.equal(h.requests[0].options.signal.aborted, false);
+  assert.match(h.elements.get('uploadStatus').textContent, /仍在解析/);
+  slow.resolve(response(previewResult()));
+  await pending;
+  assert.equal(h.elements.get('confirmUploadButton').disabled, false);
+  assert.equal(h.timers.size, 0);
+});
+
 test('200 headers with a hanging JSON body time out and a late body cannot replace a new preview', async () => {
   const h = harness();
   h.select(2);
@@ -226,7 +244,7 @@ test('200 headers with a hanging JSON body time out and a late body cannot repla
   const pending = h.window.previewUpload();
   await new Promise(setImmediate);
   assert.equal(bodyStarted, true);
-  h.advance(120000);
+  h.advance(300000);
   await pending;
   const latest = { ...previewResult(), manifestHash: 'latest-manifest' };
   latest.files[0].periods = Array.from({ length: 33 }, (_, i) => `${2024 + Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, '0')}`);

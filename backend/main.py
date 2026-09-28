@@ -3,13 +3,14 @@ import json
 import os
 import sys
 import sqlite3
+import asyncio
 from pathlib import Path
 from typing import Literal
 from starlette.concurrency import run_in_threadpool
 from fastapi import Depends, FastAPI, File, Query, Request, UploadFile, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 import logging
 from logging.handlers import RotatingFileHandler
 
@@ -196,9 +197,12 @@ def _read_upload_sources(performance, jingdai, hr, value):
     return sources
 
 
-def _preview_uploads(performance, jingdai, hr, value, import_mode, force):
+PREVIEW_HEARTBEAT_SECONDS = 15
+PREVIEW_HEARTBEAT_BYTES = b" " * 1024  # JSON whitespace flushed through Nginx during validation.
+
+
+def _preview_sources(sources, import_mode, force):
     from db import connection
-    sources = _read_upload_sources(performance, jingdai, hr, value)
     uri = Path(connection.DB_PATH).resolve().as_uri() + "?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
@@ -208,6 +212,18 @@ def _preview_uploads(performance, jingdai, hr, value, import_mode, force):
         conn.close()
 
 
+def _preview_uploads(performance, jingdai, hr, value, import_mode, force):
+    return _preview_sources(_read_upload_sources(performance, jingdai, hr, value), import_mode, force)
+
+
+def _consume_preview_task(task):
+    # The synchronous, read-only parser may finish after a browser disconnects.
+    try:
+        task.exception()
+    except asyncio.CancelledError:
+        pass
+
+
 @app.post("/api/upload/preview")
 async def preview_upload_files(
     performance: UploadFile = File(None), jingdai: UploadFile = File(None),
@@ -215,7 +231,35 @@ async def preview_upload_files(
     import_mode: Literal["replace_months", "supplement"] = Query("replace_months"),
     force: bool = Query(False), _user=Depends(require_permission("upload")),
 ):
-    return await run_in_threadpool(_preview_uploads, performance, jingdai, hr, value, import_mode, force)
+    # Reject oversize files before the response starts. Whitespace heartbeats
+    # then keep the public reverse proxy connection open during read-only work.
+    sources = await run_in_threadpool(_read_upload_sources, performance, jingdai, hr, value)
+
+    async def stream_preview():
+        task = asyncio.create_task(run_in_threadpool(_preview_sources, sources, import_mode, force))
+        task.add_done_callback(_consume_preview_task)
+        yield PREVIEW_HEARTBEAT_BYTES
+        while True:
+            try:
+                result = await asyncio.wait_for(asyncio.shield(task), timeout=PREVIEW_HEARTBEAT_SECONDS)
+            except asyncio.TimeoutError:
+                yield PREVIEW_HEARTBEAT_BYTES
+                continue
+            except Exception:
+                logger.exception("Read-only upload preview failed")
+                result = {
+                    "canImport": False, "files": [],
+                    "manifestHash": build_import_manifest(sources, import_mode, force),
+                    "errors": ["服务器未能完成预览，请稍后重试；本次没有导入数据。"],
+                    "warnings": [],
+                }
+            yield json.dumps(result, ensure_ascii=False).encode("utf-8")
+            return
+
+    return StreamingResponse(
+        stream_preview(), media_type="application/json",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-store"},
+    )
 
 
 @app.post("/api/upload")

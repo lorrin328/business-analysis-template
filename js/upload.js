@@ -61,14 +61,25 @@
         if (request.controller) request.controller.abort();
       };
     });
-    request.timer = setTimeout(function () { request.stop('timeout'); }, kind === 'preview' ? 120000 : 300000);
+    // Large monthly workbooks need time for upload, parsing and read-only
+    // comparisons against the existing database. Keep a bounded wait while
+    // making it clear that a long preview is still running.
+    request.timer = setTimeout(function () { request.stop('timeout'); }, 300000);
     _activeRequest = request;
+    if (kind === 'preview') {
+      request.noticeTimer = setTimeout(function () {
+        if (_activeRequest === request && !request.stopped) {
+          _status('清单较大，仍在解析和核对已有月份；预览不会写入数据。可继续等待，或点击“取消预览”保留所选文件。');
+        }
+      }, 90000);
+    }
     _uploading = true;
     return request;
   }
 
   function _finishRequest(request) {
     clearTimeout(request.timer);
+    clearTimeout(request.noticeTimer);
     if (_activeRequest !== request) return;
     _activeRequest = null;
     _uploading = false;
@@ -204,7 +215,7 @@
       if (_activeRequest !== request) return;
       _preview = null;
       _status(e.uploadReason === 'timeout'
-        ? '预览等待已超过两分钟，本次预览尚未提交导入，所选文件已保留。可稍后重新预览；服务器端的只读解析可能仍在处理。'
+        ? '预览等待已超过五分钟，本次预览尚未提交导入，所选文件已保留。可稍后重新预览；服务器端的只读解析可能仍在处理。'
         : '预览失败: ' + (e.message || '网络错误'));
     } finally {
       _finishRequest(request);

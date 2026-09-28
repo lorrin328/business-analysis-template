@@ -1,5 +1,6 @@
 import io
 import sqlite3
+import time
 
 import pandas as pd
 import pytest
@@ -32,6 +33,8 @@ def test_preview_is_readonly_and_confirmation_binds_file_bytes(source_db):
     before = source_db.read_bytes()
     preview = client.post("/api/upload/preview", files={"performance": ("synthetic.xlsx", payload)})
     assert preview.status_code == 200
+    assert preview.headers["x-accel-buffering"] == "no"
+    assert "no-store" in preview.headers["cache-control"]
     data = preview.json()
     assert data["canImport"] is True
     assert data["files"][0]["rowCount"] == 1
@@ -42,6 +45,23 @@ def test_preview_is_readonly_and_confirmation_binds_file_bytes(source_db):
     with sqlite3.connect(source_db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM performance").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM data_imports").fetchone()[0] == 0
+
+
+def test_slow_preview_streams_json_whitespace_until_result(source_db, monkeypatch):
+    import main
+
+    def slow_preview(sources, import_mode, force):
+        time.sleep(0.055)
+        return {"canImport": True, "files": [], "manifestHash": "ready"}
+
+    monkeypatch.setattr(main, "_preview_sources", slow_preview)
+    monkeypatch.setattr(main, "PREVIEW_HEARTBEAT_SECONDS", 0.01)
+    before = source_db.read_bytes()
+    response = TestClient(app).post("/api/upload/preview", files={"performance": ("synthetic.xlsx", workbook())})
+    assert response.status_code == 200
+    assert response.content.startswith(main.PREVIEW_HEARTBEAT_BYTES * 2)
+    assert response.json()["manifestHash"] == "ready"
+    assert source_db.read_bytes() == before
 
 
 def test_preview_requires_upload_permission_and_bounds_content(source_db, monkeypatch):
