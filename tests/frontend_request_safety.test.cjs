@@ -13,21 +13,38 @@ test('empty product organization selection is explicit and differs from all', ()
  c.productFilters.orgs={all:false,A:true};assert.equal(new URL(c.buildProductQuery(2026),'https://test').searchParams.get('orgs'),'A');
 });
 test('missing product count remains unavailable instead of copying premium', () => {
- const code=extract(read('data-integration'),'    function updateProductDataFromApi()', '    let productRequestSequence =');
+ const code=extract(read('data-integration'),'    function updateProductAppliedScope(', '    let productRequestSequence =');
  const productData={};
+ const scope={textContent:'正在读取产品结构范围…'};
  const c=context(code,{apiData:{product:{premium:[{name:'合成产品',value:12.5}],count:[],countBasis:'policy'}},productData,
+   document:{getElementById:()=>scope},productFilters:{transform:true,jingdai:false},currentPieType:'premium',ALLOW_LOCAL_FALLBACK:false,
    renderProductJingdaiOrgs(){},renderProductTopTable(){},selectedYear:2026,DEFAULT_DASHBOARD_YEAR:2026,applyProductFallback(){throw Error('unexpected fallback');}});
  assert.equal(c.updateProductDataFromApi(),true);
  assert.equal(productData.premium[0].value,12.5);
  assert.deepEqual(Array.from(productData.count),[]);
+ assert.equal(scope.textContent,'已应用：2026年 · 转型');
 });
-test('mixed policy and agency record counts do not form one pie', () => {
+test('product count chart uses pieces only and does not display agency rows', () => {
  const code=extract(read('product-analysis'),'    function getPieOption(type)', '    let currentPieType =');
- const productData={premium:[{name:'转型-产品',value:12},{name:'经代-产品',value:8}],count:[{name:'转型-产品',value:2},{name:'经代-产品',value:4}],countBasis:'mixed'};
- const c=context(code,{productData});
+ const productData={premium:[{name:'转型-产品',value:12},{name:'经代-产品',value:8}],count:[{name:'转型-产品',value:2}],countBasis:'policy'};
+ const c=context(code,{productData,productFilters:{transform:true,jingdai:true}});
  assert.equal(c.getPieOption('premium').series.length,1);
- assert.equal(c.getPieOption('count').series.length,0);
- assert.match(c.getPieOption('count').title.text,/口径不同/);
+ const option=c.getPieOption('count');
+ assert.equal(option.series.length,1);
+ assert.deepEqual(Array.from(option.series[0].data, item=>item.name),['转型-产品']);
+ assert.match(option.tooltip.formatter({name:'转型-产品',value:2,percent:100}),/2件/);
+ productData.count=[];
+ c.productFilters.transform=false;
+ assert.match(c.getPieOption('count').title.text,/经代暂无可核算件数/);
+});
+test('product scope explains agency count is unavailable on initial data load', () => {
+ const code=extract(read('data-integration'),'    function updateProductAppliedScope(', '    let productRequestSequence =');
+ const scope={textContent:'正在读取产品结构范围…'};
+ const product={year:2026,period:{label:'2026年截至9月'},premium:[{name:'转型-产品',value:12}],count:[{name:'转型-产品',value:2}],countBasis:'policy',jingdaiOrgs:[]};
+ const c=context(code,{document:{getElementById:()=>scope},apiData:{product},productData:{},productFilters:{transform:true,jingdai:true},currentPieType:'count',ALLOW_LOCAL_FALLBACK:false,
+   renderProductJingdaiOrgs(){},renderProductTopTable(){},selectedYear:2026,DEFAULT_DASHBOARD_YEAR:2026,applyProductFallback(){throw Error('unexpected fallback');}});
+ assert.equal(c.updateProductDataFromApi(),true);
+ assert.equal(scope.textContent,'已应用：2026年截至9月 · 转型＋经代 · 件数仅统计转型业务，经代暂无可核算件数');
 });
 for (const name of ['zhituo-analysis','branch-analysis','customer-analysis']) {
  test(`${name}: late success and late errors cannot overwrite newest query`, async () => {

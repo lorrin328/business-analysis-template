@@ -1138,6 +1138,8 @@ def test_product_structure_mixed_sources_uses_common_daily_cutoff(monkeypatch):
 
     assert premium["转型-转型产品"] == 1.0
     assert premium["经代-经代产品"] == 2.0
+    assert result["count"] == [{"name": "转型-转型产品", "value": 1}]
+    assert result["countBasis"] == "policy"
 
 
 def test_product_structure_normalizes_transform_channel_aliases(monkeypatch):

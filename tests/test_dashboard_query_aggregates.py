@@ -120,6 +120,14 @@ def test_product_repository_prefers_daily_aggregate(monkeypatch):
         "转型-年金": 10.0,
         "经代-经代产品": 3.0,
     }
+    assert result["count"] == [{"name": "转型-年金", "value": 2}]
+    assert result["countBasis"] == "policy"
+    agency_only = product_repo.get_product_structure(
+        2026, dimension="product_mix", include_transform=False, include_jingdai=True, months=[5],
+    )
+    assert agency_only["premium"] == [{"name": "经代产品", "value": 3.0}]
+    assert agency_only["count"] == []
+    assert agency_only["countBasis"] == "unavailable"
     assert result["topProducts"][0]["productName"] == "产品甲"
     assert result["jingdaiOrgs"] == ["经代甲"]
     conn.close()

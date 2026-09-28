@@ -4,12 +4,31 @@
 
     function getPieOption(type) {
       const data = productData[type] || [];
-      if (data.length === 0 || (type === 'count' && productData.countBasis === 'mixed')) {
+      if (data.length === 0) {
         return {
-          title: { text: type === 'count' && productData.countBasis === 'mixed' ? '件数与记录数口径不同，请单选来源' : type === 'count' ? '件数或记录数不可用' : '暂无产品结构数据', left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
+          title: { text: type === 'count' && productFilters.jingdai && !productFilters.transform ? '经代暂无可核算件数' : type === 'count' ? '暂无件数数据' : '暂无产品结构数据', left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
           series: []
         };
       }
+      const pieSeries = (items, center, radius) => ({
+        type: 'pie',
+        radius,
+        center,
+        avoidLabelOverlap: true,
+        itemStyle: { borderRadius: 6, borderColor: '#111a2b', borderWidth: 2 },
+        label: { show: false },
+        emphasis: {
+          label: {
+            show: true,
+            fontSize: 13,
+            fontWeight: 600,
+            color: '#f8fafc',
+            textBorderWidth: 0,
+            textShadowBlur: 0
+          }
+        },
+        data: items
+      });
       return {
         tooltip: {
           trigger: 'item',
@@ -17,9 +36,7 @@
           borderColor: '#1e2c46',
           textStyle: { color: '#eef3fb' },
           formatter: params => {
-            const basis = productData.countBasis || 'policy';
-            const unit = type === 'premium' ? '万元'
-              : basis === 'record' || (basis === 'mixed' && String(params.name).startsWith('经代-')) ? '条记录' : '件';
+            const unit = type === 'premium' ? '万元' : '件';
             return `${params.name}: ${params.value}${unit} (${params.percent}%)`;
           }
         },
@@ -38,26 +55,8 @@
           pageIconInactiveColor: '#475569',
           pageTextStyle: { color: '#93a4bd' }
         },
-        series: [{
-          type: 'pie',
-          radius: ['36%', '62%'],
-          center: ['50%', '42%'],
-          avoidLabelOverlap: true,
-          itemStyle: { borderRadius: 6, borderColor: '#111a2b', borderWidth: 2 },
-          label: { show: false },
-          emphasis: {
-            label: {
-              show: true,
-              fontSize: 13,
-              fontWeight: 600,
-              color: '#f8fafc',
-              textBorderWidth: 0,
-              textShadowBlur: 0
-            }
-          },
-          data,
-          color: ['#4f8cff', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#22d3ee']
-        }]
+        series: [pieSeries(data, ['50%', '42%'], ['36%', '62%'])],
+        color: ['#4f8cff', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#22d3ee']
       };
     }
     let currentPieType = 'premium';
@@ -130,6 +129,9 @@
       }
       currentPieType = type;
       productChart.setOption(getPieOption(type), true);
+      if (typeof updateProductAppliedScope === 'function' && apiData.product) {
+        updateProductAppliedScope(apiData.product);
+      }
     }
 
     function toggleProductSource(source, checked) {

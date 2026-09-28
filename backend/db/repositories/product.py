@@ -545,8 +545,14 @@ def get_product_structure(
                 'period': period_context,
                 'dimension': dimension,
                 'premium': [{'name': r['label'], 'value': round(r['premium'], 2)} for r in rows if round(r['premium'], 2) != 0],
-                'count': [{'name': r['label'], 'value': int(r['count'])} for r in rows if int(r['count']) != 0],
-                'countBasis': 'mixed' if include_transform and include_jingdai else 'record' if include_jingdai else 'policy',
+                'count': [
+                    {'name': r['label'], 'value': int(r['count'])}
+                    for r in rows
+                    if include_transform
+                    and (not include_jingdai or r['label'].startswith('转型-'))
+                    and int(r['count']) != 0
+                ],
+                'countBasis': 'policy' if include_transform else 'unavailable',
                 'topProducts': top_products,
                 'jingdaiOrgs': get_jingdai_orgs(year),
             }
