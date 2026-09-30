@@ -11,7 +11,7 @@
   <script src="js/format-utils.js"></script>
   <script src="js/month-multi-select.js?v=1.0.120"></script>
   <script src="js/api-client.js?v=1.0.116"></script>
-  <script src="js/auth-ui.js?v=1.0.158-5574d176d517"></script>
+  <script src="js/auth-ui.js?v=1.0.163-adb17231d9ba"></script>
   <script src="js/export-excel.js?v=1.0.116"></script>
   <script src="js/dashboard-config.js?v=1.0.116"></script>
   <script src="js/upload.js?v=1.0.161-da787ffc8243"></script>
@@ -1332,20 +1332,49 @@
     .auth-panel[data-auth-mode="register"] .auth-register-actions { display: flex; }
     .auth-panel[data-auth-mode="register"] .auth-login-actions { display: none; }
     .user-pill { color: var(--text-secondary); font-size: 12px; }
-    .permission-toolbar { display:grid; grid-template-columns: 1fr 1fr 150px auto; gap: 8px; margin-bottom: 12px; }
-    .permission-table { width: 100%; min-width: 0; table-layout: fixed; }
-    .permission-table th:nth-child(1), .permission-table td:nth-child(1) { width: 22%; }
-    .permission-table th:nth-child(2), .permission-table td:nth-child(2) { width: 18%; }
-    .permission-table th:nth-child(3), .permission-table td:nth-child(3) { width: 22%; }
-    .permission-table th:nth-child(5), .permission-table td:nth-child(5) { width: 84px; }
+    .modal-permission .modal { width: 96vw; max-width: 1500px; max-height: 90vh; display: flex; flex-direction: column; }
+    .modal-permission .modal-header { flex-shrink: 0; }
+    .modal-permission .modal-body { display: flex; flex-direction: column; min-height: 0; max-height: none; overflow: hidden; }
+    .permission-toolbar { display:grid; grid-template-columns: auto minmax(120px, 1fr) minmax(120px, 1fr) 144px auto; gap: 8px; align-items: center; flex-shrink: 0; margin-bottom: 12px; }
+    .permission-toolbar .permission-input { min-width: 0; }
+    .permission-table-wrapper { min-height: 0; overflow: auto; margin-top: 0; }
+    .permission-table { width: 100%; min-width: 1280px; table-layout: fixed; }
+    .permission-table th:nth-child(1) { width: 150px; }
+    .permission-table th:nth-child(2) { width: 76px; }
+    .permission-table th:nth-child(3) { width: 150px; }
+    .permission-table th:nth-child(4) { width: 144px; }
+    .permission-table th:nth-child(5) { width: 140px; }
+    .permission-table th:nth-child(7) { width: 150px; }
     .permission-table th, .permission-table td { vertical-align: top; }
-    .permission-checkboxes { display:grid; grid-template-columns: repeat(2, minmax(72px, 1fr)); gap: 6px 10px; }
-    .permission-checkboxes label { color: var(--text-secondary); font-size: 12px; display:flex; gap: 5px; align-items:center; }
-    .permission-action-cell { text-align: right; white-space: nowrap; vertical-align: middle !important; position: sticky; right: 0; background: var(--bg-card); }
+    .permission-checkboxes { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+    .permission-checkboxes label { color: var(--text-secondary); font-size: 12px; display:flex; gap: 6px; align-items:flex-start; overflow-wrap: anywhere; }
+    .permission-checkboxes input { flex-shrink: 0; margin: 2px 0 0; }
+    .permission-action-cell { text-align: right; white-space: normal; position: sticky; right: 0; background: var(--bg-card); }
+    .permission-action-cell .chart-btn { margin-bottom: 6px; }
     .permission-save-btn { min-width: 64px; }
     .permission-delete-btn { min-width: 64px; border-color: rgba(248,113,113,0.45); color: #fecaca; }
-    .permission-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:10px; }
-    .permission-save-all-btn { min-width: 96px; }
+    .permission-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-shrink: 0; padding-top: 12px; background: var(--bg-card); }
+    .permission-save-all-btn { min-width: 96px; flex-shrink: 0; }
+    @media (max-width: 1200px) {
+      .permission-table { min-width: 0; }
+      .permission-table thead { display: none; }
+      .permission-table, .permission-table tbody { display: block; }
+      .permission-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--border); padding: 10px; gap: 12px; }
+      .permission-table td { display: block; padding: 0; border: 0; min-width: 0; overflow-wrap: anywhere; }
+      .permission-table td::before { content: attr(data-label); display: block; color: var(--text-secondary); margin-bottom: 6px; }
+      .permission-table .permission-modules-cell { grid-column: 1 / -1; }
+      .permission-checkboxes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .permission-table .permission-action-cell { grid-row: 2; grid-column: 3; position: static; }
+    }
+    @media (max-width: 640px) {
+      .modal-permission .modal { width: 100%; max-height: 92vh; }
+      .permission-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .permission-toolbar > span { grid-column: 1 / -1; }
+      .permission-table tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .permission-table .permission-action-cell { grid-row: auto; grid-column: auto; }
+      .permission-checkboxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .permission-footer { align-items: flex-start; }
+    }
 
     /* Animations */
     @keyframes fadeInUp {
@@ -1370,7 +1399,7 @@
       <div class="header-left">
         <div class="logo">太平人寿 <span>经营分析看板</span></div>
         <span class="tag">网电多元条线</span>
-        <span class="tag" style="color: var(--success); border-color: rgba(var(--up-rgb),0.3); background: rgba(var(--up-rgb),0.1);">v1.0.162</span>
+        <span class="tag" style="color: var(--success); border-color: rgba(var(--up-rgb),0.3); background: rgba(var(--up-rgb),0.1);">v1.0.163</span>
       </div>
       <div class="header-right">
         <nav class="primary-nav" aria-label="主要页面">
@@ -1948,6 +1977,7 @@
         modalOverlay.classList.remove('active');
         modalOverlay.classList.remove('modal-target');
         modalOverlay.classList.remove('modal-product-config');
+        modalOverlay.classList.remove('modal-permission');
       }
     }
 

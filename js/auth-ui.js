@@ -300,7 +300,8 @@
     const body = document.getElementById('modalBody');
     title.textContent = '权限管理';
     body.innerHTML = '<div class="structure-empty">正在加载用户权限...</div>';
-    overlay.classList.add('active');
+    overlay.classList.remove('modal-target', 'modal-product-config');
+    overlay.classList.add('active', 'modal-permission');
     try {
       const payload = await window.fetchJson('/api/admin/users');
       const data = window.unwrapApiResponse(payload);
@@ -352,6 +353,7 @@
     const body = document.getElementById('modalBody');
     title.textContent = '操作日志';
     body.innerHTML = '<div class="structure-empty">正在加载操作日志...</div>';
+    overlay.classList.remove('modal-permission', 'modal-target', 'modal-product-config');
     overlay.classList.add('active');
     try {
       const payload = await window.fetchJson('/api/admin/operation-logs?limit=300');
@@ -397,22 +399,24 @@
       )).join('');
       return `
       <tr data-user-id="${user.id}">
-        <td><input class="permission-input" data-field="username" value="${escapeHtml(user.username)}" ${isCurrentUser ? 'disabled' : ''}></td>
-        <td>${statusLabel}</td>
-        <td>${escapeHtml(user.createdAt || '-')}</td>
-        <td>
+        <td data-label="用户名"><input class="permission-input" data-field="username" aria-label="用户名" value="${escapeHtml(user.username)}" ${isCurrentUser ? 'disabled' : ''}></td>
+        <td data-label="状态">${statusLabel}</td>
+        <td data-label="注册时间">${escapeHtml(user.createdAt || '-')}</td>
+        <td data-label="用户组">
           <select class="permission-input" data-field="role" ${isCurrentUser ? 'disabled' : ''}>
             ${roleOptions}
           </select>
         </td>
-        <td><input class="permission-input" data-field="password" type="password" placeholder="留空不修改"></td>
-        <td class="permission-checkboxes">
+        <td data-label="重置密码"><input class="permission-input" data-field="password" type="password" placeholder="留空不修改"></td>
+        <td data-label="模块权限" class="permission-modules-cell">
+          <div class="permission-checkboxes">
           ${Object.keys(MODULE_LABELS).map(key => {
             const locked = user.role === 'admin' || key === 'permission_admin';
             return `<label><input type="checkbox" data-module="${key}" ${user.permissions?.[key] ? 'checked' : ''} ${locked ? 'disabled' : ''}>${MODULE_LABELS[key]}</label>`;
           }).join('')}
+          </div>
         </td>
-        <td class="permission-action-cell"><button class="chart-btn" data-action="toggle-user" data-user-id="${user.id}" data-active="${user.accountStatus !== 'active'}" ${isCurrentUser ? 'disabled' : ''}>${statusAction}</button> <button class="chart-btn permission-delete-btn" data-action="delete-user" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}" ${isCurrentUser ? 'disabled' : ''}>删除</button></td>
+        <td data-label="操作" class="permission-action-cell"><button class="chart-btn" data-action="toggle-user" data-user-id="${user.id}" data-active="${user.accountStatus !== 'active'}" ${isCurrentUser ? 'disabled' : ''}>${statusAction}</button> <button class="chart-btn permission-delete-btn" data-action="delete-user" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}" ${isCurrentUser ? 'disabled' : ''}>删除</button></td>
       </tr>
     `;
     }).join('');
@@ -426,7 +430,7 @@
         </select>
         <button class="chart-btn auth-primary" data-action="create-user">新增用户</button>
       </div>
-      <div class="structure-table-wrapper">
+      <div class="structure-table-wrapper permission-table-wrapper" tabindex="0" aria-label="用户权限列表">
         <table class="structure-table permission-table">
           <thead><tr><th>用户名</th><th>状态</th><th>注册时间</th><th>用户组</th><th>重置密码</th><th>模块权限</th><th>操作</th></tr></thead>
           <tbody>${rows}</tbody>

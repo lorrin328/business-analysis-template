@@ -175,7 +175,7 @@ def test_permission_admin_can_manage_admin_role_with_batch_save_and_delete():
     assert ".permission-delete-btn" in html
     assert ".permission-save-all-btn" in html
     assert "position: sticky; right: 0" in html
-    assert ".permission-table { width: 100%; min-width: 0; table-layout: fixed; }" in html
+    assert ".permission-table { width: 100%; min-width: 1280px; table-layout: fixed; }" in html
 
 
 def test_local_seed_data_is_development_only_when_api_is_slow_or_unavailable():
