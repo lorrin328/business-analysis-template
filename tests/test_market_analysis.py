@@ -554,10 +554,10 @@ def test_model_plan_uses_bailian_qwen38_max_for_all_roles(monkeypatch):
     assert plan["scout"] == "qwen3.8-max"
     assert plan["repair"] == "qwen3.8-max"
     assert plan["escalation"] == "qwen3.8-max"
-    assert plan["strategy"] == "bailian_qwen38_max_all_roles"
+    assert plan["strategy"] == "bailian_qwen38_max_deepseek_fallback"
     # 单供应商路由：不得在不可用时静默改换到其他供应商。
-    assert plan["fallback"] is None
-    assert plan["reasoningEffort"] == "high"
+    assert plan["fallback"] == "deepseek-flash"
+    assert plan["reasoningEffort"] == "medium"
     assert repair_model_for_attempt(plan, 0) == ("qwen3.8-max", "repair_flash")
     assert repair_model_for_attempt(plan, 1) == ("qwen3.8-max", "repair_escalation")
     monkeypatch.setenv("MARKET_ANALYSIS_SOURCE_SCOUT_TIMEOUT_SECONDS", "99999")
@@ -945,7 +945,7 @@ def test_worker_repairs_unprunable_source_in_same_run_with_flash(tmp_path, monke
     assert "source S3 failed independent verification" in prompts[1]
     status = repository.status()
     assert [call["role"] for call in status["modelCalls"]] == ["primary", "repair_flash"]
-    assert status["modelPlan"]["strategy"] == "bailian_qwen38_max_all_roles"
+    assert status["modelPlan"]["strategy"] == "bailian_qwen38_max_deepseek_fallback"
 
 
 def test_private_repair_checkpoint_is_resumable_and_clearable(tmp_path):
@@ -1250,8 +1250,8 @@ def test_market_timer_runs_at_1am_when_five_calendar_days_are_due_and_template_h
     assert "BAILIAN_ANTHROPIC_BASE_URL=https://dashscope.aliyuncs.com/apps/anthropic" in env_template
     assert "/apps/anthropic/v1" not in env_template
     assert "DASHSCOPE_API_KEY=\n" in env_template
-    assert "MARKET_ANALYSIS_REASONING_EFFORT=high" in env_template
-    assert "CLAUDE_CODE_EFFORT_LEVEL=high" in env_template
+    assert "MARKET_ANALYSIS_REASONING_EFFORT=medium" in env_template
+    assert "CLAUDE_CODE_EFFORT_LEVEL=medium" in env_template
     assert "ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8-max" in env_template
     assert "CLAUDE_CODE_SUBAGENT_MODEL=qwen3.8-max" in env_template
     assert "MARKET_ANALYSIS_PRIMARY_MODEL=qwen3.8-max" in env_template
@@ -1265,8 +1265,8 @@ def test_market_timer_runs_at_1am_when_five_calendar_days_are_due_and_template_h
     assert "StartLimitBurst=2" in service
     assert "tr -d '\\r'" in installer
     assert "ensure_env_value ANTHROPIC_DEFAULT_HAIKU_MODEL 'qwen3.8-max'" in installer
-    assert "ensure_env_value MARKET_ANALYSIS_REASONING_EFFORT 'high'" in installer
-    assert "ensure_env_value CLAUDE_CODE_EFFORT_LEVEL 'high'" in installer
+    assert "ensure_env_value MARKET_ANALYSIS_REASONING_EFFORT 'medium'" in installer
+    assert "ensure_env_value CLAUDE_CODE_EFFORT_LEVEL 'medium'" in installer
     assert "ensure_env_value CLAUDE_CODE_MAX_CONTEXT_TOKENS '1000000'" in installer
     assert "ROUTED_MODEL='qwen3.8-max'" in installer
     assert "has_env_value DASHSCOPE_API_KEY" in installer

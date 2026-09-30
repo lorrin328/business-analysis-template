@@ -137,7 +137,7 @@ def test_bailian_environment_isolates_credentials_and_pins_effort():
     assert env['ANTHROPIC_AUTH_TOKEN'] == 'sk-bailian-test-only'
     assert 'ANTHROPIC_API_KEY' not in env
     assert env['ANTHROPIC_MODEL'] == 'qwen3.8-max'
-    assert env['CLAUDE_CODE_EFFORT_LEVEL'] == 'high'
+    assert env['CLAUDE_CODE_EFFORT_LEVEL'] == 'medium'
     assert env['CLAUDE_CODE_MAX_CONTEXT_TOKENS'] == '1000000'
     assert env['CLAUDE_CODE_AUTO_COMPACT_WINDOW'] == '786432'
     assert env['CLAUDE_CODE_DISABLE_1M_CONTEXT'] == '0'
@@ -148,14 +148,14 @@ def test_bailian_environment_isolates_credentials_and_pins_effort():
     assert os.environ == before
 
 
-def test_bailian_provider_label_and_single_provider_routing():
+def test_bailian_provider_label_and_deepseek_fallback():
     assert is_bailian('qwen3.8-max') and is_bailian('qwen3.8-max[1m]')
     assert is_bailian('qwen3.8-max-0902')
     assert not is_bailian('k3-256k') and not is_bailian('deepseek-flash')
     assert provider_name('qwen3.8-max') == '阿里百炼'
     assert provider_name('k3-256k') == 'Kimi Code'
     assert provider_name('deepseek-flash') == 'DeepSeek'
-    assert availability_fallback('qwen3.8-max') is None
+    assert availability_fallback('qwen3.8-max') == 'deepseek-flash'
     assert availability_fallback('k3-256k') == 'deepseek-flash'
 
 
@@ -168,14 +168,14 @@ def test_bailian_base_url_never_ends_with_v1(monkeypatch):
         'https://ws-1.cn-beijing.maas.aliyuncs.com/apps/anthropic'
 
 
-def test_reasoning_effort_defaults_high_and_rejects_unknown_values(monkeypatch):
-    assert reasoning_effort() == 'high'
+def test_reasoning_effort_defaults_medium_and_rejects_unknown_values(monkeypatch):
+    assert reasoning_effort() == 'medium'
     monkeypatch.setenv('MARKET_ANALYSIS_REASONING_EFFORT', 'MEDIUM')
     assert reasoning_effort() == 'medium'
     assert provider_environment('qwen3.8-max')['CLAUDE_CODE_EFFORT_LEVEL'] == 'medium'
     monkeypatch.setenv('MARKET_ANALYSIS_REASONING_EFFORT', 'ultra-bogus')
-    assert reasoning_effort() == 'high'
-    assert provider_environment('qwen3.8-max')['CLAUDE_CODE_EFFORT_LEVEL'] == 'high'
+    assert reasoning_effort() == 'medium'
+    assert provider_environment('qwen3.8-max')['CLAUDE_CODE_EFFORT_LEVEL'] == 'medium'
 
 
 def test_bailian_requires_own_credential_and_never_borrows_other_providers(monkeypatch):
@@ -193,17 +193,17 @@ def test_bailian_requires_own_credential_and_never_borrows_other_providers(monke
                                      'API Error: 429 Throttling.RateQuota',
                                      'HTTP 403 AccessDenied', 'Arrearage: account is overdue',
                                      'Flow control triggered'])
-def test_bailian_outage_raises_without_switching_provider(monkeypatch, message):
+def test_bailian_outage_switches_to_deepseek_once(monkeypatch, message):
     calls = []
     monkeypatch.setattr(w.subprocess, 'run',
                         lambda *a, **k: calls.append(k['env']['ANTHROPIC_BASE_URL'])
                         or outcome('error_during_execution', True, message, code=1))
     with pytest.raises(ProviderUnavailable):
         invoke_bailian([])
-    assert calls == [BAILIAN_ENDPOINT]
+    assert calls == [BAILIAN_ENDPOINT, 'https://api.deepseek.com/anthropic']
 
 
-def test_bailian_uses_full_stage_timeout_and_passes_model_through(monkeypatch):
+def test_bailian_reserves_fallback_timeout_and_passes_model_through(monkeypatch):
     seen = {}
 
     def run(command, **kwargs):
@@ -216,8 +216,8 @@ def test_bailian_uses_full_stage_timeout_and_passes_model_through(monkeypatch):
     events = []
     assert invoke_bailian(events) == {'ack': True}
     assert seen['model'] == 'qwen3.8-max'
-    assert seen['effort'] == 'high'
-    assert seen['timeout'] == 120
+    assert seen['effort'] == 'medium'
+    assert seen['timeout'] == 60
     assert events[0]['provider'] == '阿里百炼'
     assert events[0]['model'] == 'qwen3.8-max'
 
@@ -231,3 +231,45 @@ def test_bailian_budget_cap_never_triggers_cross_provider_retry(monkeypatch):
         invoke_bailian([])
     assert len(calls) == 1
 
+
+
+def test_missing_bailian_credential_uses_deepseek_max_without_inheriting_effort(monkeypatch):
+    monkeypatch.delenv('DASHSCOPE_API_KEY')
+    monkeypatch.setenv('CLAUDE_CODE_EFFORT_LEVEL', 'medium')
+    calls = []
+    def run(command, **kwargs):
+        env = kwargs['env']
+        calls.append(env)
+        assert env['CLAUDE_CODE_EFFORT_LEVEL'] == 'max'
+        assert env['CLAUDE_CODE_MAX_CONTEXT_TOKENS'] == '1000000'
+        assert not LEAKED_KEYS & env.keys()
+        return outcome()
+    monkeypatch.setattr(w.subprocess, 'run', run)
+    events = []
+    assert invoke_bailian(events) == {'ack': True}
+    assert len(calls) == 1
+    assert events[0]['status'] == 'unavailable'
+    assert events[1]['fallbackFrom'] == 'qwen3.8-max'
+    assert events[1]['reasoningEffort'] == 'max'
+    assert events[1]['contextTokens'] == 1000000
+
+
+@pytest.mark.parametrize('value,expected', [('262144', 262144), ('1000000', 1000000),
+                                          ('2000000', 1000000), ('0', 1000000), ('bogus', 1000000)])
+def test_qwen_context_cap_is_validated_and_does_not_affect_deepseek(monkeypatch, value, expected):
+    monkeypatch.setenv('MARKET_ANALYSIS_QWEN_CONTEXT_TOKENS', value)
+    env = provider_environment('qwen3.8-max[1m]')
+    assert env['CLAUDE_CODE_MAX_CONTEXT_TOKENS'] == str(expected)
+    assert env['ANTHROPIC_MODEL'] == 'qwen3.8-max'
+    assert env['CLAUDE_CODE_DISABLE_1M_CONTEXT'] == ('0' if expected == 1000000 else '1')
+    assert env['CLAUDE_CODE_AUTO_COMPACT_WINDOW'] == ('786432' if expected == 1000000 else '196608')
+    assert provider_environment('deepseek-flash')['CLAUDE_CODE_MAX_CONTEXT_TOKENS'] == '1000000'
+
+
+@pytest.mark.parametrize('subtype', ['error_max_turns', 'error_max_structured_output_retries'])
+def test_bailian_content_failures_never_switch_provider(monkeypatch, subtype):
+    calls = []
+    monkeypatch.setattr(w.subprocess, 'run', lambda *a, **k: calls.append(1) or outcome(subtype, True, 'API Error: 429', code=1))
+    with pytest.raises(RuntimeError):
+        invoke_bailian([])
+    assert len(calls) == 1

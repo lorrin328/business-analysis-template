@@ -24,3 +24,19 @@ def test_manual_trigger_unloaded_failed_and_rejected(tmp_path):
    assert (p/'state/last-trigger').exists()==(case!='rejected')
    assert ('reset-failed' in log)==(case=='failed')
    print(case,'PASS')
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='Linux shell integration')
+@pytest.mark.parametrize('enabled,active', [(0, 0), (1, 0), (0, 1), (1, 1)])
+def test_installer_preserves_existing_scheduler_state(tmp_path, enabled, active):
+ source = (pathlib.Path(__file__).resolve().parents[1] / 'deploy/install-market-analysis.sh').read_text()
+ # Exercise the production restore block with a harmless command recorder.
+ block = source.split('if [ "$TIMER_EXISTED" -eq 1 ]; then', 1)[1].split('elif { has_env_value', 1)[0]
+ script = 'set -eu\nTIMER_EXISTED=1\nTIMER_ENABLED=' + str(enabled) + '\nTIMER_ACTIVE=' + str(active) + '\n'
+ script += 'systemctl() { echo "$*" >> "$TEST_LOG"; }\nif [ "$TIMER_EXISTED" -eq 1 ]; then' + block + 'fi\n'
+ result = subprocess.run(['bash', '-c', script], env=dict(os.environ, TEST_LOG=str(tmp_path / 'log')), capture_output=True, text=True)
+ assert result.returncode == 0, result.stderr
+ commands = (tmp_path / 'log').read_text().splitlines()
+ assert commands == [('enable' if enabled else 'disable') + ' market-analysis.timer',
+                     ('start' if active else 'stop') + ' market-analysis.timer']
+ assert not any('--now' in command for command in commands)

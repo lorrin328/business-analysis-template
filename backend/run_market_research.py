@@ -18,7 +18,7 @@ from urllib.request import Request, urlopen
 
 from market_analysis.model_router import (
     ProviderUnavailable, availability_failure, availability_fallback, is_bailian,
-    provider_environment, provider_name, reasoning_effort,
+    provider_environment, provider_name, reasoning_effort, context_tokens, cli_model,
 )
 from market_analysis.config import CHANGE_KEYS
 from market_analysis.insights import build_report_metrics, build_runtime_assessment
@@ -528,7 +528,7 @@ def resolve_model_plan() -> dict[str, str]:
     escalation = os.getenv("MARKET_ANALYSIS_ESCALATION_MODEL", "").strip() or primary
     scout = os.getenv("MARKET_ANALYSIS_SOURCE_SCOUT_MODEL", "").strip() or repair
     if is_bailian(primary):
-        strategy = "bailian_qwen38_max_all_roles"
+        strategy = "bailian_qwen38_max_deepseek_fallback"
     elif primary == "k3-256k":
         strategy = "kimi_primary_deepseek_fallback"
     else:
@@ -536,7 +536,10 @@ def resolve_model_plan() -> dict[str, str]:
     return {
         "strategy": strategy,
         "fallback": availability_fallback(primary),
-        "reasoningEffort": reasoning_effort() if is_bailian(primary) else None,
+        "reasoningEffort": reasoning_effort(primary),
+        "contextTokens": context_tokens(primary),
+        "fallbackReasoningEffort": reasoning_effort(availability_fallback(primary) or ''),
+        "fallbackContextTokens": context_tokens(availability_fallback(primary) or ''),
         "scout": scout,
         "primary": primary,
         "repair": repair,
@@ -830,7 +833,7 @@ def _invoke_claude_once(
         "-p",
         "--output-format", "json",
         "--json-schema", json.dumps(output_schema or REPORT_OUTPUT_SCHEMA, ensure_ascii=False, separators=(",", ":")),
-        "--model", "deepseek-flash[1m]" if model == "deepseek-flash" else model,
+        "--model", cli_model(model),
         "--setting-sources", "",
         "--permission-mode", "dontAsk",
         "--allowedTools", "WebSearch", "WebFetch",
@@ -859,6 +862,8 @@ def _invoke_claude_once(
                 "role": role,
                 "model": model,
                 "provider": provider_name(model),
+                "reasoningEffort": reasoning_effort(model),
+                "contextTokens": context_tokens(model),
                 "status": "timeout",
                 "elapsedMs": round((time.monotonic() - started) * 1000),
             })
@@ -867,6 +872,8 @@ def _invoke_claude_once(
         "role": role,
         "model": model,
         "provider": provider_name(model),
+        "reasoningEffort": reasoning_effort(model),
+        "contextTokens": context_tokens(model),
         "status": "success" if completed.returncode == 0 else "failed",
         "elapsedMs": round((time.monotonic() - started) * 1000),
         **_claude_metrics(completed.stdout),
@@ -931,6 +938,9 @@ def stamp_report_metadata(
         "fallback": model_plan.get("fallback"),
         "strategy": model_plan["strategy"],
         "reasoningEffort": model_plan.get("reasoningEffort"),
+        "contextTokens": model_plan.get("contextTokens"),
+        "fallbackReasoningEffort": model_plan.get("fallbackReasoningEffort"),
+        "fallbackContextTokens": model_plan.get("fallbackContextTokens"),
         "scout": model_plan["scout"],
         "primary": model_plan["primary"],
         "repair": model_plan["repair"],
@@ -1541,7 +1551,8 @@ def run_research(repository: MarketAnalysisRepository, *, dry_run: bool = False)
             primary_calls = [call for call in report["generationModelCalls"] if call.get("role") == "primary" and call.get("status") == "success"]
             if primary_calls:
                 actual = primary_calls[-1]["model"]
-                report["model"].update(name=actual, provider=provider_name(actual), configuredPrimary=model_plan["primary"])
+                report["model"].update(name=actual, provider=provider_name(actual), configuredPrimary=model_plan["primary"],
+                                       reasoningEffort=reasoning_effort(actual), contextTokens=context_tokens(actual))
 
             report["qualityAssessment"] = assess_report_quality(report, repository, prior_model_calls + model_calls)
             minimum_quality = float(os.getenv("MARKET_ANALYSIS_MIN_QUALITY_SCORE", "0") or 0)

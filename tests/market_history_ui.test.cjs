@@ -52,7 +52,7 @@ function harness() {
   const exposed = source.replace('})(window, document);', `
     renderReport = report => rendered.push(report.reportId);
     renderObservability = () => {};
-    window.testApi = { loadReport, loadHistory, refreshAll, formatPercent, loadStatus, runNow, renderSources };
+    window.testApi = { loadReport, loadHistory, refreshAll, formatPercent, loadStatus, runNow, renderSources, modelPlanLabel };
   })(window, document);`);
   vm.runInContext(exposed, context);
   const select = document.getElementById('historySelect');
@@ -152,4 +152,14 @@ test('manual start retains queued feedback over old status and polls running sta
   h.requests[3].resolve({state: 'running', updatedAt: '2026-09-07T15:40:00+08:00'}); await running;
   assert.equal(h.document.getElementById('runState').textContent, '研究正在运行');
   assert.ok(h.timers.length >= 3);
+});
+
+
+test('model plan shows distinct Qwen and fallback reasoning levels', () => {
+  const { api } = harness();
+  const label = api.modelPlanLabel({ primary: 'qwen3.8-max', repair: 'qwen3.8-max', escalation: 'qwen3.8-max',
+    reasoningEffort: 'medium', fallback: 'deepseek-flash', fallbackReasoningEffort: 'max' });
+  assert.ok(label.includes('思考深度 medium'));
+  assert.ok(label.includes('备用 Flash（max）'));
+  assert.ok(!api.modelPlanLabel({ primary: 'k3-256k' }).includes('备用'));
 });

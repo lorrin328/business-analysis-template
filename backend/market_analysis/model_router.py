@@ -19,13 +19,13 @@ PROVIDER_DEEPSEEK = 'DeepSeek'
 BAILIAN_DEFAULT_BASE_URL = 'https://dashscope.aliyuncs.com/apps/anthropic'
 BAILIAN_MODEL_PREFIX = 'qwen3.8-max'
 # qwen3.8-max 的思考力度合法取值为 xhigh/medium/low，百炼会把 high 与 max
-# 映射为 xhigh。本项目固定 high，等效于该模型最高档，且不会因取值非法被拒。
-BAILIAN_EFFORT_DEFAULT = 'high'
+# 映射为 xhigh。本项目降一档至 medium，不把 high 当成中高档。
+BAILIAN_EFFORT_DEFAULT = 'medium'
 BAILIAN_EFFORT_ALLOWED = frozenset({'low', 'medium', 'high', 'xhigh', 'max'})
-# qwen3.8-max 上下文 1,000,000；思考模式下最大输入 983,616，
-# 压缩窗口沿用已在生产验证过的 786432。
-BAILIAN_CONTEXT_TOKENS = '1000000'
-BAILIAN_COMPACT_WINDOW = '786432'
+# 官方模型页当前标注 1M；用户确认按此上限配置。
+# 可单独配置接入上限，不能让全局 DeepSeek 1M 配置污染 Qwen 子进程。
+BAILIAN_CONTEXT_TOKENS = 1000000
+BAILIAN_CONTEXT_LIMIT = 1000000
 BAILIAN_CREDENTIAL_KEYS = ('DASHSCOPE_API_KEY', 'BAILIAN_API_KEY', 'MARKET_ANALYSIS_BAILIAN_API_KEY')
 
 # 仅在明确配置了跨通道备份时才允许自动换供应商；
@@ -63,14 +63,38 @@ def provider_name(model: str) -> str:
 def availability_fallback(model: str) -> str | None:
     """Cross-provider retry target, only for channels with a configured backup."""
     if is_bailian(model):
-        return None
+        return 'deepseek-flash'
     return LEGACY_AVAILABILITY_FALLBACK.get(model)
 
 
-def reasoning_effort() -> str:
-    """思考深度；未知取值一律回到 high，不把非法值送给百炼。"""
+def reasoning_effort(model: str = BAILIAN_MODEL_PREFIX) -> str | None:
+    """Each provider owns its effort; fallback never inherits Qwen's medium."""
+    if model.startswith('deepseek-flash'):
+        return 'max'
+    if not is_bailian(model):
+        return None
     value = os.getenv('MARKET_ANALYSIS_REASONING_EFFORT', '').strip().lower()
     return value if value in BAILIAN_EFFORT_ALLOWED else BAILIAN_EFFORT_DEFAULT
+
+
+def context_tokens(model: str) -> int | None:
+    if is_bailian(model):
+        try:
+            value = int(os.getenv('MARKET_ANALYSIS_QWEN_CONTEXT_TOKENS', str(BAILIAN_CONTEXT_TOKENS)))
+        except ValueError:
+            value = BAILIAN_CONTEXT_TOKENS
+        return value if 32768 <= value <= BAILIAN_CONTEXT_LIMIT else BAILIAN_CONTEXT_TOKENS
+    if model.startswith('deepseek-flash'):
+        return 1000000
+    if model == 'k3-256k':
+        return 262144
+    return None
+
+
+def cli_model(model: str) -> str:
+    if is_bailian(model):
+        return model.removesuffix('[1m]')
+    return 'deepseek-flash[1m]' if model.startswith('deepseek-flash') else model
 
 
 def bailian_base_url() -> str:
@@ -111,8 +135,9 @@ def provider_environment(model: str) -> dict[str, str]:
         if not token:
             raise ProviderUnavailable('Bailian credential is not configured')
         endpoint = bailian_base_url()
-        compact, context = BAILIAN_COMPACT_WINDOW, BAILIAN_CONTEXT_TOKENS
-        effort = reasoning_effort()
+        context = str(context_tokens(model))
+        compact = '786432' if context == '1000000' else str(int(context) * 3 // 4)
+        effort = reasoning_effort(model)
     elif model == 'k3-256k':
         token = env.get('KIMI_CODE_API_KEY', '').strip()
         if not token:
@@ -129,14 +154,16 @@ def provider_environment(model: str) -> dict[str, str]:
         if not token:
             raise ProviderUnavailable('DeepSeek credential is not configured')
         endpoint, compact, context = 'https://api.deepseek.com/anthropic', '786432', '1000000'
+        effort = reasoning_effort(model)
     else:
         return env  # Existing custom model configurations keep their explicit endpoint.
     for key in SCRUBBED_KEYS:
         env.pop(key, None)
-    selector = 'deepseek-flash[1m]' if model.startswith('deepseek-flash') else model
+    selector = cli_model(model)
     env.update(ANTHROPIC_BASE_URL=endpoint, ANTHROPIC_API_KEY=token,
                ANTHROPIC_MODEL=selector, CLAUDE_CODE_AUTO_COMPACT_WINDOW=compact,
-               CLAUDE_CODE_MAX_CONTEXT_TOKENS=context, CLAUDE_CODE_DISABLE_1M_CONTEXT='0')
+               CLAUDE_CODE_MAX_CONTEXT_TOKENS=context,
+               CLAUDE_CODE_DISABLE_1M_CONTEXT='0' if context == '1000000' else '1')
     if model.startswith('deepseek-flash') or is_bailian(model):
         # 百炼与 DeepSeek 均以 Authorization: Bearer 鉴权，不能同时保留 x-api-key。
         env['ANTHROPIC_AUTH_TOKEN'] = token

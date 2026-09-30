@@ -2,7 +2,7 @@
 
 ## 结论
 
-生产运行采用 Claude Code CLI 连接阿里百炼（Model Studio）的 Anthropic 兼容端点。来源侦察、主研、首次修复、升级修复及Claude轻量子任务统一使用 `qwen3.8-max`（1,000,000 tokens 上下文，思考深度 `high`；百炼将该模型的 `high` 映射为最高档 `xhigh`）；程序仍在主研前并发淘汰不可达、正文不符和公众号主体不明的候选。百炼通道为单供应商路由，通道不可用时直接失败并保留上一期有效报告，不静默改换供应商。服务器不依赖 CC Switch；模型配置由 `/etc/business-analysis-market/market-analysis.env` 管理。参数依据、凭据隔离与未验证边界见 [BAILIAN_QWEN38_MAX_20260927.md](BAILIAN_QWEN38_MAX_20260927.md)。
+生产运行采用 Claude Code CLI 连接阿里百炼（Model Studio）的 Anthropic 兼容端点。来源侦察、主研、首次修复、升级修复及Claude轻量子任务统一使用 `qwen3.8-max`（1,000,000 tokens 上下文，思考深度 `medium`，从 `xhigh` 降一档）；程序仍在主研前并发淘汰不可达、正文不符和公众号主体不明的候选。百炼通道不可用或超时时，在本阶段剩余预算与时间内允许一次 DeepSeek Flash 接替；接替固定 1M 上下文和 `max` 思考深度。预算、轮数、格式及内容门禁失败不触发跨供应商重试。两通道均失败则保留上一期报告。服务器不依赖 CC Switch；模型配置由 `/etc/business-analysis-market/market-analysis.env` 管理。本次参数与接替机制见 [MODEL_ROUTING_20260930.md](MODEL_ROUTING_20260930.md)，原切换记录见 [BAILIAN_QWEN38_MAX_20260927.md](BAILIAN_QWEN38_MAX_20260927.md)。
 
 Web 服务不直接调用模型。独立 `market-analysis.service` 每次完成多源搜索、历史归并、结构化输出和证据校验，只有通过门禁的 JSON 才会替换 `latest.json`；失败时网页继续显示上一期有效报告。
 
@@ -58,7 +58,7 @@ MARKET_ANALYSIS_REPAIR_MODEL=qwen3.8-max
 MARKET_ANALYSIS_ESCALATION_MODEL=qwen3.8-max
 MARKET_ANALYSIS_SOURCE_SCOUT_ENABLED=1
 MARKET_ANALYSIS_SOURCE_SCOUT_MODEL=qwen3.8-max
-MARKET_ANALYSIS_REASONING_EFFORT=high
+MARKET_ANALYSIS_REASONING_EFFORT=medium
 MARKET_ANALYSIS_SOURCE_SCOUT_MAX_TURNS=25
 MARKET_ANALYSIS_SOURCE_SCOUT_MAX_BUDGET_USD=3.2
 MARKET_ANALYSIS_SOURCE_SCOUT_TIMEOUT_SECONDS=900
@@ -72,10 +72,10 @@ MARKET_ANALYSIS_REPAIR_MAX_BUDGET_USD=3
 MARKET_ANALYSIS_ESCALATION_MAX_BUDGET_USD=6
 MARKET_ANALYSIS_POST_VERIFY_REPAIR_ATTEMPTS=1
 MARKET_ANALYSIS_MIN_QUALITY_SCORE=9.0
-CLAUDE_CODE_EFFORT_LEVEL=high
+CLAUDE_CODE_EFFORT_LEVEL=medium
 ```
 
-所有模型角色统一使用阿里百炼 `qwen3.8-max`。来源侦察失败时仍降级到主研链路；首次修复后仍不合格时允许同模型再做一次升级修复。独立来源核验将模块事实对齐到原文摘录后，如判断或影响出现新的证据一致性错误，允许额外一次定向修复并重新核验来源；仍失败则不发布。9分质量门槛、独立来源复核和上一期报告保护不变。百炼通道不做跨供应商自动改换，通道不可用即失败并保留上一期报告。换用新模型后必须通过运行台账重新观察首次成稿率、修复率、耗时和质量，不得沿用 Kimi 或 DeepSeek 通道的历史指标；CLI的`total_cost_usd`仅作为相对观察值，实际扣费以百炼控制台为准。
+所有模型角色统一使用阿里百炼 `qwen3.8-max`。来源侦察失败时仍降级到主研链路；首次修复后仍不合格时允许同模型再做一次升级修复。独立来源核验将模块事实对齐到原文摘录后，如判断或影响出现新的证据一致性错误，允许额外一次定向修复并重新核验来源；仍失败则不发布。9分质量门槛、独立来源复核和上一期报告保护不变。百炼不可用时由 DeepSeek Flash 接替一次，两通道均失败则保留上一期报告。换用新模型后必须通过运行台账重新观察首次成稿率、修复率、耗时和质量，不得沿用 Kimi 或 DeepSeek 通道的历史指标；CLI的`total_cost_usd`仅作为相对观察值，实际扣费以百炼控制台为准。
 
 ## 首次验证与启用
 

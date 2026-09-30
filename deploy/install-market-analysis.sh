@@ -11,6 +11,15 @@ MARKET_CONFIG_DIR="${MARKET_ANALYSIS_CONFIG_DIR:-/etc/business-analysis-market}"
 MARKET_ENV_FILE="$MARKET_CONFIG_DIR/market-analysis.env"
 INSTALL_CLAUDE=1
 TEMP_FILES=()
+# A code release must preserve an existing scheduler's operator-selected state.
+TIMER_EXISTED=0
+TIMER_ENABLED=0
+TIMER_ACTIVE=0
+if [ -f /etc/systemd/system/market-analysis.timer ]; then
+  TIMER_EXISTED=1
+  systemctl is-enabled --quiet market-analysis.timer && TIMER_ENABLED=1 || true
+  systemctl is-active --quiet market-analysis.timer && TIMER_ACTIVE=1 || true
+fi
 
 cleanup_temp_files() {
   local path
@@ -123,22 +132,19 @@ ensure_env_value CLAUDE_CODE_SUBAGENT_MODEL 'qwen3.8-max'
 ensure_env_value CLAUDE_CODE_AUTO_COMPACT_WINDOW '786432'
 ensure_env_value CLAUDE_CODE_MAX_CONTEXT_TOKENS '1000000'
 ensure_env_value CLAUDE_CODE_DISABLE_1M_CONTEXT '0'
+if ! tr -d '\r' < "$MARKET_ENV_FILE" | grep -Eq '^MARKET_ANALYSIS_QWEN_CONTEXT_TOKENS=[0-9]+$'; then
+  ensure_env_value MARKET_ANALYSIS_QWEN_CONTEXT_TOKENS '1000000'
+fi
 # base_url must stop at /apps/anthropic; a trailing /v1 makes Claude Code request /v1/v1/models.
 if ! tr -d '\r' < "$MARKET_ENV_FILE" | grep -Eq '^BAILIAN_ANTHROPIC_BASE_URL=[^[:space:]]+$'; then
   ensure_env_value BAILIAN_ANTHROPIC_BASE_URL 'https://dashscope.aliyuncs.com/apps/anthropic'
 fi
-# 思考深度固定 high；百炼将 qwen3.8-max 的 high 映射为最高档 xhigh。
-ensure_env_value MARKET_ANALYSIS_REASONING_EFFORT 'high'
-ensure_env_value CLAUDE_CODE_EFFORT_LEVEL 'high'
+# Qwen medium；DeepSeek 子进程独立固定 max 和 1M。
+ensure_env_value MARKET_ANALYSIS_REASONING_EFFORT 'medium'
+ensure_env_value CLAUDE_CODE_EFFORT_LEVEL 'medium'
 # Routing is isolated in each worker subprocess; generic Anthropic config remains
 # the legacy credential source for backward-compatible fallback.
-if tr -d '\r' < "$MARKET_ENV_FILE" | grep -Eq '^(DASHSCOPE_API_KEY|BAILIAN_API_KEY|MARKET_ANALYSIS_BAILIAN_API_KEY)=[^[:space:]]+$'; then
-  ROUTED_MODEL='qwen3.8-max'
-elif tr -d '\r' < "$MARKET_ENV_FILE" | grep -Eq '^KIMI_CODE_API_KEY=[^[:space:]]+$'; then
-  ROUTED_MODEL='k3-256k'
-else
-  ROUTED_MODEL='deepseek-flash'
-fi
+ROUTED_MODEL='qwen3.8-max'
 ensure_env_value MARKET_ANALYSIS_MODEL "$ROUTED_MODEL"
 ensure_env_value MARKET_ANALYSIS_PRIMARY_MODEL "$ROUTED_MODEL"
 ensure_env_value MARKET_ANALYSIS_REPAIR_MODEL "$ROUTED_MODEL"
@@ -181,7 +187,19 @@ has_env_value() {
   tr -d '\r' < "$MARKET_ENV_FILE" | grep -Eq "^${1}=[^[:space:]]+$"
 }
 
-if { has_env_value ANTHROPIC_AUTH_TOKEN || has_env_value DASHSCOPE_API_KEY || has_env_value BAILIAN_API_KEY || has_env_value MARKET_ANALYSIS_BAILIAN_API_KEY || has_env_value KIMI_CODE_API_KEY || has_env_value DEEPSEEK_AUTH_TOKEN; } && has_env_value AI_READONLY_TOKEN; then
+if [ "$TIMER_EXISTED" -eq 1 ]; then
+  if [ "$TIMER_ENABLED" -eq 1 ]; then
+    systemctl enable market-analysis.timer
+  else
+    systemctl disable market-analysis.timer
+  fi
+  if [ "$TIMER_ACTIVE" -eq 1 ]; then
+    systemctl start market-analysis.timer
+  else
+    systemctl stop market-analysis.timer
+  fi
+  echo "保留市场研判定时器原启用/运行状态。"
+elif { has_env_value ANTHROPIC_AUTH_TOKEN || has_env_value DASHSCOPE_API_KEY || has_env_value BAILIAN_API_KEY || has_env_value MARKET_ANALYSIS_BAILIAN_API_KEY || has_env_value KIMI_CODE_API_KEY || has_env_value DEEPSEEK_AUTH_TOKEN; } && has_env_value AI_READONLY_TOKEN; then
   systemctl enable --now market-analysis.timer
   echo "市场研判定时器已启用：每天凌晨1点检查，到期后每5个自然日运行一次。"
 else

@@ -67,7 +67,8 @@
     if (!plan?.primary) return '';
     const scout = plan.scout ? `${shortModelName(plan.scout)}侦察 / ` : '';
     const effort = plan.reasoningEffort ? ` · 思考深度 ${plan.reasoningEffort}` : '';
-    return `模型组合 ${scout}${shortModelName(plan.primary)}主研 / ${shortModelName(plan.repair)}修复 / ${shortModelName(plan.escalation)}升级${effort}`;
+    const fallback = plan.fallback ? ` · 备用 ${shortModelName(plan.fallback)}${plan.fallbackReasoningEffort ? `（${plan.fallbackReasoningEffort}）` : ''}` : '';
+    return `模型组合 ${scout}${shortModelName(plan.primary)}主研 / ${shortModelName(plan.repair)}修复 / ${shortModelName(plan.escalation)}升级${effort}${fallback}`;
   }
 
   function sourceScoutLabel(scout) {
