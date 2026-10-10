@@ -108,7 +108,7 @@ GitHub Webhook 自动部署已因 root 权限链整改暂停。`deploy.sh` 会�
 
 ## 版本
 
-当前版本见 `经营分析模板.html` 顶部 tag 标签。
+当前版本以根目录 `VERSION` 为唯一来源，后端通过 `backend/config/version.py` 读取；`pyproject.toml` 与页面版本标签应与其保持一致。版本变更统一记入根目录 `CHANGELOG.md`，历史资料保留在 `docs/修订记录/`。
 
 ## Docker 镜像部署
 
