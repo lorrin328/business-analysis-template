@@ -74,7 +74,7 @@ docs/
 3. 推送前自检：
    - 文档头部状态字段是否更新？
    - CHANGELOG 是否追加摘要条目？
-   - README 「修改历史」是否同步？
+   - README 是否仍准确描述当前状态？（README 不再追加版本流水账，历史见 `修订记录/` 与根目录 `CHANGELOG.md`）
 4. 推送后 GitHub URL：`https://github.com/lorrin328/business-analysis-template/tree/master/docs`
 
 ---
