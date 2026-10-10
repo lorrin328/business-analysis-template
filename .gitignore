@@ -80,3 +80,7 @@ __pycache__/
 *.pyc
 backend/venv/
 backend/logs/*.log
+
+# 数据库手工备份副本（含经营/客户数据，禁止入库或同步）
+*.db.bak*
+*.db.*bak*

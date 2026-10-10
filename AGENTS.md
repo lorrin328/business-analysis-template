@@ -8,7 +8,7 @@ Hermes结果只作为待独立核验的候选，不发送内部经营快照或�
 公众号访问受限或独立读取失败不等于信息错误；保留已采集片段、观点和出处作为参考线索，继续交叉比对。
 正式证据与公众号参考分层展示，比对结果区分交叉支持、部分支持、存在冲突、待核验；不得因抓取失败一律丢弃，也不把未读全文说成已核验。
 
-This file provides guidance to Codex (Codex.ai/code) and OpenClaw for safe deployment.
+本文件是本项目 agent 规则与部署说明的唯一来源（Codex、Claude Code、Antigravity 等均以此为准），用于安全部署与运维。
 
 ## 项目概述
 
