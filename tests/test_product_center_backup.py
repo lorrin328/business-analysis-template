@@ -240,3 +240,52 @@ def test_archive_symlink_rejected(recovery_set):
             archive.writestr(info, data)
     with pytest.raises(ValueError, match="非法"):
         verify_backup(output)
+
+
+def test_backup_verify_restore_never_load_database_archive_or_originals_whole(recovery_set, tmp_path, monkeypatch):
+    database, store, output, items = recovery_set
+    original_zip_read = zipfile.ZipFile.read
+    def reject_path_read_bytes(_path):
+        raise AssertionError("Recovery operations must stream files, not call Path.read_bytes")
+    def manifest_only_zip_read(archive, name, *args, **kwargs):
+        entry = name.filename if isinstance(name, zipfile.ZipInfo) else name
+        assert entry in {"manifest.json", "backup-manifest.json"}, f"Eager ZIP read forbidden: {entry}"
+        return original_zip_read(archive, name, *args, **kwargs)
+    destination = tmp_path / "streamed-recovery"
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "read_bytes", reject_path_read_bytes)
+        patch.setattr(zipfile.ZipFile, "read", manifest_only_zip_read)
+        created = create_backup(database, store, output)
+        assert verify_backup(output) == created
+        assert restore_backup(output, destination) == created
+    with sqlite3.connect(destination / "business_data.db") as conn:
+        assert conn.execute("SELECT amount FROM business_records").fetchone()[0] == 123456
+    for entry, raw in items.items():
+        assert (destination / "product_center_data" / entry).read_bytes() == raw
+
+
+def test_stream_copy_and_hash_use_fixed_size_reads():
+    from product_center.backup import CHUNK_BYTES, _transfer
+
+    raw = b"bounded-stream" * (CHUNK_BYTES // 4)
+    class BoundedReader(io.BytesIO):
+        def read(self, size=-1):
+            assert 0 < size <= CHUNK_BYTES
+            return super().read(size)
+    target = io.BytesIO()
+    result = _transfer(BoundedReader(raw), target)
+    assert target.getvalue() == raw
+    assert result == {"sha256": digest(raw), "bytes": len(raw)}
+
+
+def test_zip64_database_entry_can_cross_configured_large_file_threshold(recovery_set, tmp_path, monkeypatch):
+    database, store, output, _ = recovery_set
+    # Lower the ZIP64 threshold so a small real SQLite exercises >2/4GB handling.
+    monkeypatch.setattr(zipfile, "ZIP64_LIMIT", 1024)
+    assert database.stat().st_size > zipfile.ZIP64_LIMIT
+    report = create_backup(database, store, output)
+    with zipfile.ZipFile(output) as archive:
+        info = archive.getinfo("business_data.db")
+        assert info.extract_version >= 45
+        assert info.file_size > zipfile.ZIP64_LIMIT
+    assert restore_backup(output, tmp_path / "zip64-recovery") == report

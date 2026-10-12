@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 from contextlib import closing
-import io
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -12,18 +11,38 @@ import stat
 import tempfile
 import zipfile
 
+CHUNK_BYTES = 1024 * 1024
+MAX_MANIFEST_BYTES = 16 * 1024 * 1024
+
 
 def _hash(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def _package_manifest_hash(raw):
+def _transfer(source, destination=None):
+    """Hash and optionally copy a stream with bounded memory."""
+    digest = hashlib.sha256()
+    size = 0
+    while block := source.read(CHUNK_BYTES):
+        digest.update(block)
+        size += len(block)
+        if destination is not None:
+            destination.write(block)
+    return {'sha256': digest.hexdigest(), 'bytes': size}
+
+
+def _file_metadata(path):
+    with Path(path).open('rb') as stream:
+        return _transfer(stream)
+
+
+def _package_manifest_hash(package):
     """Bind a stored package to the database's canonical manifest identity."""
     try:
-        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        with zipfile.ZipFile(package) as archive:
             if archive.namelist().count('manifest.json') != 1:
                 raise ValueError('导入包清单缺失或重复')
-            if archive.getinfo('manifest.json').file_size > 16 * 1024 * 1024:
+            if archive.getinfo('manifest.json').file_size > MAX_MANIFEST_BYTES:
                 raise ValueError('导入包清单超过16MB')
             manifest = json.loads(archive.read('manifest.json').decode('utf-8-sig'))
             if not isinstance(manifest, dict):
@@ -64,25 +83,39 @@ def create_backup(database: Path, data_root: Path, output: Path):
                 row = dest.execute('''SELECT p.batch_id FROM product_center_state s
                     JOIN product_center_publications p ON p.id=s.publication_id WHERE s.id=1''').fetchone()
                 active = row[0] if row else None
-        items = {'business_data.db': snapshot.read_bytes()}
+        items = {'business_data.db': snapshot}
+        metadata = {'business_data.db': _file_metadata(snapshot)}
         for entry, sha in paths:
             target = data_root / entry
             if not _entry_allowed('product_center_data/'+entry) or target.is_symlink() or not target.resolve().is_relative_to(data_root):
                 raise ValueError('资料备份路径无效')
-            raw = target.read_bytes()
-            if sha and _hash(raw) != sha:
+            item_metadata = _file_metadata(target)
+            if sha and item_metadata['sha256'] != sha:
                 raise ValueError('资料备份前哈希校验失败')
-            if entry.startswith('packages/') and _package_manifest_hash(raw) != PurePosixPath(entry).stem:
+            if entry.startswith('packages/') and _package_manifest_hash(target) != PurePosixPath(entry).stem:
                 raise ValueError('导入包清单哈希与数据库不符')
-            items['product_center_data/'+entry] = raw
+            name = 'product_center_data/'+entry
+            items[name] = target
+            metadata[name] = item_metadata
         meta = {'formatVersion':1,'activeBatchId':active, 'integrityCheck':'ok',
-                'files':{name:{'sha256':_hash(raw),'bytes':len(raw)} for name,raw in items.items()}}
+                'files':metadata}
         # Exclusive target prevents accidental overwrite of an existing recovery point.
-        with output.open('xb') as stream, zipfile.ZipFile(stream,'w',zipfile.ZIP_DEFLATED) as archive:
-            for name,raw in items.items():
-                archive.writestr(name,raw)
-            archive.writestr('backup-manifest.json',json.dumps(meta,ensure_ascii=False,sort_keys=True))
-        output.chmod(0o600)
+        created = False
+        try:
+            with output.open('xb') as stream:
+                created = True
+                with zipfile.ZipFile(stream,'w',zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
+                    for name,path in items.items():
+                        with path.open('rb') as source, archive.open(name, 'w', force_zip64=True) as destination:
+                            copied = _transfer(source, destination)
+                        if copied != metadata[name]:
+                            raise ValueError('备份期间资料发生变化')
+                    archive.writestr('backup-manifest.json',json.dumps(meta,ensure_ascii=False,sort_keys=True))
+            output.chmod(0o600)
+        except Exception:
+            if created:
+                output.unlink(missing_ok=True)
+            raise
     return verify_backup(output)
 
 
@@ -95,16 +128,22 @@ def verify_backup(archive_path: Path):
         for info in infos:
             if (info.filename != 'backup-manifest.json' and not _entry_allowed(info.filename)) or stat.S_ISLNK(info.external_attr>>16) or info.flag_bits&1:
                 raise ValueError('备份包含非法文件')
+        if archive.getinfo('backup-manifest.json').file_size > MAX_MANIFEST_BYTES:
+            raise ValueError('备份清单大小无效')
         meta=json.loads(archive.read('backup-manifest.json'))
         if meta.get('formatVersion')!=1 or set(names)!=set(meta['files'])|{'backup-manifest.json'} or 'business_data.db' not in meta['files']:
             raise ValueError('备份清单不完整')
-        for name,expected in meta['files'].items():
-            raw=archive.read(name)
-            if _hash(raw)!=expected['sha256'] or len(raw)!=expected['bytes']:
-                raise ValueError('备份哈希或长度校验失败')
         with tempfile.TemporaryDirectory(prefix='pc-verify-') as temp:
             db=Path(temp)/'snapshot.db'
-            db.write_bytes(archive.read('business_data.db'))
+            for name,expected in meta['files'].items():
+                with archive.open(name) as source:
+                    if name == 'business_data.db':
+                        with db.open('xb') as destination:
+                            actual = _transfer(source, destination)
+                    else:
+                        actual = _transfer(source)
+                if actual != expected:
+                    raise ValueError('备份哈希或长度校验失败')
             with closing(sqlite3.connect(db.as_uri()+'?mode=ro',uri=True)) as conn:
                 if conn.execute('PRAGMA integrity_check').fetchone()[0]!='ok' or conn.execute('PRAGMA foreign_key_check').fetchall():
                     raise ValueError('备份数据库完整性校验失败')
@@ -118,10 +157,13 @@ def verify_backup(archive_path: Path):
                         name = 'product_center_data/packages/'+sha+'.zip'
                         if name not in meta['files']:
                             raise ValueError('备份缺少导入包')
-                        if _package_manifest_hash(archive.read(name)) != sha:
+                        package = Path(temp)/'package.zip'
+                        with archive.open(name) as source, package.open('wb') as destination:
+                            _transfer(source, destination)
+                        if _package_manifest_hash(package) != sha:
                             raise ValueError('备份导入包清单哈希与数据库不符')
         return {'formatVersion':1,'activeBatchId':meta.get('activeBatchId'),'fileCount':len(meta['files']),
-                'integrityCheck':'ok','sha256':_hash(Path(archive_path).read_bytes())}
+                'integrityCheck':'ok','sha256':_file_metadata(archive_path)['sha256']}
 
 
 def restore_backup(archive_path: Path, destination: Path):
@@ -138,7 +180,7 @@ def restore_backup(archive_path: Path, destination: Path):
             target.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
             if not target.resolve().is_relative_to(destination) or target.is_symlink():
                 raise ValueError('恢复目标路径无效')
-            with target.open('xb') as stream:
-                stream.write(archive.read(name))
+            with archive.open(name) as source, target.open('xb') as target_stream:
+                _transfer(source, target_stream)
             target.chmod(0o600)
     return result

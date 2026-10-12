@@ -29,7 +29,7 @@ python -X utf8 scripts/verify_product_center_data.py --source-root 'D:/work/007-
 
 SQLite 位置沿用 `BUSINESS_ANALYSIS_DB`。资料默认放其相邻的 `product_center_data/`，可由 `PRODUCT_CENTER_DATA_DIR` 指定受保护目录，内含 `files/<sha256>.<扩展名>` 和 `packages/<清单哈希>.zip`。应用账号须对资料目录有读写权限，代码目录保持不可写。真实数据、原件、导入包及私人报告不入 Git、镜像或公开备份。
 
-数据库与引用资料必须联合备份，包含历史批次原件及导入包。以下工具持有同一数据维护锁，使用 SQLite Online Backup，核验数据库完整性、资料哈希及包清单身份。备份文件不覆盖，恢复只写新建或空目录。
+数据库与引用资料必须联合备份，包含历史批次原件及导入包。以下工具持有同一数据维护锁，使用 SQLite Online Backup，核验数据库完整性、资料哈希及包清单身份。数据库、归档哈希和恢复均按 1 MiB 分块处理，使用 ZIP64 支持多 GB 数据库。备份文件不覆盖，恢复只写新建或空目录。
 
 ```powershell
 python -X utf8 scripts/backup_product_center.py create --database 'C:/private/business_data.db' --data-root 'C:/private/product_center_data' --archive 'C:/private/recovery-20261012.zip'
