@@ -289,3 +289,113 @@ def test_zip64_database_entry_can_cross_configured_large_file_threshold(recovery
         assert info.extract_version >= 45
         assert info.file_size > zipfile.ZIP64_LIMIT
     assert restore_backup(output, tmp_path / "zip64-recovery") == report
+
+
+def add_three_historical_audit_orphans(database):
+    conn = sqlite3.connect(database)
+    try:
+        conn.executescript("""
+            CREATE TABLE users(id INTEGER PRIMARY KEY);
+            INSERT INTO users VALUES(1);
+            CREATE TABLE operation_logs(id INTEGER PRIMARY KEY, user_id INTEGER,
+                action TEXT, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL);
+            INSERT INTO operation_logs VALUES(7,101,'historical_login');
+            INSERT INTO operation_logs VALUES(8,102,'historical_import');
+            INSERT INTO operation_logs VALUES(9,103,'historical_review');
+            INSERT INTO operation_logs VALUES(10,1,'existing_user');
+        """)
+        conn.commit()
+        return [list(row) for row in conn.execute('PRAGMA foreign_key_check')]
+    finally:
+        conn.close()
+
+
+def test_historical_audit_orphans_are_rejected_by_default(recovery_set):
+    database, store, output, _ = recovery_set
+    assert len(add_three_historical_audit_orphans(database)) == 3
+    with pytest.raises(ValueError, match='外键'):
+        create_backup(database, store, output)
+    assert not output.exists()
+
+
+def test_explicit_exact_three_audit_orphans_are_preserved_verified_and_restored(recovery_set, tmp_path):
+    database, store, output, _ = recovery_set
+    baseline = add_three_historical_audit_orphans(database)
+    report = create_backup(database, store, output, foreign_key_baseline=baseline)
+    assert report['integrityCheck'] == 'ok'  # Page integrity, not a clean FK result.
+    assert report['knownForeignKeyIssues'] == 3
+    with zipfile.ZipFile(output) as archive:
+        meta = json.loads(archive.read('backup-manifest.json'))
+        assert meta['foreignKeyBaseline'] == sorted(baseline)
+    assert verify_backup(output) == report
+    destination = tmp_path / 'historical-recovery'
+    assert restore_backup(output, destination) == report
+    conn = sqlite3.connect(destination / 'business_data.db')
+    try:
+        assert [list(row) for row in conn.execute('PRAGMA foreign_key_check')] == baseline
+        assert conn.execute('SELECT COUNT(*) FROM operation_logs').fetchone()[0] == 4
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('change', ['missing', 'invented', 'duplicate', 'new_orphan'])
+def test_foreign_key_baseline_must_match_every_actual_row_exactly(recovery_set, change):
+    database, store, output, _ = recovery_set
+    baseline = add_three_historical_audit_orphans(database)
+    if change == 'missing':
+        baseline.pop()
+    elif change == 'invented':
+        baseline.append(['operation_logs', 999, 'users', 0])
+    elif change == 'duplicate':
+        baseline.append(baseline[0])
+    else:
+        conn = sqlite3.connect(database)
+        try:
+            conn.execute("INSERT INTO operation_logs VALUES(11,104,'new_orphan')")
+            conn.commit()
+        finally:
+            conn.close()
+    with pytest.raises(ValueError, match='外键'):
+        create_backup(database, store, output, foreign_key_baseline=baseline)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize('issue', ['other_table', 'other_column', 'other_parent'])
+def test_even_exact_baseline_cannot_waive_noneligible_foreign_keys(recovery_set, issue):
+    database, store, output, _ = recovery_set
+    conn = sqlite3.connect(database)
+    try:
+        if issue == 'other_table':
+            conn.executescript('CREATE TABLE users(id INTEGER PRIMARY KEY); CREATE TABLE other_logs(id INTEGER PRIMARY KEY,user_id INTEGER REFERENCES users(id)); INSERT INTO other_logs VALUES(1,99);')
+        elif issue == 'other_column':
+            conn.executescript('CREATE TABLE users(id INTEGER PRIMARY KEY); CREATE TABLE operation_logs(id INTEGER PRIMARY KEY,subject_user_id INTEGER REFERENCES users(id)); INSERT INTO operation_logs VALUES(1,99);')
+        else:
+            conn.executescript('CREATE TABLE groups(id INTEGER PRIMARY KEY); CREATE TABLE operation_logs(id INTEGER PRIMARY KEY,user_id INTEGER REFERENCES groups(id)); INSERT INTO operation_logs VALUES(1,99);')
+        conn.commit()
+        baseline = [list(row) for row in conn.execute('PRAGMA foreign_key_check')]
+    finally:
+        conn.close()
+    with pytest.raises(ValueError, match='外键'):
+        create_backup(database, store, output, foreign_key_baseline=baseline)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize('change', ['remove', 'invent'])
+def test_verify_and_restore_reject_missing_or_fabricated_recorded_baseline(recovery_set, tmp_path, change):
+    database, store, output, _ = recovery_set
+    baseline = add_three_historical_audit_orphans(database)
+    create_backup(database, store, output, foreign_key_baseline=baseline)
+    def mutate(entries):
+        meta = json.loads(entries['backup-manifest.json'])
+        if change == 'remove':
+            del meta['foreignKeyBaseline']
+        else:
+            meta['foreignKeyBaseline'].append(['operation_logs',999,'users',0])
+        entries['backup-manifest.json'] = json.dumps(meta).encode()
+    rewrite_archive(output, mutate)
+    with pytest.raises(ValueError, match='外键'):
+        verify_backup(output)
+    destination = tmp_path / 'must-not-restore'
+    with pytest.raises(ValueError, match='外键'):
+        restore_backup(output, destination)
+    assert not destination.exists()

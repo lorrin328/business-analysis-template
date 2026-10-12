@@ -31,6 +31,8 @@ SQLite 位置沿用 `BUSINESS_ANALYSIS_DB`。资料默认放其相邻的 `produc
 
 数据库与引用资料必须联合备份，包含历史批次原件及导入包。以下工具持有同一数据维护锁，使用 SQLite Online Backup，核验数据库完整性、资料哈希及包清单身份。数据库、归档哈希和恢复均按 1 MiB 分块处理，使用 ZIP64 支持多 GB 数据库。备份文件不覆盖，恢复只写新建或空目录。
 
+默认要求外键检查无问题。若已有生产审核日志引用已删除用户，必须先从部署前冻结库取得 `PRAGMA foreign_key_check` 数组，与当前库逐条核对，再显式使用 `--foreign-key-baseline 私人基线.json`。仅允许 `operation_logs.user_id → users.id` 的既有悬空引用；基线写入备份，恢复时要求异常完全一致，新增或其他表异常均拒绝。该选项保留历史记录，不修复数据库；报告中的已知外键问题必须另列，不得称外键全部正常。
+
 ```powershell
 python -X utf8 scripts/backup_product_center.py create --database 'C:/private/business_data.db' --data-root 'C:/private/product_center_data' --archive 'C:/private/recovery-20261012.zip'
 python -X utf8 scripts/backup_product_center.py verify --archive 'C:/private/recovery-20261012.zip'

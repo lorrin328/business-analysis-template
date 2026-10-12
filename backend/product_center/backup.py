@@ -60,7 +60,44 @@ def _entry_allowed(name):
         r'product_center_data/(?:files/[0-9a-f]{64}\.(?:pdf|png|jpe?g|docx|xlsx|pptx)|packages/[0-9a-f]{64}\.zip)', name))
 
 
-def create_backup(database: Path, data_root: Path, output: Path):
+def _foreign_key_baseline(value):
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError('历史外键基线必须为JSON数组')
+    rows = []
+    for row in value:
+        if (not isinstance(row, (list, tuple)) or len(row) != 4
+                or not isinstance(row[0], str) or type(row[1]) is not int
+                or not isinstance(row[2], str) or type(row[3]) is not int):
+            raise ValueError('历史外键基线行格式无效')
+        rows.append(tuple(row))
+    if len(rows) != len(set(rows)):
+        raise ValueError('历史外键基线包含重复行')
+    return [list(row) for row in sorted(rows)]
+
+
+def _check_foreign_keys(conn, baseline):
+    """Only explicitly frozen, missing-parent audit history can be tolerated."""
+    baseline = _foreign_key_baseline(baseline)
+    actual = [list(row) for row in sorted(conn.execute('PRAGMA foreign_key_check').fetchall())]
+    if actual != (baseline or []):
+        raise ValueError('数据库外键问题与显式历史基线不一致')
+    for table, rowid, parent, foreign_key_id in actual:
+        if table != 'operation_logs' or parent != 'users':
+            raise ValueError('历史外键基线仅允许已删除用户的审核记录')
+        definitions = [row for row in conn.execute('PRAGMA foreign_key_list(operation_logs)')
+                       if row[0] == foreign_key_id]
+        if (len(definitions) != 1 or definitions[0][1] != 0
+                or definitions[0][2:5] != ('users', 'user_id', 'id')):
+            raise ValueError('历史外键基线引用了不允许的外键')
+        child = conn.execute('SELECT user_id FROM operation_logs WHERE rowid=?', (rowid,)).fetchone()
+        if child is None or child[0] is None or conn.execute('SELECT 1 FROM users WHERE id=?', (child[0],)).fetchone():
+            raise ValueError('历史审核记录必须引用已不存在的父用户')
+    return baseline
+
+
+def create_backup(database: Path, data_root: Path, output: Path, *, foreign_key_baseline=None):
     """Caller must hold the same import lock as the running application."""
     database, data_root, output = database.resolve(strict=True), data_root.resolve(strict=True), output.resolve()
     if output.exists():
@@ -70,8 +107,9 @@ def create_backup(database: Path, data_root: Path, output: Path):
         snapshot = Path(temp) / 'business_data.db'
         with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True)) as source, closing(sqlite3.connect(snapshot)) as dest:
             source.backup(dest)
-            if dest.execute('PRAGMA integrity_check').fetchone()[0] != 'ok' or dest.execute('PRAGMA foreign_key_check').fetchall():
+            if dest.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                 raise ValueError('数据库完整性校验失败')
+            baseline = _check_foreign_keys(dest, foreign_key_baseline)
             tables = {r[0] for r in dest.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             paths = []
             active = None
@@ -99,6 +137,8 @@ def create_backup(database: Path, data_root: Path, output: Path):
             metadata[name] = item_metadata
         meta = {'formatVersion':1,'activeBatchId':active, 'integrityCheck':'ok',
                 'files':metadata}
+        if baseline is not None:
+            meta['foreignKeyBaseline'] = baseline
         # Exclusive target prevents accidental overwrite of an existing recovery point.
         created = False
         try:
@@ -145,8 +185,9 @@ def verify_backup(archive_path: Path):
                 if actual != expected:
                     raise ValueError('备份哈希或长度校验失败')
             with closing(sqlite3.connect(db.as_uri()+'?mode=ro',uri=True)) as conn:
-                if conn.execute('PRAGMA integrity_check').fetchone()[0]!='ok' or conn.execute('PRAGMA foreign_key_check').fetchall():
+                if conn.execute('PRAGMA integrity_check').fetchone()[0]!='ok':
                     raise ValueError('备份数据库完整性校验失败')
+                baseline = _check_foreign_keys(conn, meta.get('foreignKeyBaseline'))
                 tables={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if 'product_center_sources' in tables:
                     for entry,sha in conn.execute('SELECT DISTINCT entry,sha256 FROM product_center_sources'):
@@ -163,7 +204,8 @@ def verify_backup(archive_path: Path):
                         if _package_manifest_hash(package) != sha:
                             raise ValueError('备份导入包清单哈希与数据库不符')
         return {'formatVersion':1,'activeBatchId':meta.get('activeBatchId'),'fileCount':len(meta['files']),
-                'integrityCheck':'ok','sha256':_file_metadata(archive_path)['sha256']}
+                'integrityCheck':'ok','knownForeignKeyIssues':len(baseline or []),
+                'sha256':_file_metadata(archive_path)['sha256']}
 
 
 def restore_backup(archive_path: Path, destination: Path):

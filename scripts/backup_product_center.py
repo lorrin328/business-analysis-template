@@ -16,6 +16,8 @@ def main():
     parser.add_argument('--database',type=Path)
     parser.add_argument('--data-root',type=Path)
     parser.add_argument('--destination',type=Path)
+    parser.add_argument('--foreign-key-baseline',type=Path,
+                        help='Explicit reviewed predeployment audit-orphan PRAGMA baseline; all other issues remain errors')
     args=parser.parse_args()
     try:
         if args.action=='create':
@@ -24,8 +26,9 @@ def main():
             # The import lock module reads the database location at import time.
             os.environ['BUSINESS_ANALYSIS_DB']=str(args.database.resolve())
             from services.operation_lock import operation_lock
+            baseline = json.loads(args.foreign_key_baseline.read_text(encoding='utf-8')) if args.foreign_key_baseline else None
             with operation_lock('product-center-backup',timeout=1):
-                result=create_backup(args.database,args.data_root,args.archive)
+                result=create_backup(args.database,args.data_root,args.archive,foreign_key_baseline=baseline)
         elif args.action=='restore':
             if not args.destination:
                 parser.error('restore requires --destination')
