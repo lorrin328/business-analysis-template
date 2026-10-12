@@ -5,7 +5,7 @@
 - 当前版本：见根目录 [`VERSION`](./VERSION)（唯一版本来源，后端经 `backend/config/version.py` 读取）。
 - 逐版本变更：[CHANGELOG.md](./CHANGELOG.md)；整理前的 README 完整历史：[docs/修订记录/README_版本历史_至v1.0.164.md](./docs/修订记录/README_版本历史_至v1.0.164.md)。
 - 文档索引：[docs/README.md](./docs/README.md)；部署与协作规则：[AGENTS.md](./AGENTS.md)。
-- 最近一次重要变更：市场研判模型路由，见 [docs/MODEL_ROUTING_20260930.md](./docs/MODEL_ROUTING_20260930.md)。
+- 最近一次重要变更：新增管理员专用的[产品研究中心](./docs/PRODUCT_CENTER.md)，独立提供产品资料、原件、七维比较及既有年度 IRR 查询；现有产品结构分析职责不变。
 
 本项目覆盖以下业务线：
 
@@ -60,6 +60,8 @@
 ---
 
 ## 当前架构
+
+产品研究中心入口为 `/product-center`，全部业务接口要求管理员权限。OTO、证保正式材料与开发稿分别展示，当前可售状态保留待核。运行时从 SQLite 与数据库相邻的受保护资料目录读取，不依赖 007 项目目录。转换、导入、撤回及数据库与原件联合备份见[管理员说明](./docs/PRODUCT_CENTER.md)；字段及安全约束见[数据合同](./docs/PRODUCT_CENTER_DATA_CONTRACT.md)，本地验证范围见[验收记录](./docs/PRODUCT_CENTER_REVIEW_v1.0.165.md)。实际来源、导入包和私人报告不进入 Git 或镜像。
 
 > **运行入口边界**：主看板 `经营分析模板.html` 通过 `<script src="js/...">` 显式加载其所需的 `js/` 模块（以该 HTML 的 script 列表为准）；其余页面（`honor.html`、`customer-analysis.html` 等）加载各自专属脚本。未被任何 HTML 显式加载的 `js/` 文件不应视为运行时代码；新增或接入脚本必须同步更新 HTML 的 `<script>` 列表并通过前端静态测试（`tests/test_frontend_static.py`）。
 

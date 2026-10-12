@@ -91,6 +91,9 @@
       const key = el.getAttribute('data-permission');
       el.style.display = hasPermission(key) ? '' : 'none';
     });
+    document.querySelectorAll('[data-admin-only]').forEach(el => {
+      el.hidden = user?.role !== 'admin';
+    });
     const name = document.getElementById('currentUserName');
     if (name && user) name.textContent = `${user.username} · ${ROLE_LABELS[user.role] || user.role}`;
   }

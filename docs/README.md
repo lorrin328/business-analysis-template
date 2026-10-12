@@ -31,6 +31,8 @@ docs/
 
 当前版本以根目录 [`VERSION`](../VERSION) 为准；新增版本变更统一写入根目录 [`CHANGELOG.md`](../CHANGELOG.md)。`修订记录/` 保留旧日志、历史 README 和历史资料，不另行维护一套当前版本日志。
 
+产品研究中心：沿用[现有规划 v2](产品分析模块规划_v2.md)并以其 2026-10-12 一期范围修订为准；[管理员使用说明](PRODUCT_CENTER.md)、[数据合同](PRODUCT_CENTER_DATA_CONTRACT.md)、[本地验收记录](PRODUCT_CENTER_REVIEW_v1.0.165.md)分别说明操作、字段与验证边界。真实资料及逐条私人报告留在受保护数据目录，不随本文档发布。
+
 > v0.9.95 起，生产页面继续统一为根目录 `经营分析模板.html`，通用 API 客户端拆分到 `js/api-client.js`；独立 `目标设置.html` 与旧 demo 页面已删除，目标设置功能在生产页面内维护。
 
 ---

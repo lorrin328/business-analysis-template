@@ -60,6 +60,7 @@ backups/
 
 # 市场研判运行数据与本地密钥
 backend/market_analysis_data/
+**/product_center_data/
 deploy/.market_analysis_env
 
 # === OS ===

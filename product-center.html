@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>产品研究中心 · 经营分析看板</title>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/analysis-common.css">
+  <link rel="stylesheet" href="/css/product-center.css?v=1.0.165-e78a9f2a805e">
+  <script defer src="/js/api-client.js?v=1.0.165-4f18b07351a8"></script>
+  <script defer src="/js/product-center.js?v=1.0.165-ae45d2a7c1f2"></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspace">跳到研究内容</a>
+  <header class="topbar">
+    <a class="brand" href="/">多元 · 经营洞察<span>产品研究中心</span></a>
+    <div class="header-actions"><a class="button quiet" href="/">返回经营看板</a><span id="userLabel" class="muted"></span><button id="logout" hidden>退出登录</button></div>
+  </header>
+  <section id="authGate" class="auth-shell" aria-labelledby="authTitle">
+    <form id="loginForm" class="auth-card">
+      <span class="eyebrow">产品研究中心</span><h1 id="authTitle">管理员登录</h1>
+      <p class="muted">查询产品责任、原始资料与已有收益测算。</p>
+      <label for="username">用户名</label><input id="username" autocomplete="username" required maxlength="100">
+      <label for="password">密码</label><input id="password" type="password" autocomplete="current-password" required>
+      <button class="primary" id="loginButton" type="submit">登录</button>
+      <p id="authMessage" role="status" class="muted">本中心仅管理员可访问。</p>
+    </form>
+  </section>
+  <main id="workspace" class="workspace" hidden>
+    <section class="page-heading"><div><span class="eyebrow">OTO / 证保</span><h1>产品研究中心</h1><p class="muted">从责任与现金流理解产品，每一项结论都保留证据。</p></div><span id="batchLabel" class="badge">正在读取资料</span></section>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <nav class="section-tabs" aria-label="研究中心功能"><button class="active" id="catalogTab" aria-current="page">产品目录</button><button id="importsTab">资料维护</button></nav>
+    <section id="catalogPanel">
+      <div class="catalog-layout">
+        <aside class="catalog-sidebar">
+          <div class="stage-tabs" aria-label="材料阶段"><button class="active" data-stage="formal" aria-pressed="true">正式材料</button><button data-stage="development" aria-pressed="false">开发稿</button></div>
+          <p id="developmentWarning" class="development-warning" hidden>开发稿，不代表已批准或在售。</p>
+          <form id="filters" class="filters">
+            <label>名称或产品代码<input id="search" type="search" placeholder="搜索产品" maxlength="120"></label>
+            <div class="filter-grid"><label>渠道<select id="channel"><option value="">全部渠道</option></select></label><label>责任类型<select id="responsibilityType"><option value="">全部责任</option></select></label></div>
+            <label>利益机制<select id="benefitMechanism"><option value="">全部利益机制</option></select></label>
+            <button type="submit">查询</button>
+          </form>
+          <div class="catalog-caption"><span id="productCount" class="muted" role="status"></span><button id="resetFilters" class="link-button">重置筛选</button></div>
+          <div id="productList" class="product-list" aria-label="产品目录"></div>
+        </aside>
+        <section id="productDetail" class="detail-panel" aria-label="产品详情"><div class="empty">选择产品，查看责任、收益及原始资料。</div></section>
+      </div>
+      <section class="comparison-panel panel"><div class="section-heading"><div><h2>产品比较</h2><p class="muted">选择 2—4 个版本，逐项比对证据和适用条件，不作无条件排名。</p></div><button id="compareButton" class="primary" disabled>比较所选产品</button></div><div id="selectedProducts" class="selected-products"><span class="muted">尚未选择产品</span></div><div id="comparisonResult"></div></section>
+    </section>
+    <section id="importsPanel" hidden class="panel imports-panel">
+      <div class="section-heading"><div><h2>资料维护</h2><p class="muted">上传受保护的产品导入包，先核对差异与缺口，再确认发布。原始项目资料保持只读。</p></div></div>
+      <form id="uploadForm" class="upload-form"><label>选择导入包（ZIP，最多 100 MB）<input type="file" id="packageFile" accept=".zip,application/zip" required></label><button id="previewButton" type="submit" class="primary">上传并预检</button></form>
+      <div id="previewPanel" hidden></div>
+      <h3>导入历史</h3><div id="importHistory" class="table-wrap"></div>
+    </section>
+  </main>
+  <dialog id="sourceDialog" aria-labelledby="sourceTitle"><div class="dialog-heading"><h2 id="sourceTitle">原始资料</h2><button id="closeSource" aria-label="关闭原始资料">关闭</button></div><p id="sourceMeta" class="muted"></p><div id="sourceBody"></div></dialog>
+  <dialog id="cashflowDialog" aria-labelledby="cashflowTitle"><div class="dialog-heading"><h2 id="cashflowTitle">逐笔现金流</h2><button id="closeCashflow" aria-label="关闭现金流">关闭</button></div><div id="cashflowBody"></div></dialog>
+</body>
+</html>

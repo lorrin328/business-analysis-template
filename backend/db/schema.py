@@ -751,10 +751,58 @@ def init_db():
         ]:
             c.execute(sql)
 
+        _migrate_product_center(c)
         conn.commit()
 
     from auth import ensure_default_admin
     ensure_default_admin()
+
+
+def _migrate_product_center(c):
+    """Product research snapshots never change the business aggregation domain."""
+    c.execute('''CREATE TABLE IF NOT EXISTS product_center_batches (
+        id TEXT PRIMARY KEY, manifest_hash TEXT NOT NULL UNIQUE,
+        source_date TEXT NOT NULL, converter_version TEXT NOT NULL,
+        report_json TEXT NOT NULL, gaps_json TEXT NOT NULL, diff_json TEXT NOT NULL,
+        created_by INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS product_center_versions (
+        batch_id TEXT NOT NULL, id TEXT NOT NULL, channel TEXT NOT NULL,
+        stage TEXT NOT NULL, name TEXT NOT NULL, code TEXT, data_json TEXT NOT NULL,
+        PRIMARY KEY(batch_id, id), FOREIGN KEY(batch_id) REFERENCES product_center_batches(id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS product_center_facts (
+        batch_id TEXT NOT NULL, id TEXT NOT NULL, version_id TEXT NOT NULL,
+        dimension TEXT NOT NULL, data_json TEXT NOT NULL, PRIMARY KEY(batch_id, id),
+        FOREIGN KEY(batch_id, version_id) REFERENCES product_center_versions(batch_id, id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS product_center_scenarios (
+        batch_id TEXT NOT NULL, id TEXT NOT NULL, version_id TEXT,
+        partition_key TEXT NOT NULL, data_json TEXT NOT NULL, PRIMARY KEY(batch_id, id),
+        FOREIGN KEY(batch_id, version_id) REFERENCES product_center_versions(batch_id, id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS product_center_cashflows (
+        batch_id TEXT NOT NULL, scenario_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+        time_year REAL NOT NULL, amount REAL NOT NULL, kind TEXT NOT NULL,
+        PRIMARY KEY(batch_id, scenario_id, sequence),
+        FOREIGN KEY(batch_id, scenario_id) REFERENCES product_center_scenarios(batch_id, id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS product_center_sources (
+        batch_id TEXT NOT NULL, id TEXT NOT NULL, sha256 TEXT NOT NULL,
+        entry TEXT NOT NULL, data_json TEXT NOT NULL, PRIMARY KEY(batch_id, id),
+        FOREIGN KEY(batch_id) REFERENCES product_center_batches(id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS product_center_evidence (
+        batch_id TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+        source_id TEXT NOT NULL, PRIMARY KEY(batch_id, entity_type, entity_id, source_id),
+        FOREIGN KEY(batch_id, source_id) REFERENCES product_center_sources(batch_id, id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS product_center_publications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL,
+        previous_id INTEGER, published_by INTEGER, published_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        withdrawn_at TEXT, FOREIGN KEY(batch_id) REFERENCES product_center_batches(id),
+        FOREIGN KEY(previous_id) REFERENCES product_center_publications(id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS product_center_state (
+        id INTEGER PRIMARY KEY CHECK(id=1), publication_id INTEGER,
+        FOREIGN KEY(publication_id) REFERENCES product_center_publications(id))''')
+    c.execute('INSERT OR IGNORE INTO product_center_state(id) VALUES (1)')
+    c.execute('CREATE INDEX IF NOT EXISTS ix_pc_versions_filter ON product_center_versions(batch_id, stage, channel)')
+    c.execute('CREATE INDEX IF NOT EXISTS ix_pc_scenarios_version ON product_center_scenarios(batch_id, version_id, partition_key)')
+    c.execute('''INSERT OR IGNORE INTO schema_migrations(version, requires_aggregate_rebuild, note)
+        VALUES ('20261012_product_research_center', 0, 'Adds admin-only versioned product research and reviewed source packages; preserves sales aggregates')''')
 
 
 def _migrate(c, sql):
