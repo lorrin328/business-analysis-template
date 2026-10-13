@@ -935,7 +935,8 @@ def test_structure_modules_are_same_level_with_tables():
     assert "item.business_mode === payPeriodAverageFilters.businessMode" in payperiod
     assert '<tfoot>' in payperiod
     assert "筛选合计" in payperiod
-    assert "转型业务口径" in payperiod
+    assert "payload.scope" in payperiod
+    assert 'data-pay-period-average-mode="经代"' in html
     assert "承保件数净额" in payperiod
     assert "万元/件" in combined
     assert "保费占比" in payperiod

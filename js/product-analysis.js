@@ -6,7 +6,7 @@
       const data = productData[type] || [];
       if (data.length === 0) {
         return {
-          title: { text: type === 'count' && productFilters.jingdai && !productFilters.transform ? '经代暂无可核算件数' : type === 'count' ? '暂无件数数据' : '暂无产品结构数据', left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
+          title: { text: type === 'count' && productData.countBasis === 'unavailable' ? '源数据暂无可核算件数' : type === 'count' ? '暂无件数数据' : '暂无产品结构数据', left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
           series: []
         };
       }

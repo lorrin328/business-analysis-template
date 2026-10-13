@@ -7,7 +7,7 @@ import pandas as pd
 
 from config.business_lines import TRANSFORM_CHANNELS
 from etl.columns import _pick_col
-from etl.normalize import _amount_to_wan, _normalize_channel, _period_year_month, _to_number
+from etl.normalize import _amount_to_wan, _normalize_channel, _period_year_month, _to_number, jingdai_policy_counts
 from metrics.business_rules import TENYEAR_PRODUCT_CODES_BY_YEAR, normalize_product_code
 
 
@@ -128,7 +128,7 @@ def aggregate_jingdai_product_daily(df: pd.DataFrame) -> List[Dict]:
     work["_product"] = work["_category"]
     work["_qj"] = _to_number(work[qj_col])
     work["_gm"] = _to_number(work[gm_col]) if gm_col else 0.0
-    work["_count"] = 1.0
+    work["_count"], work["_count_missing"] = jingdai_policy_counts(work)
     return _aggregate_product_rows(work, "经代")
 
 
@@ -151,5 +151,6 @@ def _aggregate_product_rows(work: pd.DataFrame, business_type: str) -> List[Dict
             "qj_premium": _amount_to_wan(group["_qj"].sum()),
             "gm_premium": _amount_to_wan(group["_gm"].sum()),
             "count": int(group["_count"].sum()),
+            "count_missing": int(group["_count_missing"].sum()) if "_count_missing" in group else 0,
         })
     return rows

@@ -95,13 +95,14 @@ def _query_product_daily_aggregate(
     where.append("(" + " OR ".join(source_clauses) + ")")
     params.extend(source_params)
 
+    missing_expr = 'count_missing' if pick_existing_column(conn, 'agg_product_daily', ['count_missing']) else '0'
     premium_column = "gm_premium" if metric_type == "gm" else "qj_premium"
     where_sql = " AND ".join(where)
     structure_rows = [
         dict(row)
         for row in conn.execute(
             f'''SELECT business_type AS source, product_category AS label,
-                       SUM({premium_column}) AS premium, SUM(count) AS count
+                       SUM({premium_column}) AS premium, CASE WHEN SUM({missing_expr})=0 THEN SUM(count) END AS count
                 FROM agg_product_daily WHERE {where_sql}
                 GROUP BY business_type, product_category''',
             params,
@@ -119,6 +120,7 @@ def _query_product_daily_aggregate(
     ]
 
     mixed_sources = include_transform and include_jingdai
+    jingdai_has_counts = bool(pick_existing_column(conn, 'jingdai', ['承保件数', '承保保单件数']))
     structure = []
     for row in structure_rows:
         label = row.get("label") or "未分类"
@@ -127,9 +129,9 @@ def _query_product_daily_aggregate(
         structure.append({
             "label": label,
             "premium": float(row.get("premium") or 0),
-            "count": int(row.get("count") or 0),
+            "count": None if row.get("count") is None or (row.get("source") == "经代" and not jingdai_has_counts) else int(row["count"]),
         })
-    return sorted(structure, key=lambda row: abs(row["premium"]), reverse=True)[:20], _format_top_products(top_rows)
+    return sorted(structure, key=lambda row: abs(row["premium"]), reverse=True), _format_top_products(top_rows)
 
 
 def _max_daily_cutoff(conn: sqlite3.Connection, table: str, year: int, months: list[int] | None, channels: list[str] | None = None):
@@ -204,6 +206,11 @@ def _query_product_structure_raw(
         ['承保年化规保', '年化规保', '规模保费'] if metric_type == 'gm' else ['期交保费'],
     )
 
+    jd_count_columns = [quote_identifier(name) for name in ('承保件数', '承保保单件数')
+                        if pick_existing_column(conn, 'jingdai', [name])]
+    jd_count_parts = [f"NULLIF(TRIM({name}), '')" for name in jd_count_columns]
+    jd_count_expr = (f"COALESCE({', '.join(jd_count_parts)})" if len(jd_count_parts) > 1
+                     else jd_count_parts[0] if jd_count_parts else 'NULL')
     normalized_transform_lines = set(transform_lines or [])
     raw_transform_lines = set(normalized_transform_lines)
     if '证保' in normalized_transform_lines:
@@ -273,7 +280,7 @@ def _query_product_structure_raw(
             c.execute(f'''
                 SELECT COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类') AS label,
                        SUM({jd_premium_col}) / 10000.0 AS premium,
-                       COUNT(*) AS count
+                       CASE WHEN COUNT(*)=COUNT({jd_count_expr}) THEN SUM(CAST(REPLACE({jd_count_expr}, ',', '') AS REAL)) END AS count
                 FROM jingdai
                 WHERE 1=1
                   {jd_extra_where}
@@ -295,8 +302,8 @@ def _query_product_structure_raw(
             label = f"{row.get('source')}-{label}"
         item = merged.setdefault(label, {'label': label, 'premium': 0.0, 'count': 0})
         item['premium'] += float(row.get('premium') or 0)
-        item['count'] += int(row.get('count') or 0)
-    return sorted(merged.values(), key=lambda r: abs(r['premium']), reverse=True)[:20]
+        item['count'] = None if item['count'] is None or row.get('count') is None else item['count'] + int(row['count'])
+    return sorted(merged.values(), key=lambda r: abs(r['premium']), reverse=True)
 
 
 def _text_coalesce_expr(conn: sqlite3.Connection, table: str, candidates: list[str], fallback: str = '未分类') -> str:
@@ -548,11 +555,10 @@ def get_product_structure(
                 'count': [
                     {'name': r['label'], 'value': int(r['count'])}
                     for r in rows
-                    if include_transform
-                    and (not include_jingdai or r['label'].startswith('转型-'))
-                    and int(r['count']) != 0
+                    if r['count'] is not None and int(r['count']) != 0
                 ],
-                'countBasis': 'policy' if include_transform else 'unavailable',
+                'countBasis': 'policy' if any(r['count'] is not None for r in rows) else 'unavailable',
+                'countNote': '部分所选记录缺少承保件数，件数仅展示完整可核算的产品类别' if any(r['count'] is None for r in rows) else '',
                 'topProducts': top_products,
                 'jingdaiOrgs': get_jingdai_orgs(year),
             }

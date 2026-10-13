@@ -745,7 +745,7 @@ def test_payment_period_query_accepts_multiple_months(monkeypatch):
     ]
 
 
-def test_payment_period_average_supports_gm_and_excludes_jingdai(monkeypatch):
+def test_payment_period_average_supports_gm_and_jingdai(monkeypatch):
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.execute("""
@@ -788,9 +788,9 @@ def test_payment_period_average_supports_gm_and_excludes_jingdai(monkeypatch):
         for row in result["average_premium"]["summaries"]
     }
     assert summaries[("all", "all")]["total"] == {
-        "premium": 48.01,
+        "premium": 168.01,
         "count": 3,
-        "average": 16.003,
+        "average": 56.003,
         "calculable": True,
         "reason": None,
     }
@@ -805,7 +805,8 @@ def test_payment_period_average_supports_gm_and_excludes_jingdai(monkeypatch):
         metric="gm",
         business_types=["经代"],
     )
-    assert jingdai_only["average_premium"]["rows"] == []
+    assert jingdai_only["average_premium"]["rows"][0]["business_mode"] == "经代"
+    assert jingdai_only["average_premium"]["rows"][0]["total"]["average"] is None
 
 
 def test_payment_period_query_uses_inclusive_daily_range(monkeypatch):

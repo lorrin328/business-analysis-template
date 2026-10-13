@@ -5,6 +5,7 @@ from db.connection import get_db
 from db.schema import init_db
 from metrics.formulas import avg_policy_premium
 from services.cutoff_policy import build_period_context, date_range_filter_sql
+from services.raw_table_reader import pick_existing_column
 
 
 PAYMENT_PERIOD_CATEGORY_ORDER = [
@@ -16,16 +17,20 @@ PAYMENT_PERIOD_CATEGORY_ORDER = [
 ]
 
 
+def _add_counts(left, right):
+    return None if left is None or right is None else left + right
+
+
 def _average_premium_payload(premium, count):
     premium_value = float(premium or 0)
-    count_value = int(count or 0)
-    average_value = avg_policy_premium(premium_value, count_value)
+    count_value = int(count) if count is not None else None
+    average_value = avg_policy_premium(premium_value, count_value) if count_value is not None else None
     return {
         "premium": round(premium_value, 2),
         "count": count_value,
         "average": average_value,
         "calculable": average_value is not None,
-        "reason": None if average_value is not None else "承保件数净额小于或等于0",
+        "reason": None if average_value is not None else "源数据缺少承保件数" if count_value is None else "承保件数净额小于或等于0",
     }
 
 
@@ -118,11 +123,13 @@ def get_payment_period_structure(
             params.extend(jingdai_orgs)
 
         where = ' AND '.join(conditions) if conditions else '1=1'
+        missing_expr = 'count_missing' if pick_existing_column(conn, table, ['count_missing']) else '0'
+        count_expr = f'CASE WHEN SUM({missing_expr})=0 THEN SUM(count) END'
 
         c.execute(f'''
             SELECT category,
                    SUM({premium_field}) AS premium_total,
-                   SUM(count) AS count_total
+                   {count_expr} AS count_total
             FROM {table}
             WHERE {where}
             GROUP BY category
@@ -133,17 +140,20 @@ def get_payment_period_structure(
         count_rows = []
         for r in c.fetchall():
             premium_rows.append({'name': r['category'], 'value': round(r['premium_total'] or 0, 2)})
-            count_rows.append({'name': r['category'], 'value': int(r['count_total'] or 0)})
+            if r['count_total'] is not None:
+                count_rows.append({'name': r['category'], 'value': int(r['count_total'])})
+        categories = PAYMENT_PERIOD_CATEGORY_ORDER + sorted(
+            {r['name'] for r in premium_rows} - set(PAYMENT_PERIOD_CATEGORY_ORDER)
+        )
 
-        # 转型业务件均保费：沿用当前交期分类、筛选条件和承保件数净额口径。
-        # 经代源表没有承保件数/投保单号，不能以记录行数代替件数。
+        # 两类业务均使用源承保件数净额；缺失件数保留为不可计算。
         c.execute(f'''
-            SELECT channel, org, category,
+            SELECT CASE WHEN business_type='经代' THEN '经代' ELSE channel END AS channel, org, category,
                    SUM({premium_field}) AS premium_total,
-                   SUM(count) AS count_total
+                   {count_expr} AS count_total
             FROM {table}
-            WHERE {where} AND business_type = '转型'
-            GROUP BY channel, org, category
+            WHERE {where}
+            GROUP BY business_type, channel, org, category
             ORDER BY
                 CASE channel WHEN 'OTO' THEN 1 WHEN '证保' THEN 2 WHEN '蚁桥' THEN 3 ELSE 9 END,
                 org,
@@ -168,9 +178,9 @@ def get_payment_period_structure(
                 "terms": [],
             })
             premium_total = float(r['premium_total'] or 0)
-            count_total = int(r['count_total'] or 0)
+            count_total = int(r['count_total']) if r['count_total'] is not None else None
             group["premium_total"] += premium_total
-            group["count_total"] += count_total
+            group["count_total"] = _add_counts(group["count_total"], count_total)
             group["terms"].append({
                 "category": r['category'],
                 "premium_total": premium_total,
@@ -223,19 +233,19 @@ def get_payment_period_structure(
                     "terms": {},
                 })
                 summary["premium_total"] += row["premium_total"]
-                summary["count_total"] += row["count_total"]
+                summary["count_total"] = _add_counts(summary["count_total"], row["count_total"])
                 for term in row["terms"]:
                     term_summary = summary["terms"].setdefault(term["category"], {
                         "premium": 0.0,
                         "count": 0,
                     })
                     term_summary["premium"] += term["premium_total"]
-                    term_summary["count"] += term["count_total"]
+                    term_summary["count"] = _add_counts(term_summary["count"], term["count_total"])
 
         average_summaries = []
         for summary in grouped_average_summaries.values():
             terms = []
-            for category in PAYMENT_PERIOD_CATEGORY_ORDER:
+            for category in categories:
                 term_summary = summary["terms"].get(category)
                 if term_summary is None:
                     continue
@@ -276,12 +286,12 @@ def get_payment_period_structure(
             'premium': premium_rows,
             'count': count_rows,
             'average_premium': {
-                'scope': '转型',
+                'scope': '转型＋经代' if any(r['business_mode']=='经代' for r in average_rows) else '转型',
                 'metric': metric if metric == 'gm' else 'qj',
                 'premium_label': '规模保费' if metric == 'gm' else '期交保费',
                 'unit': '万元/件',
                 'formula': '所选范围保费净额 ÷ 承保件数净额',
-                'categories': PAYMENT_PERIOD_CATEGORY_ORDER,
+                'categories': categories,
                 'rows': average_rows,
                 'summaries': average_summaries,
             },

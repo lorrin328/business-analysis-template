@@ -674,6 +674,9 @@ def init_db():
             VALUES ('20260907_mixed_period_normalization', 1, 'Rebuilds aggregates after mixed historical month and timestamp parsing repair')
         ''')
 
+        for count_table in ('agg_product_daily', 'agg_payment_period', 'agg_payment_period_daily'):
+            _migrate(c, f'ALTER TABLE {count_table} ADD COLUMN count_missing INTEGER NOT NULL DEFAULT 0')
+        c.execute("INSERT OR IGNORE INTO schema_migrations(version, requires_aggregate_rebuild, note) VALUES ('20261013_jingdai_policy_counts', 1, 'Uses authoritative jingdai policy counts and preserves missing-count coverage')")
         c.execute('''
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
             VALUES ('20260923_source_day_precision', 1, 'Rebuilds daily aggregates without month-only source rows masquerading as day one')

@@ -34,17 +34,18 @@ test('product count chart uses pieces only and does not display agency rows', ()
  assert.deepEqual(Array.from(option.series[0].data, item=>item.name),['转型-产品']);
  assert.match(option.tooltip.formatter({name:'转型-产品',value:2,percent:100}),/2件/);
  productData.count=[];
+ productData.countBasis='unavailable';
  c.productFilters.transform=false;
- assert.match(c.getPieOption('count').title.text,/经代暂无可核算件数/);
+ assert.match(c.getPieOption('count').title.text,/源数据暂无可核算件数/);
 });
 test('product scope explains agency count is unavailable on initial data load', () => {
  const code=extract(read('data-integration'),'    function updateProductAppliedScope(', '    let productRequestSequence =');
  const scope={textContent:'正在读取产品结构范围…'};
- const product={year:2026,period:{label:'2026年截至9月'},premium:[{name:'转型-产品',value:12}],count:[{name:'转型-产品',value:2}],countBasis:'policy',jingdaiOrgs:[]};
+ const product={year:2026,period:{label:'2026年截至9月'},premium:[{name:'转型-产品',value:12}],count:[{name:'转型-产品',value:2}],countBasis:'policy',countNote:'部分所选记录缺少承保件数，件数仅展示完整可核算的产品类别',jingdaiOrgs:[]};
  const c=context(code,{document:{getElementById:()=>scope},apiData:{product},productData:{},productFilters:{transform:true,jingdai:true},currentPieType:'count',ALLOW_LOCAL_FALLBACK:false,
    renderProductJingdaiOrgs(){},renderProductTopTable(){},selectedYear:2026,DEFAULT_DASHBOARD_YEAR:2026,applyProductFallback(){throw Error('unexpected fallback');}});
  assert.equal(c.updateProductDataFromApi(),true);
- assert.equal(scope.textContent,'已应用：2026年截至9月 · 转型＋经代 · 件数仅统计转型业务，经代暂无可核算件数');
+ assert.equal(scope.textContent,'已应用：2026年截至9月 · 转型＋经代 · 部分所选记录缺少承保件数，件数仅展示完整可核算的产品类别');
 });
 for (const name of ['zhituo-analysis','branch-analysis','customer-analysis']) {
  test(`${name}: late success and late errors cannot overwrite newest query`, async () => {

@@ -6,7 +6,7 @@ import pandas as pd
 
 from etl.normalize import (
     _normalize_channel, _to_number, _amount_to_wan,
-    _period_year_month, _fee_weight,
+    _period_year_month, _fee_weight, jingdai_policy_counts,
 )
 from etl.columns import _pick_col
 from etl.classify import _classify_payment_period, _classify_jingdai_payment_period
@@ -60,6 +60,7 @@ def _aggregate_payment_period(df: pd.DataFrame, *, daily: bool) -> List[Dict]:
             'qj_premium': _amount_to_wan(group['_qj'].sum()),
             'gm_premium': _amount_to_wan(group['_gm'].sum()),
             'count': int(group['_count'].sum()),
+            'count_missing': 0,
         }
         if daily:
             row['day'] = int(day)
@@ -91,11 +92,10 @@ def _aggregate_jingdai_payment_period(df: pd.DataFrame, *, daily: bool) -> List[
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
     work['_qj'] = _to_number(work[qj_col])
     work['_gm'] = _to_number(work[gm_col]) if gm_col else 0
-    work['_count'] = 0  # 经代Excel无件数列
+    work['_count'], work['_count_missing'] = jingdai_policy_counts(work)
     work['_category'] = work.apply(
         lambda r: _classify_jingdai_payment_period(r[pay_col], r[term_cat_col] if term_cat_col else ''), axis=1
-    )
-    work = work[work['_category'].notna() & (work['_category'] != '')]
+    ).fillna('未分类').replace('', '未分类')
 
     group_cols = ['_year', '_month'] + (['_day'] if daily else []) + ['_org', '_category']
     grouped = work.groupby(group_cols, dropna=False)
@@ -115,7 +115,8 @@ def _aggregate_jingdai_payment_period(df: pd.DataFrame, *, daily: bool) -> List[
             'category': str(category),
             'qj_premium': _amount_to_wan(group['_qj'].sum()),
             'gm_premium': _amount_to_wan(group['_gm'].sum()),
-            'count': 0,
+            'count': int(group['_count'].sum()),
+            'count_missing': int(group['_count_missing'].sum()),
         }
         if daily:
             row['day'] = int(day)

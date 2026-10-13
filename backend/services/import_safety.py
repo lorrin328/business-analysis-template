@@ -22,7 +22,7 @@ BUSINESS_FIELDS = {
                     '是否个人养老金', '证券方营业网点名称', '证券方销售人员工号',
                     '主管工号', '经理工号', '营业组', '营业部', '自保件标记', '是否企划口径',
                     '承保时间', '回销时间', '犹豫期退保时间'},
-    'jingdai': {'时间', '年月日', '产品名称', '期交保费', '承保年化规保', '年化规保', '缴费年限',
+    'jingdai': {'承保件数', '承保保单件数', '时间', '年月日', '产品名称', '期交保费', '承保年化规保', '年化规保', '缴费年限',
                 '当前缴别大类', '当前缴别小类', '缴费年限范围', '保障期限', '业务类型',
                 '产品大类', '经代机构', '中介公司'},
     'hr_data': {'统计日期', '人员工号', '业务模式名称', '销售机构名称', '月初在职人力', '月末在职人力'},
@@ -160,6 +160,8 @@ def validate_replacement_fields(conn, table: str, df) -> None:
     """Fail before any writes when a complete monthly extract loses enabled fields."""
     existing = table_columns(conn, table)
     missing = sorted((BUSINESS_FIELDS.get(table, set()) & existing) - set(df.columns))
+    if table == 'jingdai' and {'承保件数', '承保保单件数'} & set(df.columns):
+        missing = [column for column in missing if column not in {'承保件数', '承保保单件数'}]
     if not missing or df.empty:
         return
     periods, _ = extract_raw_periods(table, df)

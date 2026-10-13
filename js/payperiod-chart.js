@@ -112,7 +112,7 @@
       const map = new Map();
       premiumRows.forEach(row => {
         const name = row.name || '未分类';
-        const item = map.get(name) || { name, premium: 0, count: 0 };
+        const item = map.get(name) || { name, premium: 0, count: null };
         item.premium += Number(row.value || 0);
         map.set(name, item);
       });
@@ -133,14 +133,14 @@
       const htmlRows = rows.map(row => {
         const name = escapePayPeriodText(row.name || '未分类');
         const premiumShare = totalPremium ? row.premium / totalPremium * 100 : 0;
-        const countShare = totalCount ? row.count / totalCount * 100 : 0;
+        const countShare = row.count === null ? null : totalCount ? row.count / totalCount * 100 : 0;
         return `
           <tr>
             <td class="primary-text">${name}</td>
             <td class="num">${fmtPayPeriodAmount(row.premium)}万</td>
             <td class="num">${premiumShare.toFixed(1)}%</td>
-            <td class="num">${fmtPayPeriodAmount(row.count, 0)}件</td>
-            <td class="num">${countShare.toFixed(1)}%</td>
+            <td class="num">${row.count === null ? '--' : fmtPayPeriodAmount(row.count, 0) + '件'}</td>
+            <td class="num">${countShare === null ? '--' : countShare.toFixed(1) + '%'}</td>
           </tr>
         `;
       }).join('');
@@ -174,7 +174,7 @@
       const allRows = Array.isArray(payload.rows) ? payload.rows.slice() : [];
       const summaries = Array.isArray(payload.summaries) ? payload.summaries : [];
       const premiumLabel = payload.premium_label || (payPeriodFilters.metric === 'gm' ? '规模保费' : '期交保费');
-      const modeOrder = { 'OTO': 1, '证保': 2, '蚁桥': 3 };
+      const modeOrder = { 'OTO': 1, '证保': 2, '蚁桥': 3, '经代': 4 };
       const orgOrder = new Map([...ORG_LIST, '其他'].map((org, index) => [org, index]));
       const availableOrgs = Array.from(new Set(allRows.map(row => row.org || '未知')))
         .sort((a, b) => {
@@ -232,13 +232,13 @@
         const periodLabel = payPeriodFilters.timeDim === 'year'
           ? `${payPeriodFilters.year}年度`
           : MonthMultiSelect.periodLabel(payPeriodFilters.year, months);
-        scopeNote.textContent = `统计期间：${periodLabel}；转型业务口径：${premiumLabel}净额 ÷ 承保件数净额；单位：万元/件；件数净额小于或等于0时不计算。`;
+        scopeNote.textContent = `统计期间：${periodLabel}；${payload.scope || '转型＋经代'}口径：${premiumLabel}净额 ÷ 承保件数净额；单位：万元/件；件数净额小于或等于0时不计算。`;
       }
       if (filterSummary) {
         filterSummary.textContent = `显示 ${rows.length} / ${allRows.length} 条 · 含筛选合计`;
       }
       if (allRows.length === 0) {
-        wrapper.innerHTML = '<div class="structure-empty">当前筛选范围暂无可展示的转型业务件均保费</div>';
+        wrapper.innerHTML = '<div class="structure-empty">当前筛选范围暂无可展示的件均保费</div>';
         return;
       }
       if (rows.length === 0) {

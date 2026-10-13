@@ -549,8 +549,7 @@
       }
       const sources = productFilters.transform && productFilters.jingdai ? '转型＋经代'
         : productFilters.transform ? '转型' : productFilters.jingdai ? '经代' : '未选择业务来源';
-      const countNote = currentPieType === 'count' && productFilters.jingdai
-        ? ' · 件数仅统计转型业务，经代暂无可核算件数' : '';
+      const countNote = currentPieType === 'count' && product.countNote ? ` · ${product.countNote}` : '';
       scope.textContent = `已应用：${product.period?.label || `${product.year || selectedYear}年`} · ${sources}${countNote}`;
     }
 
@@ -568,6 +567,7 @@
       productData.premium = product.premium;
       productData.count = Array.isArray(product.count) ? product.count : [];
       productData.countBasis = product.countBasis || 'policy';
+      productData.countNote = product.countNote || '';
       updateProductAppliedScope(product);
       if (typeof renderProductTopTable === 'function') renderProductTopTable(product.topProducts || []);
       return true;

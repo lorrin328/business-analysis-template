@@ -9,11 +9,22 @@ def parse_performance_excel(file_bytes: bytes) -> pd.DataFrame:
 
 def parse_jingdai_excel(file_bytes: bytes) -> pd.DataFrame:
     frame = _read_excel(file_bytes, {'时间', '承保年化规保', '期交保费'})
+    # The current standard export calls the authoritative count 承保保单件数.
+    # Store one canonical field so imports and subsequent SQLite rebuilds agree.
+    if '承保保单件数' in frame.columns:
+        if '承保件数' in frame.columns:
+            from etl.normalize import _to_number, NumericSourceError
+            left, right = frame['承保件数'], frame['承保保单件数']
+            if not (_to_number(left).eq(_to_number(right)) & left.isna().eq(right.isna())).all():
+                raise NumericSourceError('承保件数与承保保单件数两列不一致；请确认后重新导入。')
+            frame = frame.drop(columns=['承保保单件数'])
+        else:
+            frame = frame.rename(columns={'承保保单件数': '承保件数'})
     # The standard export ends with a grand total in the time column. It is not
     # a transaction and must neither invalidate the preview nor enter raw data.
     # Only recognize explicit trailing totals with no business dimensions.
     period = next((name for name in ('时间', '年月') if name in frame.columns), None)
-    amount_columns = {'承保年化规保', '年化规保', '规模保费', '期交保费'}
+    amount_columns = {'承保年化规保', '年化规保', '规模保费', '期交保费', '承保件数'}
     labels = {'合计', '总计', 'total', 'grand total'}
     end, ignored = len(frame), 0
     while period and end:

@@ -30,14 +30,31 @@ def validate_source_numbers(kind: str, frame: pd.DataFrame) -> None:
         # 单趸交保单可合法缺少期交保费；只拒绝非空非法数值。
         "performance": [(('期交保费',), False), (('年化规保', '规模保费', '规保'), False),
                         (('折算保费',), False), (('承保件数',), False)],
-        "jingdai": [(('期交保费',), True), (('承保年化规保', '年化规保', '规模保费'), True)],
+        "jingdai": [(('期交保费',), True), (('承保年化规保', '年化规保', '规模保费'), True), (('承保件数',), False)],
         "hr": [(('月初在职人力',), True), (('月末在职人力',), True)],
         "value": [(('价值',), True)],
     }
     for names, required in fields.get(kind, []):
         column = next((name for name in names if name in frame.columns), None)
         if column:
-            _to_number(frame[column], required=required)
+            values = _to_number(frame[column], required=required)
+            if kind == "jingdai" and column == "承保件数" and (values % 1 != 0).any():
+                raise NumericSourceError("承保件数必须为整数；请在导入前修正。")
+
+
+def jingdai_policy_counts(frame: pd.DataFrame):
+    """Coalesce canonical and older stored export names without inventing counts."""
+    values = pd.Series(np.nan, index=frame.index, name='承保件数')
+    for column in ('承保件数', '承保保单件数'):
+        if column in frame:
+            source = frame[column]
+            present = source.notna() & source.astype('string').str.strip().ne('')
+            values = values.fillna(source.where(present))
+    missing = values.isna()
+    counts = _to_number(values)
+    if (counts % 1 != 0).any():
+        raise NumericSourceError('承保件数必须为整数；请在导入前修正。')
+    return counts, missing
 
 
 from config.business_lines import CHANNEL_MAP
