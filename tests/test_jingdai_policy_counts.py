@@ -75,6 +75,29 @@ def test_actual_export_count_alias_is_normalized(auth_db):
     assert result.rows_by_table['agg_product_daily'][0]['count'] == 7
 
 
+def test_corrected_product_count_export_is_normalized(auth_db):
+    data = source([dict(BASE, 承保产品件数=125),
+        {'时间': '合计', '期交保费': 100000, '承保年化规保': 120000, '承保产品件数': 125}])
+    with sqlite3.connect(':memory:') as conn:
+        assert build_import_preview(conn, [data])['canImport']
+    result = build_excel_pipeline_result([data])
+    assert result.raw_tables['jingdai']['承保件数'].tolist() == [125]
+    for table in ('agg_product_daily', 'agg_payment_period', 'agg_payment_period_daily'):
+        assert result.rows_by_table[table][0]['count'] == 125
+
+
+@pytest.mark.parametrize('blank', [None, ''])
+def test_count_alias_coalesces_missing_values_without_losing_real_zero(blank):
+    result = build_excel_pipeline_result([source([dict(BASE, 承保件数=blank, 承保产品件数=0)])])
+    assert result.rows_by_table['agg_product_daily'][0]['count'] == 0
+    assert result.rows_by_table['agg_product_daily'][0]['count_missing'] == 0
+
+
+def test_conflicting_product_and_policy_count_fields_are_rejected():
+    with pytest.raises(ValueError, match='不一致'):
+        build_excel_pipeline_result([source([dict(BASE, 承保保单件数=0, 承保产品件数=125)])])
+
+
 def test_conflicting_count_aliases_are_rejected():
     with pytest.raises(ValueError, match='不一致'):
         build_excel_pipeline_result([source([dict(BASE, 承保件数=7, 承保保单件数=8)])])
