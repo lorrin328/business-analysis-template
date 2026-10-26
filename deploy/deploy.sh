@@ -182,10 +182,15 @@ else
     STAGED_VENV=""
     false
   fi
-  python3 -m venv "$STAGED_VENV"
-  "$STAGED_VENV/bin/pip" install --upgrade pip
-  "$STAGED_VENV/bin/pip" install -r "$SRC_DIR/backend/requirements.txt"
-  "$STAGED_VENV/bin/python" -m pip check
+  # Dependency files contain no runtime secrets and must be readable by the
+  # application account even when the operator uses a restrictive umask.
+  (
+    umask 022
+    python3 -m venv "$STAGED_VENV"
+    "$STAGED_VENV/bin/pip" install --upgrade pip
+    "$STAGED_VENV/bin/pip" install -r "$SRC_DIR/backend/requirements.txt"
+    "$STAGED_VENV/bin/python" -m pip check
+  )
   echo "候选Python环境已在线准备完成。"
 fi
 
