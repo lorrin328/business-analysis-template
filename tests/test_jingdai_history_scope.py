@@ -84,3 +84,30 @@ def test_raw_rebuild_does_not_erase_aggregate_only_history(auth_db):
         assert c.execute("SELECT SUM(qj_premium),SUM(count) FROM agg_product_daily WHERE year=2024 AND business_type='经代'").fetchone()[:] == (123,8)
         assert c.execute("SELECT SUM(qj_premium),SUM(count) FROM agg_payment_period WHERE year=2024 AND business_type='经代'").fetchone()[:] == (123,8)
         assert c.execute('SELECT COUNT(*) FROM jingdai').fetchone()[0] == 0
+
+
+@pytest.mark.parametrize('raw_month', [1, 2])
+def test_partial_raw_history_never_replaces_existing_months(auth_db, raw_month):
+    from db import get_db
+    from services.aggregate_rebuilder import rebuild_aggregates_from_raw_tables
+    from services.import_safety import append_raw_frame
+    with get_db() as c:
+        c.executemany('INSERT INTO agg_jingdai(year,month,qj_premium,gm_premium,zs_premium) VALUES(2024,?,?,?,?)', [(1,123,321,50),(2,456,654,70)])
+        c.executemany("INSERT INTO agg_payment_period(year,month,business_type,channel,org,category,qj_premium,gm_premium,count) VALUES(2024,?,'经代','','平台','5年交',?,?,?)", [(1,123,321,8),(2,456,654,-2)])
+        append_raw_frame(c,'jingdai',normalize_jingdai_source(pd.DataFrame([{'时间':f'2024-{raw_month:02d}','经代机构':'平台','产品名称':'产品','期交保费':999,'承保年化规保':888,'承保件数':-1}])))
+        c.commit()
+    rebuild_aggregates_from_raw_tables()
+    with get_db() as c:
+        assert [tuple(r) for r in c.execute('SELECT month,qj_premium,gm_premium,zs_premium FROM agg_jingdai WHERE year=2024 ORDER BY month')] == [(1,123,321,50),(2,456,654,70)]
+        assert [tuple(r) for r in c.execute("SELECT month,qj_premium,gm_premium,count FROM agg_payment_period WHERE year=2024 AND business_type='经代' ORDER BY month")] == [(1,123,321,8),(2,456,654,-2)]
+
+
+def test_partial_legacy_facts_do_not_override_historical_counts(auth_db):
+    from db import get_db
+    from db.repositories.product import _query_product_daily_aggregate
+    with get_db() as c:
+        c.executemany("INSERT INTO agg_product_daily(year,month,day,business_type,channel,org,product_category,product_name,qj_premium,gm_premium,count) VALUES(2024,?,2,'经代','经代','平台','产品','产品',?,?,?)", [(1,100,100,10),(2,200,200,20)])
+        c.execute("INSERT INTO agg_jingdai_policy_daily(year,month,day,org,product_category,product_name,category,policy_no,identity_source,qj_premium,gm_premium,source_rows,legacy_count,legacy_missing) VALUES(2024,1,2,'平台','产品','产品','5年交','',0,100,100,1,10,0)")
+        rows,_ = _query_product_daily_aggregate(c,2024,[],[],False,True,orgs=None,months=None,metric_type='qj',start_cutoff=None,end_cutoff=None)
+        assert rows[0]['premium'] == 300 and rows[0]['count'] == 30
+        assert rows[0]['count_basis'] == 'source_net'

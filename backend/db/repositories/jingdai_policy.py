@@ -22,6 +22,7 @@ def query_policy_counts(conn, where, params, group_columns=(), *, channel=''):
     rows = conn.execute(f'''
         SELECT {prefix} COUNT(*) AS fact_rows,
                MIN(identity_source) AS min_basis, MAX(identity_source) AS max_basis,
+               MIN(year) AS first_year, MAX(year) AS last_year,
                SUM(CASE WHEN identity_source=1 AND TRIM(policy_no)='' THEN source_rows ELSE 0 END) AS missing_identity,
                COUNT(DISTINCT NULLIF(TRIM(policy_no), '')) AS identity_count,
                SUM(legacy_count) AS legacy_count, SUM(legacy_missing) AS legacy_missing
@@ -31,6 +32,10 @@ def query_policy_counts(conn, where, params, group_columns=(), *, channel=''):
     result = {}
     for row in rows:
         if not row['fact_rows']:
+            continue
+        if row['max_basis'] == 0 and 2020 <= row['first_year'] <= row['last_year'] <= 2024:
+            # Retained historical aggregates are authoritative. Partial old raw
+            # facts cannot replace complete historical counts in the API.
             continue
         if row['min_basis'] != row['max_basis']:
             count, basis = None, 'mixed'

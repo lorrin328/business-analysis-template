@@ -106,7 +106,14 @@ def stage_refresh(database, directory, backup_directory):
             frame = _read_raw_table_year(conn, 'jingdai', year)
             if frame is not None and not frame.empty:
                 rows = build_aggregate_rows_from_raw({'jingdai': frame}, jingdai_config_map=_load_jingdai_product_config(conn))
-                replace_aggregate_rows(conn, ExcelPipelineResult(raw_tables={'jingdai': frame}, rows_by_table=rows), incremental=True)
+                if 2020 <= year <= 2024:
+                    # Historical results remain authoritative; only create the
+                    # new derived facts from available original source rows.
+                    from db import replace_rows
+                    conn.execute('DELETE FROM agg_jingdai_policy_daily WHERE year=?', (year,))
+                    replace_rows(conn, 'agg_jingdai_policy_daily', rows.get('agg_jingdai_policy_daily', []))
+                else:
+                    replace_aggregate_rows(conn, ExcelPipelineResult(raw_tables={'jingdai': frame}, rows_by_table=rows), incremental=True)
             del frame
         conn.commit()
     imported = []

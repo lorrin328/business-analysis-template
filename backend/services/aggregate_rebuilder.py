@@ -281,20 +281,22 @@ def rebuild_aggregates_from_raw_tables() -> RebuildResult:
                     raw_counts[table] += len(frame)
                 table_rows = build_aggregate_rows_from_raw(raw_tables, include_org_activity=False)
                 jd_source = raw_tables.get('jingdai')
-                retain_jd_history = 2020 <= year <= 2024 and (jd_source is None or jd_source.empty)
+                retain_jd_history = 2020 <= year <= 2024
                 for table in AGG_TABLES:
                     if table == "agg_org_daily_activity":
                         continue
-                    if retain_jd_history and table in {'agg_jingdai', 'agg_jingdai_daily', 'agg_jingdai_policy_daily'}:
-                        # Some older local/operating databases retain only JD
-                        # aggregates. Missing raw rows are not authority to erase
-                        # the original historical result or invent policy IDs.
+                    if retain_jd_history and (table in {'agg_jingdai', 'agg_jingdai_daily'} or (table == 'agg_jingdai_policy_daily' and (jd_source is None or jd_source.empty))):
+                        # Existing 2020-2024 results are authoritative, even when
+                        # raw history exists only for some months. Rebuilding
+                        # derived identity facts must never rewrite old results.
                         continue
                     if retain_jd_history and table in {'agg_product_daily', 'agg_payment_period', 'agg_payment_period_daily', 'agg_longterm_qj'}:
                         conn.execute(f'DELETE FROM "{table}" WHERE year=? AND business_type!=\'经代\'', (year,))
                     else:
                         clear_table_year_data(conn, table, year)
                     rows = table_rows.get(table, [])
+                    if retain_jd_history and table in {'agg_product_daily', 'agg_payment_period', 'agg_payment_period_daily', 'agg_longterm_qj'}:
+                        rows = [row for row in rows if row.get('business_type') != '经代']
                     replace_rows(conn, table, rows)
                     table_counts[table] += len(rows)
             conn.execute("DELETE FROM agg_org_daily_activity")
