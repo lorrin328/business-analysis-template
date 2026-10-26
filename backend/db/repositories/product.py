@@ -4,6 +4,7 @@ import logging
 import sqlite3
 from db.connection import get_db
 from db.schema import init_db
+from db.repositories.jingdai_policy import query_policy_counts, IDENTITY_NOTE, MIXED_NOTE
 from services.cutoff_policy import build_period_context
 from services.raw_table_reader import (
     append_date_range_filter,
@@ -121,15 +122,21 @@ def _query_product_daily_aggregate(
 
     mixed_sources = include_transform and include_jingdai
     jingdai_has_counts = bool(pick_existing_column(conn, 'jingdai', ['承保件数', '承保保单件数']))
+    identity_counts = query_policy_counts(conn, where_sql, params, ('product_category',), channel='经代') if include_jingdai else None
+    scope_count = (query_policy_counts(conn, where_sql, params, channel='经代') or {}).get(()) if include_jingdai else None
     structure = []
     for row in structure_rows:
         label = row.get("label") or "未分类"
         if mixed_sources:
             label = f"{row.get('source')}-{label}"
+        identity = (identity_counts or {}).get((row.get('label') or '未分类',)) if row.get('source') == '经代' else None
         structure.append({
             "label": label,
             "premium": float(row.get("premium") or 0),
-            "count": None if row.get("count") is None or (row.get("source") == "经代" and not jingdai_has_counts) else int(row["count"]),
+            "count": identity['count'] if identity else None if row.get("count") is None or (row.get("source") == "经代" and not jingdai_has_counts) else int(row["count"]),
+            "count_basis": identity['basis'] if identity else 'source_net',
+            "count_source": ('mixed' if identity['basis'] == 'mixed' else 'policy_identity' if identity['identity'] else 'source_net') if identity else 'source_net',
+            "scope_count": scope_count['count'] if scope_count else None,
         })
     return sorted(structure, key=lambda row: abs(row["premium"]), reverse=True), _format_top_products(top_rows)
 
@@ -211,6 +218,21 @@ def _query_product_structure_raw(
     jd_count_parts = [f"NULLIF(TRIM({name}), '')" for name in jd_count_columns]
     jd_count_expr = (f"COALESCE({', '.join(jd_count_parts)})" if len(jd_count_parts) > 1
                      else jd_count_parts[0] if jd_count_parts else 'NULL')
+    jd_policy_column = pick_existing_column(conn, 'jingdai', ['投保单号'])
+    raw_identity = None
+    if jd_policy_column:
+        policy_expr = 'NULLIF(TRIM("投保单号"), \'\')'
+        if pick_existing_column(conn, 'jingdai', ['经代源格式']):
+            raw_identity = f"(CASE WHEN \"经代源格式\"='policy_detail' THEN 1 WHEN \"经代源格式\"='legacy_aggregate' THEN 0 ELSE {policy_expr} IS NOT NULL END)"
+        else:
+            raw_identity = f'({policy_expr} IS NOT NULL)'
+        jd_count_sql = f'''CASE WHEN SUM(CASE WHEN {raw_identity} THEN 1 ELSE 0 END)=COUNT(*)
+            AND COUNT({policy_expr})=COUNT(*) THEN COUNT(DISTINCT {policy_expr})
+            WHEN SUM(CASE WHEN {raw_identity} THEN 1 ELSE 0 END)=0 AND COUNT(*)=COUNT({jd_count_expr})
+            THEN SUM(CAST(REPLACE({jd_count_expr}, ',', '') AS REAL)) END'''
+    else:
+        jd_count_sql = f"CASE WHEN COUNT(*)=COUNT({jd_count_expr}) THEN SUM(CAST(REPLACE({jd_count_expr}, ',', '') AS REAL)) END"
+    jd_basis_sql = f"CASE WHEN MAX(CASE WHEN {raw_identity} THEN 1 ELSE 0 END)=0 THEN 'source_net' WHEN MIN(CASE WHEN {raw_identity} THEN 1 ELSE 0 END)=1 THEN 'policy_identity' ELSE 'mixed' END" if raw_identity else "'source_net'"
     normalized_transform_lines = set(transform_lines or [])
     raw_transform_lines = set(normalized_transform_lines)
     if '证保' in normalized_transform_lines:
@@ -264,7 +286,7 @@ def _query_product_structure_raw(
             jingdai_time_col = pick_existing_column(
                 conn,
                 'jingdai',
-                ['年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期', '时间', '年月'],
+                ['时间', '年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期', '年月', '统计时间_年月日'],
             ) or '时间'
             common_cutoff = _common_mixed_cutoff(
                 conn, year, months, sorted(normalized_transform_lines), include_transform, include_jingdai
@@ -280,7 +302,7 @@ def _query_product_structure_raw(
             c.execute(f'''
                 SELECT COALESCE(NULLIF(TRIM("产品名称"), ''), '未分类') AS label,
                        SUM({jd_premium_col}) / 10000.0 AS premium,
-                       CASE WHEN COUNT(*)=COUNT({jd_count_expr}) THEN SUM(CAST(REPLACE({jd_count_expr}, ',', '') AS REAL)) END AS count
+                       {jd_count_sql} AS count, {jd_basis_sql} AS count_basis
                 FROM jingdai
                 WHERE 1=1
                   {jd_extra_where}
@@ -300,7 +322,7 @@ def _query_product_structure_raw(
         label = row.get('label') or '未分类'
         if mixed_sources:
             label = f"{row.get('source')}-{label}"
-        item = merged.setdefault(label, {'label': label, 'premium': 0.0, 'count': 0})
+        item = merged.setdefault(label, {'label': label, 'premium': 0.0, 'count': 0, 'count_basis': row.get('count_basis', 'source_net'), 'count_source': row.get('count_basis', 'source_net')})
         item['premium'] += float(row.get('premium') or 0)
         item['count'] = None if item['count'] is None or row.get('count') is None else item['count'] + int(row['count'])
     return sorted(merged.values(), key=lambda r: abs(r['premium']), reverse=True)
@@ -390,7 +412,7 @@ def _query_top_products_by_business_line(
             jingdai_time_col = pick_existing_column(
                 conn,
                 'jingdai',
-                ['年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期', '时间', '年月'],
+                ['时间', '年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期', '年月', '统计时间_年月日'],
             ) or '时间'
             jd_extra_where = append_period_filter(jingdai_time_col, year, months, jd_params)
             jd_extra_where += append_date_range_filter(jingdai_time_col, start_cutoff, cutoff, jd_params)
@@ -546,6 +568,21 @@ def get_product_structure(
                 )
             else:
                 rows, top_products = aggregate_result
+            bases = {r.get('count_basis', 'source_net') for r in rows}
+            sources = {r.get('count_source', r.get('count_basis', 'source_net')) for r in rows}
+            identity_selected = 'policy_identity' in sources
+            mixed_basis = 'mixed' in bases or ('policy_identity' in sources and 'source_net' in sources)
+            count_note = MIXED_NOTE if mixed_basis else IDENTITY_NOTE if identity_selected else ''
+            total_count = None
+            if not mixed_basis:
+                if identity_selected:
+                    total_count = next((r['scope_count'] for r in rows if 'scope_count' in r), None)
+                elif all(r['count'] is not None for r in rows):
+                    total_count = sum(r['count'] for r in rows)
+            if identity_selected and total_count is not None:
+                count_note += f' 所选范围去重合计{int(total_count)}件。'
+            if any(r['count'] is None for r in rows):
+                count_note += ' 部分所选记录缺少投保单号或承保件数，件数仅展示完整可核算的产品类别。'
             return {
                 'year': year,
                 'as_of': as_of_context,
@@ -557,8 +594,10 @@ def get_product_structure(
                     for r in rows
                     if r['count'] is not None and int(r['count']) != 0
                 ],
-                'countBasis': 'policy' if any(r['count'] is not None for r in rows) else 'unavailable',
-                'countNote': '部分所选记录缺少承保件数，件数仅展示完整可核算的产品类别' if any(r['count'] is None for r in rows) else '',
+                'countBasis': ('mixed' if mixed_basis else 'policy_identity' if identity_selected else 'policy') if any(r['count'] is not None for r in rows) else 'unavailable',
+                'totalCount': total_count,
+                'countSources': sorted({'policy_identity', 'source_net'} if 'mixed' in sources else sources),
+                'countNote': count_note.strip(),
                 'topProducts': top_products,
                 'jingdaiOrgs': get_jingdai_orgs(year),
             }

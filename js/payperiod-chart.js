@@ -3,6 +3,8 @@
     const payPeriodData = {
       premium: [],
       count: [],
+      countBasis: 'source_net',
+      countNote: '',
       averagePremium: { categories: [], rows: [] }
     };
     const payPeriodFilters = {
@@ -45,8 +47,11 @@
     function getPayPeriodPieOption(type) {
       const data = type === 'count' ? payPeriodData.count : payPeriodData.premium;
       if (!data || data.length === 0) {
+        const unavailable = type === 'count' && payPeriodData.countBasis === 'mixed'
+          ? '混合件数口径，合并件数不可计算'
+          : type === 'count' && payPeriodData.countBasis === 'unavailable' ? '源数据暂无可核算件数' : '暂无交期结构数据';
         return {
-          title: { text: '暂无交期结构数据', left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
+          title: { text: unavailable, left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
           series: [{ type: 'pie', data: [], radius: ['40%', '70%'], center: ['35%', '50%'] }]
         };
       }
@@ -82,6 +87,8 @@
     function applyPayPeriodFallback(year) {
       payPeriodData.premium = [];
       payPeriodData.count = [];
+      payPeriodData.countBasis = 'unavailable';
+      payPeriodData.countNote = '';
       payPeriodData.averagePremium = { categories: [], rows: [] };
       const chart = payPeriodChart;
       if (chart) chart.setOption(getPayPeriodPieOption('premium'), true);
@@ -102,6 +109,22 @@
         '"': '&quot;',
         "'": '&#39;'
       }[ch]));
+    }
+
+    function payPeriodCountContract(payload = payPeriodData.averagePremium || {}) {
+      const metadata = payload.metadata || {};
+      const basis = metadata.countBasis || payload.countBasis || payPeriodData.countBasis || 'source_net';
+      const notes = {
+        policy_identity: '经代按所选范围内非空投保单号去重；跨日、跨产品和跨平台不重复计入合计，含冲正记录，不等同于净承保件数。',
+        source_net: '旧源及转型按承保件数净额核算。',
+        mixed: '所选范围混有投保单号去重和旧源件数净额，合并件数及件均不可计算。',
+        unavailable: '源数据缺少可核算件数，件数及件均不可计算。'
+      };
+      const note = metadata.countNote || payload.countNote || payPeriodData.countNote || notes[basis] || '';
+      const denominator = basis === 'policy_identity' ? '所选范围投保单号去重数'
+        : basis === 'source_net' || basis === 'policy' ? '承保件数净额' : '同口径可核算件数';
+      const formula = metadata.formula || payload.formula || `保费净额 ÷ ${denominator}`;
+      return { basis, note, denominator, formula };
     }
 
     function renderPayPeriodTable() {
@@ -144,7 +167,9 @@
           </tr>
         `;
       }).join('');
+      const countContract = payPeriodCountContract();
       wrapper.innerHTML = `
+        <div class="structure-average-note">${escapePayPeriodText(countContract.note)}</div>
         <table class="structure-table" id="payPeriodTable">
           <thead>
             <tr>
@@ -170,6 +195,7 @@
       if (!wrapper) return;
 
       const payload = payPeriodData.averagePremium || {};
+      const countContract = payPeriodCountContract(payload);
       const categories = Array.isArray(payload.categories) ? payload.categories : [];
       const allRows = Array.isArray(payload.rows) ? payload.rows.slice() : [];
       const summaries = Array.isArray(payload.summaries) ? payload.summaries : [];
@@ -232,7 +258,7 @@
         const periodLabel = payPeriodFilters.timeDim === 'year'
           ? `${payPeriodFilters.year}年度`
           : MonthMultiSelect.periodLabel(payPeriodFilters.year, months);
-        scopeNote.textContent = `统计期间：${periodLabel}；${payload.scope || '转型＋经代'}口径：${premiumLabel}净额 ÷ 承保件数净额；单位：万元/件；件数净额小于或等于0时不计算。`;
+        scopeNote.textContent = `统计期间：${periodLabel}；${payload.scope || '转型＋经代'}口径：${countContract.formula}；单位：万元/件；可核算件数小于或等于0时不计算。${countContract.note}`;
       }
       if (filterSummary) {
         filterSummary.textContent = `显示 ${rows.length} / ${allRows.length} 条 · 含筛选合计`;
@@ -246,7 +272,7 @@
         return;
       }
 
-      function averageCell(cell) {
+      function averageCell(cell, businessMode) {
         if (!cell || cell.calculable !== true || cell.average === null || cell.average === undefined) {
           const reason = escapePayPeriodText(cell?.reason || '该交期暂无数据');
           return `<span class="muted" title="${reason}">--</span>`;
@@ -254,7 +280,11 @@
         const average = fmtPayPeriodAmount(cell.average, 2);
         const premium = fmtPayPeriodAmount(cell.premium, 2);
         const count = fmtPayPeriodAmount(cell.count, 0);
-        const title = escapePayPeriodText(`${premiumLabel}${premium}万元 ÷ 承保件数净额${count}件`);
+        const cellBasis = cell.metadata?.countBasis || cell.countBasis
+          || (businessMode !== '经代' && businessMode !== 'all' ? 'source_net' : countContract.basis);
+        const denominator = cellBasis === 'policy_identity' ? '所选范围投保单号去重数'
+          : cellBasis === 'source_net' || cellBasis === 'policy' ? '承保件数净额' : '同口径可核算件数';
+        const title = escapePayPeriodText(`${premiumLabel}${premium}万元 ÷ ${denominator}${count}件`);
         return `<span class="pay-period-average-value" title="${title}" aria-label="${title}">${average}</span>`;
       }
 
@@ -264,7 +294,7 @@
       const bodyRows = rows.map((row, index) => {
         const termMap = new Map((row.terms || []).map(item => [item.category, item]));
         const termCells = categories
-          .map(category => `<td class="num">${averageCell(termMap.get(category))}</td>`)
+          .map(category => `<td class="num">${averageCell(termMap.get(category), row.business_mode)}</td>`)
           .join('');
         const modeStart = index > 0 && rows[index - 1].business_mode !== row.business_mode;
         return `
@@ -272,7 +302,7 @@
             <td class="primary-text">${escapePayPeriodText(row.org || '未知')}</td>
             <td><span class="pay-period-mode-badge">${escapePayPeriodText(row.business_mode || '未分类')}</span></td>
             ${termCells}
-            <td class="num total-cell">${averageCell(row.total)}</td>
+            <td class="num total-cell">${averageCell(row.total, row.business_mode)}</td>
           </tr>
         `;
       }).join('');
@@ -282,7 +312,7 @@
       );
       const summaryTermMap = new Map((summary?.terms || []).map(item => [item.category, item]));
       const summaryTermCells = categories
-        .map(category => `<td class="num">${averageCell(summaryTermMap.get(category))}</td>`)
+        .map(category => `<td class="num">${averageCell(summaryTermMap.get(category), summary?.business_mode)}</td>`)
         .join('');
       const summaryScope = [
         payPeriodAverageFilters.org === 'all' ? '全部机构' : payPeriodAverageFilters.org,
@@ -294,7 +324,7 @@
             <td class="primary-text">筛选合计</td>
             <td class="summary-scope">${escapePayPeriodText(summaryScope)}</td>
             ${summaryTermCells}
-            <td class="num total-cell">${averageCell(summary.total)}</td>
+            <td class="num total-cell">${averageCell(summary.total, summary.business_mode)}</td>
           </tr>
         </tfoot>
       ` : '';
@@ -420,6 +450,8 @@
         const d = unwrapApiResponse(await fetchJson(buildPayPeriodQuery(year)));
         payPeriodData.premium = d.premium || [];
         payPeriodData.count = d.count || [];
+        payPeriodData.countBasis = d.countBasis || d.average_premium?.metadata?.countBasis || 'source_net';
+        payPeriodData.countNote = d.countNote || d.average_premium?.metadata?.countNote || '';
         payPeriodData.averagePremium = d.average_premium || { categories: [], rows: [] };
         if (d.jingdai_orgs && d.jingdai_orgs.length > 0) {
           renderPayPeriodJingdaiOrgs(d.jingdai_orgs);

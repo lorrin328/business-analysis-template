@@ -85,7 +85,7 @@ def _aggregate_jingdai_payment_period(df: pd.DataFrame, *, daily: bool) -> List[
     org_col = _pick_col(df, ['经代机构'])
     term_cat_col = _pick_col(df, ['当前缴别大类'])
 
-    if not all([time_col, qj_col, pay_col]):
+    if not all([time_col, qj_col]):
         raise ValueError(f"无法识别经代交期结构必要列。当前列: {list(df.columns)}")
 
     work = _period_year_month(df, None, time_col, require_day=daily)
@@ -93,9 +93,13 @@ def _aggregate_jingdai_payment_period(df: pd.DataFrame, *, daily: bool) -> List[
     work['_qj'] = _to_number(work[qj_col])
     work['_gm'] = _to_number(work[gm_col]) if gm_col else 0
     work['_count'], work['_count_missing'] = jingdai_policy_counts(work)
-    work['_category'] = work.apply(
-        lambda r: _classify_jingdai_payment_period(r[pay_col], r[term_cat_col] if term_cat_col else ''), axis=1
-    ).fillna('未分类').replace('', '未分类')
+    if pay_col:
+        work['_category'] = work.apply(
+            lambda r: _classify_jingdai_payment_period(r[pay_col], r[term_cat_col] if term_cat_col else ''), axis=1
+        ).fillna('未分类').replace('', '未分类')
+    else:
+        # 缴别仅说明扣费频次，不能用月交、年交推断缴费年限。
+        work['_category'] = '未分类'
 
     group_cols = ['_year', '_month'] + (['_day'] if daily else []) + ['_org', '_category']
     grouped = work.groupby(group_cols, dropna=False)

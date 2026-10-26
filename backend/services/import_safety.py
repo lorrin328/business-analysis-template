@@ -24,7 +24,8 @@ BUSINESS_FIELDS = {
                     '承保时间', '回销时间', '犹豫期退保时间'},
     'jingdai': {'承保件数', '承保保单件数', '时间', '年月日', '产品名称', '期交保费', '承保年化规保', '年化规保', '缴费年限',
                 '当前缴别大类', '当前缴别小类', '缴费年限范围', '保障期限', '业务类型',
-                '产品大类', '经代机构', '中介公司'},
+                '产品大类', '经代机构', '中介公司', '投保单号', '产品代码', '长短险', '缴别',
+                '是否社会保障类产品', '是否商保年金产品', '是否个人养老金', '经代源格式'},
     'hr_data': {'统计日期', '人员工号', '业务模式名称', '销售机构名称', '月初在职人力', '月末在职人力'},
     'value_data': {'年月', '业务模式名称', '销售机构名称', '价值', '价值保费'},
 }
@@ -32,6 +33,42 @@ BUSINESS_FIELDS = {
 
 class RawIncrementalWriteError(ValueError):
     """Raised when a raw table cannot be updated safely by period."""
+
+
+def validate_jingdai_detail_years(frame):
+    """2020-2024 retain the original history; new identity sources start in 2025."""
+    if frame.empty:
+        return
+    marker = frame.get('经代源格式', pd.Series('', index=frame.index)).fillna('')
+    identity = marker.eq('policy_detail')
+    if '投保单号' in frame:
+        present = frame['投保单号'].notna() & frame['投保单号'].astype('string').str.strip().ne('')
+        identity = identity | (marker.ne('legacy_aggregate') & present)
+    period = _pick_col(frame, ['时间', '统计时间_年月日', '年月'])
+    if identity.any() and period:
+        from etl.normalize import _year_month_day_from_series
+        years, _, _ = _year_month_day_from_series(frame.loc[identity, period].drop_duplicates())
+        if years.between(2020, 2024).any():
+            raise RawIncrementalWriteError('2020—2024年仅保留原有历史数据并转换结构，不接受新投保单号明细覆盖；新基表请从2025年起导入。')
+
+
+def jingdai_partition_keys(frame):
+    """Normalized day/month coverage; month-only extracts overlap every day."""
+    period = _pick_col(frame, ['时间', '年月'])
+    if not period:
+        raise RawIncrementalWriteError('经代分文件缺少有效统计日期。')
+    from etl.normalize import _year_month_day_from_series
+    values = frame[period].drop_duplicates()
+    years, months, days = _year_month_day_from_series(values)
+    if years.isna().any() or months.isna().any():
+        raise RawIncrementalWriteError('经代分文件存在无法识别的统计日期。')
+    day_keys, month_keys = set(), set()
+    for y, m, d in zip(years, months, days):
+        if pd.isna(d):
+            month_keys.add((int(y), int(m)))
+        else:
+            day_keys.add((int(y), int(m), int(d)))
+    return day_keys, month_keys
 
 
 def raw_period_config(table: str, df):
@@ -42,10 +79,11 @@ def raw_period_config(table: str, df):
             _pick_col(df, ['年月日', '入账时间', '日期', '出单日期', '投保日期', '承保日期']),
         )
     if table == 'jingdai':
+        period = _pick_col(df, ['时间', '年月'])
         return (
             None,
-            _pick_col(df, ['时间', '年月']),
-            _pick_col(df, ['年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期']),
+            period,
+            None if period else _pick_col(df, ['年月日', '入账时间', '日期', '承保日期', '出单日期', '生效日期']),
         )
     if table == 'hr_data':
         return (
@@ -159,9 +197,28 @@ def read_raw_periods(conn, table: str, periods: set[tuple[int, int]]) -> pd.Data
 def validate_replacement_fields(conn, table: str, df) -> None:
     """Fail before any writes when a complete monthly extract loses enabled fields."""
     existing = table_columns(conn, table)
+    if table == 'jingdai':
+        validate_jingdai_detail_years(df)
     missing = sorted((BUSINESS_FIELDS.get(table, set()) & existing) - set(df.columns))
+    if table == 'jingdai' and not df.empty:
+        # Canonical schema expansion adds NULL placeholders. Their existence
+        # alone must not bypass the original enabled-field replacement guard.
+        supplied = {c for c in df.columns if (df[c].notna() & df[c].astype('string').str.strip().ne('')).any()}
+        missing = sorted((BUSINESS_FIELDS['jingdai'] & existing) - supplied)
+        if '经代源格式' in existing and '经代源格式' in df and not df['经代源格式'].eq('policy_detail').all():
+            periods, _ = extract_raw_periods(table, df)
+            if periods:
+                where, params = raw_periods_predicate(periods, raw_period_config(table, pd.DataFrame(columns=sorted(existing))))
+                if conn.execute(f"SELECT 1 FROM jingdai WHERE ({where}) AND 经代源格式='policy_detail' LIMIT 1", params).fetchone():
+                    raise RawIncrementalWriteError('所选月份已有投保单号明细，不能以旧汇总格式覆盖；原数据已保留。')
     if table == 'jingdai' and {'承保件数', '承保保单件数'} & set(df.columns):
         missing = [column for column in missing if column not in {'承保件数', '承保保单件数'}]
+    if table == 'jingdai' and '经代源格式' in df and df['经代源格式'].eq('policy_detail').all():
+        # Explicit format migration authorized for this new policy-level source.
+        # Lost old-only dimensions stay NULL; they are not fabricated from 缴别.
+        retired = {'承保件数', '承保保单件数', '缴费年限', '当前缴别大类', '当前缴别小类',
+                   '缴费年限范围', '保障期限', '业务类型', '产品大类', '中介公司', '年月日'}
+        missing = [column for column in missing if column not in retired]
     if not missing or df.empty:
         return
     periods, _ = extract_raw_periods(table, df)

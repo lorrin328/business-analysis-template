@@ -249,7 +249,10 @@ def _platform_rows(platform: dict) -> list[list[Any]]:
     for r in platform.get("performance") or []:
         rows.append([r.get("month"), r.get("channel"), r.get("qj_premium"), r.get("gm_premium"), r.get("zs_premium")])
     for r in platform.get("jingdai") or []:
-        rows.append([r.get("month"), "经代", r.get("qj_premium"), r.get("gm_premium"), r.get("zs_premium")])
+        # Normally platform-data already masks unknown discount amounts. Keep
+        # the same boundary if a caller passes aggregate rows directly.
+        discount = None if (r.get("zs_missing") or 0) > 0 else r.get("zs_premium")
+        rows.append([r.get("month"), "经代", r.get("qj_premium"), r.get("gm_premium"), discount])
     return sorted(rows, key=lambda x: (x[0] or 0, str(x[1] or "")))
 
 
@@ -325,6 +328,7 @@ def build_dashboard_export_workbook(
             ["数据截止", _format_cutoff(kpi)],
             ["目标来源", "target_config 服务端目标" if target_payload else "未配置服务端目标"],
             ["说明", "KPI、机构、产品明细和交期结构按所选范围导出；月度使用当月目标，日/自定义区间不计算达成率。缺失指标留空并说明原因，真实零保留0。平台趋势、队伍和目标设置保留完整年度/月度背景。金额单位为万元。"],
+            ["经代折算保费", "所选月份缺少缴费年限时，折算保费不可计算并留空；缴别不能代替缴费年限。"],
         ],
     )
 

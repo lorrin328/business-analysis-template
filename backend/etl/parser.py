@@ -8,6 +8,10 @@ def parse_performance_excel(file_bytes: bytes) -> pd.DataFrame:
 
 
 def parse_jingdai_excel(file_bytes: bytes) -> pd.DataFrame:
+    from etl.jingdai_reader import read_policy_detail
+    detail = read_policy_detail(file_bytes)
+    if detail is not None:
+        return detail
     frame = _read_excel(file_bytes, {'时间', '承保年化规保', '期交保费'})
     # Preserve the supplied net count under one storage name. Product counts
     # are source-reported counts, never a deduplicated policy-number count.
@@ -45,7 +49,8 @@ def parse_jingdai_excel(file_bytes: bytes) -> pd.DataFrame:
         ignored += 1
     result = frame.iloc[:end].copy()
     result.attrs['ignored_summary_rows'] = ignored
-    return result
+    from etl.jingdai_contract import normalize_jingdai_source
+    return normalize_jingdai_source(result, source_format='legacy_aggregate')
 
 
 def parse_hr_excel(file_bytes: bytes) -> pd.DataFrame:

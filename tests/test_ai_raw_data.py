@@ -195,6 +195,15 @@ def test_excel_parser_to_sqlite_to_api_preserves_unused_columns(auth_db, kind, h
     response = TestClient(app).get(f"/api/ai/raw-data/{kind}", headers=_headers())
     assert response.status_code == 200
     row = response.json()["data"]["rows"][0]
-    assert set(row) == set(headers + ["额外业务字段", "空字段"])
+    source_columns = set(headers + ["额外业务字段", "空字段"])
+    if kind == 'jingdai':
+        # Jingdai now expands legacy rows to the agreed canonical contract;
+        # original unused fields and unknown identity must still survive.
+        from etl.jingdai_contract import SOURCE_FIELDS
+        assert source_columns | set(SOURCE_FIELDS) | {'承保件数', '件数来源', '经代源格式'} <= set(row)
+        assert row['投保单号'] is None and row['承保件数'] is None
+        assert row['经代源格式'] == 'legacy_aggregate'
+    else:
+        assert set(row) == source_columns
     assert row["额外业务字段"] == "没有用于汇总的内容"
     assert row["空字段"] is None

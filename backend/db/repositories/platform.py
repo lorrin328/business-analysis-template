@@ -3,6 +3,15 @@ import sqlite3
 
 from db.connection import get_db
 from services.cutoff_policy import build_as_of_context, date_filter_sql
+from services.raw_table_reader import pick_existing_column
+
+
+def _jingdai_discount_expr(conn, table: str, *, aggregate: bool = False) -> str:
+    """Old schemas have no missing marker; new schemas must never sum a partial amount."""
+    missing = 'zs_missing' if pick_existing_column(conn, table, ['zs_missing']) else '0'
+    if aggregate:
+        return f'CASE WHEN SUM({missing})=0 THEN SUM(zs_premium) END AS zs_premium'
+    return f'CASE WHEN {missing}=0 THEN zs_premium END AS zs_premium'
 
 
 def get_platform_data(year: int, as_of: str | None = None):
@@ -31,16 +40,16 @@ def get_platform_data(year: int, as_of: str | None = None):
             if daily_perf_rows:
                 perf_rows = daily_perf_rows
 
-        c.execute('''
-            SELECT month, qj_premium, gm_premium, zs_premium
+        c.execute(f'''
+            SELECT month, qj_premium, gm_premium, {_jingdai_discount_expr(conn, 'agg_jingdai')}
             FROM agg_jingdai WHERE year = ? AND month <= ? ORDER BY month
         ''', (year, cutoff_month))
         jingdai_rows = c.fetchall()
         if selected_cutoff:
             date_sql, date_params = date_filter_sql(selected_cutoff)
-            c.execute('''
+            c.execute(f'''
                 SELECT month, SUM(qj_premium) AS qj_premium,
-                       SUM(gm_premium) AS gm_premium, SUM(zs_premium) AS zs_premium
+                       SUM(gm_premium) AS gm_premium, {_jingdai_discount_expr(conn, 'agg_jingdai_daily', aggregate=True)}
                 FROM agg_jingdai_daily
                 WHERE year = ? AND ''' + date_sql + '''
                 GROUP BY month
@@ -52,13 +61,13 @@ def get_platform_data(year: int, as_of: str | None = None):
 
         if selected_cutoff:
             date_sql, date_params = date_filter_sql(selected_cutoff)
-            c.execute('''
-                SELECT year, month, day, ymd, qj_premium, gm_premium, zs_premium
+            c.execute(f'''
+                SELECT year, month, day, ymd, qj_premium, gm_premium, {_jingdai_discount_expr(conn, 'agg_jingdai_daily')}
                 FROM agg_jingdai_daily WHERE year = ? AND ''' + date_sql + ''' ORDER BY month, day
             ''', [year, *date_params])
         else:
-            c.execute('''
-                SELECT year, month, day, ymd, qj_premium, gm_premium, zs_premium
+            c.execute(f'''
+                SELECT year, month, day, ymd, qj_premium, gm_premium, {_jingdai_discount_expr(conn, 'agg_jingdai_daily')}
                 FROM agg_jingdai_daily WHERE year = ? ORDER BY month, day
             ''', (year,))
         jingdai_daily_rows = c.fetchall()

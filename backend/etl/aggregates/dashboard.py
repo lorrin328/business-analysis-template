@@ -111,7 +111,7 @@ def aggregate_transform_product_daily(df: pd.DataFrame) -> List[Dict]:
 def aggregate_jingdai_product_daily(df: pd.DataFrame) -> List[Dict]:
     year_col = _pick_col(df, ["年"])
     month_col = _pick_col(df, ["年月", "月", "月份", "时间"])
-    date_col = _pick_col(df, ["年月日", "入账时间", "日期", "承保日期", "出单日期", "生效日期", "时间"])
+    date_col = _pick_col(df, ["时间", "年月日", "入账时间", "日期", "承保日期", "出单日期", "生效日期"])
     org_col = _pick_col(df, ["经代机构", "机构", "机构名称"])
     product_col = _pick_col(df, ["产品名称", "产品代码"])
     qj_col = _pick_col(df, ["期交保费"])

@@ -151,15 +151,18 @@
   function _formData() {
     var data = new FormData();
     _selectedSources().forEach(function (slot) {
-      data.append(slot.kind, document.getElementById(slot.id).files[0]);
+      Array.from(document.getElementById(slot.id).files).forEach(function (file) {
+        data.append(slot.kind, file);
+      });
     });
     return data;
   }
 
   function _selectionKey() {
     return JSON.stringify([_importMode(), _forceUploadEnabled(), _selectedSources().map(function (slot) {
-      var file = document.getElementById(slot.id).files[0];
-      return [slot.kind, file.name, file.size, file.lastModified];
+      return [slot.kind, Array.from(document.getElementById(slot.id).files).map(function (file) {
+        return [file.name, file.size, file.lastModified];
+      })];
     })]);
   }
 
@@ -331,7 +334,9 @@
     var file = input.files && input.files[0];
     var card = input.closest('.upload-card');
     var info = document.getElementById(infoId);
-    if (info) info.textContent = file ? '已选择: ' + file.name + ' (' + (file.size / 1024).toFixed(0) + 'KB)' : '';
+    if (info) info.textContent = file ? Array.from(input.files).map(function (item) {
+      return item.name + ' (' + (item.size / 1024).toFixed(0) + 'KB)';
+    }).join('；') : '';
     if (card) card.classList.toggle('has-file', !!file);
     _invalidatePreview();
   }
@@ -447,7 +452,7 @@
     var description = document.getElementById('uploadModeDescription');
     if (description) description.textContent = _importMode() === 'supplement'
       ? '仅上传转型业务清单，补充缺失保单记录；相同记录跳过，冲突则整批停止。其他清单请切回完整月替换后选择。'
-      : '按需选择 1–4 份清单。每份清单必须包含其所涉月份的完整记录与字段；确认后替换对应来源的整月数据。';
+      : '按需选择清单。经代可同时选择多个日期不重叠的分文件，合并后替换所涉月份；后续补齐同月时请一并选择该月全部分文件。';
     _invalidatePreview('已选择' + (_importMode() === 'supplement' ? '业绩补充' : '完整月替换') + '模式，请选择文件并预览。');
   }
 

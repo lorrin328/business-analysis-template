@@ -8,6 +8,7 @@ AGG_TABLES = [
     'agg_performance',
     'agg_jingdai',
     'agg_jingdai_daily',
+    'agg_jingdai_policy_daily',
     'agg_hr_data',
     'agg_org_hr_data',
     'agg_value_data',
@@ -44,6 +45,7 @@ def init_db():
             UNIQUE(year, month))''')
         _migrate(c, "ALTER TABLE agg_jingdai ADD COLUMN product_annuity REAL NOT NULL DEFAULT 0")
         _migrate(c, "ALTER TABLE agg_jingdai ADD COLUMN product_protection REAL NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE agg_jingdai ADD COLUMN zs_missing INTEGER NOT NULL DEFAULT 0")
 
         c.execute('''CREATE TABLE IF NOT EXISTS agg_jingdai_daily (
             id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
@@ -53,6 +55,18 @@ def init_db():
         _migrate(c, "ALTER TABLE agg_jingdai_daily ADD COLUMN ymd TEXT")
         _migrate(c, "ALTER TABLE agg_jingdai_daily ADD COLUMN product_annuity REAL NOT NULL DEFAULT 0")
         _migrate(c, "ALTER TABLE agg_jingdai_daily ADD COLUMN product_protection REAL NOT NULL DEFAULT 0")
+        _migrate(c, "ALTER TABLE agg_jingdai_daily ADD COLUMN zs_missing INTEGER NOT NULL DEFAULT 0")
+
+        c.execute('''CREATE TABLE IF NOT EXISTS agg_jingdai_policy_daily (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL, month INTEGER NOT NULL, day INTEGER NOT NULL,
+            org TEXT NOT NULL DEFAULT '', product_category TEXT NOT NULL DEFAULT '未分类',
+            product_name TEXT NOT NULL DEFAULT '未分类', category TEXT NOT NULL DEFAULT '未分类',
+            policy_no TEXT NOT NULL DEFAULT '', identity_source INTEGER NOT NULL DEFAULT 0,
+            qj_premium REAL NOT NULL DEFAULT 0, gm_premium REAL NOT NULL DEFAULT 0,
+            source_rows INTEGER NOT NULL DEFAULT 0, legacy_count REAL NOT NULL DEFAULT 0,
+            legacy_missing INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(year, month, day, org, product_category, product_name, category, policy_no, identity_source))''')
 
         c.execute('''CREATE TABLE IF NOT EXISTS agg_hr_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, month INTEGER NOT NULL,
@@ -677,6 +691,7 @@ def init_db():
         for count_table in ('agg_product_daily', 'agg_payment_period', 'agg_payment_period_daily'):
             _migrate(c, f'ALTER TABLE {count_table} ADD COLUMN count_missing INTEGER NOT NULL DEFAULT 0')
         c.execute("INSERT OR IGNORE INTO schema_migrations(version, requires_aggregate_rebuild, note) VALUES ('20261013_jingdai_policy_counts', 1, 'Uses authoritative jingdai policy counts and preserves missing-count coverage')")
+        c.execute("INSERT OR IGNORE INTO schema_migrations(version, requires_aggregate_rebuild, note) VALUES ('20261025_jingdai_policy_identity', 1, 'Range-distinct jingdai policy identity counts with legacy and missing-source coverage')")
         c.execute('''
             INSERT OR IGNORE INTO schema_migrations (version, requires_aggregate_rebuild, note)
             VALUES ('20260923_source_day_precision', 1, 'Rebuilds daily aggregates without month-only source rows masquerading as day one')
@@ -693,9 +708,19 @@ def init_db():
             "期交保费" REAL DEFAULT 0, "承保年化规保" REAL DEFAULT 0
         )''')
 
+        source_contract_version = '20261026_jingdai_source_contract'
+        if not c.execute('SELECT 1 FROM schema_migrations WHERE version=?', (source_contract_version,)).fetchone():
+            from services.jingdai_history_migration import migrate_jingdai_history
+            migrate_jingdai_history(conn)
+            c.execute('''INSERT INTO schema_migrations(version, requires_aggregate_rebuild, note)
+                         VALUES (?, 1, ?)''', (source_contract_version,
+                'Normalizes the jingdai source contract while preserving legacy premiums and source counts; new policy-derived daily counts remain non-additive'))
+
         for sql in [
             'CREATE INDEX IF NOT EXISTS ix_perf_year_month_channel ON agg_performance(year, month, channel)',
             'CREATE INDEX IF NOT EXISTS ix_jd_year_month ON agg_jingdai(year, month)',
+            'CREATE INDEX IF NOT EXISTS ix_jd_policy_range ON agg_jingdai_policy_daily(year, month, day, org)',
+            'CREATE INDEX IF NOT EXISTS ix_jd_policy_product ON agg_jingdai_policy_daily(year, product_category, month, policy_no)',
             'CREATE INDEX IF NOT EXISTS ix_daily_year_month_day_channel ON agg_daily_performance(year, month, day, channel)',
             'CREATE INDEX IF NOT EXISTS ix_org_perf_year_month_org_channel ON agg_org_performance(year, month, org, channel)',
             'CREATE INDEX IF NOT EXISTS ix_org_value_year_month_org_channel ON agg_org_value(year, month, org, channel)',

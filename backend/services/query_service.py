@@ -16,6 +16,21 @@ def _metric_col(metric: str) -> str:
     }.get(metric, "qj_premium")
 
 
+DISCOUNT_UNAVAILABLE_MESSAGE = "经代源数据缺少缴费年限，所选范围折算保费不可计算"
+
+
+def _add_metric_amount(bucket: dict, key, row: dict, column: str) -> None:
+    value = row.get(column)
+    if column == 'zs_premium' and value is None:
+        bucket[key] = None
+    elif bucket[key] is not None:
+        bucket[key] += float(value or 0)
+
+
+def _cumulative_metric(previous, value):
+    return None if previous is None or value is None else previous + value
+
+
 def _line_name(code: str) -> str:
     for item in BUSINESS_LINES:
         if item.get("code") == code:
@@ -129,40 +144,42 @@ def build_period_cumulative(
             day = int(row.get("day") or 1)
             if not month or row.get("channel") not in channels or not _date_lte(month, day, common_cutoff):
                 continue
-            period_amounts[_period_index(month, period_type)] += float(row.get(col) or 0)
+            _add_metric_amount(period_amounts, _period_index(month, period_type), row, col)
         if JINGDAI_LINE in channels and not daily_has_jingdai:
             for row in jd_daily:
                 month = normalize_month(row.get("month"))
                 day = int(row.get("day") or 1)
                 if month and _date_lte(month, day, common_cutoff):
-                    period_amounts[_period_index(month, period_type)] += float(row.get(col) or 0)
+                    _add_metric_amount(period_amounts, _period_index(month, period_type), row, col)
     else:
         for row in raw_performance:
             month = normalize_month(row.get("month"))
             if not month or row.get("channel") not in channels:
                 continue
-            period_amounts[_period_index(month, period_type)] += float(row.get(col) or 0)
+            _add_metric_amount(period_amounts, _period_index(month, period_type), row, col)
 
         if JINGDAI_LINE in channels and not performance_has_jingdai:
             for row in jingdai_rows:
                 month = normalize_month(row.get("month"))
                 if not month:
                     continue
-                period_amounts[_period_index(month, period_type)] += float(row.get(col) or 0)
+                _add_metric_amount(period_amounts, _period_index(month, period_type), row, col)
 
     values = []
     running = 0.0
     for idx in range(1, max_period + 1):
-        running += period_amounts[idx]
-        values.append(round(running, 2))
+        running = _cumulative_metric(running, period_amounts[idx])
+        values.append(None if running is None else round(running, 2))
 
-    has_data = any(value != 0 for value in values)
+    unavailable = any(value is None for value in values)
+    has_data = any(value is not None and value != 0 for value in values)
     return {
         "periodType": period_type,
         "labels": _period_labels(period_type),
         "values": values,
         "hasData": has_data,
-        "message": "" if has_data else "No period trend data",
+        "message": DISCOUNT_UNAVAILABLE_MESSAGE if unavailable else "" if has_data else "No period trend data",
+        "calculable": not unavailable,
         "jingdaiDeduped": JINGDAI_LINE in channels and performance_has_jingdai,
         "commonCutoff": {"month": common_cutoff[0], "day": common_cutoff[1]} if common_cutoff else None,
     }
@@ -192,7 +209,7 @@ def build_month_daily_cumulative(
         if normalize_month(row.get("month")) == month and row.get("channel") in channels:
             has_daily_rows = True
             if common_cutoff_day is None or day <= common_cutoff_day:
-                daily[day] += float(row.get(col) or 0)
+                _add_metric_amount(daily, day, row, col)
 
     if JINGDAI_LINE in channels and not daily_has_jingdai:
         for row in jd_daily:
@@ -200,7 +217,7 @@ def build_month_daily_cumulative(
             if normalize_month(row.get("month")) == month:
                 has_daily_rows = True
                 if common_cutoff_day is None or day <= common_cutoff_day:
-                    daily[day] += float(row.get(col) or 0)
+                    _add_metric_amount(daily, day, row, col)
 
     if not has_daily_rows:
         return {
@@ -215,9 +232,9 @@ def build_month_daily_cumulative(
     labels, values = [], []
     running = 0.0
     for day in range(1, _display_days_in_month(year, month, as_of_date) + 1):
-        running += daily[day]
+        running = _cumulative_metric(running, daily[day])
         labels.append(f"{month}-{day}")
-        values.append(round(running, 2))
+        values.append(None if running is None else round(running, 2))
 
     return {
         "labels": labels,
@@ -225,7 +242,8 @@ def build_month_daily_cumulative(
         "hasRealDailyData": True,
         "jingdaiDeduped": JINGDAI_LINE in channels and daily_has_jingdai,
         "commonCutoffDay": common_cutoff_day,
-        "message": "",
+        "message": DISCOUNT_UNAVAILABLE_MESSAGE if any(value is None for value in values) else "",
+        "calculable": all(value is not None for value in values),
     }
 
 
@@ -261,7 +279,7 @@ def build_quarter_daily_cumulative(
             if normalize_month(row.get("month")) == month and row.get("channel") in channels:
                 has_daily_rows = True
                 if common_cutoff is None or (month, day) <= common_cutoff:
-                    all_daily[(month, day)] += float(row.get(col) or 0)
+                    _add_metric_amount(all_daily, (month, day), row, col)
 
         if JINGDAI_LINE in channels and not daily_has_jingdai:
             for row in jd_daily:
@@ -269,7 +287,7 @@ def build_quarter_daily_cumulative(
                 if normalize_month(row.get("month")) == month:
                     has_daily_rows = True
                     if common_cutoff is None or (month, day) <= common_cutoff:
-                        all_daily[(month, day)] += float(row.get(col) or 0)
+                        _add_metric_amount(all_daily, (month, day), row, col)
 
     if not has_daily_rows:
         return {
@@ -285,9 +303,9 @@ def build_quarter_daily_cumulative(
     running = 0.0
     for month in range(start_month, end_month + 1):
         for day in range(1, _display_days_in_month(year, month, as_of_date) + 1):
-            running += all_daily[(month, day)]
+            running = _cumulative_metric(running, all_daily[(month, day)])
             labels.append(f"{month}-{day}")
-            values.append(round(running, 2))
+            values.append(None if running is None else round(running, 2))
 
     return {
         "labels": labels,
@@ -295,7 +313,8 @@ def build_quarter_daily_cumulative(
         "hasRealDailyData": True,
         "quarterMonths": list(range(start_month, end_month + 1)),
         "commonCutoff": {"month": common_cutoff[0], "day": common_cutoff[1]} if common_cutoff else None,
-        "message": "",
+        "message": DISCOUNT_UNAVAILABLE_MESSAGE if any(value is None for value in values) else "",
+        "calculable": all(value is not None for value in values),
     }
 
 

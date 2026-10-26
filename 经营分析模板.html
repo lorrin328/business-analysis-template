@@ -14,7 +14,7 @@
   <script src="js/auth-ui.js?v=1.0.166-2e6ec8b300a6"></script>
   <script src="js/export-excel.js?v=1.0.116"></script>
   <script src="js/dashboard-config.js?v=1.0.116"></script>
-  <script src="js/upload.js?v=1.0.161-da787ffc8243"></script>
+  <script src="js/upload.js?v=1.0.168-b759246d5f35"></script>
   <script src="js/target-modal.js?v=1.0.153-ce612293af85"></script>
   <script src="js/dashboard-actions.js?v=1.0.116"></script>
   <script src="js/kpi-cards.js?v=1.0.146-29880f1034df"></script>
@@ -1399,7 +1399,7 @@
       <div class="header-left">
         <div class="logo">太平人寿 <span>经营分析看板</span></div>
         <span class="tag">网电多元条线</span>
-        <span class="tag" style="color: var(--success); border-color: rgba(var(--up-rgb),0.3); background: rgba(var(--up-rgb),0.1);">v1.0.167</span>
+        <span class="tag" style="color: var(--success); border-color: rgba(var(--up-rgb),0.3); background: rgba(var(--up-rgb),0.1);">v1.0.168</span>
       </div>
       <div class="header-right">
         <nav class="primary-nav" aria-label="主要页面">
@@ -1636,6 +1636,7 @@
             </div>
           </div>
           <div class="chart-scope" id="productAppliedScope" role="status">正在读取产品结构范围…</div>
+          <div class="chart-scope" id="productCountBasisNote" role="note" hidden></div>
           <div class="chart-controls">
             <div class="control-row">
               <span class="control-label">业务来源</span>
@@ -1875,7 +1876,7 @@
           <span>强制重写相同文件</span>
         </label>
       </div>
-      <p id="uploadModeDescription" class="upload-help">按需选择 1–4 份清单。每份清单必须包含其所涉月份的完整记录与字段；确认后替换对应来源的整月数据。</p>
+      <p id="uploadModeDescription" class="upload-help">按需选择清单。经代支持多个日期不重叠的分文件，合并后替换所涉月份；后续补齐同月时请一并选择该月全部分文件。</p>
       <p class="upload-help">1. 选择模式与文件　2. 预览月份和覆盖范围　3. 确认导入。选择文件不会自动写入。</p>
       <div class="upload-grid">
         <div class="upload-card" data-upload-input="file1">
@@ -1902,10 +1903,10 @@
           <div class="upload-mandatory">按需选择</div>
           <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 8.5 3.5 12 7 15.5"/><path d="M17 8.5 20.5 12 17 15.5"/><path d="M9.5 12h5"/><circle cx="12" cy="12" r="9.2"/></svg></div>
           <div class="upload-title">经代业务清单</div>
-          <div class="upload-desc">经代渠道业务数据</div>
+          <div class="upload-desc">支持投保单号明细及多个日期分文件</div>
           <button class="upload-btn">选择文件</button>
           <div class="file-info" id="info3"></div>
-          <input type="file" id="file3" accept=".xlsx,.xls" data-upload-info="info3">
+          <input type="file" id="file3" accept=".xlsx,.xls" multiple data-upload-info="info3">
         </div>
 
         <div class="upload-card" data-upload-input="file4">
@@ -2015,14 +2016,14 @@
   <script src="js/org-analysis.js?v=1.0.156-baea24aa7a8a"></script>
   <script src="js/seed-data.js?v=1.0.116"></script>
   <script src="js/platform-seed-data.js?v=1.0.116"></script>
-  <script src="js/data-integration.js?v=1.0.166-9188e0d3b2c6"></script>
-  <script src="js/platform-trend-main.js?v=1.0.153-03cec4d93c01"></script>
+  <script src="js/data-integration.js?v=1.0.168-5b8a935ee5ab"></script>
+  <script src="js/platform-trend-main.js?v=1.0.168-08a10364c9c0"></script>
   <script>
   </script>
-  <script src="js/product-analysis.js?v=1.0.166-544bf1a33fab"></script>
+  <script src="js/product-analysis.js?v=1.0.168-d9dee1c360d2"></script>
   <script>
   </script>
-  <script src="js/payperiod-chart.js?v=1.0.166-87b01cd06090"></script>
+  <script src="js/payperiod-chart.js?v=1.0.168-6ed7a74d5a7e"></script>
   <script>
   </script>
   <script src="js/team-analysis.js?v=1.0.153-7a5fbb5181bf"></script>

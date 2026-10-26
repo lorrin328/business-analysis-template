@@ -46,6 +46,7 @@ from services.import_safety import (
     read_raw_periods,
     IMPORT_MODES,
     raw_period_config, raw_periods_predicate,
+    validate_jingdai_detail_years,
 )
 from etl.aggregates.org_zero_streak import ACTIVITY_SOURCE_COLUMNS, extract_org_activity_periods
 from services.aggregate_rebuilder import _read_org_activity_rows, replace_org_activity_from_raw
@@ -53,6 +54,7 @@ from services.raw_table_reader import raw_table_columns, quote_identifier
 from etl.normalize import _period_year_month, validate_source_numbers
 from services.product_config_service import extract_jingdai_products_to_config
 from etl.aggregates.jingdai import _load_jingdai_product_config
+from etl.aggregates.jingdai_policy import aggregate_jingdai_policy_daily
 from validators.data_validator import validate_rows
 from services.customer_fact_refresh import policy_key, refresh_customer_facts
 
@@ -68,6 +70,7 @@ AGGREGATE_TABLE_ORDER = [
     "agg_zhituo_performance",
     "agg_jingdai",
     "agg_jingdai_daily",
+    "agg_jingdai_policy_daily",
     "agg_hr_data",
     "agg_org_hr_data",
     "agg_value_data",
@@ -83,6 +86,7 @@ RAW_TABLE_ORDER = ["performance", "jingdai", "hr_data", "value_data"]
 # Source coverage drives deletion even when a corrected source produces no rows.
 # Shared tables must retain the other source's business_type partition.
 CONDITIONAL_AGGREGATE_SOURCES = {
+    "agg_jingdai_policy_daily": (("jingdai", None),),
     "agg_zhituo_performance": (("performance", None),),
     "agg_org_daily_activity": (("performance", None),),
     "agg_daily_performance": (("performance", None),),
@@ -156,6 +160,7 @@ class ExcelPipelineResult:
     source_summaries: list[str] = field(default_factory=list)
     data_years: list[int] = field(default_factory=list)
     cutoff_warnings: list[str] = field(default_factory=list)
+    source_warnings: list[str] = field(default_factory=list)
 
     def row_count(self, table: str) -> int:
         rows = self.rows_by_table.get(table)
@@ -284,8 +289,14 @@ def _parse_performance(source: ExcelSource, result: ExcelPipelineResult) -> None
 
 def _parse_jingdai(source: ExcelSource, result: ExcelPipelineResult) -> None:
     frame = parse_jingdai_excel(source.content)
+    validate_jingdai_detail_years(frame)
     validate_source_numbers("jingdai", frame)
     result.raw_tables["jingdai"] = frame
+    result.source_warnings.extend(frame.attrs.get('source_warnings', []))
+    result.source_summaries.append(f'jingdai: {source.filename} -> {len(frame)} source rows')
+
+
+def _populate_jingdai_aggregates(frame: pd.DataFrame, result: ExcelPipelineResult) -> None:
     # Parsing must not access or update product settings. Final classification is
     # calculated with the transaction's configuration when the import is written.
     jd_rows = aggregate_jingdai(frame, config_map={})
@@ -296,17 +307,13 @@ def _parse_jingdai(source: ExcelSource, result: ExcelPipelineResult) -> None:
     jd_longterm_rows = aggregate_jingdai_longterm(frame)
 
     rows = result.rows_by_table
+    _merge_rows(rows, 'agg_jingdai_policy_daily', aggregate_jingdai_policy_daily(frame))
     _merge_rows(rows, "agg_jingdai", jd_rows)
     _merge_rows(rows, "agg_jingdai_daily", jd_daily_rows)
     _merge_rows(rows, "agg_payment_period", jd_pay_period_rows)
     _merge_rows(rows, "agg_payment_period_daily", jd_pay_period_daily_rows)
     _merge_rows(rows, "agg_longterm_qj", jd_longterm_rows)
     _merge_rows(rows, "agg_product_daily", aggregate_jingdai_product_daily(frame))
-    result.source_summaries.append(
-        f"jingdai: {source.filename} -> {len(jd_rows)} monthly, "
-        f"{len(jd_daily_rows)} daily, {len(jd_pay_period_rows)} pay period rows, "
-        f"{len(jd_longterm_rows)} longterm rows"
-    )
 
 
 def _parse_hr(source: ExcelSource, result: ExcelPipelineResult) -> None:
@@ -341,33 +348,60 @@ PARSERS: dict[str, Callable[[ExcelSource, ExcelPipelineResult], None]] = {
 }
 
 
-def append_excel_source(result: ExcelPipelineResult, source: ExcelSource) -> None:
+def append_excel_source(result: ExcelPipelineResult, source: ExcelSource, *, defer_jingdai: bool = False) -> None:
     parser = PARSERS.get(source.kind)
     if parser is None:
         raise ValueError(f"Unsupported Excel source kind: {source.kind}")
     # A failing aggregate must not leave its raw source in a partial import.
     parsed = ExcelPipelineResult()
     parser(source, parsed)
+    if source.kind == 'jingdai' and not defer_jingdai:
+        _populate_jingdai_aggregates(parsed.raw_tables['jingdai'], parsed)
+    if source.kind == 'jingdai' and 'jingdai' in result.raw_tables:
+        prior = result.raw_tables['jingdai']
+        incoming = parsed.raw_tables['jingdai']
+        # Export partitions must be non-overlapping by business day. Retain
+        # duplicate transactions within a file, but never double import a day
+        # through two selected extracts.
+        from services.import_safety import jingdai_partition_keys
+        old_days, old_months = jingdai_partition_keys(prior)
+        new_days, new_months = jingdai_partition_keys(incoming)
+        if old_days & new_days or old_months & {key[:2] for key in new_days} or new_months & {key[:2] for key in old_days} or old_months & new_months:
+            raise RawIncrementalWriteError('经代分文件存在重叠统计日期，请按不重叠的日期区间导出后合并导入。')
+        combined = pd.concat([prior, incoming], ignore_index=True)
+        result.raw_tables['jingdai'] = combined
+        result.source_summaries.extend(parsed.source_summaries)
+        result.source_warnings.extend(parsed.source_warnings)
+        return
     result.raw_tables.update(parsed.raw_tables)
     for table, rows in parsed.rows_by_table.items():
         _merge_rows(result.rows_by_table, table, rows)
     result.source_summaries.extend(parsed.source_summaries)
+    result.source_warnings.extend(parsed.source_warnings)
 
 
 def finalize_excel_pipeline_result(result: ExcelPipelineResult) -> ExcelPipelineResult:
+    jingdai = result.raw_tables.get('jingdai')
+    if jingdai is not None:
+        # Million-row partitions are aggregated once for the whole batch.
+        for table in ('agg_jingdai', 'agg_jingdai_daily', 'agg_jingdai_policy_daily'):
+            result.rows_by_table[table] = []
+        for table in ('agg_payment_period', 'agg_payment_period_daily', 'agg_longterm_qj', 'agg_product_daily'):
+            result.rows_by_table[table] = [r for r in result.rows_by_table.get(table, []) if r.get('business_type') != '经代']
+        _populate_jingdai_aggregates(jingdai, result)
     _backfill_active_headcount(result.rows_by_table)
     result.data_years = _collect_years(result.rows_by_table)
-    result.cutoff_warnings = validate_daily_cutoff_alignment(
+    result.cutoff_warnings = list(dict.fromkeys(result.source_warnings + validate_daily_cutoff_alignment(
         result.rows_by_table.get("agg_daily_performance", []),
         result.rows_by_table.get("agg_jingdai_daily", []),
-    )
+    )))
     return result
 
 
 def build_excel_pipeline_result(sources: list[ExcelSource]) -> ExcelPipelineResult:
     result = ExcelPipelineResult()
     for source in sources:
-        append_excel_source(result, source)
+        append_excel_source(result, source, defer_jingdai=True)
     return finalize_excel_pipeline_result(result)
 
 
@@ -431,6 +465,8 @@ def replace_raw_tables(conn, result: ExcelPipelineResult, *, incremental: bool, 
 
 
 def write_excel_pipeline_result(conn, result: ExcelPipelineResult, *, incremental: bool, import_mode: str = "replace_months") -> dict[str, int]:
+    if 'jingdai' in result.raw_tables:
+        validate_jingdai_detail_years(result.raw_tables['jingdai'])
     if import_mode not in IMPORT_MODES:
         raise RawIncrementalWriteError("导入模式仅支持完整月替换或明确的补充模式")
     if import_mode == "supplement" and (not incremental or any(table != "performance" for table in result.raw_tables)):

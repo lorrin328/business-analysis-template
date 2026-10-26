@@ -59,25 +59,34 @@ def _auto_extract_from_jingdai(conn) -> int:
     return inserted
 
 
-def _recalc_jingdai_from_raw() -> int:
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jingdai'")
-        if not c.fetchone():
-            return 0
-        c.execute("SELECT COUNT(*) FROM jingdai LIMIT 1")
-        if c.fetchone()[0] == 0:
-            return 0
-        df = read_raw_table_dataframe(conn, 'jingdai')
+def _recalc_jingdai_from_raw(conn=None) -> int:
+    """Refresh month and day totals in the same transaction as the settings."""
+    if conn is None:
+        with get_db() as owned_conn:
+            count = _recalc_jingdai_from_raw(owned_conn)
+            owned_conn.commit()
+            return count
+    c = conn.cursor()
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jingdai'")
+    if not c.fetchone():
+        return 0
+    c.execute("SELECT 1 FROM jingdai LIMIT 1")
+    if not c.fetchone():
+        return 0
+    df = read_raw_table_dataframe(conn, 'jingdai')
 
     if df.empty:
         return 0
 
-    from etl.aggregates.jingdai import aggregate_jingdai
-    rows = aggregate_jingdai(df)
-    with get_db() as conn:
-        replace_rows_incremental(conn, 'agg_jingdai', rows)
-        conn.commit()
+    from etl.aggregates.jingdai import aggregate_jingdai, aggregate_jingdai_daily, _load_jingdai_product_config
+    config_map = _load_jingdai_product_config(conn)
+    rows = aggregate_jingdai(df, config_map=config_map)
+    daily_rows = aggregate_jingdai_daily(df, config_map=config_map)
+    replace_rows_incremental(conn, 'agg_jingdai', rows)
+    # Also clear daily rows when a month now has only month-level precision.
+    for row in rows:
+        conn.execute('DELETE FROM agg_jingdai_daily WHERE year=? AND month=?', (row['year'], row['month']))
+    replace_rows_incremental(conn, 'agg_jingdai_daily', daily_rows)
     return len(rows)
 
 
@@ -132,7 +141,7 @@ def save_product_config(
 ):
     """批量保存产品分类配置。
 
-    保存后自动从 jingdai 原始表重新计算 agg_jingdai，使经代配置立即生效。
+    保存后从 jingdai 原始表同步重新计算经代月度及日度表。
     Payload: {"products": [{"product_code": "...", "is_annuity": "Y/N", "is_protection": "Y/N"}]}
     """
     try:
@@ -206,9 +215,9 @@ def _save_product_config_locked(payload: dict, _user: dict):
             updated += 1
         normalized = normalize_product_config_table(conn)
         purged = purge_non_jingdai_product_config(conn)
+        recalc_count = _recalc_jingdai_from_raw(conn)
         conn.commit()
 
-    recalc_count = _recalc_jingdai_from_raw()
     if recalc_count > 0:
         logger.info("recalculated %s agg_jingdai rows after product-config update", recalc_count)
 

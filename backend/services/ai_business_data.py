@@ -73,6 +73,24 @@ def _cursor_name(schema):
     return next((name for name in ("rowid", "_rowid_", "oid") if name not in names), None)
 
 
+def _has_discount_mask(dataset, names):
+    return dataset in {'agg_jingdai', 'agg_jingdai_daily'} and {'zs_premium', 'zs_missing'}.issubset(names)
+
+
+def _query_relation(dataset, names, *, cursor=None):
+    """Mask an unavailable amount before selection, filtering or grouping."""
+    if not _has_discount_mask(dataset, names):
+        return quote_identifier(dataset)
+    fields = [
+        'CASE WHEN "zs_missing"=0 THEN "zs_premium" END AS "zs_premium"'
+        if name == 'zs_premium' else quote_identifier(name)
+        for name in names
+    ]
+    if cursor:
+        fields.insert(0, f'{cursor} AS {cursor}')
+    return f'(SELECT {",".join(fields)} FROM {quote_identifier(dataset)})'
+
+
 def _filters(text, names):
     if text is None:
         return [], []
@@ -161,8 +179,9 @@ def page(dataset, *, limit=200, after_row_id=0, columns=None, filters=None, expe
             raise ValueError("This dataset does not support row cursors")
         clauses, params = _filters(filters, names)
         fields = ",".join(quote_identifier(name) for name in selected)
+        relation = _query_relation(dataset, names, cursor=cursor)
         rows = conn.execute(
-            f"SELECT {cursor}, {fields} FROM {quote_identifier(dataset)} WHERE {cursor} > ? "
+            f"SELECT {cursor}, {fields} FROM {relation} WHERE {cursor} > ? "
             f"{' '.join('AND '+clause for clause in clauses)} ORDER BY {cursor} LIMIT ?",
             [after_row_id, *params, limit + 1],
         ).fetchall()
@@ -201,15 +220,20 @@ def analyze(dataset, *, group_by=None, measure=None, aggregation="count", filter
         clauses, params = _filters(filters, names)
         group_sql = ",".join(quote_identifier(name) for name in group_by)
         metric_sql = "COUNT(*)" if aggregation == "count" else f"{aggregation.upper()}({quote_identifier(measure)})"
+        discount_masked = _has_discount_mask(dataset, names) and measure == 'zs_premium' and aggregation != 'count'
+        if discount_masked:
+            metric_sql = f'CASE WHEN COUNT("zs_premium")=COUNT(*) THEN {metric_sql} END'
         prefix = f"{group_sql}," if group_sql else ""
         where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         grouped = f" GROUP BY {group_sql}" if group_sql else ""
         rows = conn.execute(
-            f"SELECT {prefix}{metric_sql} AS result FROM {quote_identifier(dataset)}{where_sql}{grouped} "
+            f"SELECT {prefix}{metric_sql} AS result FROM {_query_relation(dataset, names)}{where_sql}{grouped} "
             "ORDER BY result DESC LIMIT ?", [*params, limit + 1],
         ).fetchall()
         truncated = len(rows) > limit
         return {"dataset": dataset, "groupBy": group_by, "measure": measure,
                 "aggregation": aggregation, "rows": [dict(row) for row in rows[:limit]],
                 "truncated": truncated, "limit": limit,
-                "note": "Stored values and units; this is a direct SQLite calculation, not a dashboard KPI definition."}
+                "note": "Stored values and units; this is a direct SQLite calculation, not a dashboard KPI definition."
+                        + (" Jingdai discount amounts are null when payment terms are missing; grouped calculations require complete amounts."
+                           if discount_masked else "")}

@@ -93,11 +93,19 @@ def aggregate_jingdai_longterm(df: pd.DataFrame) -> List[Dict]:
     work['_org'] = work[org_col].fillna('未知').astype(str).str.strip().replace('', '未知') if org_col else '未知'
     work['_qj'] = _to_number(work[qj_col])
     # 长险：排除 (期交 且 缴费年限=1)；若无缴费年限列则不过滤
+    legacy_long = pd.Series(True, index=work.index)
     if term_cat_col and pay_col:
         is_term = work[term_cat_col].fillna('').astype(str).str.strip() == '期交'
         pay_num = pd.to_numeric(work[pay_col], errors='coerce').fillna(0)
         is_short = is_term & (pay_num == 1)
-        work = work[~is_short]
+        legacy_long = ~is_short
+    if '长短险' in work.columns:
+        term = work['长短险'].astype('string').fillna('').str.strip()
+        is_new = work.get('经代源格式', pd.Series('', index=work.index)).eq('policy_detail')
+        # Added NULL source columns must not reinterpret retained legacy rows.
+        explicit = term.ne('') | is_new
+        legacy_long = legacy_long.where(~explicit, term.isin(LONGTERM_TERMS))
+    work = work[legacy_long]
 
     grouped = work.groupby(['_year', '_month', '_day', '_org'], dropna=False)
     rows = []

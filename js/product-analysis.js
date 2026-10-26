@@ -3,6 +3,7 @@
     const productChart = echarts.init(document.getElementById('productChart'));
 
     function getPieOption(type) {
+      renderProductCountBasisNote();
       const data = productData[type] || [];
       if (data.length === 0) {
         return {
@@ -37,7 +38,10 @@
           textStyle: { color: '#eef3fb' },
           formatter: params => {
             const unit = type === 'premium' ? '万元' : '件';
-            return `${params.name}: ${params.value}${unit} (${params.percent}%)`;
+            const name = String(params.name ?? '').replace(/[&<>"']/g, ch => ({
+              '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[ch]));
+            return `${name}: ${params.value}${unit} (${params.percent}%)`;
           }
         },
         legend: {
@@ -58,6 +62,22 @@
         series: [pieSeries(data, ['50%', '42%'], ['36%', '62%'])],
         color: ['#4f8cff', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#22d3ee']
       };
+    }
+
+    function renderProductCountBasisNote() {
+      if (typeof document === 'undefined') return;
+      const element = document.getElementById('productCountBasisNote');
+      if (!element) return;
+      const notes = {
+        policy_identity: '经代按所选范围内非空投保单号去重；跨日、跨产品和跨平台不重复计入合计，含冲正记录，不等同于净承保件数。',
+        mixed: '所选范围混有投保单号去重和旧源件数净额，合并件数及件均不可计算。',
+        source_net: '旧源按承保件数净额核算。',
+        policy: '旧源及转型沿用承保件数净额。',
+        unavailable: '所选范围暂无完整可核算件数，件数不可计算。'
+      };
+      const note = productData.countNote || notes[productData.countBasis] || '';
+      element.textContent = note;
+      element.hidden = !note;
     }
     let currentPieType = 'premium';
     productChart.setOption(getPieOption(currentPieType));

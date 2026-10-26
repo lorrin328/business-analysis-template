@@ -42,6 +42,7 @@ from services.raw_table_reader import (
     read_raw_table_dataframe,
 )
 from etl.aggregates.org_zero_streak import ACTIVITY_SOURCE_COLUMNS
+from etl.aggregates.jingdai_policy import aggregate_jingdai_policy_daily
 
 
 RAW_TABLES = ("performance", "jingdai", "hr_data", "value_data")
@@ -65,7 +66,8 @@ def _table_exists(conn, table: str) -> bool:
 def _read_raw_table(conn, table: str) -> pd.DataFrame | None:
     if not _table_exists(conn, table):
         return None
-    return read_raw_table_dataframe(conn, table).drop_duplicates()
+    frame = read_raw_table_dataframe(conn, table)
+    return frame if table == 'jingdai' else frame.drop_duplicates()
 
 
 PERIOD_COLUMNS = {
@@ -115,7 +117,9 @@ def _read_raw_table_year(conn, table: str, year: int) -> pd.DataFrame | None:
         conn,
         params=params,
     )
-    return frame.drop_duplicates()
+    # Identical-looking signed transactions can be real source events. A
+    # rebuild must conserve the imported jingdai amounts and row multiplicity.
+    return frame if table == 'jingdai' else frame.drop_duplicates()
 
 
 def _merge_active_headcount(hr_rows: list[dict], active_rows: list[dict]) -> None:
@@ -185,6 +189,7 @@ def build_aggregate_rows_from_raw(
         org_active_rows = []
 
     if jingdai is not None and not jingdai.empty:
+        table_rows['agg_jingdai_policy_daily'] = aggregate_jingdai_policy_daily(jingdai)
         table_rows["agg_jingdai"] = aggregate_jingdai(jingdai, config_map=jingdai_config_map)
         table_rows["agg_jingdai_daily"] = aggregate_jingdai_daily(jingdai, config_map=jingdai_config_map)
         table_rows["agg_payment_period"].extend(aggregate_jingdai_payment_period(jingdai))
@@ -275,10 +280,20 @@ def rebuild_aggregates_from_raw_tables() -> RebuildResult:
                 for table, frame in raw_tables.items():
                     raw_counts[table] += len(frame)
                 table_rows = build_aggregate_rows_from_raw(raw_tables, include_org_activity=False)
+                jd_source = raw_tables.get('jingdai')
+                retain_jd_history = 2020 <= year <= 2024 and (jd_source is None or jd_source.empty)
                 for table in AGG_TABLES:
                     if table == "agg_org_daily_activity":
                         continue
-                    clear_table_year_data(conn, table, year)
+                    if retain_jd_history and table in {'agg_jingdai', 'agg_jingdai_daily', 'agg_jingdai_policy_daily'}:
+                        # Some older local/operating databases retain only JD
+                        # aggregates. Missing raw rows are not authority to erase
+                        # the original historical result or invent policy IDs.
+                        continue
+                    if retain_jd_history and table in {'agg_product_daily', 'agg_payment_period', 'agg_payment_period_daily', 'agg_longterm_qj'}:
+                        conn.execute(f'DELETE FROM "{table}" WHERE year=? AND business_type!=\'经代\'', (year,))
+                    else:
+                        clear_table_year_data(conn, table, year)
                     rows = table_rows.get(table, [])
                     replace_rows(conn, table, rows)
                     table_counts[table] += len(rows)

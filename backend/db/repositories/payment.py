@@ -3,6 +3,7 @@ import json
 import sqlite3
 from db.connection import get_db
 from db.schema import init_db
+from db.repositories.jingdai_policy import query_policy_counts, IDENTITY_NOTE, MIXED_NOTE
 from metrics.formulas import avg_policy_premium
 from services.cutoff_policy import build_period_context, date_range_filter_sql
 from services.raw_table_reader import pick_existing_column
@@ -30,7 +31,7 @@ def _average_premium_payload(premium, count):
         "count": count_value,
         "average": average_value,
         "calculable": average_value is not None,
-        "reason": None if average_value is not None else "源数据缺少承保件数" if count_value is None else "承保件数净额小于或等于0",
+        "reason": None if average_value is not None else "源数据缺少可核算件数（投保单号或承保件数）" if count_value is None else "可核算件数小于或等于0",
     }
 
 
@@ -125,30 +126,41 @@ def get_payment_period_structure(
         where = ' AND '.join(conditions) if conditions else '1=1'
         missing_expr = 'count_missing' if pick_existing_column(conn, table, ['count_missing']) else '0'
         count_expr = f'CASE WHEN SUM({missing_expr})=0 THEN SUM(count) END'
+        jd_categories = query_policy_counts(conn, where, params, ('category',)) or {}
+        jd_terms = query_policy_counts(conn, where, params, ('org', 'category')) or {}
+        jd_org_counts = query_policy_counts(conn, where, params, ('org',)) or {}
+        jd_total = (query_policy_counts(conn, where, params) or {}).get(())
+        identity_selected = bool(jd_total and jd_total['identity'])
 
         c.execute(f'''
-            SELECT category,
+            SELECT category, business_type,
                    SUM({premium_field}) AS premium_total,
                    {count_expr} AS count_total
             FROM {table}
             WHERE {where}
-            GROUP BY category
+            GROUP BY category, business_type
             ORDER BY premium_total DESC
         ''', params)
 
-        premium_rows = []
-        count_rows = []
+        chart_groups = {}
         for r in c.fetchall():
-            premium_rows.append({'name': r['category'], 'value': round(r['premium_total'] or 0, 2)})
-            if r['count_total'] is not None:
-                count_rows.append({'name': r['category'], 'value': int(r['count_total'])})
+            group = chart_groups.setdefault(r['category'], {'premium': 0, 'count': 0, 'sources': set()})
+            group['premium'] += float(r['premium_total'] or 0)
+            identity = jd_categories.get((r['category'],)) if r['business_type'] == '经代' else None
+            count = identity['count'] if identity else r['count_total']
+            group['count'] = _add_counts(group['count'], int(count) if count is not None else None)
+            group['sources'].add(r['business_type'])
+        premium_rows = [{'name': name, 'value': round(row['premium'], 2)} for name, row in sorted(chart_groups.items(), key=lambda x: x[1]['premium'], reverse=True)]
+        count_rows = [{'name': name, 'value': int(row['count'])} for name, row in chart_groups.items()
+                      if row['count'] is not None and not (identity_selected and len(row['sources']) > 1)]
+        mixed_count_basis = bool(identity_selected and (jd_total['basis'] == 'mixed' or any('经代' not in row['sources'] or len(row['sources']) > 1 for row in chart_groups.values())))
         categories = PAYMENT_PERIOD_CATEGORY_ORDER + sorted(
             {r['name'] for r in premium_rows} - set(PAYMENT_PERIOD_CATEGORY_ORDER)
         )
 
         # 两类业务均使用源承保件数净额；缺失件数保留为不可计算。
         c.execute(f'''
-            SELECT CASE WHEN business_type='经代' THEN '经代' ELSE channel END AS channel, org, category,
+            SELECT business_type, CASE WHEN business_type='经代' THEN '经代' ELSE channel END AS channel, org, category,
                    SUM({premium_field}) AS premium_total,
                    {count_expr} AS count_total
             FROM {table}
@@ -179,6 +191,9 @@ def get_payment_period_structure(
             })
             premium_total = float(r['premium_total'] or 0)
             count_total = int(r['count_total']) if r['count_total'] is not None else None
+            identity = jd_terms.get((r['org'], r['category'])) if r['business_type'] == '经代' else None
+            if identity:
+                count_total = identity['count']
             group["premium_total"] += premium_total
             group["count_total"] = _add_counts(group["count_total"], count_total)
             group["terms"].append({
@@ -192,6 +207,8 @@ def get_payment_period_structure(
         }
         average_rows = []
         for group in grouped_average_rows.values():
+            if group['business_mode'] == '经代' and (identity := jd_org_counts.get((group['org'],))):
+                group['count_total'] = identity['count']
             group["terms"].sort(
                 key=lambda item: (category_rank.get(item["category"], 99), item["category"])
             )
@@ -244,6 +261,17 @@ def get_payment_period_structure(
 
         average_summaries = []
         for summary in grouped_average_summaries.values():
+            eligible = [r for r in grouped_average_rows.values() if (summary['org'] == 'all' or r['org'] == summary['org']) and (summary['business_mode'] == 'all' or r['business_mode'] == summary['business_mode'])]
+            has_jd = any(r['business_mode'] == '经代' for r in eligible)
+            has_transform = any(r['business_mode'] != '经代' for r in eligible)
+            if has_jd:
+                identity = jd_total if summary['org'] == 'all' else jd_org_counts.get((summary['org'],))
+                if identity and (not has_transform or identity_selected):
+                    summary['count_total'] = None if has_transform else identity['count']
+                    for category, term in summary['terms'].items():
+                        identity_term = jd_categories.get((category,)) if summary['org'] == 'all' else jd_terms.get((summary['org'], category))
+                        if identity_term:
+                            term['count'] = None if identity_selected and has_transform else identity_term['count']
             terms = []
             for category in categories:
                 term_summary = summary["terms"].get(category)
@@ -285,12 +313,15 @@ def get_payment_period_structure(
             'precision': 'day' if daily_available else 'month',
             'premium': premium_rows,
             'count': count_rows,
+            'countBasis': 'mixed' if mixed_count_basis else jd_total['basis'] if jd_total else 'source_net',
+            'countSources': ['policy_identity', 'source_net'] if mixed_count_basis else ['policy_identity'] if identity_selected else ['source_net'],
+            'countNote': MIXED_NOTE if mixed_count_basis else IDENTITY_NOTE if identity_selected else '',
             'average_premium': {
-                'scope': '转型＋经代' if any(r['business_mode']=='经代' for r in average_rows) else '转型',
+                'scope': ('转型＋经代' if any(r['business_mode']!='经代' for r in average_rows) else '经代') if any(r['business_mode']=='经代' for r in average_rows) else '转型',
                 'metric': metric if metric == 'gm' else 'qj',
                 'premium_label': '规模保费' if metric == 'gm' else '期交保费',
                 'unit': '万元/件',
-                'formula': '所选范围保费净额 ÷ 承保件数净额',
+                'formula': '所选范围保费净额 ÷ 同范围投保单号去重数（经代）；旧源及转型沿用源件数净额' if identity_selected else '所选范围保费净额 ÷ 承保件数净额',
                 'categories': categories,
                 'rows': average_rows,
                 'summaries': average_summaries,

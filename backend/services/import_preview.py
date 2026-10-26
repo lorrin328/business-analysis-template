@@ -12,7 +12,8 @@ from etl.normalize import NumericSourceError, _period_year_month, validate_sourc
 from services.excel_pipeline import ExcelSource
 from services.import_safety import (
     IMPORT_MODES, RawIncrementalWriteError, extract_raw_periods, prepare_supplement,
-    raw_period_config, raw_periods_predicate, table_columns, validate_replacement_fields,
+    raw_period_config, raw_periods_predicate, table_columns, validate_replacement_fields, jingdai_partition_keys,
+    validate_jingdai_detail_years,
 )
 from services.raw_table_reader import quote_identifier
 
@@ -29,7 +30,7 @@ HEADER_GROUPS = {
     "performance": [("年",), ("年月", "月", "月份"), ("业务模式", "业务模式名称", "渠道"),
                     ("期交保费",), ("缴费年限",), ("人员工号", "人员代码"),
                     ("销售机构名称", "机构", "分公司", "org")],
-    "jingdai": [("时间", "年月"), ("期交保费",), ("承保年化规保", "年化规保", "规模保费"), ("缴费年限",)],
+    "jingdai": [("时间", "年月"), ("期交保费",), ("承保年化规保", "年化规保", "规模保费")],
     "hr": [("统计年", "年"), ("统计日期", "年月", "统计月", "月"),
            ("业务模式名称", "业务模式", "渠道"), ("月初在职人力",), ("月末在职人力",)],
     "value": [("年月", "时间"), ("业务模式名称", "业务模式", "渠道"), ("价值",)],
@@ -86,11 +87,21 @@ def build_import_preview(conn, sources: list[ExcelSource], *, import_mode: str =
     if import_mode == "supplement" and any(source.kind != "performance" for source in sources):
         result["errors"].append("业绩补充模式仅允许转型业务清单；其他清单请使用完整月替换。")
         return result
-    if len({source.kind for source in sources}) != len(sources):
-        result["errors"].append("每种清单只能选择一个文件。")
+    kinds = [source.kind for source in sources if source.kind != 'jingdai']
+    if len(set(kinds)) != len(kinds):
+        result["errors"].append("除经代分文件外，每种清单只能选择一个文件。")
+        return result
+    jd_names = [source.filename for source in sources if source.kind == 'jingdai']
+    if len(set(jd_names)) != len(jd_names):
+        result['errors'].append('经代分文件存在同名文件，请更名后重新预览。')
         return result
 
     all_years = set()
+    jd_days = set()
+    jd_months = set()
+    jd_batch = len(jd_names) > 1
+    if jd_batch:
+        result['warnings'].append('经代分文件作为一组重新核验并写入；已导入分片也保留在本组，避免完整月替换遗漏同月记录。')
     has_imports = bool(table_columns(conn, "data_imports"))
     for source in sources:
         if source.kind not in SOURCE_TYPES:
@@ -104,10 +115,20 @@ def build_import_preview(conn, sources: list[ExcelSource], *, import_mode: str =
         result["files"].append(entry)
         try:
             frame = parser(source.content)
+            if source.kind == 'jingdai':
+                validate_jingdai_detail_years(frame)
+                days, month_only = jingdai_partition_keys(frame)
+                if jd_days & days or jd_months & {key[:2] for key in days} or month_only & {key[:2] for key in jd_days} or jd_months & month_only:
+                    raise RawIncrementalWriteError('经代分文件存在重叠统计日期，请按不重叠的日期区间导出后合并导入。')
+                jd_days.update(days)
+                jd_months.update(month_only)
+                result['warnings'].extend(frame.attrs.get('source_warnings', []))
+                if '缴费年限' not in frame or frame['缴费年限'].isna().any():
+                    result['warnings'].append('经代源缺少缴费年限：相应交期保留未分类，折算保费不可计算；缴别不用于推算交期。')
             entry["rowCount"] = len(frame)
             entry["ignoredSummaryRows"] = int(frame.attrs.get("ignored_summary_rows", 0))
             if entry["ignoredSummaryRows"]:
-                result["warnings"].append(f"{label}末尾的 {entry['ignoredSummaryRows']} 行合计已识别，不计入业务明细和导入行数。")
+                result["warnings"].append(f"{label}的 {entry['ignoredSummaryRows']} 行小计或合计已识别，不计入业务明细和导入行数。")
             missing = [group[0] for group in HEADER_GROUPS[source.kind] if not _pick_col(frame, list(group))]
             if missing:
                 raise RawIncrementalWriteError(f"{label}缺少必要表头：{'、'.join(missing)}。请确认文件放在正确的清单位置，并补齐统计年月及业务字段。")
@@ -126,7 +147,7 @@ def build_import_preview(conn, sources: list[ExcelSource], *, import_mode: str =
                     )
             all_years.update(year for year, _ in periods)
             entry["existingRows"] = _existing_rows(conn, table, periods)
-            duplicate = bool(has_imports and not force and conn.execute(
+            duplicate = bool(has_imports and not force and not (jd_batch and source.kind == 'jingdai') and conn.execute(
                 "SELECT 1 FROM data_imports WHERE file_hash=? AND status='success' LIMIT 1",
                 (hashlib.sha256(source.content).hexdigest(),),
             ).fetchone())

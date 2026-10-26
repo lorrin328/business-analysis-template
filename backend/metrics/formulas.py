@@ -124,9 +124,11 @@ def avg_productivity(premium: Any, avg_active_headcount: Any) -> float | None:
 
 
 def avg_policy_premium(premium: Any, policy_count: Any) -> float | None:
-    """件均保费 = 保费净额 / 承保件数净额。
+    """件均保费 = 保费净额 / 同口径可核算件数。
 
-    不可计算规则：承保件数净额为空、小于或等于 0 时返回 None。
+    经代新基表分母为所选范围出现的投保单号去重数，旧基表及转型
+    沿用源承保件数净额；调用方在混合口径或缺失单号时传 None。
+    不可计算规则：件数为空、小于或等于 0 时返回 None。
     单位：万元/件。
     """
     count = _to_number(policy_count)

@@ -187,6 +187,10 @@ def _read_upload_sources(performance, jingdai, hr, value):
     sources = []
     max_size = MAX_UPLOAD_SIZE_MB * 1024 * 1024
     for kind, upload in (("performance", performance), ("jingdai", jingdai), ("hr", hr), ("value", value)):
+        if isinstance(upload, (list, tuple)):
+            for partition in upload:
+                sources.extend(_read_upload_sources(None, partition, None, None))
+            continue
         if upload is None or not upload.filename:
             continue
         if upload.size is not None and upload.size > max_size:
@@ -195,6 +199,9 @@ def _read_upload_sources(performance, jingdai, hr, value):
         if len(content) > max_size:
             raise HTTPException(status_code=413, detail=f"单文件不能超过 {MAX_UPLOAD_SIZE_MB}MB。")
         sources.append(ExcelSource(kind=kind, filename=upload.filename, content=content))
+    jd_names = [source.filename for source in sources if source.kind == 'jingdai']
+    if len(set(jd_names)) != len(jd_names):
+        raise HTTPException(status_code=400, detail='经代分文件存在同名文件，请更名后重新预览。')
     return sources
 
 
@@ -227,7 +234,7 @@ def _consume_preview_task(task):
 
 @app.post("/api/upload/preview")
 async def preview_upload_files(
-    performance: UploadFile = File(None), jingdai: UploadFile = File(None),
+    performance: UploadFile = File(None), jingdai: list[UploadFile] | None = File(None),
     hr: UploadFile = File(None), value: UploadFile = File(None),
     import_mode: Literal["replace_months", "supplement"] = Query("replace_months"),
     force: bool = Query(False), _user=Depends(require_permission("upload")),
@@ -266,7 +273,7 @@ async def preview_upload_files(
 @app.post("/api/upload")
 async def upload_files(
     performance: UploadFile = File(None),
-    jingdai: UploadFile = File(None),
+    jingdai: list[UploadFile] | None = File(None),
     hr: UploadFile = File(None),
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
@@ -307,7 +314,7 @@ async def upload_files(
 
 def _upload_files_locked(
     performance: UploadFile = File(None),
-    jingdai: UploadFile = File(None),
+    jingdai: list[UploadFile] | None = File(None),
     hr: UploadFile = File(None),
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,
@@ -334,15 +341,18 @@ def _upload_files_locked(
         ("value", "价值数据", value),
     ]
     upload_labels = {kind: label for kind, label, _ in upload_specs}
+    jd_batch = sum(source.kind == 'jingdai' for source in sources) > 1
     for source in sources:
         kind = source.kind
         label = upload_labels[kind]
         try:
             content = source.content
             file_hash = _hash_bytes(content)
-            if _skip_duplicate_upload(source.filename, file_hash, kind, results, force=force):
+            # A previously imported partition must still participate when a
+            # sibling partition replaces their shared month as one batch.
+            if not (jd_batch and kind == 'jingdai') and _skip_duplicate_upload(source.filename, file_hash, kind, results, force=force):
                 continue
-            append_excel_source(pipeline_result, source)
+            append_excel_source(pipeline_result, source, defer_jingdai=True)
             file_hashes[source.filename] = file_hash
             file_sizes[source.filename] = len(content)
         except Exception as e:
@@ -374,7 +384,7 @@ def _upload_files_locked(
         _set_import_status(results, has_written_rows=False)
         raise HTTPException(status_code=400, detail=results)
 
-    if results["errors"] and file_hashes and not allow_partial:
+    if results["errors"] and file_hashes and (not allow_partial or jd_batch):
         results["message"] = "导入已取消：部分文件解析失败。请修正失败文件后重新上传，或显式设置 allow_partial=true。"
         _set_import_status(results, has_written_rows=False)
         logger.warning("import aborted because partial import is disabled errors=%s", results["errors"])
@@ -422,7 +432,7 @@ def _upload_files_locked(
 @app.post("/api/import")
 async def import_files(
     performance: UploadFile = File(None),
-    jingdai: UploadFile = File(None),
+    jingdai: list[UploadFile] | None = File(None),
     hr: UploadFile = File(None),
     value: UploadFile = File(None),
     year: int = DEFAULT_YEAR,

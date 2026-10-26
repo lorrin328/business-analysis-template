@@ -131,11 +131,13 @@ def _compare_aggregates(conn, expected_rows: dict[str, list[dict]], years: list[
     checks = {
         "agg_performance": (monthly, premiums),
         "agg_org_performance": (monthly + ["org"], premiums),
-        "agg_jingdai": (["year", "month"], premiums),
+        "agg_jingdai": (["year", "month"], premiums + ['zs_missing']),
         "agg_hr_data": (monthly, headcounts),
         "agg_org_hr_data": (monthly + ["org"], headcounts),
         "agg_daily_performance": (daily, premiums),
-        "agg_jingdai_daily": (["year", "month", "day"], premiums),
+        "agg_jingdai_daily": (["year", "month", "day"], premiums + ['zs_missing']),
+        'agg_jingdai_policy_daily': (['year', 'month', 'day', 'org', 'product_name', 'category', 'identity_source'],
+                                      ['qj_premium', 'gm_premium', 'source_rows', 'legacy_count', 'legacy_missing']),
         "agg_longterm_qj": (daily + ["business_type", "org"], ["qj_premium"]),
         "agg_org_daily_performance": (daily + ["org"], premiums),
         "agg_product_daily": (daily + ["business_type", "org", "product_category", "product_name"], ["qj_premium", "gm_premium", "count", "count_missing"]),
@@ -284,7 +286,7 @@ def run_data_quality_audit(year: int) -> dict:
             # Keep existing rebuild semantics, while reporting duplicates above.
             config_map = _load_jingdai_product_config(conn) if "jingdai" in raw_tables and not raw_tables["jingdai"].empty else {}
             expected_rows = build_aggregate_rows_from_raw(
-                {table: frame.drop_duplicates() for table, frame in raw_tables.items()},
+                {table: frame if table == 'jingdai' else frame.drop_duplicates() for table, frame in raw_tables.items()},
                 jingdai_config_map=config_map,
             ) if raw_tables else {table: [] for table in AGG_TABLES}
             issues.extend(_compare_aggregates(conn, expected_rows, [year]))

@@ -76,7 +76,29 @@
       return completeDailySeries(monthData[key], year, month);
     }
 
+    function platformDiscountUnavailable(year, premiumType, selectedKeys, selectedMonths = []) {
+      if (premiumType !== 'zs' || !selectedKeys.includes('经代')) return false;
+      const observed = platformMock[year]?.year?.qj?.['经代'] || [];
+      const discount = platformMock[year]?.year?.zs?.['经代'] || [];
+      return observed.some((value, index) => value !== null && value !== undefined
+        && (!selectedMonths.length || selectedMonths.includes(index + 1))
+        && (discount[index] === null || discount[index] === undefined));
+    }
+
+    function addTrendAmount(previous, value) {
+      return previous === null || value === null ? null : (previous || 0) + (value || 0);
+    }
+
+    function completeNullableTrendSeries(values, year, month) {
+      if (!values.some(value => value === null)) return completeDailySeries(values, year, month);
+      return Array.from({ length: dailyDisplayEndDay(year, month) }, (_, index) =>
+        index < values.length ? values[index] : values[values.length - 1]);
+    }
+
     function getMonthDailyCumulative(year, premiumType, selectedKeys, month) {
+      if (platformDiscountUnavailable(year, premiumType, selectedKeys, [Number(month)])) {
+        return Array(dailyDisplayEndDay(year, month)).fill(null);
+      }
       const col = premiumType === 'qj' ? 'qj_premium' : premiumType === 'gm' ? 'gm_premium' : 'zs_premium';
       const useOrgDaily = hasPlatformOrgFilter();
       const daily = [];
@@ -91,7 +113,7 @@
         orgDaily.forEach(r => {
           if (normalizeMonth(r.month) === Number(month) && selectedKeys.includes(r.channel) && selected.includes(r.org)) {
             const idx = (r.day || 1) - 1;
-            daily[idx] = (daily[idx] || 0) + (r[col] || 0);
+            daily[idx] = addTrendAmount(daily[idx], premiumType === 'zs' ? r[col] ?? null : r[col]);
             hasDailyRows = true;
           }
         });
@@ -100,7 +122,7 @@
           rawDaily.forEach(r => {
             if (normalizeMonth(r.month) === Number(month) && r.channel === '经代') {
               const idx = (r.day || 1) - 1;
-              daily[idx] = (daily[idx] || 0) + (r[col] || 0);
+              daily[idx] = addTrendAmount(daily[idx], premiumType === 'zs' ? r[col] ?? null : r[col]);
               hasDailyRows = true;
             }
           });
@@ -108,7 +130,7 @@
           jdDaily.forEach(r => {
             if (normalizeMonth(r.month) === Number(month)) {
               const idx = (r.day || 1) - 1;
-              daily[idx] = (daily[idx] || 0) + (r[col] || 0);
+              daily[idx] = addTrendAmount(daily[idx], premiumType === 'zs' ? r[col] ?? null : r[col]);
               hasDailyRows = true;
             }
           });
@@ -118,10 +140,10 @@
           let running = 0;
           const cumulative = [];
           for (let i = 0; i < daily.length; i++) {
-            running += daily[i] || 0;
+            running = addTrendAmount(running, daily[i]);
             cumulative[i] = running;
           }
-          const result = completeDailySeries(cumulative, year, month);
+          const result = completeNullableTrendSeries(cumulative, year, month);
           return result;
         }
         // org筛选激活但无org_daily数据 → 返回空，不回退到全机构聚合
@@ -133,7 +155,7 @@
       rawDaily.forEach(r => {
         if (normalizeMonth(r.month) === Number(month) && selectedKeys.includes(r.channel)) {
           const idx = (r.day || 1) - 1;
-          daily[idx] = (daily[idx] || 0) + (r[col] || 0);
+          daily[idx] = addTrendAmount(daily[idx], premiumType === 'zs' ? r[col] ?? null : r[col]);
           hasDailyRows = true;
         }
       });
@@ -143,7 +165,7 @@
         jdDaily.forEach(r => {
           if (normalizeMonth(r.month) === Number(month)) {
             const idx = (r.day || 1) - 1;
-            daily[idx] = (daily[idx] || 0) + (r[col] || 0);
+            daily[idx] = addTrendAmount(daily[idx], premiumType === 'zs' ? r[col] ?? null : r[col]);
             hasDailyRows = true;
           }
         });
@@ -153,10 +175,10 @@
         let running = 0;
         const cumulative = [];
         for (let i = 0; i < daily.length; i++) {
-          running += daily[i] || 0;
+          running = addTrendAmount(running, daily[i]);
           cumulative[i] = running;
         }
-        const result = completeDailySeries(cumulative, year, month);
+        const result = completeNullableTrendSeries(cumulative, year, month);
         return result;
       }
 
@@ -173,13 +195,13 @@
               combined = arr.slice();
             } else {
               for (let i = 0; i < arr.length; i++) {
-                combined[i] = (combined[i] || 0) + (arr[i] || 0);
+                combined[i] = addTrendAmount(combined[i], arr[i]);
               }
             }
           }
         }
         if (combined) {
-          const result = completeDailySeries(combined, year, month);
+          const result = completeNullableTrendSeries(combined, year, month);
           return result;
         }
       }
@@ -211,11 +233,12 @@
         const dim = dailyDisplayEndDay(year, month);
         if (dim <= 0) return;
         for (let idx = 0; idx < dim; idx++) {
-          const v = monthSeries[idx] !== undefined ? monthSeries[idx] : (idx > 0 ? monthSeries[idx - 1] || 0 : 0);
+          const v = monthSeries[idx] !== undefined ? monthSeries[idx] : (idx > 0 ? monthSeries[idx - 1] ?? 0 : 0);
           labels.push(`${month}月${idx + 1}日`);
-          values.push(Math.round((offset + v) * 10) / 10);
+          const total = addTrendAmount(offset, v);
+          values.push(total === null ? null : Math.round(total * 10) / 10);
         }
-        if (monthSeries.length > 0) offset += monthSeries[monthSeries.length - 1] || 0;
+        if (monthSeries.length > 0) offset = addTrendAmount(offset, monthSeries[monthSeries.length - 1]);
       });
       return { labels, values };
     }
@@ -294,9 +317,10 @@
         hasAny = true;
         chunk.labels.forEach((label, index) => {
           labels.push(label);
-          values.push(Math.round((offset + Number(chunk.values[index] || 0)) * 10) / 10);
+          const total = addTrendAmount(offset, chunk.values[index]);
+          values.push(total === null ? null : Math.round(total * 10) / 10);
         });
-        offset += Number(chunk.values[chunk.values.length - 1] || 0);
+        offset = addTrendAmount(offset, chunk.values[chunk.values.length - 1]);
       });
       return hasAny ? { labels, values } : { labels: [], values: [] };
     }
@@ -305,7 +329,8 @@
       const year = parseInt(selectedYear);
       const prevYear = year - 1;
       const current = getSelectedMonthSetTrendData(year, monthList);
-      const prev = platformMock[prevYear]
+      const prev = platformMock[prevYear] && !platformDiscountUnavailable(prevYear, currentPremiumType,
+        Object.keys(selectedSeries).filter(key => selectedSeries[key]), monthList)
         ? getSelectedMonthSetTrendData(prevYear, monthList)
         : { labels: [], values: [] };
       if (current.values.length === 0 && prev.values.length === 0) return {
@@ -351,6 +376,10 @@
         series: []
       });
       if (!platformMock[year]) return emptyOption('暂无该年份数据');
+      const scopeMonths = currentTimeDim === 'year' ? [] : getSelectedPlatformMonths();
+      if (platformDiscountUnavailable(year, currentPremiumType, selectedKeys, scopeMonths)) {
+        return emptyOption('经代源数据缺少缴费年限，所选范围折算保费不可计算');
+      }
 
       if (currentTimeDim === 'year') {
         let currentCum = 0;
@@ -381,7 +410,7 @@
           { name: year + '年累计', type: 'line', data: currentTotal, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { width: 3 }, itemStyle: { color: '#4f8cff' }, yAxisIndex: 0 }
         ];
 
-        if (platformMock[prevYear]) {
+        if (platformMock[prevYear] && !platformDiscountUnavailable(prevYear, currentPremiumType, selectedKeys)) {
           let prevCum = 0;
           const prevTotal = months.map((_, i) => {
             let sum = 0;
@@ -644,13 +673,14 @@
       const noneSelected = ORG_LIST_PLATFORM.every(o => !selectedPlatformOrgs[o]);
 
       if (allSelected || noneSelected) {
-        return orgData.total[premiumType] || null;
+        return orgData.total[premiumType] ?? null;
       }
 
       let sum = 0;
       let hasAny = false;
       for (const org of ORG_LIST_PLATFORM) {
         if (selectedPlatformOrgs[org] && orgData.orgs[org] && orgData.orgs[org][premiumType] !== undefined) {
+          if (orgData.orgs[org][premiumType] === null) return null;
           sum += orgData.orgs[org][premiumType];
           hasAny = true;
         }

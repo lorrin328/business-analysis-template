@@ -53,6 +53,11 @@ def main():
 
 
 def _main_locked():
+    if any((ROOT / 'excel' / 'JD').glob('*.xlsx')):
+        raise RuntimeError(
+            '检测到新版经代分文件。为保留2020—2024年既有汇总，本旧式全量重建入口已停止；'
+            '请使用网页经代批量导入，或migrate_jingdai_sources.py生成并验证保留历史的候选库。'
+        )
     init_db()
     with get_db() as conn:
         purged = purge_non_jingdai_product_config(conn)

@@ -364,7 +364,7 @@
           if (m >= 0 && m < 12) {
             if (mock.year.qj[r.channel]) mock.year.qj[r.channel][m] = r.qj_premium || 0;
             if (mock.year.gm[r.channel]) mock.year.gm[r.channel][m] = r.gm_premium || 0;
-            if (mock.year.zs[r.channel]) mock.year.zs[r.channel][m] = r.zs_premium || 0;
+            if (mock.year.zs[r.channel]) mock.year.zs[r.channel][m] = r.zs_premium ?? null;
           }
         });
       }
@@ -376,7 +376,7 @@
           if (m >= 0 && m < 12) {
             mock.year.qj['经代'][m] = r.qj_premium || 0;
             mock.year.gm['经代'][m] = r.gm_premium || 0;
-            mock.year.zs['经代'][m] = r.zs_premium || 0;
+            mock.year.zs['经代'][m] = r.zs_premium ?? null;
           }
         });
       }
@@ -397,9 +397,9 @@
           if (!entry.orgs[org]) entry.orgs[org] = { qj: 0, gm: 0, zs: 0 };
           ['qj', 'gm', 'zs'].forEach(t => {
             const col = t === 'qj' ? 'qj_premium' : t === 'gm' ? 'gm_premium' : 'zs_premium';
-            const v = r[col] || 0;
-            entry.orgs[org][t] += v;
-            entry.total[t] += v;
+            const v = t === 'zs' ? r[col] ?? null : r[col] || 0;
+            entry.orgs[org][t] = entry.orgs[org][t] === null || v === null ? null : entry.orgs[org][t] + v;
+            entry.total[t] = entry.total[t] === null || v === null ? null : entry.total[t] + v;
           });
         });
       }
@@ -472,9 +472,9 @@
               const col = t === 'qj' ? 'qj_premium' : t === 'gm' ? 'gm_premium' : 'zs_premium';
               for (let d = 1; d <= dim; d++) {
                 const dr = dailyData[d];
-                const val = dr ? (dr[col] || 0) : 0;
-                sum += val;
-                cum.push(Math.round(sum * 10) / 10);
+                const val = dr ? (t === 'zs' ? dr[col] ?? null : dr[col] || 0) : 0;
+                sum = sum === null || val === null ? null : sum + val;
+                cum.push(sum === null ? null : Math.round(sum * 10) / 10);
               }
               mock.month[mon][t][ch] = cum;
             } else {
@@ -549,7 +549,8 @@
       }
       const sources = productFilters.transform && productFilters.jingdai ? '转型＋经代'
         : productFilters.transform ? '转型' : productFilters.jingdai ? '经代' : '未选择业务来源';
-      const countNote = currentPieType === 'count' && product.countNote ? ` · ${product.countNote}` : '';
+      const separateCountNote = typeof renderProductCountBasisNote === 'function' && document.getElementById('productCountBasisNote');
+      const countNote = currentPieType === 'count' && product.countNote && !separateCountNote ? ` · ${product.countNote}` : '';
       scope.textContent = `已应用：${product.period?.label || `${product.year || selectedYear}年`} · ${sources}${countNote}`;
     }
 
