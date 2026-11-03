@@ -196,7 +196,9 @@
         const transformRows = (apiCache[cacheKey]?.platform?.daily_performance || [])
           .filter(row => normalizeMonth(row.month) === Number(month) && otherKeys.includes(row.channel));
         const transformEnd = Math.max(0, ...transformRows.map(row => Number(row.day) || 1));
-        const jingdaiEnd = Math.max(0, ...rows.map(row => Number(row.day) || 0));
+        // Source coverage is independent of a selected platform's last sale.
+        const jingdaiEnd = Math.max(0, ...(jingdaiPlatformCache[year]?.daily || [])
+          .filter(row => row.month === Number(month)).map(row => Number(row.day) || 0));
         const commonEnd = transformEnd && jingdaiEnd ? Math.min(transformEnd, jingdaiEnd) : null;
         // Month-only historical records cannot be invented as daily transactions.
         if (rows.some(row => !row.day)) return [];

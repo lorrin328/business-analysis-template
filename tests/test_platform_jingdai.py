@@ -94,6 +94,11 @@ vm.runInContext(`
  apiCache['2026']={platform:{daily_performance:[{month:1,day:1,channel:'OTO',qj_premium:7}]}};
 `,scope);
 assert.deepEqual(Array.from(scope.getMonthDailyCumulative(2026,'qj',['经代','OTO'],1)),[17,17,17]);
+vm.runInContext(`
+ jingdaiPlatformCache[2026].daily.push({platform:'乙',month:1,day:3,qj_premium:100});
+ apiCache['2026'].platform.daily_performance.push({month:1,day:3,channel:'OTO',qj_premium:70});
+`,scope);
+assert.deepEqual(Array.from(scope.getMonthDailyCumulative(2026,'qj',['经代','OTO'],1)),[17,15,85]);
 '''
     result = subprocess.run([shutil.which('node'), '-e', script], capture_output=True,
                             text=True, encoding='utf-8', cwd=Path(__file__).resolve().parents[1])
