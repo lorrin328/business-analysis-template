@@ -110,7 +110,8 @@ def test_frontend_keeps_unknown_discount_and_does_not_show_partial_mixed_chart()
       const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
       const source = fs.readFileSync('js/data-integration.js', 'utf8');
       function extract(s, start, end) { return s.slice(s.indexOf(start), s.indexOf(end, s.indexOf(start))); }
-      const scope = {platformOrgPerfData: {}, normalizeMonth: Number, dailyRowsContainJingdai: () => false,
+      const scope = {hasJingdaiPlatformFilter: () => false,
+                     platformOrgPerfData: {}, normalizeMonth: Number, dailyRowsContainJingdai: () => false,
                      dailyDisplayEndDay: () => 3};
       vm.createContext(scope);
       vm.runInContext(extract(source, '    function convertApiToPlatformMock(', '    function mergeProductRows('), scope);

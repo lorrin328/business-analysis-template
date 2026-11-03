@@ -5,10 +5,19 @@ from api.params import AsOfQuery, DashboardYearQuery
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_platform_data
+from db.repositories.platform_jingdai import get_jingdai_platform_trend
 from services.query_service import get_platform_trend
 from services.response import response_meta, success_response
 
 router = APIRouter(prefix="/api", tags=["trend"])
+
+
+@router.get("/platform-jingdai")
+def platform_jingdai(
+    year: DashboardYearQuery = DEFAULT_YEAR,
+    _user=Depends(require_permission("platform_trend")),
+):
+    return success_response(get_jingdai_platform_trend(year))
 
 
 @router.get("/platform-data")

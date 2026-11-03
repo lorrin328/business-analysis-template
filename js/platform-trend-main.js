@@ -16,8 +16,86 @@
     // 机构级保费索引：platformOrgPerfData[year][premiumType][channel][monthIndex] = { total, orgs: { [org]: value } }
     const platformOrgPerfData = {};
     const platformTrendDailyCache = {};
+    const jingdaiPlatformCache = {};
+    let selectedJingdaiPlatforms = null; // null = authoritative total, [] = no platforms
+    let jingdaiPlatformLoadFailed = false;
+
+    function hasJingdaiPlatformFilter() {
+      return selectedSeries['经代'] && selectedJingdaiPlatforms !== null;
+    }
+
+    function jingdaiPlatformRows(year) {
+      return (jingdaiPlatformCache[year]?.daily || []).filter(row =>
+        selectedJingdaiPlatforms === null || selectedJingdaiPlatforms.includes(row.platform));
+    }
+
+    function renderJingdaiPlatformChecks() {
+      const row = document.getElementById('jingdaiPlatformRow');
+      const checks = document.getElementById('jingdaiPlatformChecks');
+      if (!row || !checks) return;
+      row.hidden = !selectedSeries['经代'];
+      row.style.display = selectedSeries['经代'] ? '' : 'none';
+      const names = [...new Set([...(jingdaiPlatformCache[selectedYear]?.platforms || []),
+        ...(jingdaiPlatformCache[Number(selectedYear) - 1]?.platforms || [])])].sort();
+      checks.replaceChildren();
+      [['全部', null], ['清空', []]].forEach(([label, selection]) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'chart-btn';
+        button.textContent = label;
+        button.addEventListener('click', () => {
+          selectedJingdaiPlatforms = selection;
+          renderJingdaiPlatformChecks();
+          updatePlatformScopeNote();
+          refreshPlatformChart();
+        });
+        checks.append(button);
+      });
+      names.forEach(name => {
+        const label = document.createElement('label');
+        label.className = 'check-label';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = selectedJingdaiPlatforms === null || selectedJingdaiPlatforms.includes(name);
+        input.addEventListener('change', () => {
+          const selected = new Set(selectedJingdaiPlatforms === null ? names : selectedJingdaiPlatforms);
+          if (input.checked) selected.add(name); else selected.delete(name);
+          selectedJingdaiPlatforms = names.every(item => selected.has(item)) ? null : [...selected];
+          renderJingdaiPlatformChecks();
+          updatePlatformScopeNote();
+          refreshPlatformChart();
+        });
+        label.append(input, document.createTextNode(` ${name || '未标注平台'}`));
+        checks.append(label);
+      });
+      if (!names.length) checks.append(document.createTextNode(jingdaiPlatformLoadFailed
+        ? '平台选项加载失败，请刷新重试' : '暂无销售平台明细'));
+    }
+
+    async function loadJingdaiPlatformData(year) {
+      if (jingdaiPlatformCache[year]) return;
+      const payload = unwrapApiResponse(await fetchJson(`/api/platform-jingdai?year=${Number(year)}`));
+      if (!payload || !Array.isArray(payload.daily)) throw new Error('Invalid platform breakdown');
+      jingdaiPlatformCache[year] = payload;
+    }
+
+    async function prepareJingdaiPlatforms() {
+      if (!selectedSeries['经代']) return;
+      jingdaiPlatformLoadFailed = false;
+      try {
+        await Promise.all([loadJingdaiPlatformData(Number(selectedYear)),
+          loadJingdaiPlatformData(Number(selectedYear) - 1)]);
+      } catch (error) {
+        jingdaiPlatformLoadFailed = true;
+        console.error('loadJingdaiPlatformData error:', error);
+      }
+      renderJingdaiPlatformChecks();
+      updatePlatformScopeNote();
+    }
+
     window.clearPlatformTrendDailyCache = function() {
       Object.keys(platformTrendDailyCache).forEach(key => delete platformTrendDailyCache[key]);
+      Object.keys(jingdaiPlatformCache).forEach(key => delete jingdaiPlatformCache[key]);
     };
 
     function normalizeMonth(value) {
@@ -52,7 +130,14 @@
       const trendText = globalRange?.rangeType && globalRange.rangeType !== 'ytd'
         ? `顶部统计范围当前为“${globalRange.label || globalRange.rangeType}”；本趋势图仍按本模块的年/季/月维度展示完整趋势。`
         : '';
-      el.textContent = [rangeText, jdText, trendText].filter(Boolean).join(' ');
+      const platformText = includesJingdai ? (selectedJingdaiPlatforms === null
+        ? '经代销售平台：全部。'
+        : `经代销售平台：${selectedJingdaiPlatforms.map(name => name || '未标注平台').join('、') || '未选择平台'}；多选按合计展示，仅影响经代。`) : '';
+      const scopeMonths = currentTimeDim === 'year' ? months.map((_, i) => i + 1) : getSelectedPlatformMonths();
+      const incomplete = hasJingdaiPlatformFilter() ? [Number(selectedYear), Number(selectedYear) - 1]
+        .filter(year => (jingdaiPlatformCache[year]?.incompleteMonths || []).some(month => scopeMonths.includes(month))) : [];
+      const detailText = incomplete.length ? `${incomplete.join('、')}年部分月份平台明细不完整，筛选结果仅含现有明细，不能代表完整平台业绩。` : '';
+      el.textContent = [rangeText, jdText, platformText, detailText, trendText].filter(Boolean).join(' ');
     }
 
     // Local fallback platformMock lives in js/platform-seed-data.js.
@@ -78,6 +163,8 @@
 
     function platformDiscountUnavailable(year, premiumType, selectedKeys, selectedMonths = []) {
       if (premiumType !== 'zs' || !selectedKeys.includes('经代')) return false;
+      if (hasJingdaiPlatformFilter()) return jingdaiPlatformRows(year).some(row =>
+        (!selectedMonths.length || selectedMonths.includes(row.month)) && row.zs_premium === null);
       const observed = platformMock[year]?.year?.qj?.['经代'] || [];
       const discount = platformMock[year]?.year?.zs?.['经代'] || [];
       return observed.some((value, index) => value !== null && value !== undefined
@@ -98,6 +185,31 @@
     function getMonthDailyCumulative(year, premiumType, selectedKeys, month) {
       if (platformDiscountUnavailable(year, premiumType, selectedKeys, [Number(month)])) {
         return Array(dailyDisplayEndDay(year, month)).fill(null);
+      }
+      if (hasJingdaiPlatformFilter() && selectedKeys.includes('经代')) {
+        if (!jingdaiPlatformCache[year]) return [];
+        const col = premiumType === 'qj' ? 'qj_premium' : premiumType === 'gm' ? 'gm_premium' : 'zs_premium';
+        const otherKeys = selectedKeys.filter(key => key !== '经代');
+        const other = otherKeys.length ? getMonthDailyCumulative(year, premiumType, otherKeys, month) : [];
+        const rows = jingdaiPlatformRows(year).filter(row => row.month === Number(month));
+        const cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(year) : String(year);
+        const transformRows = (apiCache[cacheKey]?.platform?.daily_performance || [])
+          .filter(row => normalizeMonth(row.month) === Number(month) && otherKeys.includes(row.channel));
+        const transformEnd = Math.max(0, ...transformRows.map(row => Number(row.day) || 1));
+        const jingdaiEnd = Math.max(0, ...rows.map(row => Number(row.day) || 0));
+        const commonEnd = transformEnd && jingdaiEnd ? Math.min(transformEnd, jingdaiEnd) : null;
+        // Month-only historical records cannot be invented as daily transactions.
+        if (rows.some(row => !row.day)) return [];
+        if (!rows.length && platformMock[year]?.year?.qj?.['经代']?.[Number(month) - 1] == null) return other;
+        const daily = [];
+        rows.filter(row => !commonEnd || row.day <= commonEnd).forEach(row => {
+          daily[row.day - 1] = addTrendAmount(daily[row.day - 1], row[col]);
+        });
+        let running = 0;
+        return Array.from({ length: Math.max(other.length, dailyDisplayEndDay(year, month)) }, (_, index) => {
+          running = addTrendAmount(running, daily[index]);
+          return addTrendAmount(running, other[commonEnd ? Math.min(index, commonEnd - 1) : index]);
+        });
       }
       const col = premiumType === 'qj' ? 'qj_premium' : premiumType === 'gm' ? 'gm_premium' : 'zs_premium';
       const useOrgDaily = hasPlatformOrgFilter();
@@ -245,7 +357,8 @@
 
     function platformTrendCacheKey(year, premiumType, selectedKeys, periodType, periodValue) {
       const orgKey = ORG_LIST_PLATFORM.filter(o => selectedPlatformOrgs[o]).join('|');
-      return [year, premiumType, selectedKeys.slice().sort().join('|'), periodType, periodValue || 0, orgKey].join('::');
+      return [year, premiumType, selectedKeys.slice().sort().join('|'), periodType, periodValue || 0, orgKey,
+        JSON.stringify(selectedJingdaiPlatforms)].join('::');
     }
 
     function getTrendDataFromCache(year, periodType, periodValue, monthList) {
@@ -263,6 +376,7 @@
     async function fetchPlatformTrendDaily(year, periodType, periodValue) {
       if (!['month', 'quarter'].includes(periodType) || !periodValue) return;
       const selectedKeys = Object.keys(selectedSeries).filter(k => selectedSeries[k]);
+      if (hasJingdaiPlatformFilter()) return;
       if (hasPlatformOrgFilter()) return;
       const key = platformTrendCacheKey(year, currentPremiumType, selectedKeys, periodType, periodValue);
       const params = new URLSearchParams();
@@ -291,6 +405,7 @@
 
     async function refreshPlatformChart() {
       const year = parseInt(selectedYear);
+      await prepareJingdaiPlatforms();
       platformChart.clear();
       platformChart.setOption(getPlatformOption(), true);
       if (currentTimeDim !== 'year') {
@@ -376,6 +491,8 @@
         series: []
       });
       if (!platformMock[year]) return emptyOption('暂无该年份数据');
+      if (hasJingdaiPlatformFilter() && (jingdaiPlatformLoadFailed || !jingdaiPlatformCache[year]
+          || !jingdaiPlatformCache[prevYear])) return emptyOption('销售平台数据加载失败，请刷新重试');
       const scopeMonths = currentTimeDim === 'year' ? [] : getSelectedPlatformMonths();
       if (platformDiscountUnavailable(year, currentPremiumType, selectedKeys, scopeMonths)) {
         return emptyOption('经代源数据缺少缴费年限，所选范围折算保费不可计算');
@@ -518,6 +635,7 @@
           const prevTM = convertApiToTeamMock(apiCache[prevCacheKey].platform, prevYearLabel);
           Object.assign(teamMock, prevTM);
         }
+        await prepareJingdaiPlatforms();
         return true;
       }
       clearRuntimeFallbackYear(year);
@@ -590,6 +708,7 @@
 
     async function toggleSeries(key, checked) {
       selectedSeries[key] = checked;
+      renderJingdaiPlatformChecks();
       updatePlatformScopeNote();
       await refreshPlatformChart();
     }
@@ -657,6 +776,13 @@
     function getChannelValue(year, premiumType, channel, monthIndex) {
       // 经代没有机构维度，始终返回全国聚合数据
       if (channel === '经代') {
+        if (hasJingdaiPlatformFilter()) {
+          if (!jingdaiPlatformCache[year]) return null;
+          const col = premiumType === 'qj' ? 'qj_premium' : premiumType === 'gm' ? 'gm_premium' : 'zs_premium';
+          const rows = jingdaiPlatformRows(year).filter(row => row.month === monthIndex + 1);
+          if (!rows.length && platformMock[year]?.year?.qj?.[channel]?.[monthIndex] == null) return null;
+          return rows.reduce((total, row) => addTrendAmount(total, row[col]), 0);
+        }
         const v = platformMock[year]?.year?.[premiumType]?.[channel]?.[monthIndex];
         return v !== null && v !== undefined ? v : null;
       }
