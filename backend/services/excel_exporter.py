@@ -305,7 +305,10 @@ def build_dashboard_export_workbook(
         "end_date": end_date,
     }
     kpi = get_kpi_data(year, **period_args)
-    platform = get_platform_data(year)
+    platform = get_platform_data(year, **period_args)
+    # The team module has its own natural-month scope; daily premium selections
+    # must not silently cut its annual comparison data.
+    team_platform = get_platform_data(year)
     org_data = get_org_kpi_data(year, **period_args)
     target_payload = get_target_config(year)
     product_design = get_product_structure(year, "design_cat")
@@ -327,8 +330,9 @@ def build_dashboard_export_workbook(
             ["统计范围", kpi.get("period", {}).get("label") or _format_cutoff(kpi)],
             ["数据截止", _format_cutoff(kpi)],
             ["目标来源", "target_config 服务端目标" if target_payload else "未配置服务端目标"],
-            ["说明", "KPI、机构、产品明细和交期结构按所选范围导出；月度使用当月目标，日/自定义区间不计算达成率。缺失指标留空并说明原因，真实零保留0。平台趋势、队伍和目标设置保留完整年度/月度背景。金额单位为万元。"],
+            ["说明", "KPI、机构、平台趋势、产品明细和交期结构按所选范围导出；月度使用当月目标，日/自定义区间不计算达成率。缺失指标留空并说明原因，真实零保留0。队伍和目标设置保留完整年度/月度背景。金额单位为万元。"],
             ["经代折算保费", "所选月份缺少缴费年限时，折算保费不可计算并留空；缴别不能代替缴费年限。"],
+            ["平台趋势精度", "；".join(platform.get('rangeWarnings') or []) or "按所选范围截取；无日级来源的非完整月份金额留空。"],
         ],
     )
 
@@ -354,7 +358,7 @@ def build_dashboard_export_workbook(
     _sheet(ws, f"{year}年交期结构", ["交期分类", "保费", "件数"], _payment_rows(payment))
 
     ws = wb.create_sheet("队伍分析")
-    _sheet(ws, f"{year}年队伍分析", ["月份", "业务线", "月初人力", "月末人力", "月均人力", "活动人力", "活动率"], _team_rows(platform))
+    _sheet(ws, f"{year}年队伍分析", ["月份", "业务线", "月初人力", "月末人力", "月均人力", "活动人力", "活动率"], _team_rows(team_platform))
 
     ws = wb.create_sheet("经代产品参数")
     _sheet(ws, "经代产品参数配置", ["产品代码", "产品名称", "业务类型", "商保年金", "保障类"], _product_config_rows())

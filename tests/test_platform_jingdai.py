@@ -63,6 +63,7 @@ const source = fs.readFileSync('js/platform-trend-main.js', 'utf8');
 const scope = {window:{}, document:{getElementById:()=>null},
  echarts:{init:()=>({setOption:()=>{}})}, DEFAULT_DASHBOARD_YEAR:2026,
  months:Array.from({length:12},(_,i)=>i+1), platformMock:{}, apiCache:{},
+ platformDateInRange:()=>true,
  dailyDisplayEndDay:()=>3,
  completeDailySeries:values=>Array.from({length:3},(_,i)=>values[i] ?? values[values.length-1])};
 vm.createContext(scope);
@@ -93,7 +94,7 @@ vm.runInContext(`
  selectedJingdaiPlatforms=['甲'];
  apiCache['2026']={platform:{daily_performance:[{month:1,day:1,channel:'OTO',qj_premium:7}]}};
 `,scope);
-assert.deepEqual(Array.from(scope.getMonthDailyCumulative(2026,'qj',['经代','OTO'],1)),[17,17,17]);
+assert.deepEqual(Array.from(scope.getMonthDailyCumulative(2026,'qj',['经代','OTO'],1)),[17,15,15]);
 vm.runInContext(`
  jingdaiPlatformCache[2026].daily.push({platform:'乙',month:1,day:3,qj_premium:100});
  apiCache['2026'].platform.daily_performance.push({month:1,day:3,channel:'OTO',qj_premium:70});

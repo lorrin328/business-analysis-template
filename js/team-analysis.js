@@ -63,12 +63,14 @@
     function aggregateTeamMonth(year, monthIndex) {
       const selectedKeys = Object.keys(selectedTeamSeries).filter(k => selectedTeamSeries[k]);
       const selectedOrgs = Object.keys(selectedTeamOrgs).filter(k => selectedTeamOrgs[k]);
-      const hasOrgFilter = selectedOrgs.length > 0 && selectedOrgs.length < ORG_LIST_TEAM.length;
+      const hasOrgFilter = selectedOrgs.length < ORG_LIST_TEAM.length;
       const useOrgData = hasOrgFilter && teamOrgData[year];
       const data = teamMock[year];
       const byLine = {};
       selectedKeys.forEach(ch => byLine[ch] = { headcount: 0, active: 0, premium: 0 });
-      if (!data || monthIndex < 0) return { byLine, total: { headcount: 0, active: 0, premium: 0 } };
+      if (!data || monthIndex < 0 || !selectedOrgs.length || (hasOrgFilter && !useOrgData)) {
+        return { byLine: {}, total: { headcount: null, active: null, premium: null } };
+      }
       if (useOrgData) {
         selectedOrgs.forEach(org => {
           const orgD = teamOrgData[year][org];
@@ -583,40 +585,49 @@
     function getTeamAggregated(year, metric) {
       const selectedKeys = Object.keys(selectedTeamSeries).filter(k => selectedTeamSeries[k]);
       const selectedOrgs = Object.keys(selectedTeamOrgs).filter(k => selectedTeamOrgs[k]);
-      const hasOrgFilter = selectedOrgs.length > 0 && selectedOrgs.length < ORG_LIST_TEAM.length;
+      const hasOrgFilter = selectedOrgs.length < ORG_LIST_TEAM.length;
       const useOrgData = hasOrgFilter && teamOrgData[year];
       const data = teamMock[year];
+      if (!selectedKeys.length || !selectedOrgs.length || (hasOrgFilter && !useOrgData)) return Array(12).fill(null);
       if (!data && !useOrgData) return Array(12).fill(null);
       const result = [];
       for (let i = 0; i < 12; i++) {
-        if (Number(year) === DEFAULT_DASHBOARD_YEAR_NUM && i >= getLatestMonthForYear(String(year))) { result.push(null); continue; }
         let totalHeadcount = 0, totalActive = 0, totalPremium = 0;
+        let hasHeadcount = true, hasActive = true, hasPremium = true;
+        const add = (source, key) => {
+          const headcount = source?.headcount?.[key]?.[i];
+          const active = source?.activeHeadcount?.[key]?.[i];
+          const premium = source?.premium?.[key]?.[i];
+          if (headcount == null || !Number.isFinite(Number(headcount))) hasHeadcount = false;
+          else totalHeadcount += Number(headcount);
+          if (active == null || !Number.isFinite(Number(active))) hasActive = false;
+          else totalActive += Number(active);
+          if (premium == null || !Number.isFinite(Number(premium))) hasPremium = false;
+          else totalPremium += Number(premium);
+        };
         if (useOrgData) {
           for (const org of selectedOrgs) {
             const orgD = teamOrgData[year][org];
-            if (!orgD) continue;
-            for (const key of selectedKeys) {
-              totalHeadcount += (orgD.headcount[key][i] || 0);
-              totalActive += (orgD.activeHeadcount[key][i] || 0);
-              totalPremium += (orgD.premium[key][i] || 0);
-            }
+            for (const key of selectedKeys) add(orgD, key);
           }
         } else {
-          for (const key of selectedKeys) {
-            totalHeadcount += data.headcount[key][i];
-            totalActive += data.activeHeadcount[key][i];
-            totalPremium += data.premium[key][i];
-          }
+          for (const key of selectedKeys) add(data, key);
         }
-        if (metric === 'headcount') result.push(totalHeadcount);
-        else if (metric === 'activity') result.push(totalHeadcount > 0 ? Math.round(totalActive / totalHeadcount * 1000) / 10 : 0);
-        else if (metric === 'perCapitaPremium') result.push(totalHeadcount > 0 ? Math.round(totalPremium / totalHeadcount * 10) / 10 : 0);
-        else if (metric === 'perCapitaCapacity') result.push(totalActive > 0 ? Math.round(totalPremium / totalActive * 10) / 10 : 0);
+        if (metric === 'headcount') result.push(hasHeadcount ? totalHeadcount : null);
+        else if (metric === 'activity') result.push(hasHeadcount && hasActive && totalHeadcount > 0 ? Math.round(totalActive / totalHeadcount * 1000) / 10 : null);
+        else if (metric === 'perCapitaPremium') result.push(hasHeadcount && hasPremium && totalHeadcount > 0 ? Math.round(totalPremium / totalHeadcount * 10) / 10 : null);
+        else if (metric === 'perCapitaCapacity') result.push(hasActive && hasPremium && totalActive > 0 ? Math.round(totalPremium / totalActive * 10) / 10 : null);
       }
       return result;
     }
 
     function getTeamOption() {
+      const scopeNote = document.getElementById('teamScopeNote');
+      if (scopeNote) {
+        const selected = Object.keys(selectedTeamOrgs).filter(org => selectedTeamOrgs[org]);
+        const period = currentTeamDim === 'year' ? `${selectedTeamYear}年度` : MonthMultiSelect.periodLabel(selectedTeamYear, getSelectedTeamMonths(currentTeamDim));
+        scopeNote.textContent = `队伍统计期间：${period}；${selected.length === ORG_LIST_TEAM.length ? '全部机构' : selected.join('、') || '未选择机构'}。人力为月级数据，本模块按自身年/季/月范围展示，不随顶部单日或自定义保费区间截断；缺少人力或分母为0时不计算比率。`;
+      }
       const metric = currentTeamMetric;
       const year = parseInt(selectedTeamYear);
       const prevYear = year - 1;

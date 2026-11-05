@@ -21,7 +21,7 @@ DISCOUNT_UNAVAILABLE_MESSAGE = "经代源数据缺少缴费年限，所选范围
 
 def _add_metric_amount(bucket: dict, key, row: dict, column: str) -> None:
     value = row.get(column)
-    if column == 'zs_premium' and value is None:
+    if column in row and value is None:
         bucket[key] = None
     elif bucket[key] is not None:
         bucket[key] += float(value or 0)
@@ -85,6 +85,10 @@ def _common_mixed_cutoff(
     months: set[int] | None = None,
 ):
     """Return the shared source cutoff when transform and jingdai are both selected."""
+    if platform_data.get('rangeApplied'):
+        # Explicit dashboard ranges already apply the shared selection. Keep each
+        # source's actual rows, just as KPI does; last sale is not a completeness date.
+        return None
     selected_transform_channels = [ch for ch in channels if ch != JINGDAI_LINE]
     if JINGDAI_LINE not in channels or not selected_transform_channels:
         return None
@@ -119,6 +123,24 @@ def _display_days_in_month(year: int, month: int, as_of_date: date | None = None
     if year == today.year and month == today.month:
         return min(today.day, _days_in_month(year, month))
     return _days_in_month(year, month)
+
+
+def _range_contains_day(platform_data: dict, month: int, day: int) -> bool:
+    if not platform_data.get('rangeApplied'):
+        return True
+    period = platform_data.get('period') or {}
+    start, end = period.get('startCutoff'), period.get('endCutoff')
+    return bool(start and end and (start['month'], start['day']) <= (month, day) <= (end['month'], end['day']))
+
+
+def _unavailable_range_message(platform_data: dict, channels: list[str], months: set[int], *, daily=False) -> str:
+    unavailable = platform_data.get('unavailableMonths') or {}
+    keys = (['performance'] if any(ch != JINGDAI_LINE for ch in channels) else []) + (['jingdai'] if JINGDAI_LINE in channels else [])
+    if any(months.intersection(unavailable.get(key, [])) for key in keys):
+        return '所选范围缺少日级数据，保费不可计算'
+    if daily and any(months.intersection((platform_data.get('monthlyFallbackMonths') or {}).get(key, [])) for key in keys):
+        return '所选范围仅有月级数据，日累计不可计算'
+    return ''
 
 
 def build_period_cumulative(
@@ -165,9 +187,14 @@ def build_period_cumulative(
                     continue
                 _add_metric_amount(period_amounts, _period_index(month, period_type), row, col)
 
+    indices = list(range(1, max_period + 1))
+    if platform_data.get('rangeApplied'):
+        period = platform_data['period']
+        indices = list(range(_period_index(period['startCutoff']['month'], period_type),
+                             _period_index(period['endCutoff']['month'], period_type) + 1))
     values = []
     running = 0.0
-    for idx in range(1, max_period + 1):
+    for idx in indices:
         running = _cumulative_metric(running, period_amounts[idx])
         values.append(None if running is None else round(running, 2))
 
@@ -175,10 +202,10 @@ def build_period_cumulative(
     has_data = any(value is not None and value != 0 for value in values)
     return {
         "periodType": period_type,
-        "labels": _period_labels(period_type),
+        "labels": [_period_labels(period_type)[idx - 1] for idx in indices],
         "values": values,
         "hasData": has_data,
-        "message": DISCOUNT_UNAVAILABLE_MESSAGE if unavailable else "" if has_data else "No period trend data",
+        "message": (_unavailable_range_message(platform_data, channels, set(range(1, 13))) or DISCOUNT_UNAVAILABLE_MESSAGE) if unavailable else "" if has_data else "No period trend data",
         "calculable": not unavailable,
         "jingdaiDeduped": JINGDAI_LINE in channels and performance_has_jingdai,
         "commonCutoff": {"month": common_cutoff[0], "day": common_cutoff[1]} if common_cutoff else None,
@@ -195,6 +222,10 @@ def build_month_daily_cumulative(
 ) -> dict:
     col = _metric_col(metric)
     month = int(month)
+    unavailable_message = _unavailable_range_message(platform_data, channels, {month}, daily=True)
+    if unavailable_message:
+        return {'labels': [], 'values': [], 'hasRealDailyData': False,
+                'calculable': False, 'message': unavailable_message}
     daily = defaultdict(float)
     raw_daily = platform_data.get("daily_performance") or []
     jd_daily = platform_data.get("jingdai_daily") or []
@@ -232,6 +263,8 @@ def build_month_daily_cumulative(
     labels, values = [], []
     running = 0.0
     for day in range(1, _display_days_in_month(year, month, as_of_date) + 1):
+        if not _range_contains_day(platform_data, month, day):
+            continue
         running = _cumulative_metric(running, daily[day])
         labels.append(f"{month}-{day}")
         values.append(None if running is None else round(running, 2))
@@ -259,6 +292,10 @@ def build_quarter_daily_cumulative(
     quarter = int(quarter)
     start_month = (quarter - 1) * 3 + 1
     end_month = start_month + 2
+    unavailable_message = _unavailable_range_message(platform_data, channels, set(range(start_month, end_month + 1)), daily=True)
+    if unavailable_message:
+        return {'labels': [], 'values': [], 'hasRealDailyData': False,
+                'calculable': False, 'message': unavailable_message}
     col = _metric_col(metric)
     all_daily = defaultdict(float)
     raw_daily = platform_data.get("daily_performance") or []
@@ -303,6 +340,8 @@ def build_quarter_daily_cumulative(
     running = 0.0
     for month in range(start_month, end_month + 1):
         for day in range(1, _display_days_in_month(year, month, as_of_date) + 1):
+            if not _range_contains_day(platform_data, month, day):
+                continue
             running = _cumulative_metric(running, all_daily[(month, day)])
             labels.append(f"{month}-{day}")
             values.append(None if running is None else round(running, 2))
@@ -326,8 +365,13 @@ def get_platform_trend(
     period_type: str = "year",
     period_value: int | None = None,
     as_of: str | None = None,
+    *,
+    range_type: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> dict:
-    data = get_platform_data(year, as_of=as_of)
+    explicit_range = range_type is not None or start_date is not None or end_date is not None
+    data = get_platform_data(year, as_of=as_of, range_type=range_type, start_date=start_date, end_date=end_date) if explicit_range else get_platform_data(year, as_of=as_of)
     channels = channels or DEFAULT_TREND_LINES
     period_type = period_type if period_type in {"year", "quarter", "month"} else "year"
     selected_month = month or (period_value if period_type == "month" else None)
@@ -341,6 +385,8 @@ def get_platform_trend(
         "trend": build_period_cumulative(data, channels, metric, "quarter" if period_type == "quarter" else "year"),
         "raw": data,
     }
+    if explicit_range:
+        result.update({key: data.get(key) for key in ('period', 'rangeApplied', 'rangeWarnings', 'sourcePrecision')})
     if period_type == "month" and selected_month:
         result["daily"] = build_month_daily_cumulative(data, year, selected_month, channels, metric, as_of_date=as_of_date)
     elif period_type == "quarter" and period_value:

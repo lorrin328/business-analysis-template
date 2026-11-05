@@ -26,7 +26,8 @@
 
     function jingdaiPlatformRows(year) {
       return (jingdaiPlatformCache[year]?.daily || []).filter(row =>
-        selectedJingdaiPlatforms === null || selectedJingdaiPlatforms.includes(row.platform));
+        (selectedJingdaiPlatforms === null || selectedJingdaiPlatforms.includes(row.platform))
+        && platformDateInRange(year, row.month, row.day));
     }
 
     function renderJingdaiPlatformChecks() {
@@ -74,7 +75,9 @@
 
     async function loadJingdaiPlatformData(year) {
       if (jingdaiPlatformCache[year]) return;
+      const generation = dashboardLoadGeneration;
       const payload = unwrapApiResponse(await fetchJson(`/api/platform-jingdai?year=${Number(year)}`));
+      if (generation !== dashboardLoadGeneration) return;
       if (!payload || !Array.isArray(payload.daily)) throw new Error('Invalid platform breakdown');
       jingdaiPlatformCache[year] = payload;
     }
@@ -127,9 +130,12 @@
       const rangeText = orgFiltered ? `当前机构范围：${selected.join('、') || '未选择机构'}。` : '当前机构范围：全部机构。';
       const jdText = orgFiltered && includesJingdai ? '经代暂无机构维度，当前经代数据按整体口径展示。' : '';
       const globalRange = typeof window.getDashboardRange === 'function' ? window.getDashboardRange() : null;
-      const trendText = globalRange?.rangeType && globalRange.rangeType !== 'ytd'
-        ? `顶部统计范围当前为“${globalRange.label || globalRange.rangeType}”；本趋势图仍按本模块的年/季/月维度展示完整趋势。`
+      const trendText = globalRange?.label
+        ? `统计范围：${globalRange.label}；上年按同月同日比较，累计从所选范围起点计算，年/季/月仅改变展示粒度。`
         : '';
+      const rangeWarnings = apiCache[dashboardCacheKey(selectedYear)]?.platform?.rangeWarnings || [];
+      const comparisonPeriod = apiCache[dashboardCacheKey(Number(selectedYear) - 1)]?.platform?.period;
+      const comparisonText = comparisonPeriod?.label ? `上年实际范围：${comparisonPeriod.label}。` : '';
       const platformText = includesJingdai ? (selectedJingdaiPlatforms === null
         ? '经代销售平台：全部。'
         : `经代销售平台：${selectedJingdaiPlatforms.map(name => name || '未标注平台').join('、') || '未选择平台'}；多选按合计展示，仅影响经代。`) : '';
@@ -137,15 +143,14 @@
       const incomplete = hasJingdaiPlatformFilter() ? [Number(selectedYear), Number(selectedYear) - 1]
         .filter(year => (jingdaiPlatformCache[year]?.incompleteMonths || []).some(month => scopeMonths.includes(month))) : [];
       const detailText = incomplete.length ? `${incomplete.join('、')}年部分月份平台明细不完整，筛选结果仅含现有明细，不能代表完整平台业绩。` : '';
-      el.textContent = [rangeText, jdText, platformText, detailText, trendText].filter(Boolean).join(' ');
+      el.textContent = [rangeText, jdText, platformText, detailText, trendText, comparisonText, ...rangeWarnings].filter(Boolean).join(' ');
     }
 
     // Local fallback platformMock lives in js/platform-seed-data.js.
 
     function hasPlatformOrgFilter() {
       const allSelected = ORG_LIST_PLATFORM.every(o => selectedPlatformOrgs[o]);
-      const noneSelected = ORG_LIST_PLATFORM.every(o => !selectedPlatformOrgs[o]);
-      return !allSelected && !noneSelected;
+      return !allSelected;
     }
 
     function findJingdaiChannelKey(channelMap) {
@@ -192,25 +197,17 @@
         const otherKeys = selectedKeys.filter(key => key !== '经代');
         const other = otherKeys.length ? getMonthDailyCumulative(year, premiumType, otherKeys, month) : [];
         const rows = jingdaiPlatformRows(year).filter(row => row.month === Number(month));
-        const cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(year) : String(year);
-        const transformRows = (apiCache[cacheKey]?.platform?.daily_performance || [])
-          .filter(row => normalizeMonth(row.month) === Number(month) && otherKeys.includes(row.channel));
-        const transformEnd = Math.max(0, ...transformRows.map(row => Number(row.day) || 1));
-        // Source coverage is independent of a selected platform's last sale.
-        const jingdaiEnd = Math.max(0, ...(jingdaiPlatformCache[year]?.daily || [])
-          .filter(row => row.month === Number(month)).map(row => Number(row.day) || 0));
-        const commonEnd = transformEnd && jingdaiEnd ? Math.min(transformEnd, jingdaiEnd) : null;
         // Month-only historical records cannot be invented as daily transactions.
         if (rows.some(row => !row.day)) return [];
         if (!rows.length && platformMock[year]?.year?.qj?.['经代']?.[Number(month) - 1] == null) return other;
         const daily = [];
-        rows.filter(row => !commonEnd || row.day <= commonEnd).forEach(row => {
+        rows.forEach(row => {
           daily[row.day - 1] = addTrendAmount(daily[row.day - 1], row[col]);
         });
         let running = 0;
         return Array.from({ length: Math.max(other.length, dailyDisplayEndDay(year, month)) }, (_, index) => {
           running = addTrendAmount(running, daily[index]);
-          return addTrendAmount(running, other[commonEnd ? Math.min(index, commonEnd - 1) : index]);
+          return addTrendAmount(running, other[index]);
         });
       }
       const col = premiumType === 'qj' ? 'qj_premium' : premiumType === 'gm' ? 'gm_premium' : 'zs_premium';
@@ -360,11 +357,12 @@
     function platformTrendCacheKey(year, premiumType, selectedKeys, periodType, periodValue) {
       const orgKey = ORG_LIST_PLATFORM.filter(o => selectedPlatformOrgs[o]).join('|');
       return [year, premiumType, selectedKeys.slice().sort().join('|'), periodType, periodValue || 0, orgKey,
-        JSON.stringify(selectedJingdaiPlatforms)].join('::');
+        JSON.stringify(selectedJingdaiPlatforms), dashboardCacheKey(year)].join('::');
     }
 
     function getTrendDataFromCache(year, periodType, periodValue, monthList) {
       const selectedKeys = Object.keys(selectedSeries).filter(k => selectedSeries[k]);
+      if (!selectedKeys.length) return;
       if (hasPlatformOrgFilter()) {
         return getPeriodDailyCumulative(year, currentPremiumType, selectedKeys, monthList)
           || { labels: [], values: [] };
@@ -378,21 +376,24 @@
     async function fetchPlatformTrendDaily(year, periodType, periodValue) {
       if (!['month', 'quarter'].includes(periodType) || !periodValue) return;
       const selectedKeys = Object.keys(selectedSeries).filter(k => selectedSeries[k]);
+      if (!selectedKeys.length) return;
       if (hasJingdaiPlatformFilter()) return;
       if (hasPlatformOrgFilter()) return;
       const key = platformTrendCacheKey(year, currentPremiumType, selectedKeys, periodType, periodValue);
+      const generation = dashboardLoadGeneration;
       const params = new URLSearchParams();
       params.set('year', String(year));
       params.set('periodType', periodType);
       params.set('periodValue', String(periodValue));
       params.set('metric', currentPremiumType);
+      appendDashboardRange(params);
       if (selectedKeys.length > 0) params.set('businessLines', selectedKeys.join(','));
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const timer = controller ? setTimeout(() => controller.abort(), 2500) : null;
       try {
         const payload = await fetchJson(`/api/platform-trend?${params.toString()}`, controller ? { signal: controller.signal } : undefined);
         const data = unwrapApiResponse(payload);
-        if (data && data.daily && data.daily.hasRealDailyData) {
+        if (generation === dashboardLoadGeneration && data && data.daily && data.daily.hasRealDailyData) {
           platformTrendDailyCache[key] = {
             labels: data.daily.labels || [],
             values: data.daily.values || []
@@ -405,9 +406,12 @@
       }
     }
 
+    let platformRenderSequence = 0;
     async function refreshPlatformChart() {
+      const sequence = ++platformRenderSequence;
       const year = parseInt(selectedYear);
       await prepareJingdaiPlatforms();
+      if (sequence !== platformRenderSequence) return;
       platformChart.clear();
       platformChart.setOption(getPlatformOption(), true);
       if (currentTimeDim !== 'year') {
@@ -417,11 +421,19 @@
           fetchPlatformTrendDaily(year - 1, 'month', month)
         ]));
       }
+      if (sequence !== platformRenderSequence) return;
       platformChart.setOption(getPlatformOption(), true);
     }
 
     function getSelectedMonthSetTrendData(year, monthList) {
       const selectedKeys = Object.keys(selectedSeries).filter(k => selectedSeries[k]);
+      const payload = apiCache[dashboardCacheKey(year)]?.platform;
+      const sources = [...(selectedKeys.includes('经代') ? ['jingdai'] : []),
+        ...(selectedKeys.some(key => key !== '经代') ? [hasPlatformOrgFilter() ? 'org_performance' : 'performance'] : [])];
+      if (sources.some(source => [...(payload?.unavailableMonths?.[source] || []),
+        ...(payload?.monthlyFallbackMonths?.[source] || [])].some(month => monthList.includes(month)))) {
+        return { labels: [], values: [] };
+      }
       const labels = [];
       const values = [];
       let offset = 0;
@@ -433,7 +445,9 @@
         if (!chunk || chunk.values.length === 0) return;
         hasAny = true;
         chunk.labels.forEach((label, index) => {
-          labels.push(label);
+          const match = String(label).match(/^(\d+)(?:月|-)(\d+)/);
+          if (!match || !platformDateInRange(year, Number(match[1]), Number(match[2]))) return;
+          labels.push(`${Number(match[1])}月${Number(match[2])}日`);
           const total = addTrendAmount(offset, chunk.values[index]);
           values.push(total === null ? null : Math.round(total * 10) / 10);
         });
@@ -467,15 +481,15 @@
       ];
 
       if (hasCurrent && prev.values.length > 0) {
-        while (labels.length < prev.labels.length) labels.push(prev.labels[labels.length]);
-        const prevValues = labels.map((_, idx) => prev.values[idx] !== undefined ? prev.values[idx] : '-');
+        const prevByDate = new Map(prev.labels.map((label, idx) => [label, prev.values[idx]]));
+        const prevValues = labels.map(label => prevByDate.has(label) ? prevByDate.get(label) : '-');
         seriesList.push({ name: prevName, type: 'line', data: prevValues, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#93a4bd' } });
       }
 
       return {
         tooltip: { trigger: 'axis', backgroundColor: '#111a2b', borderColor: '#1e2c46', textStyle: { color: '#eef3fb' } },
         legend: { data: seriesList.map(s => s.name), textStyle: { color: '#93a4bd' }, bottom: 0 },
-        grid: { left: 50, right: 20, top: 20, bottom: 48 },
+        grid: { left: 20, right: 30, top: 40, bottom: 48, containLabel: true },
         xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#1e2c46' } }, axisLabel: { color: '#93a4bd', interval: 'auto' } },
         yAxis: { type: 'value', name: '累计(万)', axisLine: { show: false }, splitLine: { lineStyle: { color: '#1e2c46', type: 'dashed' } }, axisLabel: { color: '#93a4bd' } },
         series: seriesList
@@ -493,6 +507,8 @@
         series: []
       });
       if (!platformMock[year]) return emptyOption('暂无该年份数据');
+      if (!selectedKeys.length) return emptyOption('请选择业务系列');
+      if (!selectedPlatformOrgNames().length && !selectedSeries['经代']) return emptyOption('请选择机构');
       if (hasJingdaiPlatformFilter() && (jingdaiPlatformLoadFailed || !jingdaiPlatformCache[year]
           || !jingdaiPlatformCache[prevYear])) return emptyOption('销售平台数据加载失败，请刷新重试');
       const scopeMonths = currentTimeDim === 'year' ? [] : getSelectedPlatformMonths();
@@ -501,28 +517,24 @@
       }
 
       if (currentTimeDim === 'year') {
+        const bounds = platformRangeBounds(year);
+        const visibleIndexes = months.map((_, i) => i).filter(i => !bounds
+          || (i + 1 >= bounds.startMonth && i + 1 <= bounds.endMonth));
         let currentCum = 0;
+        const monthAmount = (sourceYear, index) => {
+          const values = selectedKeys.map(key => getChannelValue(sourceYear, currentPremiumType, key, index));
+          return values.some(value => value === null || value === undefined) ? null
+            : values.reduce((sum, value) => sum + value, 0);
+        };
         const currentTotal = months.map((_, i) => {
-          let sum = 0, hasValue = false;
-          for (const key of selectedKeys) {
-            const v = getChannelValue(year, currentPremiumType, key, i);
-            if (v !== null && v !== undefined) {
-              sum += v;
-              hasValue = true;
-            }
-          }
-          if (!hasValue) return '-';
-          currentCum += sum;
-          return Math.round(currentCum * 10) / 10;
+          if (!visibleIndexes.includes(i)) return '-';
+          currentCum = addTrendAmount(currentCum, monthAmount(year, i));
+          return currentCum === null ? '-' : Math.round(currentCum * 10) / 10;
         });
         // 单月保费（用于柱状图）
         const currentMonthly = months.map((_, i) => {
-          let sum = 0;
-          for (const key of selectedKeys) {
-            const v = getChannelValue(year, currentPremiumType, key, i);
-            if (v !== null && v !== undefined) sum += v;
-          }
-          return Math.round(sum * 10) / 10;
+          const sum = monthAmount(year, i);
+          return sum === null ? '-' : Math.round(sum * 10) / 10;
         });
 
         const seriesList = [
@@ -532,43 +544,35 @@
         if (platformMock[prevYear] && !platformDiscountUnavailable(prevYear, currentPremiumType, selectedKeys)) {
           let prevCum = 0;
           const prevTotal = months.map((_, i) => {
-            let sum = 0;
-            for (const key of selectedKeys) {
-              const v = getChannelValue(prevYear, currentPremiumType, key, i);
-              if (v !== null && v !== undefined) sum += v;
-            }
-            prevCum += sum;
-            return Math.round(prevCum * 10) / 10;
+            if (!visibleIndexes.includes(i)) return '-';
+            prevCum = addTrendAmount(prevCum, monthAmount(prevYear, i));
+            return prevCum === null ? '-' : Math.round(prevCum * 10) / 10;
           });
           const prevMonthly = months.map((_, i) => {
-            let sum = 0;
-            for (const key of selectedKeys) {
-              const v = getChannelValue(prevYear, currentPremiumType, key, i);
-              if (v !== null && v !== undefined) sum += v;
-            }
-            return Math.round(sum * 10) / 10;
+            const sum = monthAmount(prevYear, i);
+            return sum === null ? '-' : Math.round(sum * 10) / 10;
           });
           seriesList.push(
             { name: prevYear + '年累计', type: 'line', data: prevTotal, smooth: true, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, itemStyle: { color: '#93a4bd' }, yAxisIndex: 0 },
-            { name: year + '年单月', type: 'bar', data: currentMonthly, yAxisIndex: 1, itemStyle: { color: 'rgba(59,130,246,0.35)' }, barMaxWidth: 16 },
-            { name: prevYear + '年单月', type: 'bar', data: prevMonthly, yAxisIndex: 1, itemStyle: { color: 'rgba(148,163,184,0.3)' }, barMaxWidth: 16 }
+            { name: year + '年期内月度', type: 'bar', data: currentMonthly, yAxisIndex: 1, itemStyle: { color: 'rgba(59,130,246,0.35)' }, barMaxWidth: 16 },
+            { name: prevYear + '年期内月度', type: 'bar', data: prevMonthly, yAxisIndex: 1, itemStyle: { color: 'rgba(148,163,184,0.3)' }, barMaxWidth: 16 }
           );
         } else {
           seriesList.push(
-            { name: year + '年单月', type: 'bar', data: currentMonthly, yAxisIndex: 1, itemStyle: { color: 'rgba(59,130,246,0.35)' }, barMaxWidth: 16 }
+            { name: year + '年期内月度', type: 'bar', data: currentMonthly, yAxisIndex: 1, itemStyle: { color: 'rgba(59,130,246,0.35)' }, barMaxWidth: 16 }
           );
         }
 
         return {
           tooltip: { trigger: 'axis', backgroundColor: '#111a2b', borderColor: '#1e2c46', textStyle: { color: '#eef3fb' } },
           legend: { data: seriesList.map(s => s.name), textStyle: { color: '#93a4bd' }, bottom: 0 },
-          grid: { left: 50, right: 20, top: 20, bottom: 50 },
-          xAxis: { type: 'category', data: months, axisLine: { lineStyle: { color: '#1e2c46' } }, axisLabel: { color: '#93a4bd' } },
+          grid: { left: 20, right: 40, top: 40, bottom: 50, containLabel: true },
+          xAxis: { type: 'category', data: visibleIndexes.map(i => months[i]), axisLine: { lineStyle: { color: '#1e2c46' } }, axisLabel: { color: '#93a4bd' } },
           yAxis: [
             { type: 'value', name: '累计(万)', position: 'left', axisLine: { show: false }, splitLine: { lineStyle: { color: '#1e2c46', type: 'dashed' } }, axisLabel: { color: '#93a4bd' } },
-            { type: 'value', name: '单月(万)', position: 'right', axisLine: { show: false }, splitLine: { show: false }, axisLabel: { color: '#93a4bd' } }
+            { type: 'value', name: '期内月度(万)', position: 'right', axisLine: { show: false }, splitLine: { show: false }, axisLabel: { color: '#93a4bd' } }
           ],
-          series: seriesList
+          series: seriesList.map(series => ({ ...series, data: visibleIndexes.map(i => series.data[i]) }))
         };
       }
 
@@ -590,24 +594,30 @@
     platformChart.setOption(getPlatformOption());
 
     async function loadYearFromApi(year, options = {}) {
+      const generation = dashboardLoadGeneration;
       const updateKpi = options.updateKpi !== false;
       const updateProduct = options.updateProduct !== false;
       const yearNum = parseInt(year);
       const yearLabel = String(yearNum);
       let cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(yearNum) : yearLabel;
       if (!apiCache[cacheKey]) {
-        const ok = await fetchAPIData(yearNum);
+        const ok = await fetchAPIData(yearNum, options);
         if (!ok) {
-          clearRuntimeFallbackYear(year);
+          if (generation === dashboardLoadGeneration && options.updateKpi !== false && Number(selectedYear) === yearNum) {
+            delete platformMock[yearLabel];
+            delete platformMock[String(yearNum - 1)];
+            clearRuntimeFallbackYear(year);
+          }
           return false;
         }
         // KPI 会把默认、月度或超出最新数据日的范围规范化；重新按规范化后的范围取缓存。
         cacheKey = typeof dashboardCacheKey === 'function' ? dashboardCacheKey(yearNum) : yearLabel;
       }
+      if (generation !== dashboardLoadGeneration) return false;
       const cached = apiCache[cacheKey];
       if (cached && cached.platform && hasValidApiData(cached.platform)) {
         const apiPM = convertApiToPlatformMock(cached.platform, yearLabel);
-        const apiTM = convertApiToTeamMock(cached.platform, yearLabel);
+        const apiTM = convertApiToTeamMock(cached.team || cached.platform, yearLabel);
         Object.assign(platformMock, apiPM);
         Object.assign(teamMock, apiTM);
         if (updateKpi) {
@@ -627,14 +637,19 @@
         if (!apiCache[prevCacheKey]) {
           try {
             const prevParams = new URLSearchParams({ year: String(prevYearNum) });
-            const prevPlatform = unwrapApiResponse(await fetchJson(`/api/platform-data?${prevParams.toString()}`, { method: 'GET' }));
-            apiCache[prevCacheKey] = { platform: prevPlatform };
-          } catch(e) {}
+            appendDashboardRange(prevParams);
+            const [prevPlatform, prevTeam] = await Promise.all([
+              fetchJson(`/api/platform-data?${prevParams.toString()}`, { method: 'GET' }).then(unwrapApiResponse),
+              fetchJson(`/api/platform-data?year=${prevYearNum}`, { method: 'GET' }).then(unwrapApiResponse)
+            ]);
+            if (generation !== dashboardLoadGeneration || prevCacheKey !== dashboardCacheKey(prevYearNum)) return false;
+            apiCache[prevCacheKey] = { platform: prevPlatform, team: prevTeam };
+          } catch(e) { if (generation === dashboardLoadGeneration) delete platformMock[prevYearLabel]; }
         }
         if (apiCache[prevCacheKey] && apiCache[prevCacheKey].platform && hasValidApiData(apiCache[prevCacheKey].platform)) {
           const prevPM = convertApiToPlatformMock(apiCache[prevCacheKey].platform, prevYearLabel);
           Object.assign(platformMock, prevPM);
-          const prevTM = convertApiToTeamMock(apiCache[prevCacheKey].platform, prevYearLabel);
+          const prevTM = convertApiToTeamMock(apiCache[prevCacheKey].team || apiCache[prevCacheKey].platform, prevYearLabel);
           Object.assign(teamMock, prevTM);
         }
         await prepareJingdaiPlatforms();
@@ -646,12 +661,18 @@
 
     async function switchYear(value) {
       selectedYear = value;
+      clearDashboardApiCache();
+      const generation = dashboardLoadGeneration;
       await loadYearFromApi(value, { updateKpi: true, updateProduct: true });
+      if (generation !== dashboardLoadGeneration) return;
       updateCutoffLabel(value);
       updatePlatformScopeNote();
       renderPlatformMonthFilter();
       await refreshPlatformChart();
       productChart.setOption(getPieOption(currentPieType), true);
+      payPeriodFilters.year = value;
+      if (typeof renderPayPeriodTimeControls === 'function') renderPayPeriodTimeControls();
+      if (typeof renderProductMonthFilter === 'function') renderProductMonthFilter();
       fetchPayPeriodData(value);
       fetchOrgKpiData(value);
     }
@@ -672,10 +693,12 @@
         ? getLatestMonthForYear(String(selectedYear))
         : 12;
       const selected = MonthMultiSelect.normalizeMonths(selectedPlatformMonths[currentTimeDim], maxMonth);
-      if (selected.length > 0) return selected;
+      const bounds = platformRangeBounds(Number(selectedYear));
+      const inRange = list => list.filter(month => !bounds || (month >= bounds.startMonth && month <= bounds.endMonth));
+      if (inRange(selected).length > 0) return inRange(selected);
       const fallback = MonthMultiSelect.defaultMonths(currentTimeDim, maxMonth);
       selectedPlatformMonths[currentTimeDim] = fallback;
-      return fallback;
+      return inRange(fallback);
     }
 
     function renderPlatformMonthFilter() {
@@ -780,6 +803,9 @@
       if (channel === '经代') {
         if (hasJingdaiPlatformFilter()) {
           if (!jingdaiPlatformCache[year]) return null;
+          if ((jingdaiPlatformCache[year].daily || []).some(row => row.month === monthIndex + 1
+              && selectedJingdaiPlatforms.includes(row.platform) && !row.day
+              && !platformDateInRange(year, row.month, row.day))) return null;
           const col = premiumType === 'qj' ? 'qj_premium' : premiumType === 'gm' ? 'gm_premium' : 'zs_premium';
           const rows = jingdaiPlatformRows(year).filter(row => row.month === monthIndex + 1);
           if (!rows.length && platformMock[year]?.year?.qj?.[channel]?.[monthIndex] == null) return null;
@@ -790,17 +816,16 @@
       }
 
       // 从机构级索引查询
+      if (!hasPlatformOrgFilter()) return platformMock[year]?.year?.[premiumType]?.[channel]?.[monthIndex] ?? null;
       const orgData = platformOrgPerfData[year]?.[channel]?.[monthIndex];
       if (!orgData) {
-        // 无机构级数据时回退到 platformMock 聚合数据
-        const v = platformMock[year]?.year?.[premiumType]?.[channel]?.[monthIndex];
-        return v !== null && v !== undefined ? v : null;
+        return null;
       }
 
       const allSelected = ORG_LIST_PLATFORM.every(o => selectedPlatformOrgs[o]);
       const noneSelected = ORG_LIST_PLATFORM.every(o => !selectedPlatformOrgs[o]);
 
-      if (allSelected || noneSelected) {
+      if (allSelected) {
         return orgData.total[premiumType] ?? null;
       }
 

@@ -111,6 +111,7 @@ def test_frontend_keeps_unknown_discount_and_does_not_show_partial_mixed_chart()
       const source = fs.readFileSync('js/data-integration.js', 'utf8');
       function extract(s, start, end) { return s.slice(s.indexOf(start), s.indexOf(end, s.indexOf(start))); }
       const scope = {hasJingdaiPlatformFilter: () => false,
+                     selectedPlatformOrgNames: () => ['上海'], platformRangeBounds: () => null,
                      platformOrgPerfData: {}, normalizeMonth: Number, dailyRowsContainJingdai: () => false,
                      dailyDisplayEndDay: () => 3};
       vm.createContext(scope);

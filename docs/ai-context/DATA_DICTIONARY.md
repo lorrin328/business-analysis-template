@@ -281,7 +281,9 @@
 | `category` | 趸交、1年交、2年交、3年交、5年交、10年及以上、短期险等交期分类。 |
 | `qj_premium` / `gm_premium` / `count` | 当日分类期交保费、规模保费、件数；金额单位万元。 |
 
-统计范围接入接口：`/api/kpi`、`/api/org-analysis`、`/api/product-analysis`、`/api/payment-period/{year}`、`/api/export/excel`。平台趋势和队伍分析保留模块自身的年/季/月期间，不跟随非年度全局范围截断。
+统计范围接入接口：`/api/kpi`、`/api/org-analysis`、`/api/product-analysis`、`/api/payment-period/{year}`、`/api/export/excel`；v1.0.170起增加`/api/platform-data`、`/api/platform-trend`。平台趋势的年/季/月与局部月份在顶部起止范围内取交集，累计从所选起点计算，上年按同月同日映射。队伍分析仍保留独立年/季/月期间，页面明确人力月级精度。
+
+v1.0.170范围精度：平台和交期完整自然月允许使用月汇总并披露；部分月缺少日源时返回NULL/不可计算，不用整月替代单日。产品与交期`premiumTotal`按未逐类舍入金额汇总后保留两位小数；`premium[].value`保留分类展示舍入，`roundingNote`说明尾差。经代件数仍遵守源净额/投保单号范围去重合同，不改变历史持久数据。
 
 ## 容器运行数据
 
@@ -366,7 +368,7 @@
 - 参数：`asOf=YYYY-MM-DD`，用于主看板全局数据截止日期。
 - 精准同比前端接入口径：`/api/kpi`、`/api/org-analysis`。
 - 后端兼容支持 `asOf` 的接口：`/api/kpi`、`/api/platform-data`、`/api/platform-trend`、`/api/product-analysis`、`/api/org-analysis`、`/api/payment-period/{year}`。
-- 趋势展示口径：业务平台趋势和队伍趋势默认展示已有完整趋势数据，前端不再向 `/api/platform-data`、`/api/platform-trend` 传递 `asOf`。
+- 历史趋势展示口径（v1.0.170已替代）：当时业务平台趋势与队伍趋势均独立展示；当前业务平台按顶部范围查询，队伍独立读取完整月度背景。
 - 默认规则：无用户选择时取当前系统日期上一天；若最新导入数据日期与系统日期相差 2 天及以上，则按导入数据最新日期为准，并在页面提示“请注意数据口径”。
 - 日期选项：基于最新导入数据日期提供最近 3 天选项。
 - 同比公式：`同比 = 本年截至 asOf 的累计值 / 去年同月同日累计值 - 1`；例如选择 `2026-06-18` 时，去年同期映射为 `2025-06-18`。

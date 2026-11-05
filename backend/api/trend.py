@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 
 from auth import require_permission
-from api.params import AsOfQuery, DashboardYearQuery
+from api.params import AsOfQuery, DashboardYearQuery, DateQuery, RangeTypeQuery
 from config.business_lines import DEFAULT_YEAR
 from config.metrics import METRICS
 from db import get_platform_data
@@ -24,16 +24,25 @@ def platform_jingdai(
 def platform_data(
     year: DashboardYearQuery = DEFAULT_YEAR,
     asOf: AsOfQuery = None,
+    rangeType: RangeTypeQuery = None,
+    startDate: DateQuery = None,
+    endDate: DateQuery = None,
     _user=Depends(require_permission("platform_trend")),
 ):
+    range_args = {key: value for key, value in {
+        'range_type': rangeType, 'start_date': startDate, 'end_date': endDate,
+    }.items() if value is not None}
     return success_response(
-        get_platform_data(year, as_of=asOf),
+        get_platform_data(year, as_of=asOf, **range_args),
         meta=response_meta(
             metric="platform-data",
             unit="万元/人",
             data_source="SQLite aggregate tables",
             year=year,
             asOf=asOf,
+            rangeType=rangeType,
+            startDate=startDate,
+            endDate=endDate,
             definitions={
                 k: METRICS[k]
                 for k in ["achievement_rate", "yoy", "time_progress", "progress_gap"]
@@ -53,6 +62,9 @@ def platform_trend(
     businessLines: str | None = None,
     metric: str = Query("qj", pattern="^(qj|gm|zs)$"),
     asOf: AsOfQuery = None,
+    rangeType: RangeTypeQuery = None,
+    startDate: DateQuery = None,
+    endDate: DateQuery = None,
     _user=Depends(require_permission("platform_trend")),
 ):
     channels = [x.strip() for x in businessLines.split(",") if x.strip()] if businessLines else None
@@ -71,6 +83,9 @@ def platform_trend(
         period_type=periodType,
         period_value=periodValue,
         as_of=asOf,
+        range_type=rangeType,
+        start_date=startDate,
+        end_date=endDate,
     )
     return success_response(
         data,
@@ -83,6 +98,9 @@ def platform_trend(
             periodValue=data.get("periodValue", periodValue or 0),
             businessLines=data.get("businessLines", []),
             asOf=asOf,
+            rangeType=rangeType,
+            startDate=startDate,
+            endDate=endDate,
             definitions={
                 k: METRICS[k]
                 for k in ["yoy", "achievement_rate", "time_progress"]

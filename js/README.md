@@ -12,13 +12,13 @@ Current production runtime:
 - `target-modal.js`
 - `dashboard-actions.js` (header toolbar action binding)
 - `kpi-cards.js`
-- `platform-trend.js` (shared helpers only)
+- `platform-trend.js` (shared date helpers, inclusive dashboard range and leap-year mapping)
 - `product-config-modal.js`
 - `kpi-modal-content.js`
 - `org-analysis.js`
 - `seed-data.js`
 - `platform-seed-data.js` (local fallback platform trend data only)
-- `data-integration.js` (API loading, fallback conversion, and dashboard refresh)
+- `data-integration.js` (range-scoped platform API loading, separate monthly team data, fallback conversion, and dashboard refresh)
 - `platform-trend-main.js` (platform trend chart state and rendering)
 - `product-analysis.js` (loaded in-page before payment-period controls)
 - `payperiod-chart.js` (loaded in-page before team chart)

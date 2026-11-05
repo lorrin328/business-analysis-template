@@ -2,9 +2,16 @@
     // ---------- Payment Period Structure ----------
     const payPeriodData = {
       premium: [],
+      premiumTotal: null,
       count: [],
       countBasis: 'source_net',
       countNote: '',
+      period: null,
+      precision: null,
+      sourcePrecision: {},
+      rangeWarnings: [],
+      calculable: true,
+      loadError: '',
       averagePremium: { categories: [], rows: [] }
     };
     const payPeriodFilters = {
@@ -43,13 +50,15 @@
     })();
 
     const payPeriodChart = echarts.init(document.getElementById('payPeriodChart'));
+    let payPeriodRequestSequence = 0;
 
     function getPayPeriodPieOption(type) {
       const data = type === 'count' ? payPeriodData.count : payPeriodData.premium;
-      if (!data || data.length === 0) {
-        const unavailable = type === 'count' && payPeriodData.countBasis === 'mixed'
+      const incomplete = payPeriodData.calculable === false || (data || []).some(row => row.value == null || !Number.isFinite(Number(row.value)));
+      if (!data || data.length === 0 || incomplete) {
+        const unavailable = payPeriodData.loadError || (incomplete ? '所选范围数据不完整，交期结构不可计算' : type === 'count' && payPeriodData.countBasis === 'mixed'
           ? '混合件数口径，合并件数不可计算'
-          : type === 'count' && payPeriodData.countBasis === 'unavailable' ? '源数据暂无可核算件数' : '暂无交期结构数据';
+          : type === 'count' && payPeriodData.countBasis === 'unavailable' ? '源数据暂无可核算件数' : '暂无交期结构数据');
         return {
           title: { text: unavailable, left: 'center', top: 'middle', textStyle: { color: '#93a4bd', fontSize: 14, fontWeight: 400 } },
           series: [{ type: 'pie', data: [], radius: ['40%', '70%'], center: ['35%', '50%'] }]
@@ -86,9 +95,15 @@
 
     function applyPayPeriodFallback(year) {
       payPeriodData.premium = [];
+      payPeriodData.premiumTotal = null;
       payPeriodData.count = [];
       payPeriodData.countBasis = 'unavailable';
       payPeriodData.countNote = '';
+      payPeriodData.period = null;
+      payPeriodData.precision = null;
+      payPeriodData.sourcePrecision = {};
+      payPeriodData.rangeWarnings = [];
+      payPeriodData.calculable = false;
       payPeriodData.averagePremium = { categories: [], rows: [] };
       const chart = payPeriodChart;
       if (chart) chart.setOption(getPayPeriodPieOption('premium'), true);
@@ -97,7 +112,8 @@
     }
 
     function fmtPayPeriodAmount(value, digits = 1) {
-      const n = Number(value || 0);
+      if (value == null || !Number.isFinite(Number(value))) return '--';
+      const n = Number(value);
       return n.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
     }
 
@@ -133,16 +149,18 @@
       const premiumRows = Array.isArray(payPeriodData.premium) ? payPeriodData.premium : [];
       const countRows = Array.isArray(payPeriodData.count) ? payPeriodData.count : [];
       const map = new Map();
+      const addKnown = (left, right) => left == null || right == null || !Number.isFinite(Number(right)) ? null : left + Number(right);
       premiumRows.forEach(row => {
         const name = row.name || '未分类';
-        const item = map.get(name) || { name, premium: 0, count: null };
-        item.premium += Number(row.value || 0);
+        const item = map.get(name) || { name, premium: 0, count: null, countSeen: false };
+        item.premium = addKnown(item.premium, row.value);
         map.set(name, item);
       });
       countRows.forEach(row => {
         const name = row.name || '未分类';
-        const item = map.get(name) || { name, premium: 0, count: 0 };
-        item.count += Number(row.value || 0);
+        const item = map.get(name) || { name, premium: null, count: null, countSeen: false };
+        item.count = addKnown(item.countSeen ? item.count : 0, row.value);
+        item.countSeen = true;
         map.set(name, item);
       });
       const rows = Array.from(map.values()).sort((a, b) => Math.abs(b.premium) - Math.abs(a.premium));
@@ -150,18 +168,19 @@
         wrapper.innerHTML = '<div class="structure-empty">暂无交期结构明细数据</div>';
         return;
       }
-      const totalPremium = rows.reduce((sum, row) => sum + Number(row.premium || 0), 0);
-      const totalCount = rows.reduce((sum, row) => sum + Number(row.count || 0), 0);
+      const displayedTotal = rows.reduce((sum, row) => addKnown(sum, row.premium), 0);
+      const totalPremium = displayedTotal === null ? null : payPeriodData.premiumTotal ?? displayedTotal;
+      const totalCount = rows.reduce((sum, row) => addKnown(sum, row.count), 0);
       const premiumLabel = payPeriodFilters.metric === 'gm' ? '规模保费' : '期交保费';
       const htmlRows = rows.map(row => {
         const name = escapePayPeriodText(row.name || '未分类');
-        const premiumShare = totalPremium ? row.premium / totalPremium * 100 : 0;
-        const countShare = row.count === null ? null : totalCount ? row.count / totalCount * 100 : 0;
+        const premiumShare = row.premium == null || totalPremium == null || totalPremium <= 0 ? null : row.premium / totalPremium * 100;
+        const countShare = row.count == null || totalCount == null || totalCount <= 0 ? null : row.count / totalCount * 100;
         return `
           <tr>
             <td class="primary-text">${name}</td>
-            <td class="num">${fmtPayPeriodAmount(row.premium)}万</td>
-            <td class="num">${premiumShare.toFixed(1)}%</td>
+            <td class="num">${row.premium == null ? '--' : fmtPayPeriodAmount(row.premium) + '万'}</td>
+            <td class="num">${premiumShare == null ? '--' : premiumShare.toFixed(1) + '%'}</td>
             <td class="num">${row.count === null ? '--' : fmtPayPeriodAmount(row.count, 0) + '件'}</td>
             <td class="num">${countShare === null ? '--' : countShare.toFixed(1) + '%'}</td>
           </tr>
@@ -169,7 +188,7 @@
       }).join('');
       const countContract = payPeriodCountContract();
       wrapper.innerHTML = `
-        <div class="structure-average-note">${escapePayPeriodText(countContract.note)}</div>
+        <div class="structure-average-note">${escapePayPeriodText([...(payPeriodData.rangeWarnings || []), countContract.note].filter(Boolean).join('；'))}</div>
         <table class="structure-table" id="payPeriodTable">
           <thead>
             <tr>
@@ -255,10 +274,18 @@
 
       if (scopeNote) {
         const months = payPeriodFilters.timeDim === 'year' ? [] : _buildPeriodMonths();
-        const periodLabel = payPeriodFilters.timeDim === 'year'
+        const moduleLabel = payPeriodFilters.timeDim === 'year'
           ? `${payPeriodFilters.year}年度`
           : MonthMultiSelect.periodLabel(payPeriodFilters.year, months);
-        scopeNote.textContent = `统计期间：${periodLabel}；${payload.scope || '转型＋经代'}口径：${countContract.formula}；单位：万元/件；可核算件数小于或等于0时不计算。${countContract.note}`;
+        const periodLabel = payPeriodData.period?.label || moduleLabel;
+        const monthText = months?.length ? `；另限所选月份：${months.join('、')}月（取交集）` : '';
+        const precisionText = payPeriodData.precision === 'month'
+          ? '仅有月级数据，不能作为单日或月中区间的精确结果。'
+          : payPeriodData.precision === 'day' ? '按日统计。'
+          : payPeriodData.precision === 'unavailable' ? '所选部分月缺少日级数据，缺失保费、件数及件均不可计算。'
+          : payPeriodData.precision === 'mixed' ? '所选范围含日级与完整月级数据。' : '';
+        const warnings = (payPeriodData.rangeWarnings || []).join('；');
+        scopeNote.textContent = payPeriodData.loadError || `统计期间：${periodLabel}${monthText}；${payload.scope || '转型＋经代'}口径：${countContract.formula}；单位：万元/件；可核算件数小于或等于0时不计算。${precisionText}${warnings}${countContract.note}`;
       }
       if (filterSummary) {
         filterSummary.textContent = `显示 ${rows.length} / ${allRows.length} 条 · 含筛选合计`;
@@ -426,16 +453,16 @@
     function buildPayPeriodQuery(year) {
       const params = new URLSearchParams();
       const bts = []; if (payPeriodFilters.transform) bts.push('转型'); if (payPeriodFilters.jingdai) bts.push('经代');
-      if (bts.length < 2) params.set('businessTypes', bts.join(','));
+      if (bts.length < 2) params.set('businessTypes', bts.length ? bts.join(',') : '__none__');
       if (payPeriodFilters.transform) {
         const chs = Object.entries(payPeriodFilters.channels).filter(([,v])=>v).map(([k])=>k);
-        if (chs.length < 3) params.set('channels', chs.join(','));
+        if (chs.length < 3) params.set('channels', chs.length ? chs.join(',') : '__none__');
         const orgs = payPeriodFilters.orgs['all'] ? null : Object.entries(payPeriodFilters.orgs).filter(([k,v])=>k!=='all'&&v).map(([k])=>k);
-        if (orgs && orgs.length < ORG_LIST.length) params.set('orgs', orgs.join(','));
+        if (orgs && orgs.length < ORG_LIST.length) params.set('orgs', orgs.length ? orgs.join(',') : '__none__');
       }
       if (payPeriodFilters.jingdai && payPeriodFilters.orgsInitialized) {
         const jdOrgs = Object.entries(payPeriodFilters.jingdaiOrgs).filter(([,v])=>v).map(([k])=>k);
-        if (jdOrgs.length > 0 && jdOrgs.length < Object.keys(payPeriodFilters.jingdaiOrgs).length) params.set('jingdaiOrgs', jdOrgs.join(','));
+        if (jdOrgs.length < Object.keys(payPeriodFilters.jingdaiOrgs).length || !jdOrgs.length) params.set('jingdaiOrgs', jdOrgs.length ? jdOrgs.join(',') : '__none__');
       }
       const months = _buildPeriodMonths();
       if (months && months.length === 1) params.set('month', months[0]);
@@ -446,9 +473,18 @@
     }
 
     async function fetchPayPeriodData(year) {
+      const sequence = ++payPeriodRequestSequence;
       try {
         const d = unwrapApiResponse(await fetchJson(buildPayPeriodQuery(year)));
+        if (sequence !== payPeriodRequestSequence) return;
+        payPeriodData.loadError = '';
+        payPeriodData.period = d.period || null;
+        payPeriodData.precision = d.precision || d.period?.precision?.paymentPeriod || null;
+        payPeriodData.sourcePrecision = d.sourcePrecision || {};
+        payPeriodData.rangeWarnings = Array.isArray(d.rangeWarnings) ? d.rangeWarnings : [];
+        payPeriodData.calculable = d.calculable !== false;
         payPeriodData.premium = d.premium || [];
+        payPeriodData.premiumTotal = d.premiumTotal ?? null;
         payPeriodData.count = d.count || [];
         payPeriodData.countBasis = d.countBasis || d.average_premium?.metadata?.countBasis || 'source_net';
         payPeriodData.countNote = d.countNote || d.average_premium?.metadata?.countNote || '';
@@ -456,7 +492,11 @@
         if (d.jingdai_orgs && d.jingdai_orgs.length > 0) {
           renderPayPeriodJingdaiOrgs(d.jingdai_orgs);
         }
-      } catch (e) { applyPayPeriodFallback(year); }
+      } catch (e) {
+        if (sequence !== payPeriodRequestSequence) return;
+        payPeriodData.loadError = '当前交期筛选读取失败，请重试';
+        applyPayPeriodFallback(year);
+      }
       renderPayPeriodChart();
     }
 

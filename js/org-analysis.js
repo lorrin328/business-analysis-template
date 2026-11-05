@@ -37,14 +37,14 @@
       label.classList.toggle('active', input.checked);
 
       if (org === 'all') {
-        // 全部选中/取消
-        if (input.checked) {
-          selectedOrgs = ['all'];
-          document.querySelectorAll('#orgFilterChecks label:not(:first-child)').forEach(l => {
-            l.querySelector('input').checked = false;
-            l.classList.remove('active');
-          });
-        }
+        // 此筛选至少保留一个范围；再次点击“全部”仍保持全部选中。
+        input.checked = true;
+        label.classList.add('active');
+        selectedOrgs = ['all'];
+        document.querySelectorAll('#orgFilterChecks label:not(:first-child)').forEach(l => {
+          l.querySelector('input').checked = false;
+          l.classList.remove('active');
+        });
       } else {
         // 单独选中某个机构
         const allLabel = document.querySelector('#orgFilterChecks label:first-child');

@@ -124,7 +124,7 @@ def test_frontend_centralizes_read_api_fetches():
     assert upload_tag.group(1) == hashlib.sha256(read_js('upload.js').encode('utf-8')).hexdigest()[:12]
     assert_script_tag(html, "target-modal.js")
     assert '<script src="js/kpi-cards.js?v=1.0.146-29880f1034df"></script>' in html
-    assert '<script src="js/platform-trend.js?v=1.0.116"></script>' in html
+    assert_script_tag(html, "platform-trend.js")
     assert_script_tag(html, "team-analysis.js")
     # api-client centralizes fetchJson / adminFetch / apiUrl
     assert "function apiUrl(path)" not in html
@@ -600,7 +600,7 @@ def test_dashboard_cache_reloads_after_server_normalizes_date_range():
     load_fn = trend.split("async function loadYearFromApi", 1)[1].split("async function switchYear", 1)[0]
     assert "let cacheKey" in load_fn
     assert load_fn.count("cacheKey = typeof dashboardCacheKey") >= 2
-    assert load_fn.index("await fetchAPIData(yearNum)") < load_fn.rindex("cacheKey = typeof dashboardCacheKey")
+    assert load_fn.index("await fetchAPIData(yearNum, options)") < load_fn.rindex("cacheKey = typeof dashboardCacheKey")
 
 
 def test_per_capita_calculates_custom_date_ranges_by_covered_months():
@@ -1271,18 +1271,20 @@ def test_platform_trend_controls_are_bound_by_platform_module():
     assert "switchPremiumType(button, button.dataset.platformPremiumType)" in platform_main
 
 
-def test_dashboard_asof_only_drives_precise_kpi_and_org_yoy_not_trend_series():
+def test_dashboard_range_drives_trends_while_team_keeps_monthly_context():
     integration = read_js("data-integration.js")
     platform_main = read_js("platform-trend-main.js")
     org = read_js("org-analysis.js")
 
     assert "`/api/kpi?year=${year}${dashboardAsOfQuery()}`" in integration
     assert "`/api/platform-data?year=${year}`" in integration
-    assert "`/api/platform-data?year=${year}${dashboardAsOfQuery()}`" not in integration
+    assert "`/api/platform-data?year=${year}${dashboardAsOfQuery()}`" in integration
+    assert "{ platform, team, kpi, product }" in integration
     assert "const asOfContext = apiData?.kpi?.as_of;" in integration
     assert "const asOfContext = apiData?.kpi?.as_of || apiData?.platform?.as_of" not in integration
     assert "window.appendDashboardRange(params)" in org
     assert "platformTrendCacheKey(year, premiumType, selectedKeys, periodType, periodValue)" in platform_main
+    assert "appendDashboardRange(params)" in platform_main
     assert "params.set('asOf', asOf)" not in platform_main
     assert "window.getDashboardAsOf" not in platform_main
 

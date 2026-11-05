@@ -1,6 +1,7 @@
 """Repository queries — auto-split from database.py."""
 import json
 import sqlite3
+import calendar
 from db.connection import get_db
 from db.schema import init_db
 from db.repositories.jingdai_policy import query_policy_counts, IDENTITY_NOTE, MIXED_NOTE
@@ -16,6 +17,44 @@ PAYMENT_PERIOD_CATEGORY_ORDER = [
     "5年交",
     "10年及以上",
 ]
+
+
+def _prepare_range_payment_table(conn, year: int, start: dict, end: dict) -> str:
+    """Create a connection-local projection; never alter persisted aggregates."""
+    table = 'temp_payment_range'
+    conn.execute(f'DROP TABLE IF EXISTS temp.{table}')
+    conn.execute(f'''CREATE TEMP TABLE {table} (
+        year INTEGER, month INTEGER, day INTEGER, business_type TEXT, channel TEXT,
+        org TEXT, category TEXT, qj_premium REAL, gm_premium REAL, count REAL,
+        count_missing INTEGER, scope_precision TEXT)''')
+    daily_exists = bool(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agg_payment_period_daily'").fetchone())
+    available = set()
+    if daily_exists:
+        available = {(r['business_type'], r['month']) for r in conn.execute(
+            'SELECT DISTINCT business_type, month FROM agg_payment_period_daily WHERE year=?', (year,))}
+        missing = 'count_missing' if pick_existing_column(conn, 'agg_payment_period_daily', ['count_missing']) else '0'
+        date_sql, date_params = date_range_filter_sql(start, end)
+        conn.execute(f'''INSERT INTO {table}
+            SELECT year, month, day, business_type, channel, org, category,
+                   qj_premium, gm_premium, count, {missing}, 'day'
+            FROM agg_payment_period_daily WHERE year=? AND {date_sql}''', [year, *date_params])
+    missing = 'count_missing' if pick_existing_column(conn, 'agg_payment_period', ['count_missing']) else '0'
+    rows = conn.execute(f'''SELECT year, month, business_type, channel, org, category,
+        qj_premium, gm_premium, count, {missing} AS count_missing
+        FROM agg_payment_period WHERE year=? AND month BETWEEN ? AND ?''', (year, start['month'], end['month'])).fetchall()
+    for row in rows:
+        if (row['business_type'], row['month']) in available:
+            continue
+        month = row['month']
+        first = start['day'] if month == start['month'] else 1
+        last = end['day'] if month == end['month'] else calendar.monthrange(year, month)[1]
+        full_month = first == 1 and last == calendar.monthrange(year, month)[1]
+        conn.execute(f'INSERT INTO {table} VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+                     (year, month, first, row['business_type'], row['channel'], row['org'], row['category'],
+                      row['qj_premium'] if full_month else 0, row['gm_premium'] if full_month else 0,
+                      row['count'] if full_month else 0, row['count_missing'] if full_month else 1,
+                      'month' if full_month else 'unavailable'))
+    return table
 
 
 def _add_counts(left, right):
@@ -74,6 +113,12 @@ def get_payment_period_structure(
             "SELECT 1 FROM agg_payment_period_daily WHERE year = ? LIMIT 1", (year,)
         ).fetchone())
         table = "agg_payment_period_daily" if daily_available else "agg_payment_period"
+        explicit_range = range_type is not None or start_date is not None or end_date is not None
+        if explicit_range:
+            table = _prepare_range_payment_table(conn, year, selected_start, selected_cutoff)
+            # This projection contains both daily rows and date-scoped monthly
+            # fallbacks, so all rows must pass the inclusive range filter.
+            daily_available = True
 
         conditions = ['year = ?']
         params = [year]
@@ -124,6 +169,23 @@ def get_payment_period_structure(
             params.extend(jingdai_orgs)
 
         where = ' AND '.join(conditions) if conditions else '1=1'
+        unknown_scopes = []
+        source_precision = {}
+        range_warnings = []
+        if explicit_range:
+            precision_rows = conn.execute(f'SELECT DISTINCT business_type, month, scope_precision FROM {table} WHERE {where}', params).fetchall()
+            for source in sorted({row['business_type'] for row in precision_rows}):
+                modes = {row['scope_precision'] for row in precision_rows if row['business_type'] == source}
+                source_precision[source] = 'unavailable' if 'unavailable' in modes else next(iter(modes)) if len(modes) == 1 else 'mixed'
+                missing_months = sorted({row['month'] for row in precision_rows if row['business_type'] == source and row['scope_precision'] == 'unavailable'})
+                monthly_months = sorted({row['month'] for row in precision_rows if row['business_type'] == source and row['scope_precision'] == 'month'})
+                if missing_months:
+                    range_warnings.append(f'{source}交期结构：{",".join(map(str, missing_months))}月缺少日级数据，所选非完整月保费、件数及件均不可计算')
+                elif monthly_months:
+                    range_warnings.append(f'{source}交期结构：{",".join(map(str, monthly_months))}月使用完整月汇总')
+            unknown_scopes = [dict(row) for row in conn.execute(f'''SELECT DISTINCT org,
+                CASE WHEN business_type='经代' THEN '经代' ELSE channel END AS channel, category
+                FROM {table} WHERE {where} AND scope_precision='unavailable' ''', params)]
         missing_expr = 'count_missing' if pick_existing_column(conn, table, ['count_missing']) else '0'
         count_expr = f'CASE WHEN SUM({missing_expr})=0 THEN SUM(count) END'
         jd_categories = query_policy_counts(conn, where, params, ('category',)) or {}
@@ -131,6 +193,13 @@ def get_payment_period_structure(
         jd_org_counts = query_policy_counts(conn, where, params, ('org',)) or {}
         jd_total = (query_policy_counts(conn, where, params) or {}).get(())
         identity_selected = bool(jd_total and jd_total['identity'])
+        if identity_selected and source_precision.get('经代') in ('month', 'mixed', 'unavailable'):
+            # Range-distinct facts cannot stand in for month-only legacy counts
+            # whose identities are absent from that fact projection.
+            for mapping in (jd_categories, jd_terms, jd_org_counts):
+                for identity in mapping.values():
+                    identity.update(count=None, basis='mixed')
+            jd_total.update(count=None, basis='mixed')
 
         c.execute(f'''
             SELECT category, business_type,
@@ -305,17 +374,43 @@ def get_payment_period_structure(
             ''', (year,))
             jd_orgs = [r['org'] for r in c2.fetchall()]
 
-        period_context['precision']['paymentPeriod'] = 'day' if daily_available else 'month'
+        precision_modes = set(source_precision.values())
+        precision = ('unavailable' if 'unavailable' in precision_modes else next(iter(precision_modes)) if len(precision_modes) == 1 else 'mixed' if precision_modes else 'day') if explicit_range else 'day' if daily_available else 'month'
+        if unknown_scopes:
+            unknown_categories = {row['category'] for row in unknown_scopes}
+            for row in premium_rows:
+                if row['name'] in unknown_categories:
+                    row['value'] = None
+            count_rows = [row for row in count_rows if row['name'] not in unknown_categories]
+
+            def mask_average(item):
+                item.update(premium=None, count=None, average=None, calculable=False,
+                            reason='所选非完整月范围缺少日级数据，保费、件数及件均不可计算')
+
+            for row in [*average_rows, *average_summaries]:
+                missing = [scope for scope in unknown_scopes
+                           if row['org'] in ('all', scope['org']) and row['business_mode'] in ('all', scope['channel'])]
+                if missing:
+                    mask_average(row['total'])
+                    for term in row['terms']:
+                        if any(scope['category'] == term['category'] for scope in missing):
+                            mask_average(term)
+        period_context['precision']['paymentPeriod'] = precision
         return {
             'year': year,
             'as_of': as_of_context,
             'period': period_context,
-            'precision': 'day' if daily_available else 'month',
+            'precision': precision,
+            'sourcePrecision': source_precision,
+            'rangeWarnings': range_warnings,
+            'calculable': not bool(unknown_scopes),
             'premium': premium_rows,
+            'premiumTotal': None if unknown_scopes else round(sum(row['premium'] for row in chart_groups.values()), 2),
+            'roundingNote': '分类展示金额四舍五入至小数点后两位，合计按未舍入金额汇总后计算，分类显示值相加可能存在尾差。',
             'count': count_rows,
-            'countBasis': 'mixed' if mixed_count_basis else jd_total['basis'] if jd_total else 'source_net',
+            'countBasis': 'unavailable' if unknown_scopes else 'mixed' if mixed_count_basis else jd_total['basis'] if jd_total else 'source_net',
             'countSources': ['policy_identity', 'source_net'] if mixed_count_basis else ['policy_identity'] if identity_selected else ['source_net'],
-            'countNote': MIXED_NOTE if mixed_count_basis else IDENTITY_NOTE if identity_selected else '',
+            'countNote': ('；'.join(range_warnings) if unknown_scopes else MIXED_NOTE if mixed_count_basis else IDENTITY_NOTE if identity_selected else ''),
             'average_premium': {
                 'scope': ('转型＋经代' if any(r['business_mode']!='经代' for r in average_rows) else '经代') if any(r['business_mode']=='经代' for r in average_rows) else '转型',
                 'metric': metric if metric == 'gm' else 'qj',

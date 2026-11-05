@@ -8,6 +8,7 @@
 
     let apiData = { kpi: null, platform: null, team: null, product: null };
     const apiCache = {};
+    let dashboardLoadGeneration = 0;
     let apiAvailable = false;
     const ALLOW_LOCAL_FALLBACK = (
       window.location.protocol === 'file:' ||
@@ -22,6 +23,7 @@
     };
     window.getDashboardAsOf = () => dashboardRange.endDate || selectedAsOf;
     window.getDashboardRange = () => ({ ...dashboardRange });
+    window.getPlatformTrendPeriod = year => apiCache[dashboardCacheKey(year)]?.platform?.period || null;
 
     function dashboardAsOfQuery(prefix = '&') {
       const params = appendDashboardRange(new URLSearchParams());
@@ -49,6 +51,7 @@
     }
 
     function clearDashboardApiCache() {
+      ++dashboardLoadGeneration;
       Object.keys(apiCache).forEach(key => delete apiCache[key]);
       if (typeof window.clearPlatformTrendDailyCache === 'function') {
         window.clearPlatformTrendDailyCache();
@@ -149,46 +152,69 @@
       return `/api/product-analysis?${params.toString()}`;
     }
 
-    async function fetchAPIData(year) {
+    async function fetchAPIData(year, options = {}) {
+      const generation = dashboardLoadGeneration;
+      const updateContext = options.updateKpi !== false;
+      const isCurrent = () => generation === dashboardLoadGeneration
+        && (!updateContext || Number(selectedYear) === Number(year));
       try {
         let kpi = null;
         try {
           kpi = unwrapApiResponse(await fetchJson(`/api/kpi?year=${year}${dashboardAsOfQuery()}`, { method: 'GET' }));
-          syncDashboardAsOf(kpi?.as_of, kpi?.period);
+          if (!isCurrent()) return false;
+          if (updateContext) syncDashboardAsOf(kpi?.as_of, kpi?.period);
         } catch (e) {
           kpi = null;
         }
 
-        const platform = unwrapApiResponse(await fetchJson(`/api/platform-data?year=${year}`, { method: 'GET' }));
+        const rangeKey = dashboardCacheKey(year);
+        const [platform, team] = await Promise.all([
+          fetchJson(`/api/platform-data?year=${year}${dashboardAsOfQuery()}`, { method: 'GET' }).then(unwrapApiResponse),
+          fetchJson(`/api/platform-data?year=${year}`, { method: 'GET' }).then(unwrapApiResponse)
+        ]);
 
         let product = null;
+        const productSequence = productRequestSequence;
         try {
           product = unwrapApiResponse(await fetchJson(buildProductQuery(year), { method: 'GET' }));
         } catch (e) {
           product = null;
         }
 
-        apiCache[dashboardCacheKey(year)] = { platform, kpi, product };
-        apiData.platform = platform;
-        apiData.kpi = kpi;
-        apiData.product = product;
+        if (!isCurrent() || rangeKey !== dashboardCacheKey(year)) return false;
+        if (productSequence !== productRequestSequence) product = apiData.product;
+        apiCache[rangeKey] = { platform, team, kpi, product };
+        if (updateContext) {
+          apiData.platform = platform;
+          apiData.kpi = kpi;
+          apiData.product = product;
+        }
         apiAvailable = true;
         setDataSourceStatus('server', '');
         return true;
       } catch (e) {
+        if (!isCurrent()) return false;
         apiAvailable = false;
+        if (updateContext) {
+          apiData = { kpi: null, platform: null, team: null, product: null };
+          productData.premium = [];
+          productData.count = [];
+          if (typeof renderProductTopTable === 'function') renderProductTopTable([]);
+        }
         clearRuntimeFallbackYear(year);
         return false;
       }
     }
 
     function getLatestMonthForYear(year) {
+      const period = apiCache[dashboardCacheKey(year)]?.platform?.period;
+      if (period?.endCutoff?.month) return period.endCutoff.month;
       const pm = platformMock[year];
       const data = pm && pm.year && pm.year.qj;
       if (!data) return 12;
       const channels = Object.keys(data);
       for (let i = 11; i >= 0; i--) {
-        if (channels.some(ch => data[ch][i] !== null && data[ch][i] !== undefined && data[ch][i] !== 0)) {
+        if (channels.some(ch => data[ch][i] !== null && data[ch][i] !== undefined)) {
           return i + 1;
         }
       }
@@ -292,21 +318,28 @@
       window.selectedAsOf = selectedAsOf;
       window.dashboardRange = { ...dashboardRange };
       clearDashboardApiCache();
+      const generation = dashboardLoadGeneration;
       const platformYear = String(year);
       selectedYear = platformYear;
       const mainYearSelect = document.getElementById('yearSelect');
       if (mainYearSelect) mainYearSelect.value = platformYear;
       await fetchTargetData(platformYear);
+      if (generation !== dashboardLoadGeneration) return;
       if (selectedTeamYear && selectedTeamYear !== platformYear) {
         await loadYearFromApi(selectedTeamYear, { updateKpi: false, updateProduct: false });
       }
       await loadYearFromApi(platformYear, { updateKpi: true, updateProduct: true });
+      if (generation !== dashboardLoadGeneration) return;
       updateCutoffLabel(platformYear);
       if (typeof updatePlatformScopeNote === 'function') updatePlatformScopeNote();
       await refreshPlatformChart();
       productChart.setOption(getPieOption(currentPieType), true);
       teamChart.setOption(getTeamOption(), true);
       if (typeof refreshTeamEnhancedPanel === 'function') refreshTeamEnhancedPanel();
+      payPeriodFilters.year = platformYear;
+      if (typeof renderPayPeriodTimeControls === 'function') renderPayPeriodTimeControls();
+      if (typeof renderPlatformMonthFilter === 'function') renderPlatformMonthFilter();
+      if (typeof renderProductMonthFilter === 'function') renderProductMonthFilter();
       await fetchPayPeriodData(platformYear);
       await fetchOrgKpiData(platformYear);
       updateKPICards();
@@ -335,10 +368,11 @@
     // 检查API数据是否包含有效记录（非空）
     function hasValidApiData(apiPlatform) {
       if (!apiPlatform) return false;
+      if (apiPlatform.rangeApplied && Array.isArray(apiPlatform.performance) && Array.isArray(apiPlatform.jingdai)) return true;
       const perf = apiPlatform.performance;
       const jd = apiPlatform.jingdai;
-      const hasPerf = Array.isArray(perf) && perf.length > 0 && perf.some(r => (r.qj_premium || 0) > 0 || (r.gm_premium || 0) > 0);
-      const hasJd = Array.isArray(jd) && jd.length > 0 && jd.some(r => (r.qj_premium || 0) > 0 || (r.gm_premium || 0) > 0);
+      const hasPerf = Array.isArray(perf) && perf.length > 0;
+      const hasJd = Array.isArray(jd) && jd.length > 0;
       const hasHr = Array.isArray(apiPlatform.hr) && apiPlatform.hr.length > 0;
       const hasValue = Array.isArray(apiPlatform.value) && apiPlatform.value.length > 0;
       return hasPerf || hasJd || hasHr || hasValue;
@@ -362,8 +396,8 @@
         apiPlatform.performance.forEach(r => {
           const m = r.month - 1;
           if (m >= 0 && m < 12) {
-            if (mock.year.qj[r.channel]) mock.year.qj[r.channel][m] = r.qj_premium || 0;
-            if (mock.year.gm[r.channel]) mock.year.gm[r.channel][m] = r.gm_premium || 0;
+            if (mock.year.qj[r.channel]) mock.year.qj[r.channel][m] = r.qj_premium ?? null;
+            if (mock.year.gm[r.channel]) mock.year.gm[r.channel][m] = r.gm_premium ?? null;
             if (mock.year.zs[r.channel]) mock.year.zs[r.channel][m] = r.zs_premium ?? null;
           }
         });
@@ -374,8 +408,8 @@
         apiPlatform.jingdai.forEach(r => {
           const m = r.month - 1;
           if (m >= 0 && m < 12) {
-            mock.year.qj['经代'][m] = r.qj_premium || 0;
-            mock.year.gm['经代'][m] = r.gm_premium || 0;
+            mock.year.qj['经代'][m] = r.qj_premium ?? null;
+            mock.year.gm['经代'][m] = r.gm_premium ?? null;
             mock.year.zs['经代'][m] = r.zs_premium ?? null;
           }
         });
@@ -397,24 +431,28 @@
           if (!entry.orgs[org]) entry.orgs[org] = { qj: 0, gm: 0, zs: 0 };
           ['qj', 'gm', 'zs'].forEach(t => {
             const col = t === 'qj' ? 'qj_premium' : t === 'gm' ? 'gm_premium' : 'zs_premium';
-            const v = t === 'zs' ? r[col] ?? null : r[col] || 0;
+            const v = r[col] ?? null;
             entry.orgs[org][t] = entry.orgs[org][t] === null || v === null ? null : entry.orgs[org][t] + v;
             entry.total[t] = entry.total[t] === null || v === null ? null : entry.total[t] + v;
           });
         });
       }
 
-      // 补null表示未到月份：找到第一个全为0的月份之后置null
+      // 日期/记录覆盖决定可见月份；零业绩和负向冲正仍是有效数据。
       const channels = ['OTO', '证保', '蚁桥', '经代'];
-      for (let m = 11; m >= 0; m--) {
-        const hasData = channels.some(ch => mock.year.qj[ch][m] > 0);
-        if (!hasData) {
+      const coveredMonths = [...(apiPlatform.performance || []), ...(apiPlatform.jingdai || [])].map(row => Number(row.month));
+      const bounds = apiPlatform.rangeApplied && apiPlatform.period?.startCutoff && apiPlatform.period?.endCutoff
+        ? { startMonth: apiPlatform.period.startCutoff.month, endMonth: apiPlatform.period.endCutoff.month }
+        : apiPlatform.rangeApplied ? platformRangeBounds(Number(year)) : null;
+      const lastMonth = bounds?.endMonth || Math.max(0, ...coveredMonths);
+      for (let m = 0; m < 12; m++) {
+        if (m + 1 > lastMonth || (bounds && m + 1 < bounds.startMonth)) {
           channels.forEach(ch => {
             mock.year.qj[ch][m] = null;
             mock.year.gm[ch][m] = null;
             mock.year.zs[ch][m] = null;
           });
-        } else break;
+        }
       }
 
       // quarter 数据：直接使用该季度3个月的真实月度数据（不再伪造日累计）
@@ -551,7 +589,12 @@
         : productFilters.transform ? '转型' : productFilters.jingdai ? '经代' : '未选择业务来源';
       const separateCountNote = typeof renderProductCountBasisNote === 'function' && document.getElementById('productCountBasisNote');
       const countNote = currentPieType === 'count' && product.countNote && !separateCountNote ? ` · ${product.countNote}` : '';
-      scope.textContent = `已应用：${product.period?.label || `${product.year || selectedYear}年`} · ${sources}${countNote}`;
+      const selectedMonths = productFilters.timeDim && productFilters.timeDim !== 'year' && typeof getProductSelectedMonths === 'function'
+        ? getProductSelectedMonths() : [];
+      const monthNote = selectedMonths.length ? ` · 另限${selectedMonths.join('、')}月（与顶部范围取交集）` : '';
+      const totalNote = currentPieType === 'premium' && Number.isFinite(product.premiumTotal)
+        ? ` · 保费合计${product.premiumTotal.toLocaleString('zh-CN', {minimumFractionDigits:2,maximumFractionDigits:2})}万元；${product.roundingNote || ''}` : '';
+      scope.textContent = `已应用：${product.period?.label || `${product.year || selectedYear}年`} · ${sources}${monthNote}${countNote}${totalNote}`;
     }
 
     function updateProductDataFromApi() {
@@ -561,11 +604,8 @@
         return applyProductFallback(selectedYear || DEFAULT_DASHBOARD_YEAR);
       }
       renderProductJingdaiOrgs(product.jingdaiOrgs || []);
-      if (product.premium.length === 0) {
-        updateProductAppliedScope(product);
-        return applyProductFallback(selectedYear || DEFAULT_DASHBOARD_YEAR);
-      }
       productData.premium = product.premium;
+      productData.premiumTotal = product.premiumTotal ?? null;
       productData.count = Array.isArray(product.count) ? product.count : [];
       productData.countBasis = product.countBasis || 'policy';
       productData.countNote = product.countNote || '';
@@ -701,7 +741,8 @@
           const m = r.month - 1;
           const org = r.org;
           if (m >= 0 && m < 12 && orgData[org] && orgData[org].headcount[r.channel]) {
-            orgData[org].headcount[r.channel][m] = Math.round((r.start_headcount + r.end_headcount) / 2);
+            orgData[org].headcount[r.channel][m] = Number.isFinite(r.start_headcount) && Number.isFinite(r.end_headcount)
+              ? (r.start_headcount + r.end_headcount) / 2 : null;
             orgData[org].activeHeadcount[r.channel][m] = r.active_headcount;
           }
         });
@@ -712,7 +753,7 @@
           const m = r.month - 1;
           const org = r.org;
           if (m >= 0 && m < 12 && orgData[org] && orgData[org].premium[r.channel]) {
-            orgData[org].premium[r.channel][m] = r.qj_premium || 0;
+            orgData[org].premium[r.channel][m] = r.qj_premium ?? null;
           }
         });
       }
@@ -723,7 +764,8 @@
         apiPlatform.hr.forEach(r => {
           const m = r.month - 1;
           if (m >= 0 && m < 12 && mock.headcount[r.channel]) {
-            mock.headcount[r.channel][m] = Math.round((r.start_headcount + r.end_headcount) / 2);
+            mock.headcount[r.channel][m] = Number.isFinite(r.start_headcount) && Number.isFinite(r.end_headcount)
+              ? (r.start_headcount + r.end_headcount) / 2 : null;
             mock.activeHeadcount[r.channel][m] = r.active_headcount;
           }
         });
@@ -733,7 +775,7 @@
         apiPlatform.performance.forEach(r => {
           const m = r.month - 1;
           if (m >= 0 && m < 12 && mock.premium[r.channel]) {
-            mock.premium[r.channel][m] = r.qj_premium || 0;
+            mock.premium[r.channel][m] = r.qj_premium ?? null;
           }
         });
       }

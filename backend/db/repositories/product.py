@@ -589,6 +589,8 @@ def get_product_structure(
                 'period': period_context,
                 'dimension': dimension,
                 'premium': [{'name': r['label'], 'value': round(r['premium'], 2)} for r in rows if round(r['premium'], 2) != 0],
+                'premiumTotal': round(sum(r['premium'] for r in rows), 2),
+                'roundingNote': '分类展示金额四舍五入至小数点后两位，合计按未舍入金额汇总后计算，分类显示值相加可能存在尾差。',
                 'count': [
                     {'name': r['label'], 'value': int(r['count'])}
                     for r in rows
