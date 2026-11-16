@@ -289,7 +289,8 @@ def test_branch_page_permission_and_static_runtime(auth_db, approved_user):
     client = TestClient(app)
     page = client.get("/branch-analysis")
     assert page.status_code == 200
-    assert "常规网点147个" in page.text
+    assert 'id="scopeNotice"' in page.text
+    assert 'data-tab="followup"' in page.text
     assert 'id="periodType"' in page.text
     assert 'id="periodValue"' in page.text
     assert "/js/branch-analysis.js" in page.text
@@ -300,7 +301,9 @@ def test_branch_page_permission_and_static_runtime(auth_db, approved_user):
     assert "数据截至 ${state.data.meta.performanceCutoff}" in script.text
     assert "lastBranchBusinessDate" in script.text
     assert "integer(item.internalAgents)" in script.text
-    assert "'券商人员', '太平人员', '活动月'" in script.text
+    assert "regularStock" in script.text
+    assert "出单天数" in script.text
+    assert "待匹配" in script.text
     assert "券商及太平人员均按出单工号去重" in script.text
     branch_tag = re.search(r'/js/branch-analysis\.js\?v=\d+\.\d+\.\d+-([0-9a-f]{12})', page.text)
     assert branch_tag, "网点分析脚本必须携带内容哈希以刷新代理和浏览器缓存"
@@ -316,3 +319,212 @@ def test_branch_page_permission_and_static_runtime(auth_db, approved_user):
         "/api/branch-analysis/overview",
         headers=_headers(user["token"]),
     ).status_code == 403
+
+
+def test_branch_large_policy_and_structure_indicators(auth_db):
+    _seed_branch_data()
+    import db.connection as connection
+    with connection.get_db() as conn:
+        existing = {row["name"] for row in conn.execute('PRAGMA table_info("performance")')}
+        if "缴费年限" not in existing:
+            conn.execute('ALTER TABLE performance ADD COLUMN "缴费年限" INTEGER')
+        conn.execute(
+            """
+            INSERT INTO performance (
+                "年月", "年月日", "业务模式", "销售机构名称", "人员工号",
+                "投保单号", "证券方营业网点名称", "证券方销售人员工号", "期交保费", "缴费年限"
+            ) VALUES ('2026-07', '2026-07-28', '证券', '广东', 'A009', 'P-LARGE-1', '测试证券一号营业部', 'S009', 1200000, 10)
+            """
+        )
+        conn.commit()
+
+    client = TestClient(app)
+    login = _login(client)
+    res = client.get(
+        "/api/branch-analysis/overview?year=2026&asOf=2026-07-28",
+        headers=_headers(login["token"]),
+    )
+    assert res.status_code == 200
+    data = res.json()["data"]
+    s = data["summary"]
+    assert s["premiumWan"] == 134.0
+    assert s["largePremiumWan"] == 120.0
+    assert s["largePolicies"] == 1
+    assert s["regularPlatformWan"] == 14.0
+    assert s["largeShare"] == pytest.approx(120.0 / 134.0)
+    assert s["longTerm10yPremiumWan"] == 120.0
+    assert s["longTerm10yShare"] == 1
+    assert s["termCoverage"] == pytest.approx(120.0 / 134.0)
+    assert s["unknownTermPositivePremiumWan"] == 14.0
+
+
+def test_branch_tiers_pareto_and_brokers(auth_db):
+    _seed_branch_data()
+    client = TestClient(app)
+    login = _login(client)
+    res = client.get(
+        "/api/branch-analysis/overview?year=2026&asOf=2026-07-28",
+        headers=_headers(login["token"]),
+    )
+    assert res.status_code == 200
+    data = res.json()["data"]
+
+    # Tiers check
+    assert len(data["tiers"]) == 5
+    tier_counts = sum(t["count"] for t in data["tiers"])
+    assert tier_counts == data["summary"]["regularStock"]
+
+    # Pareto check
+    assert "top5Share" in data["pareto"]
+    assert "top10Share" in data["pareto"]
+    assert "pareto20PercentShare" in data["pareto"]
+    assert len(data["pareto"]["series"]) > 0
+
+    # Brokers check
+    assert len(data["brokers"]) > 0
+    broker_names = {b["broker"] for b in data["brokers"]}
+    assert "测试证券" in broker_names or "广发证券股份有限公司" in broker_names
+
+
+def test_branch_quadrant_and_insights(auth_db):
+    _seed_branch_data()
+    client = TestClient(app)
+    login = _login(client)
+    res = client.get(
+        "/api/branch-analysis/overview?year=2026&asOf=2026-07-28",
+        headers=_headers(login["token"]),
+    )
+    assert res.status_code == 200
+    data = res.json()["data"]
+
+    # Quadrant
+    assert len(data["quadrant"]) == data["summary"]["regularStock"]
+    assert "quadrant" in data["quadrant"][0]
+    assert "quadrantLabel" in data["quadrant"][0]
+
+    # Monthly Trend
+    assert isinstance(data["monthlyTrend"], list)
+
+    # Insights
+    ins = data["insights"]
+    assert "platformDiagnosis" in ins
+    assert "level" in ins["platformDiagnosis"]
+    assert "dormantAlerts" in ins
+    assert "localityComparison" in ins
+    assert "local" in ins["localityComparison"]
+    assert "remote" in ins["localityComparison"]
+
+def _insert_branch_rows(rows):
+    import db.connection as connection
+
+    with connection.get_db() as conn:
+        columns = {row["name"] for row in conn.execute('PRAGMA table_info("performance")')}
+        if "缴费年限" not in columns:
+            conn.execute('ALTER TABLE performance ADD COLUMN "缴费年限" TEXT')
+        conn.executemany(
+            """
+            INSERT INTO performance (
+                "年月", "年月日", "业务模式", "销售机构名称", "人员工号", "投保单号",
+                "证券方营业网点名称", "证券方销售人员工号", "期交保费", "缴费年限"
+            ) VALUES (?, ?, '证保', ?, 'A001', ?, ?, 'S001', ?, ?)
+            """,
+            [(day[:7], day, org, policy, branch, premium, term)
+             for day, org, policy, branch, premium, term in rows],
+        )
+        conn.commit()
+
+
+def test_branch_monthly_and_period_netting_reconcile_signed_and_unknown_premiums(auth_db):
+    from datetime import date
+    from branch_analysis.analyzer import analyze_branch_network
+
+    _seed_branch_data()
+    regular = "测试证券一号营业部"
+    parent = "广发证券股份有限公司"
+    _insert_branch_rows([
+        ("2026-06-10", "广东", "SPLIT", regular, 600000, "10.0"),
+        ("2026-06-21", "广东", "SPLIT", regular, 500000, "10.0"),
+        ("2026-07-03", "广东", "SPLIT", regular, -150000, None),
+        ("2026-06-17", "山东", "REVERSAL", parent, 200000, "5"),
+        ("2026-07-09", "山东", "REVERSAL", parent, -200000, "5"),
+        ("2026-07-11", "广东", "ZERO", regular, 15000, "3"),
+        ("2026-07-11", "广东", "ZERO", regular, -15000, "3"),
+        ("2026-07-15", "山东", "NEG", parent, -50000, None),
+        ("2026-07-19", "北京", "UNMATCHED-NEG", "", -20000, None),
+        ("2026-07-20", "广东", None, regular, 1200000, "10"),
+        ("2026-07-21", "广东", "CONFLICT", regular, 8000, "5"),
+        ("2026-07-22", "广东", "CONFLICT", regular, 2000, "10"),
+    ])
+    annual = analyze_branch_network(year=2026, as_of=date(2026, 7, 28))
+    s = annual["summary"]
+    assert s["premiumWan"] == 223
+    assert s["policies"] == 5
+    assert s["largePremiumWan"] == 0 and s["largeShare"] == 0
+    assert s["regularPlatformWan"] == 110
+    assert s["netNegativePremiumWan"] == -7
+    assert s["unclassifiedPositivePremiumWan"] == 120
+    assert s["premiumWan"] == s["regularPlatformWan"] + s["largePremiumWan"] + s["netNegativePremiumWan"] + s["unclassifiedPositivePremiumWan"]
+    assert s["termCoverage"] == pytest.approx(95 / 110)
+    assert s["longTerm10yShare"] == 1
+    assert annual["quality"]["missingPolicyRows"] == 1
+    assert s["referralOverlapPremiumWan"] == s["referralPremiumWan"] == -2
+    assert s["unmatchedPremiumWan"] == -1
+    assert s["matchedPremiumRate"] <= 1
+
+    months = {item["month"]: item for item in annual["monthlyTrend"]}
+    assert len(months) == 7 and months["2026-05"]["totalWan"] == 0
+    assert months["2026-06"]["policies"] == 2 and months["2026-06"]["largePolicies"] == 1
+    assert months["2026-07"]["policies"] == 4 and months["2026-07"]["netNegativeWan"] == -42
+    assert months["2026-07"]["activeBranches"] == 2
+    assert sum(item["totalWan"] for item in months.values()) == s["premiumWan"]
+    assert sum(item["policies"] for item in months.values()) == 6
+
+    july = analyze_branch_network(year=2026, as_of=date(2026, 7, 28), period_type="month", period_value=7)
+    assert july["quadrant"] == [] and july["meta"]["matrixWindow"] is None
+    assert july["summary"]["policies"] == months["2026-07"]["policies"]
+    by_name = {item["branch"]: item for item in july["regularBranches"]}
+    assert by_name[regular]["activeDays"] == 3
+    assert by_name[parent]["premiumWan"] == -22 and by_name[parent]["policies"] == 1
+    assert by_name[parent]["tierName"] == "净期交≤0"
+    assert july["summary"]["activeRegular"] == 2
+
+
+def test_branch_matrix_uses_complete_months_and_dormant_uses_policy_status(auth_db):
+    from datetime import date
+    from branch_analysis.analyzer import analyze_branch_network
+
+    _seed_branch_data()
+    regular = "测试证券一号营业部"
+    parent = "广发证券股份有限公司"
+    _insert_branch_rows([
+        ("2026-04-09", "广东", "APR", regular, 100000, "3"),
+        ("2026-05-09", "广东", "MAY", regular, 100000, "3"),
+        ("2026-06-20", "广东", "APR", regular, -10000, "3"),
+        ("2026-07-29", "广东", "LATER", regular, 900000, "3"),
+        ("2025-06-18", "山东", "PRIOR", parent, 30000, "5"),
+        ("2026-06-18", "北京", "ONLY-REV", parent, -10000, "5"),
+        ("2026-06-18", "北京", "NO-NUMBER", "未识别网点", 30000, "5"),
+    ])
+    annual = analyze_branch_network(year=2026, as_of=date(2026, 7, 28))
+    window = annual["meta"]["matrixWindow"]
+    assert (window["start"], window["end"]) == ("2026-04-01", "2026-06-30")
+    assert window["available"]
+    points = {point["branch"]: point for point in annual["quadrant"]}
+    assert points[regular]["premiumWan"] == 19
+    assert points[regular]["activeMonths"] == 2
+    assert points[regular]["quadrant"] == "III"
+    assert annual["summary"]["continuedRegular"] == 2
+    second_quarter = analyze_branch_network(year=2026, as_of=date(2026, 7, 28), period_type="quarter", period_value=2)
+    dormant = second_quarter["insights"]["dormantAlerts"]
+    assert any(item["branch"] == parent and item["premiumWan"] == -1 and item["previousOrgs"] == ["山东"] for item in dormant)
+    assert second_quarter["quality"]["unmatchedBranches"][0]["orgs"] == ["北京"]
+
+
+def test_branch_matrix_without_three_covered_months_reports_unavailable(auth_db):
+    from datetime import date
+    from branch_analysis.analyzer import analyze_branch_network
+
+    _seed_branch_data()
+    result = analyze_branch_network(year=2025, as_of=date(2025, 7, 28))
+    assert result["meta"]["matrixWindow"]["available"] is False
+    assert result["quadrant"] == []
