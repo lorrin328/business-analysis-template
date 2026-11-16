@@ -107,6 +107,9 @@
     const levelRows = data.levels.map(item => [
       esc(item.label), integer(item.stock), integer(item.active), rate(item.activityRate), number(item.premiumWan)
     ]);
+    const projectRows = data.projects.map(item => [
+      esc(item.label), integer(item.stock), integer(item.active), rate(item.activityRate), number(item.premiumWan)
+    ]);
     const loc = data.insights.localityComparison;
     const followups = `<div class="callouts">
       <div class="callout"><b>同期出单、本期未出单</b><p>${integer(data.insights.dormantAlerts.length)} 个网点</p></div>
@@ -131,7 +134,9 @@
           ['等级', '常规网点', '出单网点', '活动率', '净期交（万）'], levelRows, [1, 2, 3, 4]))}
         ${panel('本地及异地表现', '按参考表本地或异地标签统计。', table(
           ['归属', '常规网点', '出单网点', '活动率', '净期交（万）', '网均净期交（万）'], localityRows, [1, 2, 3, 4, 5]))}
-      </div>`;
+      </div>
+      ${panel('机构类项目表现', '按参考表的机构类项目汇总常规网点。', table(
+        ['项目', '常规网点', '出单网点', '活动率', '净期交（万）'], projectRows, [1, 2, 3, 4]))}`;
   }
 
   function initOverviewCharts() {
@@ -213,12 +218,12 @@
         return `<b>${esc(point.branch)}</b><br>${esc(point.parent)}<br>${esc(point.quadrantLabel)}<br>净期交 ${number(point.premiumWan)}万<br>出单 ${integer(point.activeMonths)}个月 · ${integer(point.policies)}件`;
       } },
       grid: { left: 65, right: 35, top: 35, bottom: 50 },
-      xAxis: { type: 'value', name: '出单月数', nameLocation: 'middle', nameGap: 26, min: -0.2, max: 3.2,
+      xAxis: { type: 'value', name: '出单月数', nameLocation: 'middle', nameGap: 26, min: 0, max: 3,
         interval: 1, axisLabel: { formatter: value => Number.isInteger(value) ? value : '' },
         splitLine: { show: false } },
       yAxis: { type: 'value', name: '净期交（万元）', max: value => Math.max(value.max, window.premiumThresholdWan * 1.1) },
       series: [{
-        type: 'scatter',
+        type: 'scatter', clip: false,
         symbolSize: value => Math.max(8, Math.min(44, Math.sqrt(value[2]) * 7)),
         data: points.map(point => ({
           value: [point.activeMonths, point.premiumWan, point.policies],
@@ -249,6 +254,7 @@
     ['grade', '参考等级', item => esc(item.grade || '—')],
     ['tier', '净期交区间', item => esc(item.tierName)],
     ['parent', '券商主体', item => esc(item.parent || '—')],
+    ['project', '机构类项目', item => esc(item.project || '—')],
     ['org', '太平机构', item => esc(item.org || item.previousOrg || '—')],
     ['branch', '证券网点', item => esc(item.branch)],
     ['city', '城市', item => esc(item.city || '—')],
@@ -258,6 +264,7 @@
     ['netNegativePremiumWan', '净负冲正（万）', item => number(item.netNegativePremiumWan), true],
     ['premiumChange', '同比', item => `<span class="${changeClass(item.premiumChange)}">${change(item.premiumChange)}</span>`, true],
     ['policies', '件数', item => integer(item.policies), true],
+    ['averageCaseWan', '件均（万）', item => number(item.averageCaseWan), true],
     ['longTerm10yShare', '10年及以上交期占比', item => `<span title="已知交期覆盖 ${rate(item.termCoverage)}">${rate(item.longTerm10yShare)}</span>`, true],
     ['externalSellers', '券商人员', item => integer(item.externalSellers), true],
     ['internalAgents', '太平人员', item => integer(item.internalAgents), true],
@@ -351,7 +358,7 @@
       esc(item.referenceId), esc(item.branch), esc(item.parent), esc(item.province), esc(item.city),
       esc(item.project), esc(item.subproject), esc(item.locality)
     ]);
-    const note = `转介绍归属主体及可识别子网点汇总净期交 ${number(s.referralPremiumWan)} 万元，${integer(s.referralPolicies)} 件。其中已纳入常规网点匹配额 ${number(s.referralOverlapPremiumWan)} 万元，匹配合计只计一次。`;
+    const note = `转介绍归属主体及可识别子网点汇总净期交 ${number(s.referralPremiumWan)} 万元，${integer(s.referralPolicies)} 件，${integer(s.referralSellers)} 名券商销售人员。其中已纳入常规网点匹配额 ${number(s.referralOverlapPremiumWan)} 万元，匹配合计只计一次。`;
     return `<div class="notice">${note}</div>` + panel(`转介绍网点名录（${integer(s.referralStockExcluded)}个）`,
       '按参考表展示网点归属，保费按业绩底表可识别的网点归属统计。', table(
         ['编号', '转介绍网点', '归属主体', '省', '市', '机构类项目', '项目细分', '本地/异地'], rows));

@@ -52,11 +52,17 @@ for (const name of ['zhituo-analysis','branch-analysis','customer-analysis']) {
   const source=read(name), isCustomer=name==='customer-analysis';
   const code=extract(source,isCustomer?'  async function loadOverview()':'  async function load(',isCustomer?'  async function loadCohort()':name==='zhituo-analysis'?'  async function applyFilters(':'  function bind()');
   const pending=[], errors=[], rendered=[];const nodes={};
-  const c=context('let loadSequence=0;\n'+code,{URLSearchParams,state:{charts:{}},el:id=>nodes[id]||=( {value:'2026',classList:{remove(){}},textContent:''}),analysisQuery:()=>'',renderAliasCoverage(){},syncOptions(){},setOverviewContext(){},rebuildPeriodOptions(){},window:{fetchJson:()=>{const d=deferred();pending.push(d);return d.promise;},unwrapApiResponse:x=>x},showError:e=>errors.push(e.message),render(){if(c.state.data) rendered.push(c.state.data.id);}});
+  const c=context('let loadSequence=0;\n'+code,{URLSearchParams,state:{charts:{},regular:{}},clearCharts(){},esc:String,el:id=>nodes[id]||=( {value:'2026',classList:{remove(){}},textContent:''}),analysisQuery:()=>'',renderAliasCoverage(){},syncOptions(){},setOverviewContext(){},rebuildPeriodOptions(){},window:{fetchJson:()=>{const d=deferred();pending.push(d);return d.promise;},unwrapApiResponse:x=>x},showError:e=>errors.push(e.message),render(){if(c.state.data) rendered.push(c.state.data.id);}});
   const load=()=>isCustomer?c.loadOverview():c.load();
   const a=load(),b=load();pending[1].resolve({id:'new',meta:{year:2026}});await b;pending[0].resolve({id:'old',meta:{year:2025}});await a;assert.equal(c.state.data.id,'new');assert.deepEqual(rendered,['new']);
-  const d=load(),e=load();pending[3].resolve({id:'newer',meta:{year:2026}});await e;pending[2].reject(Error('old failure'));await d;assert.deepEqual(errors,[]);
-  const f=load();pending[4].reject(Error('current failure'));await f;assert.deepEqual(errors,['current failure']);
+  const d=load(),e=load();pending[3].resolve({id:'newer',meta:{year:2026}});await e;pending[2].reject(Error('old failure'));await d;assert.deepEqual(errors,[]);assert.equal(c.state.data.id,'newer');
+  const f=load();pending[4].reject(Error('current failure'));await f;
+  if (name==='branch-analysis') {
+   assert.equal(c.state.data,null);
+   assert.match(nodes.content.innerHTML,/current failure/);
+  } else {
+   assert.deepEqual(errors,['current failure']);
+  }
  });
 }
 function importer() {
